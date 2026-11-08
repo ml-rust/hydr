@@ -1,0 +1,27 @@
+# Rust build output and library lockfile
+/target/
+/Cargo.lock
+
+# Local dependency overrides
+/.cargo/config.toml
+/.ci-dependencies/
+
+# Agent session state and scratch
+/.agents/prep/
+/.codex/prep/
+/.claude/prep/
+/tmp-artifacts/
+/resource/
+
+# Local datasets and generated simulation output
+/data/
+/output/
+
+# Credentials and machine-local files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
+*~

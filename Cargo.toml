@@ -1,0 +1,30 @@
+[package]
+name = "hydr"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "Two-dimensional shallow-water simulation on the numr CPU runtime"
+license = "Apache-2.0"
+repository = "https://github.com/ml-rust/rivr"
+readme = "README.md"
+keywords = ["hydraulics", "shallow-water", "flood", "simulation"]
+categories = ["science", "simulation"]
+publish = false
+exclude = [".agents/", "resource/", ".github/"]
+
+[dependencies]
+numr = { version = "0.15.2", default-features = false }
+solvr = { version = "0.3.1", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
