@@ -7,6 +7,7 @@ hydr checks synthetic numerical cases separately from application accuracy.
 ```sh
 cargo test --all-features
 cargo test --test analytical_cases -- --nocapture
+cargo test --test radial_shoreline --test transverse_transport --test terrain_envelope -- --nocapture
 cargo test --features numr/rayon --test engine_contract --test checkpoint_package --test definition_identity
 ```
 
@@ -41,15 +42,45 @@ Successive mean depth differences decrease from `0.000126820 m` to `0.0000624591
 Analytical errors increase slightly as smaller timesteps increase first-order spatial diffusion at fixed spacing.
 Combined refinement decreases depth error from `0.00651800` to `0.00458525` to `0.00310221 m`.
 
+## Radial, transverse, and terrain checks
+
+The radial case contracts an affine circular lake over `z=0.1*(x²+y²)` in `[-2,2]² m`.
+Its exact scale satisfies `a''+1.962*a=1.962/a³`, starting at `a=1.2` with zero velocity.
+At `0.5 s`, relative depth L1 decreases from `0.0667579` to `0.0467074` on `40²/80²` grids.
+Both values stay below `0.1`. Mean component discharge errors stay below `0.005 m²/s`.
+Initialization and error evaluation use cell-centre point samples, rather than exact cell averages.
+Only contraction executes. Expansion, reversal, and complete cycles remain unchecked.
+
+The shear case transports a tangential Gaussian discharge through constant depth and normal velocity.
+Its exact peak is `0.1 m²/s`, with depth `1 m` and normal velocity `1 m/s`.
+Mean tangential discharge errors decrease through `0.000501248`, `0.000257749`, and `0.000129640 m²/s` at `100/200/400` cells.
+Each grid also requires relative discharge L1 below `0.2`, excluding a nearly erased profile.
+Sampling uses the centre row beyond transverse walls' numerical domain of dependence during all 32 accepted steps.
+Depth and normal discharge remain constant there within `1e-10` SI.
+The complete square-grid problem also passes quarter-turn covariance within `1e-11` SI.
+These results measure selected first-order diffusion. They establish no general amplitude-preservation guarantee.
+
+Stepped lakes include `1e-9 m` films, dry plateaus, and bed jumps up to several metres.
+Coarse and refined grids retain the existing `1e-11` SI still-water criterion.
+A `1.5 m` crest blocks an initially stationary `1 m` upstream column.
+A `0.2 m` crest permits positive downstream transfer. This checks connectivity, without establishing overtopping discharge accuracy.
+
+Shallow wetting compares momentum reset thresholds `0`, `1e-8`, and `1e-6 m` on identical inputs.
+Relative to zero, mean depth differences reach `2.20e-9 m` and `1.46e-7 m` at `0.5 s`.
+The initial upstream depth is `2e-6 m`. These differences are material at that scale.
+All three runs conserve stored water and record signed removed momentum.
+A separate moving-film case checks retained positive water and signed reset diagnostics.
+The shallow fixture also covers extreme neighboring depth ratios without increasing the root iteration budget.
+
 ## Gate status
 
 | Gate | Checked scope | Remaining evidence |
 | --- | --- | --- |
 | Contract | SI inputs, shapes, references, masks, sources, boundaries, outputs, and exclusions | Physical suitability of each application domain |
 | Determinism | Repeated runs, complete trusted/package restart, bit checks, rollback, and cancellation | Cross-platform bitwise equality remains unsupported |
-| Analytical | Selected lake, dam, vacuum, friction, Manning, and moving-shoreline cases | Broader hydraulic jumps, radial waves, and transverse diffusion assessment |
+| Analytical | Selected lake, dam, vacuum, friction, Manning, contracting radial lake, shear transport, and moving-shoreline cases | Broader hydraulic jumps, radial cycles, and application-specific diffusion budgets |
 | Conservation | Rain, prescribed losses, shared faces, ports, donor depletion, and barrier isolation | Paired component transfers remain unsupported |
-| Wet/dry | Partial dry lakes, dry dam fronts, positive films, rewetting shorelines, and masks | Steep/shallow/coarse-grid accuracy and threshold-sensitivity envelope |
+| Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
 | Independent engine | No established external engine comparison executes yet | Matched HEC-RAS, GeoClaw, or other eligible comparisons |
 | Extensions | No soil, structure, network, or coupling capability is admitted | Capability-specific acceptance before admission |

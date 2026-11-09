@@ -150,6 +150,25 @@ fn root_upper(
     // For H>=M, fL(H)+fR(H)>=(H-M)*sum(sqrt(g/(2ha))).
     let compression = client.maximum(&client.neg(jump)?, &zero)?;
     let seed = client.add(&maximum, &client.div(&compression, &coefficient)?)?;
+    // Each one-sided shock lower bound supplies an upper root bracket, including mixed-wave states.
+    let mut seed = seed;
+    for (other, reference) in [(hl, hr), (hr, hl)] {
+        let numerator = client.maximum(
+            &client.sub(
+                &client.mul_scalar(&client.sqrt(other)?, 2.0 * gravity.sqrt())?,
+                jump,
+            )?,
+            &zero,
+        )?;
+        let factor = client.mul_scalar(
+            &client.sqrt(reference)?,
+            std::f64::consts::SQRT_2 / gravity.sqrt(),
+        )?;
+        let candidate = client.add(reference, &client.mul(&numerator, &factor)?)?;
+        let finite = client.le(&client.abs(&candidate)?, &constant(&candidate, f64::MAX)?)?;
+        let candidate = client.where_cond(&finite, &candidate, &seed)?;
+        seed = client.minimum(&seed, &candidate)?;
+    }
     let hi = client.add_scalar(
         &client.mul_scalar(&seed, 1.0 + 16.0 * f64::EPSILON)?,
         f64::from_bits(1),
@@ -185,3 +204,7 @@ fn root_upper(
         })?;
     Ok(result.upper)
 }
+
+#[cfg(test)]
+#[path = "tensor_wave_tests.rs"]
+mod tests;

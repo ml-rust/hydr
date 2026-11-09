@@ -42,6 +42,16 @@ fL(H)+fR(H) >= (H-M)*(sqrt(g/(2*hL))+sqrt(g/(2*hR)))
 ```
 
 This estimate avoids excessive expansion from thin films.
+Unequal depths also use a one-sided shock estimate:
+
+```text
+HR = hR + max(2*sqrt(g*hL)-(uR-uL),0)*sqrt(2*hR/g)
+```
+
+For `H>=hR`, `fR(H)>=(H-hR)*sqrt(g/(2*hR))`, while `fL(H)>=-2*sqrt(g*hL)`.
+Therefore `HR` bounds the root from above. The symmetric estimate exchanges left and right depths.
+The bracket selects the smallest finite estimate before outward padding and checked residual evaluation.
+This avoids excessive bisection across extreme depth ratios. Iteration exhaustion still returns an error.
 Film brackets receive additional relative refinement because absolute depth error alone cannot control shock-speed sensitivity.
 Hydr requests a relative tolerance capped at `1e-12` and an absolute tolerance of one F64 subnormal quantum.
 These stricter tolerances remain within the configured absolute/relative depth ceiling.
