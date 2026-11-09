@@ -2,6 +2,14 @@
 
 mod reservoir;
 mod subcatchment;
+mod support;
+
+pub use support::{
+    AdmittedInterval, BoundBoundaryInput, BoundaryBinding, CellRainAssignment, Contribution,
+    ContributionKind, PartitionAssertion, RainSuppressionReceipt, SubcatchmentContributionInput,
+    SupportAtom, SupportError, SupportErrorKind, SupportIntervalInput, SupportPlan,
+    SupportPlanInput, SurfaceCellSupport, SurfaceObservationInput, WholeReplacement,
+};
 
 pub use reservoir::{
     ReservoirBatch, ReservoirConfig, ReservoirElement, ReservoirError, ReservoirInput,

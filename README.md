@@ -54,6 +54,9 @@ A standalone [conservative reservoir](docs/reservoir.md) retains explicit storag
 The standalone [subcatchment component](docs/subcatchment.md) adds native soil memory, capped evaporation, and same-interval paired internal routing.
 Hydraulic attachment and inter-catchment networks remain unsupported.
 
+[Contributing-support admission](docs/contributing-support.md) checks declared rainfall ownership and constructs immutable inputs for real surface/runoff consumers.
+ARUS supplies partition evidence. This admission adds no hydraulic attachment or physical source composition.
+
 ## References
 
 - [Hydroflux](https://github.com/franciscoparrao/hydroflux): Rust shallow-water implementation reference.
