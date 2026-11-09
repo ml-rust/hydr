@@ -180,3 +180,165 @@ fn positive_supply_absorbed_by_storage_rounding_rejects() -> Result<(), Reservoi
     assert!(error.to_string().contains("absorbed by storage rounding"));
     Ok(())
 }
+
+#[test]
+fn provided_budget_below_initial_storage_uses_no_synthetic_source() -> Result<(), ReservoirError> {
+    use super::drainage::{DrainageRoot, admit_drainage, drain, prepare_budget};
+    let context = CpuReservoirContext::new(
+        vec![element("loss-budget", 1.0 / 32.0, 32.0)?],
+        ReservoirConfig::default(),
+    )?;
+    let initial_depth = 0.5 * 0.3048;
+    let available = 0.25 * 0.3048;
+    assert!(available < initial_depth);
+    let budget = prepare_budget(&context, context.tensor(&[available])?, 1.0, |_| {
+        context.tensor(&[1.0])
+    })?;
+    let result = drain(&budget)?;
+    assert_eq!(
+        budget.available_depth().item::<f64>()?.to_bits(),
+        available.to_bits()
+    );
+    assert!(result.depth.item::<f64>()? < available);
+    assert!(result.export_volume.item::<f64>()? > 0.0);
+    let checked = admit_drainage(
+        &budget,
+        DrainageRoot {
+            lower: result.lower.clone(),
+            upper: result.upper.clone(),
+            depth: result.depth.clone(),
+            iterations: result.iterations,
+        },
+    )?;
+    assert_eq!(
+        checked.export_volume.item::<f64>()?.to_bits(),
+        result.export_volume.item::<f64>()?.to_bits()
+    );
+    Ok(())
+}
+
+#[test]
+fn provided_inactive_budgets_need_no_event_rate_or_root_work() -> Result<(), ReservoirError> {
+    use super::drainage::{drain, prepare_budget};
+    let context = CpuReservoirContext::new(
+        vec![
+            element("closed", 1.0 / 32.0, 0.0)?,
+            element("instant", 0.0, 32.0)?,
+            element("unfilled", 1.0 / 32.0, 32.0)?,
+        ],
+        ReservoirConfig {
+            root_iterations: 1,
+            ..ReservoirConfig::default()
+        },
+    )?;
+    let available = [0.25 * 0.3048, 0.25 * 0.3048, 0.0625 * 0.3048];
+    let budget = prepare_budget(&context, context.tensor(&available)?, 1.0, |_| {
+        context.tensor(&[0.0; 3])
+    })?;
+    let result = drain(&budget)?;
+    assert_eq!(result.iterations, 0);
+    assert_eq!(
+        result.depth.try_to_vec::<f64>()?,
+        vec![available[0], 0.125 * 0.3048, available[2]]
+    );
+    assert_eq!(budget.active_duration().try_to_vec::<f64>()?, vec![0.0; 3]);
+    Ok(())
+}
+
+#[test]
+fn provided_budget_rejects_invalid_storage_and_active_duration() -> Result<(), ReservoirError> {
+    use super::drainage::prepare_budget;
+    let context = CpuReservoirContext::new(
+        vec![element("finite", 1.0 / 32.0, 32.0)?],
+        ReservoirConfig::default(),
+    )?;
+    for duration in [0.0, -1.0, 2.0, f64::NAN, f64::INFINITY] {
+        let error = prepare_budget(&context, context.tensor(&[0.25 * 0.3048])?, 1.0, |_| {
+            context.tensor(&[duration])
+        })
+        .err()
+        .ok_or_else(|| ReservoirError::numerical("invalid active drainage duration must reject"))?;
+        assert_eq!(error.element(), Some(0));
+    }
+    for available in [-1.0, f64::NAN, f64::INFINITY] {
+        let error = prepare_budget(&context, context.tensor(&[available])?, 1.0, |_| {
+            context.tensor(&[0.0])
+        })
+        .err()
+        .ok_or_else(|| ReservoirError::numerical("invalid authoritative storage must reject"))?;
+        assert_eq!(error.element(), Some(0));
+    }
+    for dt in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        let error = prepare_budget(&context, context.tensor(&[0.25 * 0.3048])?, dt, |_| {
+            context.tensor(&[1.0])
+        })
+        .err()
+        .ok_or_else(|| ReservoirError::numerical("invalid drainage interval must reject"))?;
+        assert!(matches!(error, ReservoirError::InvalidInput { .. }));
+    }
+    Ok(())
+}
+
+#[test]
+fn provided_budget_retains_strict_reconstructed_excess_admission() -> Result<(), ReservoirError> {
+    use super::drainage::{drain, prepare_budget};
+    let depression = 1e6f64;
+    let context = CpuReservoirContext::new(
+        vec![ReservoirElement {
+            id: "stiff-budget".into(),
+            parameters: ReservoirParameters::from_si(1.0, 1.0, 1.0, 1.0, 1e-8, depression)?,
+        }],
+        ReservoirConfig::default(),
+    )?;
+    let available = f64::from_bits(depression.to_bits() + 1);
+    let budget = prepare_budget(&context, context.tensor(&[available])?, 1.0, |_| {
+        context.tensor(&[1.0])
+    })?;
+    let error = drain(&budget)
+        .err()
+        .ok_or_else(|| ReservoirError::numerical("collapsed implicit excess must reject"))?;
+    assert_eq!(error.element(), Some(0));
+    assert!(error.to_string().contains("represented implicit excess"));
+    Ok(())
+}
+
+#[test]
+fn foreign_root_witness_uses_the_budget_construction_context() -> Result<(), ReservoirError> {
+    use super::drainage::{DrainageRoot, admit_drainage, drain, prepare_budget};
+    let context_a = CpuReservoirContext::new(
+        vec![element("same-identity", 1.0 / 32.0, 32.0)?],
+        ReservoirConfig::default(),
+    )?;
+    let context_b = CpuReservoirContext::new(
+        vec![element("same-identity", 1.0 / 32.0, 64.0)?],
+        ReservoirConfig::default(),
+    )?;
+    let available = 0.25 * 0.3048;
+    let budget_a = prepare_budget(&context_a, context_a.tensor(&[available])?, 1.0, |_| {
+        context_a.tensor(&[1.0])
+    })?;
+    let budget_b = prepare_budget(&context_b, context_b.tensor(&[available])?, 1.0, |_| {
+        context_b.tensor(&[1.0])
+    })?;
+    let from_a = drain(&budget_a)?;
+    let error = admit_drainage(
+        &budget_b,
+        DrainageRoot {
+            lower: from_a.lower,
+            upper: from_a.upper,
+            depth: from_a.depth,
+            iterations: from_a.iterations,
+        },
+    )
+    .err()
+    .ok_or_else(|| {
+        ReservoirError::numerical(
+            "a physically different context must reject the foreign root witness",
+        )
+    })?;
+    assert_eq!(error.element(), Some(0));
+    assert!(error.to_string().contains("root signs"));
+    let from_b = drain(&budget_b)?;
+    assert!(from_b.export_volume.item::<f64>()? > 0.0);
+    Ok(())
+}
