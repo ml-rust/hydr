@@ -5,6 +5,7 @@ mod boundary;
 mod flux;
 pub(crate) mod reservoir;
 pub(crate) mod soil;
+pub(crate) mod storage;
 pub(crate) mod subcatchment;
 mod tensor_flux;
 mod tensor_types;
