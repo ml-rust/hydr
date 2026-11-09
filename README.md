@@ -50,7 +50,9 @@ Read the [numerical contract](docs/numerics.md), [integration contract](docs/int
 
 The standalone [soil component](docs/soil.md) retains native memory. The [land-source contract](docs/land-sources.md) defines atomic hydraulic integration and correction budgets.
 
-A standalone [conservative reservoir](docs/reservoir.md) retains explicit storage and interval export. Reservoir routing and hydraulic attachment remain unsupported.
+A standalone [conservative reservoir](docs/reservoir.md) retains explicit storage and interval export.
+The standalone [subcatchment component](docs/subcatchment.md) adds native soil memory, capped evaporation, and same-interval paired internal routing.
+Hydraulic attachment and inter-catchment networks remain unsupported.
 
 ## References
 

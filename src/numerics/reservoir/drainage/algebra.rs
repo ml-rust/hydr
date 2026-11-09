@@ -10,7 +10,7 @@ use numr::runtime::Device;
 
 pub(crate) const EXPONENT: f64 = 1.6666667;
 
-pub(in crate::numerics::reservoir) fn check_metadata(
+pub(crate) fn check_metadata(
     context: &CpuReservoirContext,
     value: &CpuTensor,
     quantity: &str,
@@ -29,7 +29,7 @@ pub(in crate::numerics::reservoir) fn check_metadata(
     Ok(())
 }
 
-pub(in crate::numerics::reservoir) fn volume(
+pub(crate) fn volume(
     context: &CpuReservoirContext,
     depth: &CpuTensor,
     quantity: &str,

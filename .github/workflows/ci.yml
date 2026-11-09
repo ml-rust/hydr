@@ -36,6 +36,7 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
           components: rustfmt, clippy
       - run: python3 -m unittest discover -s tools/reference -p test_swmm_runoff.py
+      - run: python3 -m unittest discover -s tools/reference -p test_subcatchment_temporal.py
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all-targets --all-features

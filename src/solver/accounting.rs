@@ -1,4 +1,5 @@
 use super::{BoundaryFace, EngineError, FaceTransfer};
+pub use crate::soil::SoilSourceReceipt;
 
 /// Cumulative component water accounting from the original initial state, in m³.
 #[derive(Clone, Debug, PartialEq)]
@@ -184,25 +185,6 @@ pub struct StepDiagnostics {
     pub transmissive_states: Vec<TransmissiveDiagnostics>,
     /// Ordered full-grid accepted source witnesses, including inactive zero bookkeeping.
     pub sources: Vec<SourceReceipt>,
-}
-
-/// Native soil admission evidence for one accepted source interval.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SoilSourceReceipt {
-    /// Original returned infiltration rate in ft/s.
-    pub native_rate_ft_per_s: f64,
-    /// Raw native available supply in feet.
-    pub native_available_depth_ft: f64,
-    /// Returned native rate times duration, in feet.
-    pub native_infiltration_depth_ft: f64,
-    /// Positive native availability discrepancy, in feet.
-    pub native_excess_depth_ft: f64,
-    /// Outward native branch rounding envelope, in feet.
-    pub native_roundoff_bound_ft: f64,
-    /// Outward SI conversion envelope, in metres.
-    pub bridge_roundoff_bound_m: f64,
-    /// Combined outward native/SI envelope, in metres.
-    pub total_roundoff_bound_m: f64,
 }
 
 /// Full-grid source algebra at an accepted interval, with all depths in metres.

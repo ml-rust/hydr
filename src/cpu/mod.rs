@@ -8,6 +8,7 @@ pub(crate) mod land_sources;
 pub(crate) mod reservoir_storage;
 pub(crate) mod soil_storage;
 mod storage;
+pub(crate) mod subcatchment;
 mod topology;
 pub(crate) mod transport;
 

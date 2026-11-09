@@ -76,13 +76,65 @@ impl AdjustmentReduction {
         depths: &CpuTensor,
         area: f64,
     ) -> Result<(f64, f64), SoilError> {
-        if depths.shape() != [self.count] || !area.is_finite() || area <= 0.0 {
+        if depths.shape() != [self.count]
+            || depths.dtype() != DType::F64
+            || !area.is_finite()
+            || area <= 0.0
+        {
             return Err(SoilError::input(format!(
-                "correction shape={:?}, area={area}: require {} flat entries and positive finite area",
+                "correction shape={:?}, area={area}: require {} flat F64 entries and positive finite area",
                 depths.shape(),
                 self.count
             )));
         }
+        self.totals_with_product(client, depths, || client.mul_scalar(depths, area))
+    }
+
+    /// Reduce corrections with checked positive per-lane F64 areas, without broadcasting.
+    pub(crate) fn totals_with_areas(
+        self,
+        client: &CpuClient,
+        depths: &CpuTensor,
+        areas: &CpuTensor,
+    ) -> Result<(f64, f64), SoilError> {
+        if depths.shape() != [self.count]
+            || areas.shape() != [self.count]
+            || depths.dtype() != DType::F64
+            || areas.dtype() != DType::F64
+        {
+            return Err(SoilError::input(format!(
+                "correction shape={:?}, dtype={:?}, area shape={:?}, dtype={:?}: require {} matching flat F64 entries",
+                depths.shape(),
+                depths.dtype(),
+                areas.shape(),
+                areas.dtype(),
+                self.count
+            )));
+        }
+        if self.count == 0 {
+            return Ok((0.0, 0.0));
+        }
+        let zero = CpuTensor::zeros(areas.shape(), DType::F64, areas.device())?;
+        let invalid = client.maximum(
+            &client.cast(&client.isnan(areas)?, DType::F64)?,
+            &client.cast(&client.isinf(areas)?, DType::F64)?,
+        )?;
+        let invalid = client.maximum(&invalid, &client.le(areas, &zero)?)?;
+        if let Some(index) = rejected_lane(client, &invalid)? {
+            return Err(SoilError::input(
+                "per-lane area must be positive finite F64. Rescale or correct area support",
+            )
+            .at_cell(index));
+        }
+        self.totals_with_product(client, depths, || client.mul(depths, areas))
+    }
+
+    fn totals_with_product(
+        self,
+        client: &CpuClient,
+        depths: &CpuTensor,
+        multiply: impl FnOnce() -> numr::error::Result<CpuTensor>,
+    ) -> Result<(f64, f64), SoilError> {
         if self.count == 0 {
             return Ok((0.0, 0.0));
         }
@@ -93,7 +145,8 @@ impl AdjustmentReduction {
             &client.lt(depths, &zero)?,
             "adjustment depth is negative",
         )?;
-        let volumes = client.mul_scalar(depths, area)?;
+        // Keep the scalar path's original dispatch and operation order.
+        let volumes = multiply()?;
         check_tensor_finite(client, &volumes, "adjustment volume")?;
         let positive = client.gt(depths, &zero)?;
         reject(
@@ -173,16 +226,27 @@ fn check_tensor_finite(
 }
 
 fn reject(client: &CpuClient, mask: &CpuTensor, context: &str) -> Result<(), SoilError> {
+    if let Some(index) = rejected_lane(client, mask)? {
+        return Err(SoilError::numerical(context).at_cell(index));
+    }
+    Ok(())
+}
+
+fn rejected_lane(client: &CpuClient, mask: &CpuTensor) -> Result<Option<usize>, SoilError> {
     if client.any(mask, &[], false)?.item::<f64>()? == 0.0 {
-        return Ok(());
+        return Ok(None);
     }
     let flags = mask.try_to_vec::<f64>()?;
     let index = flags
         .iter()
         .position(|flag| *flag != 0.0)
         .ok_or_else(|| SoilError::numerical("source rejection mask contradicts its reduction"))?;
-    Err(SoilError::numerical(context).at_cell(index))
+    Ok(Some(index))
 }
+
+#[cfg(test)]
+#[path = "admission/variable_areas_tests.rs"]
+mod variable_areas_tests;
 
 #[cfg(test)]
 mod tests {

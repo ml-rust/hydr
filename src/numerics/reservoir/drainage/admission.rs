@@ -193,7 +193,7 @@ fn check_roots(
     Ok(())
 }
 
-pub(in crate::numerics::reservoir) fn check_residual(
+pub(crate) fn check_residual(
     context: &CpuReservoirContext,
     residual: &CpuTensor,
     scale: &CpuTensor,
