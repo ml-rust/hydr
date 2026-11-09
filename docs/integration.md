@@ -54,7 +54,11 @@ Wet-subcritical characteristic boundaries use `BoundaryForcing::Stage` or `Bound
 Stage values use the domain elevation datum. Discharge values impose signed outward numerical water rates in m³/s.
 Inflow requires the supplied tangential velocity. Outflow carries the interior tangential velocity.
 Reversal rechecks this admission rule during every trial.
-Dry, critical, and supercritical characteristic regimes remain unsupported. They reject explicitly without wall or sonic substitution.
+Scalar stage/discharge traces reject dry, critical, and supercritical regimes without wall or sonic substitution.
+`BoundaryForcing::Exterior` supplies complete wet or explicitly dry reservoir data to the same HLL solver as interior faces.
+Its elevation and velocities describe the maintained exterior state. They prescribe no achieved numerical face elevation or discharge.
+`BoundaryForcing::Transmissive` copies post-source dry states or resolved supercritical outflow outside the domain.
+Transmissive subcritical, critical, or incoming flow rejects and requires complete exterior data.
 Read [physical boundaries](boundaries.md) for trace equations, tolerances, and pressure conventions.
 Never substitute walls for required open boundaries.
 
@@ -65,6 +69,8 @@ Positive films return their represented water. Unknown locations return `Unsuppo
 Internal coordinate ties select the positive-coordinate cell. Maximum exterior edges return unsupported.
 Face records represent numerical flux over their accepted interval, including its orientation and support.
 `StepDiagnostics.boundary_traces` also records accepted physical traces and their compatibility residuals.
+Every face records its final numerical `signal_speed` in m/s.
+`StepDiagnostics.transmissive_states` records the post-source interior states used by accepted transmissive boundaries.
 Boundary ledgers integrate actual oriented exterior face fluxes, including reversals.
 The application defines threshold crossings and episode semantics from accepted fields.
 
@@ -73,6 +79,9 @@ No soil, network, or control state exists in this capability revision.
 Application persistence preserves every package field and exact floating-point bits.
 Positive infinity is valid in unrestricted timestep bounds. Ordinary JSON numbers cannot represent it directly.
 Import checks consistency and compatibility. The application owns content hashes and historical authenticity.
+Per-axis face-speed maxima reconstruct the native combined CFL bound during import.
+The stored bound must agree within 64 epsilon relative rounding, without an absolute unit floor.
+Transmissive witnesses must satisfy their regime and physical flux checks. Exterior fluxes remain numerical Riemann fluxes.
 
 Immutable checkpoint identity includes floating-point bits, including signed zero.
 Exact restart requires the same build, dependency source, CPU execution envelope, and accepted-step partition.

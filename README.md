@@ -5,7 +5,8 @@ hydr advances two-dimensional shallow-water flow on numr's CPU runtime for hydra
 ## Status
 
 The first-order CPU `f64` reference implements checked domains and conservative time advancement.
-Supported inputs include terrain, roughness, initial depth/momentum, interval rain, prescribed land losses, walls, source-complete flux ports, and wet-subcritical stage/discharge traces.
+Supported inputs include terrain, roughness, initial depth/momentum, interval rain, prescribed land losses, walls, and source-complete flux ports.
+Physical boundaries include wet-subcritical stage/discharge traces, complete wet/dry exterior reservoir states, and admitted transmissive outflow.
 Snapshots preserve complete numerical continuation state. Diagnostics expose accepted steps and component water budgets.
 Measured-event accuracy and agreement with HEC-RAS remain unestablished.
 The crate is unpublished. The existing Git remote remains `ml-rust/rivr`.
@@ -39,7 +40,8 @@ Grid spacing uses metres. Construction checks geometry without allocating cell s
 - Extensions: Higher-order methods, GPU execution, and calibration require separate numerical evidence.
 - Interface: A Rust library without a GUI or HEC-RAS runtime dependency.
 
-Dry, critical, and supercritical characteristic boundaries remain unsupported. Soil, structures, networks, and coupled components remain unsupported.
+Scalar stage/discharge traces require wet-subcritical states. Other regimes require complete exterior data or an admitted transmissive policy.
+Soil, structures, networks, and coupled components remain unsupported.
 Impermeable walls cannot replace unknown outlets or missing terrain.
 Generic numerical operations belong in numr. Generic solving algorithms belong in solvr. Hydraulic equations and acceptance belong in hydr.
 See [Contributing](CONTRIBUTING.md) for development checks.

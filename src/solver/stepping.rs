@@ -230,6 +230,7 @@ impl Solver {
                 max_local_residual,
                 momentum_removed,
                 faces: flux.results(&self.cpu, dt)?,
+                transmissive_states: source.exterior.results(flux.transmissive_state.as_ref())?,
                 boundary_traces: match &flux.boundary_trace {
                     Some(trace) => source.characteristic.results(&self.cpu, trace)?,
                     None => Vec::new(),

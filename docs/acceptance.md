@@ -93,6 +93,15 @@ Constant discharge boundaries agree with their accepted water volume within `1e-
 Dry, critical, supercritical, missing-inflow-data, and out-of-branch requests reject without mutating accepted state.
 These gates admit only the wet-subcritical boundary contract. They establish no physical-domain or field-accuracy claim.
 
+## Complete exterior and transmissive boundaries
+
+`tests/exterior_boundaries.rs` checks uniform Riemann wiring, rotation, stepped-bed lake balance, dry transitions, reversal, vacuum, and strong incoming shocks.
+`tests/exterior_contracts.rs` checks all five boundary policies together, dry transmissive copying, source-dependent retries, input admission, and checkpoint consistency.
+Complete exterior states prescribe reservoir data, rather than achieved face discharge.
+Transmissive boundaries admit only dry or resolved supercritical-outgoing post-source states.
+Accepted face speeds reconstruct the native combined CFL bound during package import.
+These tests establish selected boundary behaviour. They establish no finite exterior-compartment coupling or physical-domain accuracy.
+
 ## Gate status
 
 | Gate | Checked scope | Remaining evidence |

@@ -1,5 +1,5 @@
 use super::engine::Definition;
-use super::{BoundaryConditions, BoundaryForcing, ForcingSchedule, SolverConfig};
+use super::{BoundaryConditions, BoundaryForcing, ExteriorState, ForcingSchedule, SolverConfig};
 use crate::model::Domain;
 
 impl Definition {
@@ -107,6 +107,27 @@ fn boundary_bits(left: &BoundaryForcing, right: &BoundaryForcing) -> bool {
                     left.inflow_tangential_velocity,
                     right.inflow_tangential_velocity,
                 )
+        }
+        (BoundaryForcing::Exterior(left), BoundaryForcing::Exterior(right)) => {
+            match (&left.state, &right.state) {
+                (ExteriorState::Dry, ExteriorState::Dry) => true,
+                (
+                    ExteriorState::Wet {
+                        elevation: a,
+                        outward_velocity: b,
+                        tangential_velocity: c,
+                    },
+                    ExteriorState::Wet {
+                        elevation: x,
+                        outward_velocity: y,
+                        tangential_velocity: z,
+                    },
+                ) => same_bits(&[*a, *b, *c], &[*x, *y, *z]),
+                _ => false,
+            }
+        }
+        (BoundaryForcing::Transmissive(left), BoundaryForcing::Transmissive(right)) => {
+            left == right
         }
         _ => false,
     }

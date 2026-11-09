@@ -45,6 +45,8 @@ pub fn capabilities() -> Capabilities {
             "source-complete compatible constant-rate flux ports including pressure and conservative wave bounds",
             "wet-subcritical compatible stage traces with incoming tangent data",
             "wet-subcritical prescribed numerical discharge traces with incoming tangent data",
+            "complete wet or dry exterior reservoir states through the numerical Riemann solver",
+            "explicit dry or strictly supercritical-outgoing transmissive boundaries",
         ],
         structures: &[],
         outputs: &[
@@ -55,11 +57,13 @@ pub fn capabilities() -> Capabilities {
             "accepted interval face fluxes and volumes",
             "component water ledger and momentum-reset diagnostics",
             "accepted physical boundary traces and compatibility residuals",
+            "per-face final numerical signal speeds and accepted transmissive state witnesses",
             "complete versioned continuation packages",
         ],
         assessment: "selected synthetic analytical, conservation, refinement, restart, and flat wet/dry Clawpack comparisons; application accuracy remains unestablished",
         unsupported: &[
-            "dry, critical, and supercritical characteristic boundaries or exterior-state reservoir closures",
+            "scalar stage/discharge traces outside wet-subcritical regimes",
+            "finite external reservoir or component coupling",
             "soil infiltration/recovery models",
             "hydrology",
             "structures",

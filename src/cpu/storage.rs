@@ -1,5 +1,6 @@
 use super::CpuTopology;
 use super::boundary::CpuBoundaries;
+use super::exterior::CpuExterior;
 use crate::model::{CellState, Domain, FlowState};
 use crate::solver::{Axis, BoundaryForcing, EngineError, ForcingInterval, ForcingSchedule};
 use numr::dtype::DType;
@@ -75,6 +76,7 @@ pub(crate) struct CpuSources {
     pub trace_mask: CpuTensor,
     pub outward_sign: CpuTensor,
     pub characteristic: CpuBoundaries,
+    pub exterior: CpuExterior,
     pub port_flux: [CpuTensor; 3],
     pub port_speed: CpuTensor,
 }
@@ -128,7 +130,12 @@ impl CpuSources {
                 open_mask[index] = 1.0;
                 outward_sign[index] = sign;
                 let BoundaryForcing::Flux(port) = value else {
-                    trace_mask[index] = 1.0;
+                    if matches!(
+                        value,
+                        BoundaryForcing::Stage(_) | BoundaryForcing::Discharge(_)
+                    ) {
+                        trace_mask[index] = 1.0;
+                    }
                     continue;
                 };
                 for (component, rate) in [
@@ -166,6 +173,7 @@ impl CpuSources {
             trace_mask: tensor(&trace_mask)?,
             outward_sign: tensor(&outward_sign)?,
             characteristic: CpuBoundaries::new(domain, topology, forcing, device)?,
+            exterior: CpuExterior::new(domain, topology, forcing, device)?,
             port_flux: [tensor(&flux[0])?, tensor(&flux[1])?, tensor(&flux[2])?],
             port_speed: tensor(&speed)?,
         })

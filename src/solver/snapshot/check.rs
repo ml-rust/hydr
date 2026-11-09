@@ -310,6 +310,7 @@ impl Solver {
             )?;
         }
         super::boundary::check(data, step)?;
+        super::cfl::check(data, step)?;
         Ok(())
     }
 

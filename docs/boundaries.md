@@ -13,6 +13,8 @@ All remaining exterior faces and inactive-cell interfaces remain explicitly decl
 | `Flux(FluxPort)` | Complete outward water/momentum rates, conservative speed bound, and compatibility provenance | Provider-attested full flux including pressure |
 | `Stage(StageBoundary)` | Water elevation and optional incoming tangent velocity | Compatible wet-subcritical trace at the prescribed elevation |
 | `Discharge(DischargeBoundary)` | Signed outward water rate and optional incoming tangent velocity | Compatible wet-subcritical trace with prescribed numerical water flux |
+| `Exterior(ExteriorBoundary)` | Complete wet elevation/normal/tangent velocities, or explicit dry state | Numerical Riemann flux from an externally maintained reservoir |
+| `Transmissive(BoundaryFace)` | Explicit outgoing policy | Copies admitted dry or supercritical-outgoing interior state outside |
 
 Stage elevation uses metres on the domain vertical datum.
 Discharge uses m³/s integrated across the face width. Negative values enter the domain.
@@ -20,10 +22,10 @@ The trace bed equals the adjacent represented cell bed. No exterior bed-step mod
 
 Outward normal velocity follows the exterior face orientation.
 Tangential velocity follows the positive other coordinate: positive y on X faces, positive x on Y faces.
-Incoming water requires supplied tangential velocity in m/s. Outgoing water carries the interior tangential velocity.
+Stage/discharge inflow requires supplied tangential velocity in m/s. Its outflow carries the interior tangential velocity.
 Reversal rechecks these rules during every trial.
 
-## Compatible trace and numerical flux
+## Compatible Stage/Discharge trace
 
 The admitted interior and trace states are wet and strictly subcritical.
 In outward coordinates, let the interior depth and normal velocity be `hi` and `ui`.
@@ -74,7 +76,32 @@ These computational margins establish no physical flood threshold or formal inte
 - Unattainable discharge: The solver rejects requests outside the connected admitted branch.
 
 These cases return actionable errors. Required open boundaries never become reflected walls.
-Complete reservoir-state and other dry/supercritical boundary closures remain unsupported.
+These scalar inputs do not infer missing full exterior data. Use an admitted complete-state or transmissive policy instead.
+
+## Complete exterior states and transmissive outflow
+
+`ExteriorState::Wet` supplies elevation, outward-normal velocity, and tangential velocity.
+Its positive depth equals elevation minus the adjacent cell bed.
+Input checks reject nonfinite depth, overflowing discharge products, and nonzero velocity products that underflow to zero.
+`ExteriorState::Dry` supplies exact zero depth and discharges, without invented elevation or velocity.
+
+The CPU path replaces only the missing exterior side before the existing hydrostatic HLL calculation.
+The copied bed matches the adjoining represented bed. Normal pressure and same-bed corrections follow the existing Riemann path.
+The exterior state remains maintained throughout its forcing interval. No finite exterior storage or donor budget exists.
+Finite compartments require an admitted conservative coupling component.
+
+The input describes reservoir state rather than a face trace.
+A resting wet reservoir can rewet a dry domain despite its zero supplied reservoir discharge.
+Strong exterior pressure can send a shock inward against initially supercritical interior outflow.
+The solver does not ignore exterior data based on the old interior Froude number.
+Reversals and wet/dry interactions use the same numerical wave bounds as interior faces.
+These approximate HLL fluxes establish no exact boundary solution or field-accuracy claim.
+
+Transmissive boundaries copy the post-source interior state into the missing exterior side.
+Dry copying requires zero normal and tangential discharge.
+Wet copying requires `u_out-c > critical_relative*max(abs(u_out),c)` and finite velocities.
+Subcritical, critical, or incoming states reject and require complete exterior data. They never become reflected walls.
+This regime check repeats after every source update and shortened trial.
 
 ## Acceptance, accounting, and continuation
 
@@ -85,14 +112,20 @@ Boundary signal bounds enter the combined directional CFL calculation.
 Physical admission errors trigger bounded interval reduction before returning an unresolved error.
 
 `StepDiagnostics.boundary_traces` records depth, velocities, achieved outward rate, speed bound, and compatibility residuals.
-`FaceTransfer` records the same accepted flux support and signed interval volume.
+`FaceTransfer` records accepted flux support, signed interval volume, and final normal `signal_speed` in m/s.
+`StepDiagnostics.transmissive_states` retains post-source depth and discharges. Dry witnesses contain zero discharges and no inferred velocity.
 Water ledgers integrate actual oriented exterior fluxes rather than cached target rates.
 
 Snapshots include boundary forcing, tolerances, and trace diagnostics.
-Restoration checks physical trace/face consistency and exact static floating-point identity, including supplied tangent signed zero.
+Restoration checks physical trace/face consistency and exact static floating-point identity, including every wet exterior input's signed zero.
+It reconstructs the global CFL bound from per-axis maxima of all accepted face speeds.
+The stored bound must match within 64 epsilon relative rounding. No absolute unit floor applies.
+Transmissive witnesses must reproduce their admitted physical flux and regime.
+Exterior numerical fluxes are not compared against the reservoir state's physical flux.
+These checks establish consistency, rather than historical authenticity or a replay proof.
 Same-build restart still requires the same accepted-step partition.
 
 ```sh
-cargo test --test physical_boundaries
+cargo test --test physical_boundaries --test exterior_boundaries --test exterior_contracts
 cargo test --lib numerics::boundary::tests
 ```

@@ -1,4 +1,5 @@
 use super::SnapshotData;
+use super::cfl::bounded;
 use super::check::rejected;
 use crate::solver::{Axis, BoundaryForcing, EngineError, StepDiagnostics};
 use std::collections::{BTreeMap, BTreeSet};
@@ -17,7 +18,12 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
     let expected: BTreeSet<_> = interval
         .boundaries
         .iter()
-        .filter(|value| !matches!(value, BoundaryForcing::Flux(_)))
+        .filter(|value| {
+            matches!(
+                value,
+                BoundaryForcing::Stage(_) | BoundaryForcing::Discharge(_)
+            )
+        })
         .map(BoundaryForcing::face)
         .collect();
     if traces.len() != step.boundary_traces.len()
@@ -26,6 +32,25 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
         return Err(rejected(
             "boundary traces",
             "require one diagnostic for each physical boundary and none for full-flux ports",
+        ));
+    }
+    let transmissive: BTreeMap<_, _> = step
+        .transmissive_states
+        .iter()
+        .map(|state| (state.face, state))
+        .collect();
+    let expected_transmissive: BTreeSet<_> = interval
+        .boundaries
+        .iter()
+        .filter(|value| matches!(value, BoundaryForcing::Transmissive(_)))
+        .map(BoundaryForcing::face)
+        .collect();
+    if transmissive.len() != step.transmissive_states.len()
+        || transmissive.keys().copied().collect::<BTreeSet<_>>() != expected_transmissive
+    {
+        return Err(rejected(
+            "transmissive states",
+            "require exactly one witness for each declared transmissive face",
         ));
     }
     let (dx, dy) = data.domain.grid().spacing();
@@ -56,6 +81,15 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
         let axis = if face.face.axis == Axis::X { 0 } else { 1 };
         let expected_flux = match value {
             BoundaryForcing::Flux(port) => {
+                if face.signal_speed != port.signal_speed {
+                    return Err(rejected(
+                        "boundary CFL",
+                        format!(
+                            "face={:?}: signal speed differs from the declared full-flux port",
+                            face.face
+                        ),
+                    ));
+                }
                 boundary_speeds[axis] = boundary_speeds[axis].max(port.signal_speed);
                 [
                     sign * port.water_rate / width,
@@ -85,6 +119,12 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
                         format!(
                             "trace={trace:?}: require finite wet trace and positive signal bound"
                         ),
+                    ));
+                }
+                if face.signal_speed != trace.signal_speed {
+                    return Err(rejected(
+                        "boundary CFL",
+                        format!("face={:?}: trace and face signal speeds differ", face.face),
                     ));
                 }
                 boundary_speeds[axis] = boundary_speeds[axis].max(trace.signal_speed);
@@ -146,7 +186,7 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
                         }
                         discharge.inflow_tangential_velocity
                     }
-                    BoundaryForcing::Flux(_) => None,
+                    _ => None,
                 };
                 if trace.outward_water_rate < 0.0 && incoming != Some(trace.tangential_velocity) {
                     // Multiplication and division through conserved tangent momentum can round once.
@@ -178,6 +218,14 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
                 } else {
                     [sign * q, tangent, normal]
                 }
+            }
+            BoundaryForcing::Exterior(_) => continue,
+            BoundaryForcing::Transmissive(_) => {
+                let state = transmissive.get(&value.face()).ok_or_else(|| {
+                    rejected("transmissive state", "missing accepted trial witness")
+                })?;
+                boundary_speeds[axis] = boundary_speeds[axis].max(face.signal_speed);
+                super::transmissive::flux(state, face, width, &data.config)?
             }
         };
         if face
@@ -215,14 +263,6 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
         ));
     }
     Ok(())
-}
-
-/// Allows 64 epsilon relative arithmetic rounding, without an absolute unit floor.
-fn bounded(value: f64, upper: f64) -> bool {
-    value <= upper
-        || (value.is_finite()
-            && upper.is_finite()
-            && value - upper <= 64.0 * f64::EPSILON * value.abs().max(upper.abs()))
 }
 
 fn close(left: f64, right: f64, relative: f64) -> bool {

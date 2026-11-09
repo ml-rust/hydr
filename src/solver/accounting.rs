@@ -92,6 +92,19 @@ pub struct BoundaryTraceDiagnostics {
     pub signal_speed: f64,
 }
 
+/// Post-source interior state admitted by an accepted transmissive boundary.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TransmissiveDiagnostics {
+    /// Active exterior face receiving this copied state.
+    pub face: BoundaryFace,
+    /// Represented interior depth in metres.
+    pub depth: f64,
+    /// Outward-normal discharge per width in m²/s.
+    pub outward_discharge_per_width: f64,
+    /// Discharge along the positive other global coordinate in m²/s.
+    pub tangential_discharge_per_width: f64,
+}
+
 /// Numerical and physical accounting for exactly one accepted interval.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StepDiagnostics {
@@ -131,4 +144,6 @@ pub struct StepDiagnostics {
     pub faces: Vec<FaceTransfer>,
     /// Physical Stage/Discharge traces used over this accepted interval.
     pub boundary_traces: Vec<BoundaryTraceDiagnostics>,
+    /// Post-source trial witnesses for accepted transmissive boundaries.
+    pub transmissive_states: Vec<TransmissiveDiagnostics>,
 }

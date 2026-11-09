@@ -35,6 +35,8 @@ pub struct FaceTransfer {
     pub flux: [f64; 3],
     /// Side-specific normal pressure corrections in m³/s².
     pub pressure_corrections: [f64; 2],
+    /// Final conservative absolute normal signal speed in m/s. Zero admits an exactly dry face.
+    pub signal_speed: f64,
     /// Signed positive-axis water volume crossing this face in m³.
     pub volume: f64,
 }

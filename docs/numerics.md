@@ -65,6 +65,9 @@ The trace contributes its complete physical flux directly, with normal pressure 
 Discharge traces conserve the requested numerical discharge and recalculate all momentum components from the same state.
 Passing their state through another HLL calculation would change the prescribed mass flux.
 The solver checks both discharge and local velocity compatibility after root refinement.
+Complete wet/dry exterior reservoir states enter the existing HLL solver before flux calculation.
+Admitted transmissive boundaries copy dry or resolved supercritical-outgoing post-source states outside.
+Every face exposes its final numerical signal speed for accepted-interval CFL consistency checks.
 Read [the boundary contract](boundaries.md) for admissibility, critical margins, units, and unsupported regimes.
 
 ## Stability, positivity, and accounting

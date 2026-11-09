@@ -66,6 +66,73 @@ pub struct DischargeBoundary {
     pub inflow_tangential_velocity: Option<f64>,
 }
 
+/// Complete externally maintained reservoir state on a boundary's adjacent bed.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExteriorState {
+    /// Exactly dry exterior, without a fabricated elevation or velocity.
+    Dry,
+    /// Wet exterior with complete normal and tangential velocity data.
+    Wet {
+        /// Water elevation in metres on the domain vertical datum.
+        elevation: f64,
+        /// Outward-normal velocity in m/s. Negative points toward the domain.
+        outward_velocity: f64,
+        /// Velocity along the positive other global coordinate in m/s.
+        tangential_velocity: f64,
+    },
+}
+
+/// Complete Riemann data supplied by an externally maintained reservoir.
+///
+/// This represents no finite exterior donor volume and prescribes no achieved face discharge.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExteriorBoundary {
+    /// Active exterior face receiving this reservoir state.
+    pub face: BoundaryFace,
+    /// Complete wet or explicitly dry exterior state.
+    pub state: ExteriorState,
+}
+
+impl ExteriorBoundary {
+    pub(crate) fn conserved(&self, domain: &Domain) -> Result<[f64; 3], EngineError> {
+        let cell = exterior_cell(domain, self.face)?;
+        let ExteriorState::Wet {
+            elevation,
+            outward_velocity,
+            tangential_velocity,
+        } = self.state
+        else {
+            return Ok([0.0; 3]);
+        };
+        let h = elevation - domain.bed()[cell];
+        let normal = h * outward_velocity;
+        let tangent = h * tangential_velocity;
+        if ![
+            elevation,
+            outward_velocity,
+            tangential_velocity,
+            h,
+            normal,
+            tangent,
+        ]
+        .iter()
+        .all(|value| value.is_finite())
+            || h <= 0.0
+            || (outward_velocity != 0.0 && normal == 0.0)
+            || (tangential_velocity != 0.0 && tangent == 0.0)
+        {
+            return Err(EngineError::rejected(
+                "exterior boundary",
+                format!(
+                    "state={self:?}, bed={}: require finite positive wet depth and representable velocity products",
+                    domain.bed()[cell]
+                ),
+            ));
+        }
+        Ok([h, normal, tangent])
+    }
+}
+
 /// Physical data on one declared open face during a forcing interval.
 #[derive(Clone, Debug, PartialEq)]
 pub enum BoundaryForcing {
@@ -75,6 +142,10 @@ pub enum BoundaryForcing {
     Stage(StageBoundary),
     /// Water rate determines a compatible wet-subcritical boundary trace.
     Discharge(DischargeBoundary),
+    /// Complete exterior state enters the same numerical Riemann solver as interior faces.
+    Exterior(ExteriorBoundary),
+    /// Copies a dry or strictly supercritical-outgoing interior state outside.
+    Transmissive(BoundaryFace),
 }
 
 impl BoundaryForcing {
@@ -84,6 +155,8 @@ impl BoundaryForcing {
             Self::Flux(value) => value.face,
             Self::Stage(value) => value.face,
             Self::Discharge(value) => value.face,
+            Self::Exterior(value) => value.face,
+            Self::Transmissive(face) => *face,
         }
     }
 }

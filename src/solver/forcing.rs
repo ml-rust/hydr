@@ -148,6 +148,11 @@ fn check_boundary(
                     .is_none_or(f64::is_finite)
                 && (discharge.outward_rate >= 0.0 || discharge.inflow_tangential_velocity.is_some())
         }
+        BoundaryForcing::Exterior(exterior) => {
+            exterior.conserved(domain)?;
+            true
+        }
+        BoundaryForcing::Transmissive(_) => true,
     };
     if !valid {
         return Err(EngineError::rejected(

@@ -45,11 +45,12 @@ impl CpuBoundaries {
         let mut tangent = Vec::new();
         let mut has_tangent = Vec::new();
         let (dx, dy) = domain.grid().spacing();
-        let supports: BTreeMap<_, _> = if forcing
-            .boundaries
-            .iter()
-            .any(|value| !matches!(value, BoundaryForcing::Flux(_)))
-        {
+        let supports: BTreeMap<_, _> = if forcing.boundaries.iter().any(|value| {
+            matches!(
+                value,
+                BoundaryForcing::Stage(_) | BoundaryForcing::Discharge(_)
+            )
+        }) {
             topology
                 .faces
                 .iter()
@@ -60,7 +61,10 @@ impl CpuBoundaries {
             BTreeMap::new()
         };
         for value in &forcing.boundaries {
-            if matches!(value, BoundaryForcing::Flux(_)) {
+            if !matches!(
+                value,
+                BoundaryForcing::Stage(_) | BoundaryForcing::Discharge(_)
+            ) {
                 continue;
             }
             let face = value.face();
@@ -90,7 +94,7 @@ impl CpuBoundaries {
                     1.0,
                     discharge.inflow_tangential_velocity,
                 ),
-                BoundaryForcing::Flux(_) => continue,
+                _ => continue,
             };
             if !rate.is_finite()
                 || (matches!(value, BoundaryForcing::Discharge(item) if item.outward_rate != 0.0)

@@ -12,10 +12,12 @@ mod output;
 mod snapshot;
 mod stepping;
 
-pub use accounting::{BoundaryTraceDiagnostics, StepDiagnostics, WaterLedger};
+pub use accounting::{
+    BoundaryTraceDiagnostics, StepDiagnostics, TransmissiveDiagnostics, WaterLedger,
+};
 pub use boundary::{
-    Axis, BoundaryConditions, BoundaryFace, BoundaryForcing, DischargeBoundary, FluxPort,
-    StageBoundary,
+    Axis, BoundaryConditions, BoundaryFace, BoundaryForcing, DischargeBoundary, ExteriorBoundary,
+    ExteriorState, FluxPort, StageBoundary,
 };
 pub use capabilities::{CONTRACT_VERSION, Capabilities, capabilities};
 pub use config::{BoundaryTolerances, SolverConfig};

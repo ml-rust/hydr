@@ -1,6 +1,7 @@
 //! Cached CPU tensors and Cartesian face execution.
 
 mod boundary;
+mod exterior;
 mod storage;
 mod topology;
 pub(crate) mod transport;

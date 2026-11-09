@@ -11,6 +11,8 @@ pub(crate) struct CpuTransport {
     pub outgoing: CpuTensor,
     pub flux: [CpuTensor; 3],
     pub pressures: [CpuTensor; 2],
+    pub signal_speed: CpuTensor,
+    pub transmissive_state: Option<TensorFaceState>,
     pub speeds: [f64; 2],
     pub boundary_in_rate: f64,
     pub boundary_out_rate: f64,
@@ -46,6 +48,8 @@ pub(crate) fn calculate(
     };
     let left = side(&topology.left_ids, &topology.left_normal_sign)?;
     let right = side(&topology.right_ids, &topology.right_normal_sign)?;
+    let (left, right, transmissive_state) =
+        source.exterior.prepare(cpu, state, left, right, config)?;
     let zero_face = client.mul_scalar(&topology.widths, 0.0)?;
     let one_face = client.add_scalar(&zero_face, 1.0)?;
     let characteristic_speed = |state: &TensorFaceState| -> Result<CpuTensor, EngineError> {
@@ -87,9 +91,9 @@ pub(crate) fn calculate(
             Ok(result) => result,
             Err(error) => return Err(face_error(cpu, (&left, &right), config, error)?),
         };
-    let pressure_left = client.where_cond(&source.open_mask, &zero_face, &result.left_pressure)?;
-    let pressure_right =
-        client.where_cond(&source.open_mask, &zero_face, &result.right_pressure)?;
+    let direct_mask = client.maximum(&source.port_mask, &source.trace_mask)?;
+    let pressure_left = client.where_cond(&direct_mask, &zero_face, &result.left_pressure)?;
+    let pressure_right = client.where_cond(&direct_mask, &zero_face, &result.right_pressure)?;
     let normal_flux = client.where_cond(&topology.x_mask, &result.shared[1], &result.shared[2])?;
     let tangent_flux = client.where_cond(&topology.x_mask, &result.shared[2], &result.shared[1])?;
     let mut flux = [
@@ -195,6 +199,8 @@ pub(crate) fn calculate(
         flux,
         pressures: [pressure_left, pressure_right],
         speeds,
+        signal_speed: speed,
+        transmissive_state,
         boundary_in_rate,
         boundary_out_rate,
         boundary_trace,
@@ -286,6 +292,13 @@ impl CpuTransport {
         let qy = self.flux[2].try_to_vec::<f64>()?;
         let pl = self.pressures[0].try_to_vec::<f64>()?;
         let pr = self.pressures[1].try_to_vec::<f64>()?;
+        let speed = self.signal_speed.try_to_vec::<f64>()?;
+        if speed.len() != cpu.topology.faces.len() {
+            return Err(EngineError::rejected(
+                "CPU face output",
+                "signal-speed projection differs from face support: inspect runtime shapes",
+            ));
+        }
         let volume = cpu
             .client
             .mul_scalar(&cpu.client.mul(&self.flux[0], &cpu.topology.widths)?, dt)?
@@ -301,6 +314,7 @@ impl CpuTransport {
                 right: support.right,
                 flux: [mass[index], qx[index], qy[index]],
                 pressure_corrections: [pl[index], pr[index]],
+                signal_speed: speed[index],
                 volume: volume[index],
             })
             .collect())
