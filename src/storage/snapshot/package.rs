@@ -6,6 +6,8 @@ use super::super::{
 /// Complete caller-owned values. Preserve every F64 bit when encoding.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LevelPoolSnapshotData {
+    /// Complete immutable source-enabling evidence, absent for exchange-only state.
+    pub source_policies: Option<Vec<crate::storage::LevelPoolSourcePolicy>>,
     /// Immutable ordered curves, physical assertions, and identities.
     pub elements: Vec<LevelPoolElement>,
     /// Exact dimensional controls.
@@ -47,6 +49,7 @@ impl LevelPoolBatch {
     /// Project complete continuation values on explicit request.
     pub fn snapshot_data(&self) -> Result<LevelPoolSnapshotData, LevelPoolError> {
         Ok(LevelPoolSnapshotData {
+            source_policies: self.source_policies().map(<[_]>::to_vec),
             elements: self.elements().to_vec(),
             config: self.config().clone(),
             time: self.time(),

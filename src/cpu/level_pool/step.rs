@@ -4,6 +4,7 @@ use crate::cpu::CpuTensor;
 
 #[derive(Clone, Debug)]
 pub(crate) struct CpuPoolStep {
+    pub source: Option<super::CpuPoolSourceStep>,
     pub old_volume_m3: CpuTensor,
     pub incoming_volume_m3: CpuTensor,
     pub outgoing_volume_m3: CpuTensor,

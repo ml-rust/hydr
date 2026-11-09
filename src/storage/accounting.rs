@@ -55,7 +55,7 @@ fn reduction_bound(context: &CpuPoolContext, sums: &[f64]) -> Result<f64, LevelP
     Ok(total)
 }
 
-fn sum_bound(
+pub(crate) fn sum_bound(
     context: &CpuPoolContext,
     value: &CpuTensor,
     quantity: &str,
@@ -97,8 +97,23 @@ pub(crate) fn totals(
         &state.cumulative_outgoing_volume_m3,
         "aggregate cumulative outgoing",
     )?;
-    let residual = (volume - initial) - incoming + outgoing;
-    let scale = initial.max(volume).max(incoming).max(outgoing);
+    let sources = super::source_projection::totals(context, state.sources.as_ref())?;
+    let mut residual = (volume - initial) - incoming + outgoing;
+    let mut scale = initial.max(volume).max(incoming).max(outgoing);
+    let mut sums = vec![initial, volume, incoming, outgoing];
+    if let Some(s) = &sources {
+        residual = ((residual - s.cumulative_rain_volume_m3) + s.cumulative_bottom_loss_volume_m3)
+            + s.cumulative_evaporation_volume_m3;
+        scale = scale
+            .max(s.cumulative_rain_volume_m3)
+            .max(s.cumulative_bottom_loss_volume_m3)
+            .max(s.cumulative_evaporation_volume_m3);
+        sums.extend([
+            s.cumulative_rain_volume_m3,
+            s.cumulative_bottom_loss_volume_m3,
+            s.cumulative_evaporation_volume_m3,
+        ]);
+    }
     check_scalar(
         context,
         residual,
@@ -106,6 +121,7 @@ pub(crate) fn totals(
         "aggregate cumulative physical residual",
     )?;
     Ok(LevelPoolTotals {
+        sources,
         initial_volume_m3: initial,
         volume_m3: volume,
         cumulative_incoming_volume_m3: incoming,
@@ -122,7 +138,7 @@ pub(crate) fn totals(
         )?,
         residual_m3: residual,
         physical_scale_m3: scale,
-        reduction_bound_m3: reduction_bound(context, &[initial, volume, incoming, outgoing])?,
+        reduction_bound_m3: reduction_bound(context, &sums)?,
     })
 }
 
@@ -143,8 +159,23 @@ pub(crate) fn step_totals(
     let after = context.sum(&step.volume_m3, "aggregate interval accepted volume")?;
     let incoming = context.sum(&step.incoming_volume_m3, "aggregate interval incoming")?;
     let outgoing = context.sum(&step.outgoing_volume_m3, "aggregate interval outgoing")?;
-    let residual = (after - before) - incoming + outgoing;
-    let scale = before.max(after).max(incoming).max(outgoing);
+    let source = super::source_projection::step_totals(context, step.source.as_ref())?;
+    let mut residual = (after - before) - incoming + outgoing;
+    let mut scale = before.max(after).max(incoming).max(outgoing);
+    let mut sums = vec![before, after, incoming, outgoing];
+    if step.source.is_some() {
+        residual = ((residual - source.rain_volume_m3) + source.bottom_loss_volume_m3)
+            + source.evaporation_volume_m3;
+        scale = scale
+            .max(source.rain_volume_m3)
+            .max(source.bottom_loss_volume_m3)
+            .max(source.evaporation_volume_m3);
+        sums.extend([
+            source.rain_volume_m3,
+            source.bottom_loss_volume_m3,
+            source.evaporation_volume_m3,
+        ]);
+    }
     check_scalar(
         context,
         residual,
@@ -158,7 +189,7 @@ pub(crate) fn step_totals(
         outgoing,
         residual,
         scale,
-        bound: reduction_bound(context, &[before, after, incoming, outgoing])?,
+        bound: reduction_bound(context, &sums)?,
     })
 }
 

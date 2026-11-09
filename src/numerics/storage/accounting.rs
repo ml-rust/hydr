@@ -28,13 +28,20 @@ pub(crate) fn residual(
     state: &CpuPoolState,
 ) -> Result<CpuTensor, LevelPoolError> {
     let c = &context.client;
-    Ok(c.add(
+    let residual = c.add(
         &c.sub(
             &c.sub(&state.volume_m3, &state.initial_volume_m3)?,
             &state.cumulative_incoming_volume_m3,
         )?,
         &state.cumulative_outgoing_volume_m3,
-    )?)
+    )?;
+    if let Some(s) = &state.sources {
+        return Ok(c.add(
+            &c.add(&c.sub(&residual, &s.rain)?, &s.bottom_loss)?,
+            &s.evaporation,
+        )?);
+    }
+    Ok(residual)
 }
 pub(crate) fn check_state(
     context: &CpuPoolContext,
@@ -69,13 +76,28 @@ pub(crate) fn check_state(
             "zero-throughput history requires zero addition-error bound",
         )?;
     }
-    let scale = c.maximum(
+    let mut scale = c.maximum(
         &c.maximum(&state.volume_m3, &state.initial_volume_m3)?,
         &c.maximum(
             &state.cumulative_incoming_volume_m3,
             &state.cumulative_outgoing_volume_m3,
         )?,
     )?;
+    match (&context.source_policies, &state.sources) {
+        (Some(_), Some(s)) => {
+            super::source_accounting::check_state(context, s, steps)?;
+            scale = c.maximum(
+                &scale,
+                &c.maximum(&s.rain, &c.maximum(&s.bottom_loss, &s.evaporation)?)?,
+            )?;
+        }
+        (None, None) => {}
+        _ => {
+            return Err(LevelPoolError::input(
+                "source policy presence differs from persistent source accounting",
+            ));
+        }
+    }
     check_residual(
         context,
         &residual(context, state)?,

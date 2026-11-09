@@ -34,6 +34,7 @@ pub(crate) fn ledgers(
     state: &CpuPoolState,
 ) -> Result<Vec<LevelPoolElementLedger>, LevelPoolError> {
     let n = context.elements.len();
+    let sources = super::source_projection::ledgers(context, state.sources.as_ref())?;
     let initial_volume_m3 = read(&state.initial_volume_m3, n)?;
     let volume_m3 = read(&state.volume_m3, n)?;
     let cumulative_incoming_volume_m3 = read(&state.cumulative_incoming_volume_m3, n)?;
@@ -46,6 +47,7 @@ pub(crate) fn ledgers(
     )?;
     Ok((0..n)
         .map(|element| LevelPoolElementLedger {
+            sources: sources.as_ref().map(|s| s[element].clone()),
             element,
             initial_volume_m3: initial_volume_m3[element],
             volume_m3: volume_m3[element],
@@ -64,6 +66,9 @@ pub(crate) fn step(
 ) -> Result<LevelPoolStepDiagnostics, LevelPoolError> {
     crate::numerics::storage::check_step(context, &stored.step)?;
     let totals = super::accounting::step_totals(context, &stored.step)?;
+    let source = super::source_projection::receipts(context, stored.step.source.as_ref())?;
+    let source_totals =
+        super::source_projection::step_totals(context, stored.step.source.as_ref())?;
     let n = context.elements.len();
     let old_volume_m3 = read(&stored.step.old_volume_m3, n)?;
     let incoming_volume_m3 = read(&stored.step.incoming_volume_m3, n)?;
@@ -91,6 +96,7 @@ pub(crate) fn step(
     let outgoing_bound_after_m3 = read(&stored.step.outgoing_bound_after_m3, n)?;
     let receipts = (0..n)
         .map(|element| LevelPoolReceipt {
+            source: source[element].clone(),
             element,
             old_volume_m3: old_volume_m3[element],
             incoming_volume_m3: incoming_volume_m3[element],
@@ -123,6 +129,14 @@ pub(crate) fn step(
         })
         .collect();
     Ok(LevelPoolStepDiagnostics {
+        rain_volume_m3: source_totals.rain_volume_m3,
+        evaporation_volume_m3: source_totals.evaporation_volume_m3,
+        bottom_loss_volume_m3: source_totals.bottom_loss_volume_m3,
+        bottom_loss_demand_m3: source_totals.bottom_loss_demand_m3,
+        unmet_bottom_loss_m3: source_totals.unmet_bottom_loss_m3,
+        potential_evaporation_volume_m3: source_totals.potential_evaporation_volume_m3,
+        unmet_evaporation_volume_m3: source_totals.unmet_evaporation_volume_m3,
+
         start: stored.start,
         end: stored.end,
         dt: stored.end - stored.start,

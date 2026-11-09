@@ -2,7 +2,10 @@
 
 use crate::cpu::{
     CpuTensor,
-    level_pool::{CpuPoolContext, CpuPoolState, CpuPoolStep},
+    level_pool::{
+        CpuPoolContext, CpuPoolSourceInput, CpuPoolSourceState, CpuPoolSourceStep, CpuPoolState,
+        CpuPoolStep,
+    },
 };
 use crate::storage::LevelPoolError;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, TwoSumOps, UnaryOps};
@@ -33,20 +36,47 @@ pub(crate) fn advance(
     outgoing: &CpuTensor,
     steps: usize,
 ) -> Result<(CpuPoolState, CpuPoolStep), LevelPoolError> {
+    advance_prepared(context, state, incoming, outgoing, steps, None)
+}
+
+pub(crate) fn advance_with_sources(
+    context: &CpuPoolContext,
+    state: &CpuPoolState,
+    incoming: &CpuTensor,
+    outgoing: &CpuTensor,
+    steps: usize,
+    dt: f64,
+    input: &CpuPoolSourceInput,
+) -> Result<(CpuPoolState, CpuPoolStep), LevelPoolError> {
+    let prepared = super::sources::prepare(context, state, dt, input)?;
+    advance_prepared(context, state, incoming, outgoing, steps, prepared)
+}
+
+fn advance_prepared(
+    context: &CpuPoolContext,
+    state: &CpuPoolState,
+    incoming: &CpuTensor,
+    outgoing: &CpuTensor,
+    steps: usize,
+    prepared: Option<(CpuPoolSourceStep, CpuPoolSourceState)>,
+) -> Result<(CpuPoolState, CpuPoolStep), LevelPoolError> {
     let c = &context.client;
+    let base = prepared
+        .as_ref()
+        .map_or(&state.volume_m3, |(s, _)| &s.post_source_volume_m3);
     context.nonnegative(incoming, "original incoming volume")?;
     context.nonnegative(outgoing, "original outgoing volume")?;
     context.reject(
-        &c.gt(outgoing, &state.volume_m3)?,
-        "outgoing volume exceeds initial donor storage without incoming credit",
+        &c.gt(outgoing, base)?,
+        if prepared.is_some() {
+            "outgoing volume exceeds post-source donor storage without external incoming credit"
+        } else {
+            "outgoing volume exceeds initial donor storage without incoming credit"
+        },
     )?;
-    let (remaining, outgoing_witness) =
-        exact_zero_add(context, &state.volume_m3, &c.neg(outgoing)?)?;
+    let (remaining, outgoing_witness) = exact_zero_add(context, base, &c.neg(outgoing)?)?;
     context.reject(
-        &c.mul(
-            &c.gt(outgoing, &context.zero)?,
-            &c.eq(&remaining, &state.volume_m3)?,
-        )?,
+        &c.mul(&c.gt(outgoing, &context.zero)?, &c.eq(&remaining, base)?)?,
         "positive outgoing volume is absorbed into unchanged storage",
     )?;
     let (volume, incoming_witness) = exact_zero_add(context, &remaining, incoming)?;
@@ -77,6 +107,31 @@ pub(crate) fn advance(
         &c.maximum(&state.volume_m3, &volume)?,
         &c.maximum(incoming, outgoing)?,
     )?;
+    let legacy = super::source_accounting::Interval {
+        residual,
+        consistency,
+        bound,
+        scale,
+    };
+    let checked = if let Some((s, _)) = &prepared {
+        super::source_accounting::interval(
+            context,
+            s,
+            &a,
+            &b,
+            &legacy,
+            &outgoing_witness,
+            &incoming_witness,
+        )?
+    } else {
+        legacy
+    };
+    let super::source_accounting::Interval {
+        residual,
+        consistency,
+        bound,
+        scale,
+    } = checked;
     super::accounting::check_residual(
         context,
         &residual,
@@ -88,6 +143,10 @@ pub(crate) fn advance(
         "storage witness consistency residual",
     )?;
     let next = CpuPoolState {
+        sources: prepared
+            .as_ref()
+            .map(|(_, state)| state.clone())
+            .or_else(|| state.sources.clone()),
         volume_m3: volume.clone(),
         initial_volume_m3: state.initial_volume_m3.clone(),
         cumulative_incoming_volume_m3: cum_in.clone(),
@@ -97,6 +156,7 @@ pub(crate) fn advance(
     };
     super::accounting::check_state(context, &next, steps)?;
     let step = CpuPoolStep {
+        source: prepared.map(|(step, _)| step),
         old_volume_m3: state.volume_m3.clone(),
         incoming_volume_m3: incoming.clone(),
         outgoing_volume_m3: outgoing.clone(),

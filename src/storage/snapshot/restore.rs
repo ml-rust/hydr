@@ -7,19 +7,37 @@ use std::sync::Arc;
 impl LevelPoolBatch {
     /// Restore trusted complete state after exact immutable definition checks.
     pub fn restore(&mut self, snapshot: &LevelPoolSnapshot) -> Result<(), LevelPoolError> {
-        self.compatible(snapshot.batch.elements(), snapshot.batch.config())?;
+        self.compatible(
+            snapshot.batch.elements(),
+            snapshot.batch.config(),
+            snapshot.batch.source_policies(),
+        )?;
         *self = snapshot.batch.clone();
         Ok(())
     }
     /// Check complete caller-owned state before atomic replacement, without replaying historical intervals.
     pub fn restore_data(&mut self, data: &LevelPoolSnapshotData) -> Result<(), LevelPoolError> {
-        self.compatible(&data.elements, &data.config)?;
-        let mut candidate = Self::new(
-            data.elements.clone(),
-            data.states.clone(),
-            data.time,
-            data.config.clone(),
+        self.compatible(
+            &data.elements,
+            &data.config,
+            data.source_policies.as_deref(),
         )?;
+        let mut candidate = if let Some(policies) = &data.source_policies {
+            Self::new_with_sources(
+                data.elements.clone(),
+                data.states.clone(),
+                data.time,
+                data.config.clone(),
+                policies.clone(),
+            )?
+        } else {
+            Self::new(
+                data.elements.clone(),
+                data.states.clone(),
+                data.time,
+                data.config.clone(),
+            )?
+        };
         let context = &candidate.context;
         let n = context.elements.len();
         require(
@@ -84,6 +102,7 @@ impl LevelPoolBatch {
                 context.tensor(&receipt.receipts.iter().map(f).collect::<Vec<_>>())
             };
             let before = CpuPoolState {
+                sources: super::sources::before(context, data, receipt)?,
                 volume_m3: tensor(|r| r.old_volume_m3)?,
                 initial_volume_m3: state.initial_volume_m3.clone(),
                 cumulative_incoming_volume_m3: tensor(|r| r.cumulative_incoming_before_m3)?,
@@ -100,13 +119,25 @@ impl LevelPoolBatch {
             crate::storage::accounting::totals(context, &before)?;
             let incoming = tensor(|r| r.incoming_volume_m3)?;
             let outgoing = tensor(|r| r.outgoing_volume_m3)?;
-            let (next, step) = crate::numerics::storage::advance(
-                context,
-                &before,
-                &incoming,
-                &outgoing,
-                data.accepted_steps,
-            )?;
+            let (next, step) = if let Some(input) = super::sources::inputs(context, receipt)? {
+                crate::numerics::storage::advance_with_sources(
+                    context,
+                    &before,
+                    &incoming,
+                    &outgoing,
+                    data.accepted_steps,
+                    receipt.dt,
+                    &input,
+                )?
+            } else {
+                crate::numerics::storage::advance(
+                    context,
+                    &before,
+                    &incoming,
+                    &outgoing,
+                    data.accepted_steps,
+                )?
+            };
             let projected = crate::storage::projection::ledgers(context, &next)?;
             require(
                 projected
@@ -137,9 +168,11 @@ impl LevelPoolBatch {
         &self,
         elements: &[crate::storage::LevelPoolElement],
         config: &crate::storage::LevelPoolConfig,
+        source_policies: Option<&[crate::storage::LevelPoolSourcePolicy]>,
     ) -> Result<(), LevelPoolError> {
         require(
-            self.config().same_bits(config)
+            self.source_policies() == source_policies
+                && self.config().same_bits(config)
                 && self.elements().len() == elements.len()
                 && self
                     .elements()
@@ -179,6 +212,7 @@ fn import_state(
         context.tensor(&data.element_ledgers.iter().map(f).collect::<Vec<_>>())
     };
     Ok(CpuPoolState {
+        sources: super::sources::state(context, data)?,
         volume_m3: tensor(|l| l.volume_m3)?,
         initial_volume_m3: tensor(|l| l.initial_volume_m3)?,
         cumulative_incoming_volume_m3: tensor(|l| l.cumulative_incoming_volume_m3)?,

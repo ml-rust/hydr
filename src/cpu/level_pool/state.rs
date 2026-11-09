@@ -6,6 +6,7 @@ use crate::storage::{LevelPoolError, LevelPoolState};
 
 #[derive(Clone, Debug)]
 pub(crate) struct CpuPoolState {
+    pub sources: Option<super::CpuPoolSourceState>,
     pub volume_m3: CpuTensor,
     pub initial_volume_m3: CpuTensor,
     pub cumulative_incoming_volume_m3: CpuTensor,
@@ -40,6 +41,10 @@ impl CpuPoolState {
         }
         let volume = context.tensor(&states.iter().map(|s| s.volume_m3).collect::<Vec<_>>())?;
         Ok(Self {
+            sources: context
+                .source_policies
+                .as_ref()
+                .map(|_| super::CpuPoolSourceState::zero(context)),
             initial_volume_m3: volume.clone(),
             volume_m3: volume,
             cumulative_incoming_volume_m3: context.zero.clone(),

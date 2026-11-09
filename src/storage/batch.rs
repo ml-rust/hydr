@@ -14,7 +14,7 @@ pub(super) struct StoredStep {
     pub step: CpuPoolStep,
 }
 
-/// Complete persistent closed-storage continuation without atmospheric or outlet laws.
+/// Complete persistent pool continuation with optional explicit sources and no outlet law.
 #[derive(Clone, Debug)]
 pub struct LevelPoolBatch {
     pub(super) context: Arc<CpuPoolContext>,
@@ -38,12 +38,34 @@ impl LevelPoolBatch {
         time: f64,
         config: LevelPoolConfig,
     ) -> Result<Self, LevelPoolError> {
+        Self::construct(elements, states, time, config, None)
+    }
+    /// Enable the frozen-area source policy with explicit evidence for every ordered pool.
+    pub fn new_with_sources(
+        elements: Vec<LevelPoolElement>,
+        states: Vec<LevelPoolState>,
+        time: f64,
+        config: LevelPoolConfig,
+        source_policies: Vec<super::LevelPoolSourcePolicy>,
+    ) -> Result<Self, LevelPoolError> {
+        Self::construct(elements, states, time, config, Some(source_policies))
+    }
+    fn construct(
+        elements: Vec<LevelPoolElement>,
+        states: Vec<LevelPoolState>,
+        time: f64,
+        config: LevelPoolConfig,
+        source_policies: Option<Vec<super::LevelPoolSourcePolicy>>,
+    ) -> Result<Self, LevelPoolError> {
         if !time.is_finite() || time < 0.0 {
             return Err(LevelPoolError::input(format!(
                 "time={time}: supply finite nonnegative accepted time"
             )));
         }
-        let context = Arc::new(CpuPoolContext::new(elements, config)?);
+        let context = Arc::new(match source_policies {
+            None => CpuPoolContext::new(elements, config)?,
+            Some(policies) => CpuPoolContext::new_with_sources(elements, config, Some(policies))?,
+        });
         let state = CpuPoolState::new(&context, &states)?;
         crate::numerics::storage::curves::evaluate(&context, &state.volume_m3)?;
         crate::numerics::storage::accounting::check_state(&context, &state, 0)?;
@@ -63,6 +85,10 @@ impl LevelPoolBatch {
     /// Independent dimensional controls.
     pub fn config(&self) -> &LevelPoolConfig {
         &self.context.config
+    }
+    /// Immutable source-enabling evidence, absent for exchange-only batches.
+    pub fn source_policies(&self) -> Option<&[super::LevelPoolSourcePolicy]> {
+        self.context.source_policies.as_deref()
     }
     /// Accepted elapsed time in seconds.
     pub fn time(&self) -> f64 {
@@ -105,6 +131,23 @@ impl LevelPoolBatch {
         &self,
         end: f64,
         inputs: &[LevelPoolInput],
+    ) -> Result<LevelPoolTrial, LevelPoolError> {
+        self.trial_inputs(end, inputs, None)
+    }
+    /// Apply frozen-area rain, capped bottom demand, and capped evaporation before original exchanges.
+    pub fn trial_with_sources_to(
+        &self,
+        end: f64,
+        inputs: &[LevelPoolInput],
+        sources: &[super::LevelPoolSources],
+    ) -> Result<LevelPoolTrial, LevelPoolError> {
+        self.trial_inputs(end, inputs, Some(sources))
+    }
+    fn trial_inputs(
+        &self,
+        end: f64,
+        inputs: &[LevelPoolInput],
+        sources: Option<&[super::LevelPoolSources]>,
     ) -> Result<LevelPoolTrial, LevelPoolError> {
         let dt = end - self.time;
         if !end.is_finite() || !dt.is_finite() || dt <= 0.0 {
@@ -149,13 +192,26 @@ impl LevelPoolBatch {
                 .map(|i| i.outgoing_volume_m3)
                 .collect::<Vec<_>>(),
         )?;
-        let (state, step) = crate::numerics::storage::advance(
-            &self.context,
-            &self.state,
-            &incoming,
-            &outgoing,
-            steps,
-        )?;
+        let (state, step) = if let Some(sources) = sources {
+            let input = crate::cpu::level_pool::CpuPoolSourceInput::new(&self.context, sources)?;
+            crate::numerics::storage::advance_with_sources(
+                &self.context,
+                &self.state,
+                &incoming,
+                &outgoing,
+                steps,
+                dt,
+                &input,
+            )?
+        } else {
+            crate::numerics::storage::advance(
+                &self.context,
+                &self.state,
+                &incoming,
+                &outgoing,
+                steps,
+            )?
+        };
         crate::numerics::storage::check_step(&self.context, &step)?;
         super::accounting::step_totals(&self.context, &step)?;
         super::accounting::totals(&self.context, &state)?;

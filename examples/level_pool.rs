@@ -55,5 +55,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut restored = batch;
     restored.restore_data(&accepted.snapshot_data()?)?;
     println!("restored={:?}", restored.outputs()?);
+    let enabled = LevelPoolBatch::new_with_sources(
+        restored.elements().to_vec(),
+        restored.states()?,
+        restored.time(),
+        restored.config().clone(),
+        vec![hydr::storage::LevelPoolSourcePolicy {
+            dry_basal_footprint_assertion: "the first segment is the tank's rain-receiving floor"
+                .into(),
+            bottom_loss_provenance:
+                "explicit synthetic potential bottom demand, without soil memory".into(),
+        }],
+    )?;
+    let sources = enabled.trial_with_sources_to(
+        70.0,
+        &[LevelPoolInput {
+            incoming_volume_m3: 0.0,
+            outgoing_volume_m3: 0.05,
+        }],
+        &[hydr::storage::LevelPoolSources {
+            rain_rate_m_per_s: 0.01,
+            potential_evaporation_rate_m_per_s: 0.002,
+            bottom_loss_rate_m3_per_s: 0.001,
+        }],
+    )?;
+    println!("source_candidate={:?}", sources.outputs()?);
+    println!("source_receipts={:?}", sources.diagnostics()?.receipts);
     Ok(())
 }

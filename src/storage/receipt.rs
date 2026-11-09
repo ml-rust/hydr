@@ -14,6 +14,8 @@ pub struct LevelPoolOutput {
 /// Complete checked LevelPoolElementLedger projection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LevelPoolElementLedger {
+    /// Complete optional enabled-source cumulative accounting.
+    pub sources: Option<super::LevelPoolSourceLedger>,
     /// Ordered numerical element index.
     pub element: usize,
     /// Original authoritative storage.
@@ -35,6 +37,8 @@ pub struct LevelPoolElementLedger {
 /// Complete checked LevelPoolTotals projection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LevelPoolTotals {
+    /// Complete optional enabled-source cumulative accounting.
+    pub sources: Option<super::LevelPoolSourceLedger>,
     /// Original authoritative storage.
     pub initial_volume_m3: f64,
     /// Current authoritative storage.
@@ -58,6 +62,8 @@ pub struct LevelPoolTotals {
 /// Complete checked LevelPoolReceipt projection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LevelPoolReceipt {
+    /// Original ordered source substeps, absent on the exact zero-source path.
+    pub source: Option<super::LevelPoolSourceReceipt>,
     /// Ordered numerical element index.
     pub element: usize,
     /// Original accepted donor volume.
@@ -113,6 +119,21 @@ pub struct LevelPoolReceipt {
 /// Complete checked LevelPoolStepDiagnostics projection.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LevelPoolStepDiagnostics {
+    /// Aggregate original rain volume m3.
+    pub rain_volume_m3: f64,
+    /// Aggregate original evaporation volume m3.
+    pub evaporation_volume_m3: f64,
+    /// Aggregate original bottom loss volume m3.
+    pub bottom_loss_volume_m3: f64,
+    /// Aggregate original bottom loss demand m3.
+    pub bottom_loss_demand_m3: f64,
+    /// Aggregate original unmet bottom loss m3.
+    pub unmet_bottom_loss_m3: f64,
+    /// Aggregate original potential evaporation volume m3.
+    pub potential_evaporation_volume_m3: f64,
+    /// Aggregate original unmet evaporation volume m3.
+    pub unmet_evaporation_volume_m3: f64,
+
     /// Original elapsed interval start in seconds.
     pub start: f64,
     /// Accepted elapsed interval end in seconds.
@@ -139,7 +160,13 @@ pub struct LevelPoolStepDiagnostics {
 
 impl LevelPoolReceipt {
     pub(crate) fn same_bits(&self, other: &Self) -> bool {
-        self.element == other.element
+        let source = match (&self.source, &other.source) {
+            (None, None) => true,
+            (Some(a), Some(b)) => a.same_bits(b),
+            _ => false,
+        };
+        source
+            && self.element == other.element
             && self.old_volume_m3.to_bits() == other.old_volume_m3.to_bits()
             && self.incoming_volume_m3.to_bits() == other.incoming_volume_m3.to_bits()
             && self.outgoing_volume_m3.to_bits() == other.outgoing_volume_m3.to_bits()
@@ -179,7 +206,16 @@ impl LevelPoolReceipt {
 }
 impl LevelPoolStepDiagnostics {
     pub(crate) fn same_bits(&self, other: &Self) -> bool {
-        self.start.to_bits() == other.start.to_bits()
+        self.rain_volume_m3.to_bits() == other.rain_volume_m3.to_bits()
+            && self.evaporation_volume_m3.to_bits() == other.evaporation_volume_m3.to_bits()
+            && self.bottom_loss_volume_m3.to_bits() == other.bottom_loss_volume_m3.to_bits()
+            && self.bottom_loss_demand_m3.to_bits() == other.bottom_loss_demand_m3.to_bits()
+            && self.unmet_bottom_loss_m3.to_bits() == other.unmet_bottom_loss_m3.to_bits()
+            && self.potential_evaporation_volume_m3.to_bits()
+                == other.potential_evaporation_volume_m3.to_bits()
+            && self.unmet_evaporation_volume_m3.to_bits()
+                == other.unmet_evaporation_volume_m3.to_bits()
+            && self.start.to_bits() == other.start.to_bits()
             && self.end.to_bits() == other.end.to_bits()
             && self.dt.to_bits() == other.dt.to_bits()
             && self.volume_before_m3.to_bits() == other.volume_before_m3.to_bits()
@@ -200,7 +236,13 @@ impl LevelPoolStepDiagnostics {
 
 impl LevelPoolElementLedger {
     pub(crate) fn same_bits(&self, other: &Self) -> bool {
-        self.element == other.element
+        let sources = match (&self.sources, &other.sources) {
+            (None, None) => true,
+            (Some(a), Some(b)) => a.same_bits(b),
+            _ => false,
+        };
+        sources
+            && self.element == other.element
             && self.initial_volume_m3.to_bits() == other.initial_volume_m3.to_bits()
             && self.volume_m3.to_bits() == other.volume_m3.to_bits()
             && self.cumulative_incoming_volume_m3.to_bits()

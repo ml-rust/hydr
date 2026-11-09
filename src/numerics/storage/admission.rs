@@ -14,7 +14,12 @@ pub(crate) fn check_step(
     context.nonnegative(&step.incoming_volume_m3, "receipt incoming exchange")?;
     context.nonnegative(&step.outgoing_volume_m3, "receipt outgoing exchange")?;
     context.reject(
-        &c.gt(&step.outgoing_volume_m3, &step.old_volume_m3)?,
+        &c.gt(
+            &step.outgoing_volume_m3,
+            step.source
+                .as_ref()
+                .map_or(&step.old_volume_m3, |s| &s.post_source_volume_m3),
+        )?,
         "receipt donor budget",
     )?;
     super::accounting::check_residual(

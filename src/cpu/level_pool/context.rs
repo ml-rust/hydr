@@ -1,6 +1,7 @@
 //! Configured persistent pool curves, identity groups, and reduction support.
 
 use crate::cpu::CpuTensor;
+use crate::storage::LevelPoolSourcePolicy;
 use crate::storage::{LevelPoolConfig, LevelPoolElement, LevelPoolError};
 use numr::ops::{BinaryOps, CompareOps, ReduceOps, TypeConversionOps, UnaryOps};
 use numr::runtime::cpu::{CpuClient, CpuDevice, ParallelismConfig};
@@ -11,6 +12,9 @@ pub(crate) struct CpuPoolGroup {
     pub indices: CpuTensor,
     pub volumes: CpuTensor,
     pub stages: CpuTensor,
+    pub areas: CpuTensor,
+    pub index_one: CpuTensor,
+    pub index_last: CpuTensor,
 }
 
 #[derive(Debug)]
@@ -24,17 +28,35 @@ pub(crate) struct CpuPoolContext {
     pub origin: CpuTensor,
     pub groups: Vec<CpuPoolGroup>,
     pub inverse_permutation: CpuTensor,
+    pub source_policies: Option<Vec<LevelPoolSourcePolicy>>,
 }
 impl CpuPoolContext {
     pub(crate) fn new(
         elements: Vec<LevelPoolElement>,
         config: LevelPoolConfig,
     ) -> Result<Self, LevelPoolError> {
+        Self::new_with_sources(elements, config, None)
+    }
+    pub(crate) fn new_with_sources(
+        elements: Vec<LevelPoolElement>,
+        config: LevelPoolConfig,
+        source_policies: Option<Vec<LevelPoolSourcePolicy>>,
+    ) -> Result<Self, LevelPoolError> {
         config.check()?;
         if elements.is_empty() {
             return Err(LevelPoolError::input(
                 "pool batch requires at least one explicit element",
             ));
+        }
+        if let Some(policies) = &source_policies {
+            if policies.len() != elements.len() {
+                return Err(LevelPoolError::input(
+                    "source policy count must match complete ordered pool support",
+                ));
+            }
+            for (index, policy) in policies.iter().enumerate() {
+                policy.check().map_err(|e| e.at(index))?;
+            }
         }
         let mut ids = BTreeSet::new();
         let mut supports = BTreeSet::new();
@@ -86,6 +108,28 @@ impl CpuPoolContext {
                 indices: CpuTensor::from_slice(&indices, &[indices.len()], &device)?,
                 volumes: tensor(&volumes)?,
                 stages: tensor(&stages)?,
+                areas: tensor(
+                    &volumes
+                        .windows(2)
+                        .zip(stages.windows(2))
+                        .map(|(v, h)| (v[1] - v[0]) / (h[1] - h[0]))
+                        .collect::<Vec<_>>(),
+                )?,
+                index_one: CpuTensor::from_slice(
+                    &vec![1i64; indices.len()],
+                    &[indices.len()],
+                    &device,
+                )?,
+                index_last: CpuTensor::from_slice(
+                    &vec![
+                        i64::try_from(volumes.len() - 2).map_err(|_| LevelPoolError::input(
+                            "curve segment count exceeds I64 indexing"
+                        ))?;
+                        indices.len()
+                    ],
+                    &[indices.len()],
+                    &device,
+                )?,
             });
         }
         Ok(Self {
@@ -108,6 +152,7 @@ impl CpuPoolContext {
             client,
             device,
             groups: cached,
+            source_policies,
         })
     }
     pub(crate) fn tensor(&self, values: &[f64]) -> Result<CpuTensor, LevelPoolError> {

@@ -2,5 +2,6 @@
 
 mod package;
 mod restore;
+mod sources;
 
 pub use package::{LevelPoolSnapshot, LevelPoolSnapshotData};
