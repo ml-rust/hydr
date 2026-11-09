@@ -4,6 +4,7 @@ use crate::model::FlowState;
 use crate::solver::engine::Accepted;
 use crate::solver::{Axis, CONTRACT_VERSION, EngineError, Solver, StepDiagnostics};
 use numr::ops::{ReduceOps, ScalarOps};
+use std::collections::BTreeSet;
 
 impl Solver {
     /// Imports a same-build checkpoint after checking definition and accepted-state consistency.
@@ -235,6 +236,21 @@ impl Solver {
                 false,
             )?
             .item::<f64>()?;
+        let mut boundary_in: f64 = 0.0;
+        let mut boundary_out: f64 = 0.0;
+        let open_faces: BTreeSet<_> = data.boundaries.open_faces().iter().copied().collect();
+        for face in &step.faces {
+            if !open_faces.contains(&face.face) {
+                continue;
+            }
+            let outward = if face.left.is_some() {
+                face.volume
+            } else {
+                -face.volume
+            };
+            boundary_in += (-outward).max(0.0);
+            boundary_out += outward.max(0.0);
+        }
         for (name, last, expected, total) in [
             ("rain", step.rain_volume, rain, data.ledger.rain),
             (
@@ -246,13 +262,13 @@ impl Solver {
             (
                 "boundary in",
                 step.boundary_in,
-                source.boundary_in_rate * step.dt,
+                boundary_in,
                 data.ledger.boundary_in,
             ),
             (
                 "boundary out",
                 step.boundary_out,
-                source.boundary_out_rate * step.dt,
+                boundary_out,
                 data.ledger.boundary_out,
             ),
         ] {
@@ -293,6 +309,7 @@ impl Solver {
                 format!("index={index}, volume={}, calculated={volume}", face.volume),
             )?;
         }
+        super::boundary::check(data, step)?;
         Ok(())
     }
 

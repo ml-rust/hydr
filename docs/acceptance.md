@@ -84,6 +84,15 @@ However, support-matched analytical front errors are `2`, `1`, and `2.5 m`. Fron
 Read [the dry-bed comparison](dry-reference-comparison.md) for the analytical diagnostic, external dry policy, and reproduction commands.
 Terrain and genuine two-dimensional transverse comparisons remain separate gates.
 
+## Physical wet-subcritical boundaries
+
+`tests/physical_boundaries.rs` checks open-lake balance, four-face orientation, discharge budgets, reversal, forcing edges, retries, and restart.
+Tensor-kernel cases independently check complete uniform flux and constructed shock/rarefaction traces.
+Matching open stages preserve a stepped lake within `1e-11` SI.
+Constant discharge boundaries agree with their accepted water volume within `1e-12 m³`.
+Dry, critical, supercritical, missing-inflow-data, and out-of-branch requests reject without mutating accepted state.
+These gates admit only the wet-subcritical boundary contract. They establish no physical-domain or field-accuracy claim.
+
 ## Gate status
 
 | Gate | Checked scope | Remaining evidence |

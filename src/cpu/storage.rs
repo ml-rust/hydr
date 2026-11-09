@@ -1,6 +1,7 @@
 use super::CpuTopology;
+use super::boundary::CpuBoundaries;
 use crate::model::{CellState, Domain, FlowState};
-use crate::solver::{Axis, EngineError, ForcingInterval, ForcingSchedule};
+use crate::solver::{Axis, BoundaryForcing, EngineError, ForcingInterval, ForcingSchedule};
 use numr::dtype::DType;
 use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 use numr::tensor::Tensor;
@@ -70,10 +71,12 @@ pub(crate) struct CpuSources {
     pub rain: CpuTensor,
     pub withdrawal: CpuTensor,
     pub port_mask: CpuTensor,
+    pub open_mask: CpuTensor,
+    pub trace_mask: CpuTensor,
+    pub outward_sign: CpuTensor,
+    pub characteristic: CpuBoundaries,
     pub port_flux: [CpuTensor; 3],
     pub port_speed: CpuTensor,
-    pub boundary_in_rate: f64,
-    pub boundary_out_rate: f64,
 }
 
 impl CpuDomain {
@@ -105,18 +108,29 @@ impl CpuSources {
         forcing: &ForcingInterval,
         device: &CpuDevice,
     ) -> Result<Self, EngineError> {
-        let ports: BTreeMap<_, _> = forcing.ports.iter().map(|port| (port.face, port)).collect();
+        let boundaries: BTreeMap<_, _> = forcing
+            .boundaries
+            .iter()
+            .map(|value| (value.face(), value))
+            .collect();
         let count = topology.faces.len();
         let mut mask = vec![0.0; count];
+        let mut open_mask = vec![0.0; count];
+        let mut trace_mask = vec![0.0; count];
+        let mut outward_sign = vec![0.0; count];
         let mut flux = [vec![0.0; count], vec![0.0; count], vec![0.0; count]];
         let mut speed = vec![0.0; count];
-        let mut boundary_in_rate = 0.0;
-        let mut boundary_out_rate = 0.0;
         let (dx, dy) = domain.grid().spacing();
         for (index, support) in topology.faces.iter().enumerate() {
-            if let Some(port) = ports.get(&support.face) {
+            if let Some(value) = boundaries.get(&support.face) {
                 let sign = if support.left.is_some() { 1.0 } else { -1.0 };
                 let width = if support.face.axis == Axis::X { dy } else { dx };
+                open_mask[index] = 1.0;
+                outward_sign[index] = sign;
+                let BoundaryForcing::Flux(port) = value else {
+                    trace_mask[index] = 1.0;
+                    continue;
+                };
                 for (component, rate) in [
                     port.water_rate,
                     port.momentum_rate[0],
@@ -139,15 +153,7 @@ impl CpuSources {
                 }
                 mask[index] = 1.0;
                 speed[index] = port.signal_speed;
-                boundary_in_rate += (-port.water_rate).max(0.0);
-                boundary_out_rate += port.water_rate.max(0.0);
             }
-        }
-        if !boundary_in_rate.is_finite() || !boundary_out_rate.is_finite() {
-            return Err(EngineError::rejected(
-                "CPU port flux",
-                "total boundary rate overflows: reduce prescribed rates",
-            ));
         }
         let tensor = |values: &[f64]| {
             CpuTensor::from_slice(values, &[values.len()], device).map_err(EngineError::from)
@@ -156,10 +162,12 @@ impl CpuSources {
             rain: tensor(&forcing.rain)?,
             withdrawal: tensor(&forcing.withdrawal)?,
             port_mask: tensor(&mask)?,
+            open_mask: tensor(&open_mask)?,
+            trace_mask: tensor(&trace_mask)?,
+            outward_sign: tensor(&outward_sign)?,
+            characteristic: CpuBoundaries::new(domain, topology, forcing, device)?,
             port_flux: [tensor(&flux[0])?, tensor(&flux[1])?, tensor(&flux[2])?],
             port_speed: tensor(&speed)?,
-            boundary_in_rate,
-            boundary_out_rate,
         })
     }
 }
@@ -186,7 +194,7 @@ mod tests {
             column: 0,
             row: 0,
         };
-        let boundaries = BoundaryConditions::with_ports(&domain, vec![face])?;
+        let boundaries = BoundaryConditions::with_open_faces(&domain, vec![face])?;
         let forcing = ForcingSchedule::new(
             &domain,
             &boundaries,
@@ -195,13 +203,16 @@ mod tests {
                 end: 1.0,
                 rain: vec![0.1],
                 withdrawal: vec![0.2],
-                ports: vec![FluxPort {
+                boundaries: vec![FluxPort {
                     face,
                     water_rate: -8.0,
                     momentum_rate: [12.0, -4.0],
                     signal_speed: 5.0,
                     provenance: "declared complete flux".into(),
-                }],
+                }]
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             }],
         )?;
         let cached = CpuDomain::new(&domain, &forcing)?;
@@ -226,8 +237,6 @@ mod tests {
             source.port_speed.try_to_vec::<f64>()?,
             vec![5.0, 0.0, 0.0, 0.0]
         );
-        assert_eq!(source.boundary_in_rate, 8.0);
-        assert_eq!(source.boundary_out_rate, 0.0);
         let flow = FlowState::new(
             &domain,
             vec![CellState {

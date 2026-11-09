@@ -80,7 +80,8 @@ impl Solver {
     ) -> Result<Self, EngineError> {
         config.check()?;
         let state = FlowState::new(&domain, state.cells().to_vec())?;
-        let boundaries = BoundaryConditions::with_ports(&domain, boundaries.ports().to_vec())?;
+        let boundaries =
+            BoundaryConditions::with_open_faces(&domain, boundaries.open_faces().to_vec())?;
         let forcing = ForcingSchedule::new(&domain, &boundaries, forcing.intervals().to_vec())?;
         if !initial_time.is_finite() || forcing.at(initial_time).is_none() {
             return Err(EngineError::rejected(

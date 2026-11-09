@@ -34,7 +34,7 @@ fn forcing(
             end: 1.0,
             rain: vec![0.0; 2],
             withdrawal: vec![0.0; 2],
-            ports,
+            boundaries: ports.into_iter().map(Into::into).collect(),
         }],
     )?)
 }
@@ -101,7 +101,7 @@ fn port_bounds_must_include_known_interior_characteristics()
         column: 0,
         row: 0,
     };
-    let ports = BoundaryConditions::with_ports(&domain, vec![face])?;
+    let ports = BoundaryConditions::with_open_faces(&domain, vec![face])?;
     let input = forcing(
         &domain,
         &ports,

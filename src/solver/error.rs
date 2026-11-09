@@ -1,3 +1,4 @@
+use super::BoundaryFace;
 use crate::model::ModelError;
 use std::fmt;
 
@@ -7,6 +8,13 @@ use std::fmt;
 pub enum EngineError {
     /// Domain or state input violates the model contract.
     Model(ModelError),
+    /// A physical boundary trace cannot admit the requested hydraulic regime.
+    Boundary {
+        /// Exterior face requiring compatible physical data.
+        face: BoundaryFace,
+        /// Hydraulic state, request, and corrective action.
+        reason: String,
+    },
     /// An execution operation cannot satisfy its numerical contract.
     Rejected {
         /// Operation or input responsible for rejection.
@@ -44,6 +52,7 @@ impl fmt::Display for EngineError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Model(error) => error.fmt(f),
+            Self::Boundary { face, reason } => write!(f, "boundary {face:?} rejected: {reason}"),
             Self::Rejected { operation, reason } => write!(f, "{operation} rejected: {reason}"),
         }
     }
@@ -53,7 +62,7 @@ impl std::error::Error for EngineError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Model(error) => Some(error),
-            Self::Rejected { .. } => None,
+            Self::Rejected { .. } | Self::Boundary { .. } => None,
         }
     }
 }

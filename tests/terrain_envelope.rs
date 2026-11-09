@@ -41,7 +41,7 @@ fn create(
             end: 10.0,
             rain: vec![0.0; count],
             withdrawal: vec![0.0; count],
-            ports: vec![],
+            boundaries: vec![],
         }],
     )?;
     Ok(Solver::new(

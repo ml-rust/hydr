@@ -38,14 +38,14 @@ fn create(depth: f64) -> Result<Solver, Box<dyn std::error::Error>> {
                 end: 0.4,
                 rain: vec![0.001; 2],
                 withdrawal: vec![0.0; 2],
-                ports: vec![],
+                boundaries: vec![],
             },
             ForcingInterval {
                 start: 0.4,
                 end: 1.0,
                 rain: vec![0.002; 2],
                 withdrawal: vec![0.0; 2],
-                ports: vec![],
+                boundaries: vec![],
             },
         ],
     )?;

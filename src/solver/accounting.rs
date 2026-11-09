@@ -1,4 +1,4 @@
-use super::{EngineError, FaceTransfer};
+use super::{BoundaryFace, EngineError, FaceTransfer};
 
 /// Cumulative component water accounting from the original initial state, in m³.
 #[derive(Clone, Debug, PartialEq)]
@@ -71,6 +71,27 @@ impl WaterLedger {
     }
 }
 
+/// Physical state and compatibility residuals at an accepted open boundary.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BoundaryTraceDiagnostics {
+    /// Exterior face using the trace.
+    pub face: BoundaryFace,
+    /// Trace depth in metres.
+    pub depth: f64,
+    /// Outward normal trace velocity in m/s.
+    pub normal_velocity: f64,
+    /// Trace velocity along the positive other coordinate in m/s.
+    pub tangential_velocity: f64,
+    /// Achieved signed outward water rate in m³/s.
+    pub outward_water_rate: f64,
+    /// Wave-curve discharge minus requested discharge in m²/s. Stage traces record zero.
+    pub discharge_residual_per_width: f64,
+    /// Corrected normal velocity minus compatible wave-curve velocity in m/s.
+    pub characteristic_velocity_residual: f64,
+    /// Conservative normal signal-speed bound in m/s.
+    pub signal_speed: f64,
+}
+
 /// Numerical and physical accounting for exactly one accepted interval.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StepDiagnostics {
@@ -108,4 +129,6 @@ pub struct StepDiagnostics {
     pub momentum_removed: [f64; 2],
     /// Numerical flux support over this interval. No instantaneous endpoint flux is implied.
     pub faces: Vec<FaceTransfer>,
+    /// Physical Stage/Discharge traces used over this accepted interval.
+    pub boundary_traces: Vec<BoundaryTraceDiagnostics>,
 }

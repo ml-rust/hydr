@@ -1,4 +1,4 @@
-use super::{BoundaryConditions, EngineError, FluxPort};
+use super::{BoundaryConditions, BoundaryForcing, EngineError};
 use crate::model::Domain;
 use std::collections::BTreeSet;
 
@@ -15,8 +15,8 @@ pub struct ForcingInterval {
     ///
     /// This is no infiltration model. Unmet demand rejects a trial without capping demand.
     pub withdrawal: Vec<f64>,
-    /// Source-complete boundary rates, including pressure and declared speed bounds.
-    pub ports: Vec<FluxPort>,
+    /// Physical or source-complete data for each declared open face.
+    pub boundaries: Vec<BoundaryForcing>,
 }
 
 /// Checked forcing coverage with no gaps, implicit rain, or provider callbacks.
@@ -26,10 +26,10 @@ pub struct ForcingSchedule {
 }
 
 impl ForcingSchedule {
-    /// Checks spatial arrays, contiguous interval support, and complete port assignments.
+    /// Checks spatial arrays, contiguous interval support, and complete open-face assignments.
     ///
     /// # Errors
-    /// Rejects gaps, overlap, nonfinite inputs, negative rates, or missing/duplicate ports.
+    /// Rejects gaps, overlap, nonfinite inputs, negative rates, or missing/duplicate open faces.
     pub fn new(
         domain: &Domain,
         boundaries: &BoundaryConditions,
@@ -41,7 +41,7 @@ impl ForcingSchedule {
                 "no intervals: supply explicit coverage",
             ));
         }
-        let declared: BTreeSet<_> = boundaries.ports().iter().copied().collect();
+        let declared: BTreeSet<_> = boundaries.open_faces().iter().copied().collect();
         for (index, interval) in intervals.iter().enumerate() {
             if !interval.start.is_finite()
                 || !interval.end.is_finite()
@@ -83,29 +83,26 @@ impl ForcingSchedule {
                     }
                 }
             }
-            if interval.ports.len() != boundaries.ports().len() {
+            if interval.boundaries.len() != declared.len() {
                 return Err(EngineError::rejected(
                     "forcing",
-                    format!("interval {index}: supply exactly one rate for each declared port"),
+                    format!(
+                        "interval {index}: supply exactly one condition for each declared open face"
+                    ),
                 ));
             }
             let mut seen = BTreeSet::new();
-            for (port_index, port) in interval.ports.iter().enumerate() {
-                if !declared.contains(&port.face)
-                    || !seen.insert(port.face)
-                    || !port.water_rate.is_finite()
-                    || port.momentum_rate.iter().any(|value| !value.is_finite())
-                    || !port.signal_speed.is_finite()
-                    || port.signal_speed <= 0.0
-                    || port.provenance.trim().is_empty()
-                {
+            for value in &interval.boundaries {
+                let face = value.face();
+                if !declared.contains(&face) || !seen.insert(face) {
                     return Err(EngineError::rejected(
                         "forcing",
                         format!(
-                            "interval {index} port {port_index}={port:?}: require unique declared support, finite complete flux, positive speed bound, and regime/bound provenance"
+                            "interval {index}, face={face:?}: supply unique declared open-face support"
                         ),
                     ));
                 }
+                check_boundary(domain, value, index)?;
             }
         }
         Ok(Self { intervals })
@@ -121,4 +118,44 @@ impl ForcingSchedule {
             .iter()
             .find(|interval| interval.start <= time && time < interval.end)
     }
+}
+
+fn check_boundary(
+    domain: &Domain,
+    value: &BoundaryForcing,
+    interval: usize,
+) -> Result<(), EngineError> {
+    let face = value.face();
+    let cell = super::boundary::exterior_cell(domain, face)?;
+    let valid = match value {
+        BoundaryForcing::Flux(port) => {
+            port.water_rate.is_finite()
+                && port.momentum_rate.iter().all(|value| value.is_finite())
+                && port.signal_speed.is_finite()
+                && port.signal_speed > 0.0
+                && !port.provenance.trim().is_empty()
+        }
+        BoundaryForcing::Stage(stage) => {
+            stage.elevation.is_finite()
+                && (stage.elevation - domain.bed()[cell]).is_finite()
+                && stage.elevation > domain.bed()[cell]
+                && stage.inflow_tangential_velocity.is_none_or(f64::is_finite)
+        }
+        BoundaryForcing::Discharge(discharge) => {
+            discharge.outward_rate.is_finite()
+                && discharge
+                    .inflow_tangential_velocity
+                    .is_none_or(f64::is_finite)
+                && (discharge.outward_rate >= 0.0 || discharge.inflow_tangential_velocity.is_some())
+        }
+    };
+    if !valid {
+        return Err(EngineError::rejected(
+            "forcing",
+            format!(
+                "interval {interval}, boundary={value:?}: supply finite admitted data, positive wet stage depth, and an incoming tangent for prescribed inflow"
+            ),
+        ));
+    }
+    Ok(())
 }

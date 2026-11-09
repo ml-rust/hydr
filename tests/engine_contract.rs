@@ -30,7 +30,7 @@ fn interval(start: f64, end: f64, rain: Vec<f64>, withdrawal: Vec<f64>) -> Forci
         end,
         rain,
         withdrawal,
-        ports: Vec::new(),
+        boundaries: Vec::new(),
     }
 }
 
@@ -300,7 +300,7 @@ fn boundaries_reject_interior_duplicate_and_inactive_faces() -> TestResult {
         column: 0,
         row: 0,
     };
-    assert!(BoundaryConditions::with_ports(&domain, vec![left, left]).is_err());
+    assert!(BoundaryConditions::with_open_faces(&domain, vec![left, left]).is_err());
     for face in [
         BoundaryFace {
             axis: Axis::X,
@@ -318,9 +318,9 @@ fn boundaries_reject_interior_duplicate_and_inactive_faces() -> TestResult {
             row: 0,
         },
     ] {
-        assert!(BoundaryConditions::with_ports(&domain, vec![face]).is_err());
+        assert!(BoundaryConditions::with_open_faces(&domain, vec![face]).is_err());
     }
-    let boundaries = BoundaryConditions::with_ports(&domain, vec![left])?;
+    let boundaries = BoundaryConditions::with_open_faces(&domain, vec![left])?;
     assert!(
         ForcingSchedule::new(
             &domain,
@@ -362,15 +362,18 @@ fn manufactured_ports_account_for_inward_and_outward_volume() -> TestResult {
             column: 0,
             row: 0,
         };
-        let boundaries = BoundaryConditions::with_ports(&domain, vec![face])?;
+        let boundaries = BoundaryConditions::with_open_faces(&domain, vec![face])?;
         let mut forcing_interval = interval(0.0, 1.0, vec![0.0], vec![0.0]);
-        forcing_interval.ports.push(FluxPort {
-            face,
-            water_rate,
-            momentum_rate: [-4.905, 0.0],
-            signal_speed: 10.0,
-            provenance: "Manufactured full flux, h near 1 m, speed bound 10 m/s".into(),
-        });
+        forcing_interval.boundaries.push(
+            FluxPort {
+                face,
+                water_rate,
+                momentum_rate: [-4.905, 0.0],
+                signal_speed: 10.0,
+                provenance: "Manufactured full flux, h near 1 m, speed bound 10 m/s".into(),
+            }
+            .into(),
+        );
         let forcing = ForcingSchedule::new(&domain, &boundaries, vec![forcing_interval])?;
         let mut solver = Solver::new(
             domain,

@@ -22,7 +22,7 @@ Native workers call the library directly. No separate solver service is required
 | `capabilities()` | Declare implemented equations, method, execution, sources, boundaries, and exclusions |
 | `Domain::new` | Check geometry, array support, active terrain, roughness, and reference metadata |
 | `FlowState::new` | Check finite nonnegative depth, momentum, volume, and dry/inactive consistency |
-| `ForcingSchedule::new` | Check bounded contiguous intervals, explicit spatial rates, and complete port assignments |
+| `ForcingSchedule::new` | Check bounded contiguous intervals, explicit spatial rates, and complete open-face assignments |
 | `Solver::new` | Recheck compatibility and cache immutable inputs as numr CPU tensors |
 | `advance_to` | Report accepted time and completion, cancellation, or step-budget status |
 | `advance_controlled` | Check cancellation between steps and expose every accepted field to an observer |
@@ -39,7 +39,7 @@ The caller checks `AdvanceStatus` before treating its requested horizon as compl
 
 - Wall constructor: Explicitly declares genuine impermeable exterior boundaries and inactive-cell interfaces.
 - Mask: Inactive cells declare impermeable exclusions. Missing influential terrain cannot silently become a wall.
-- Port support: An active exterior face with fixed rates over each forcing interval.
+- Port support: An active exterior face with bounded data over each forcing interval.
 - Port mass: Outward signed m³/s. Negative values enter the domain.
 - Port momentum: Outward x/y momentum flux integrated over face width, in m⁴/s².
 - Pressure convention: The port includes normal pressure and all interface/bed corrections exactly once.
@@ -49,7 +49,13 @@ The caller checks `AdvanceStatus` before treating its requested horizon as compl
 
 Flux integrals alone cannot establish a wave bound or boundary eligibility.
 Stage-only and discharge-only inputs cannot construct a source-complete port.
-Characteristic outlets, backwater closure, and flow-reversing open boundaries remain unsupported.
+Wet-subcritical characteristic boundaries use `BoundaryForcing::Stage` or `BoundaryForcing::Discharge` in `ForcingInterval.boundaries`.
+`BoundaryConditions::with_open_faces` declares their support. Every interval supplies each open face exactly once.
+Stage values use the domain elevation datum. Discharge values impose signed outward numerical water rates in m³/s.
+Inflow requires the supplied tangential velocity. Outflow carries the interior tangential velocity.
+Reversal rechecks this admission rule during every trial.
+Dry, critical, and supercritical characteristic regimes remain unsupported. They reject explicitly without wall or sonic substitution.
+Read [physical boundaries](boundaries.md) for trace equations, tolerances, and pressure conventions.
 Never substitute walls for required open boundaries.
 
 ## Results and checkpoints
@@ -58,6 +64,8 @@ Dry cells return `CellResult::Dry`. Their physical velocity and water elevation 
 Positive films return their represented water. Unknown locations return `Unsupported`, never dry zero.
 Internal coordinate ties select the positive-coordinate cell. Maximum exterior edges return unsupported.
 Face records represent numerical flux over their accepted interval, including its orientation and support.
+`StepDiagnostics.boundary_traces` also records accepted physical traces and their compatibility residuals.
+Boundary ledgers integrate actual oriented exterior face fluxes, including reversals.
 The application defines threshold crossings and episode semantics from accepted fields.
 
 Checkpoint compatibility includes numerical contract, geometry, parameters, forcing, boundaries, controls, and complete accepted history.
@@ -81,5 +89,5 @@ Run synthetic closed basins or manufactured source-complete-port cases inside an
 Persist checked packages, report water budgets, and consume accepted fields through the adapter boundary.
 Keep these calculations labelled numerical demonstrations.
 
-Real urban-event use remains blocked by unsupported characteristic boundaries, soil/network/structure coupling, and independent event evidence.
+Real urban-event use remains blocked by unsupported boundary regimes, soil/network/structure coupling, and independent event evidence.
 Do not create a competing numerical kernel in ARUS.

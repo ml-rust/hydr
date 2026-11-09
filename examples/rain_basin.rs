@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             end: 60.0,
             rain: vec![1e-5; count],
             withdrawal: vec![0.0; count],
-            ports: vec![],
+            boundaries: vec![],
         }],
     )?;
     let mut solver = Solver::new(

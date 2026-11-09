@@ -115,7 +115,7 @@ fn run(
         }
     }
     let boundaries =
-        BoundaryConditions::with_ports(&domain, ports.iter().map(|port| port.face).collect())?;
+        BoundaryConditions::with_open_faces(&domain, ports.iter().map(|port| port.face).collect())?;
     let forcing = ForcingSchedule::new(
         &domain,
         &boundaries,
@@ -124,7 +124,7 @@ fn run(
             end: 2.0,
             rain: vec![0.0; count],
             withdrawal: vec![0.0; count],
-            ports,
+            boundaries: ports.into_iter().map(Into::into).collect(),
         }],
     )?;
     let state = FlowState::new(&domain, cells)?;

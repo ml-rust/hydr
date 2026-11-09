@@ -42,10 +42,62 @@ pub struct FluxPort {
     pub provenance: String,
 }
 
-/// Immutable assignment of genuine walls and source-complete exterior ports.
+/// Prescribed boundary elevation with a compatible wet-subcritical trace.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StageBoundary {
+    /// Exterior face receiving this condition.
+    pub face: BoundaryFace,
+    /// Water elevation in metres, using the domain vertical datum.
+    pub elevation: f64,
+    /// Incoming velocity along the positive other coordinate, in m/s.
+    ///
+    /// X faces use positive y. Y faces use positive x. Reversed inflow requires this value.
+    pub inflow_tangential_velocity: Option<f64>,
+}
+
+/// Prescribed outward numerical water rate with a compatible wet-subcritical trace.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DischargeBoundary {
+    /// Exterior face receiving this condition.
+    pub face: BoundaryFace,
+    /// Signed outward water rate in m³/s. Negative enters the domain.
+    pub outward_rate: f64,
+    /// Incoming velocity along the positive other coordinate, in m/s.
+    pub inflow_tangential_velocity: Option<f64>,
+}
+
+/// Physical data on one declared open face during a forcing interval.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BoundaryForcing {
+    /// Source-complete full flux with provider-attested signal bounds.
+    Flux(FluxPort),
+    /// Elevation determines a compatible wet-subcritical boundary trace.
+    Stage(StageBoundary),
+    /// Water rate determines a compatible wet-subcritical boundary trace.
+    Discharge(DischargeBoundary),
+}
+
+impl BoundaryForcing {
+    /// Returns the exterior face receiving this condition.
+    pub fn face(&self) -> BoundaryFace {
+        match self {
+            Self::Flux(value) => value.face,
+            Self::Stage(value) => value.face,
+            Self::Discharge(value) => value.face,
+        }
+    }
+}
+
+impl From<FluxPort> for BoundaryForcing {
+    fn from(value: FluxPort) -> Self {
+        Self::Flux(value)
+    }
+}
+
+/// Immutable assignment of genuine walls and declared exterior open faces.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BoundaryConditions {
-    ports: Vec<BoundaryFace>,
+    open_faces: Vec<BoundaryFace>,
 }
 
 impl BoundaryConditions {
@@ -53,16 +105,21 @@ impl BoundaryConditions {
     ///
     /// Never use this constructor to replace an unknown outlet or missing terrain.
     pub fn impermeable_walls() -> Self {
-        Self { ports: Vec::new() }
+        Self {
+            open_faces: Vec::new(),
+        }
     }
 
-    /// Declares named exterior ports. All remaining boundaries are genuine impermeable walls.
+    /// Declares named exterior open faces. All remaining boundaries are genuine impermeable walls.
     ///
     /// # Errors
     /// Rejects duplicate faces, interior faces, and faces adjoining inactive cells.
-    pub fn with_ports(domain: &Domain, ports: Vec<BoundaryFace>) -> Result<Self, EngineError> {
+    pub fn with_open_faces(
+        domain: &Domain,
+        open_faces: Vec<BoundaryFace>,
+    ) -> Result<Self, EngineError> {
         let mut seen = BTreeSet::new();
-        for face in &ports {
+        for face in &open_faces {
             exterior_cell(domain, *face)?;
             if !seen.insert(*face) {
                 return Err(EngineError::rejected(
@@ -71,12 +128,12 @@ impl BoundaryConditions {
                 ));
             }
         }
-        Ok(Self { ports })
+        Ok(Self { open_faces })
     }
 
-    /// Returns the required port faces. Every forcing interval must supply each face once.
-    pub fn ports(&self) -> &[BoundaryFace] {
-        &self.ports
+    /// Returns the required open faces. Every forcing interval must supply each face once.
+    pub fn open_faces(&self) -> &[BoundaryFace] {
+        &self.open_faces
     }
 }
 

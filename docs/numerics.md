@@ -18,7 +18,7 @@ hydr solves hydrostatic, depth-averaged shallow-water equations for hydraulic ap
 1. Integrate interval-constant vertical rainfall with zero horizontal momentum.
 2. Apply prescribed land withdrawals with proportional donor momentum.
 3. Reconstruct each face against the higher adjoining bed.
-4. Calculate one complete HLL flux using conservative normal wave bounds.
+4. Calculate shared HLL fluxes and admitted physical boundary traces using conservative normal wave bounds.
 5. Apply side-specific hydrostatic pressure corrections once, without a centred bed source.
 6. Bound the interval by combined directional CFL and every proposed outgoing face/port rate.
 7. Recalculate from accepted tensors whenever the interval shortens.
@@ -57,6 +57,15 @@ Hydr requests a relative tolerance capped at `1e-12` and an absolute tolerance o
 These stricter tolerances remain within the configured absolute/relative depth ceiling.
 Wave endpoints receive outward padding of `16*f64::EPSILON` times the local speed scale.
 This padding is no interval-arithmetic proof. Extreme unrepresentable arithmetic returns an error.
+
+## Physical boundary traces
+
+Wet-subcritical stage and discharge boundaries connect the interior to a compatible one-wave trace.
+The trace contributes its complete physical flux directly, with normal pressure once.
+Discharge traces conserve the requested numerical discharge and recalculate all momentum components from the same state.
+Passing their state through another HLL calculation would change the prescribed mass flux.
+The solver checks both discharge and local velocity compatibility after root refinement.
+Read [the boundary contract](boundaries.md) for admissibility, critical margins, units, and unsupported regimes.
 
 ## Stability, positivity, and accounting
 

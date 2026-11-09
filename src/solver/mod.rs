@@ -12,10 +12,13 @@ mod output;
 mod snapshot;
 mod stepping;
 
-pub use accounting::{StepDiagnostics, WaterLedger};
-pub use boundary::{Axis, BoundaryConditions, BoundaryFace, FluxPort};
+pub use accounting::{BoundaryTraceDiagnostics, StepDiagnostics, WaterLedger};
+pub use boundary::{
+    Axis, BoundaryConditions, BoundaryFace, BoundaryForcing, DischargeBoundary, FluxPort,
+    StageBoundary,
+};
 pub use capabilities::{CONTRACT_VERSION, Capabilities, capabilities};
-pub use config::SolverConfig;
+pub use config::{BoundaryTolerances, SolverConfig};
 pub use engine::{AdvanceReport, AdvanceStatus, Solver};
 pub use error::EngineError;
 pub use forcing::{ForcingInterval, ForcingSchedule};

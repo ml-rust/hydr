@@ -1,5 +1,5 @@
 use super::engine::Definition;
-use super::{BoundaryConditions, ForcingSchedule, SolverConfig};
+use super::{BoundaryConditions, BoundaryForcing, ForcingSchedule, SolverConfig};
 use crate::model::Domain;
 
 impl Definition {
@@ -38,22 +38,11 @@ impl Definition {
                 same_bits(&[left.start, left.end], &[right.start, right.end])
                     && same_bits(&left.rain, &right.rain)
                     && same_bits(&left.withdrawal, &right.withdrawal)
-                    && left.ports.iter().zip(&right.ports).all(|(left, right)| {
-                        same_bits(
-                            &[
-                                left.water_rate,
-                                left.momentum_rate[0],
-                                left.momentum_rate[1],
-                                left.signal_speed,
-                            ],
-                            &[
-                                right.water_rate,
-                                right.momentum_rate[0],
-                                right.momentum_rate[1],
-                                right.signal_speed,
-                            ],
-                        )
-                    })
+                    && left
+                        .boundaries
+                        .iter()
+                        .zip(&right.boundaries)
+                        .all(|(left, right)| boundary_bits(left, right))
             })
     }
 }
@@ -66,7 +55,7 @@ fn same_bits(left: &[f64], right: &[f64]) -> bool {
             .all(|(left, right)| left.to_bits() == right.to_bits())
 }
 
-fn controls(config: &SolverConfig) -> [f64; 9] {
+fn controls(config: &SolverConfig) -> [f64; 13] {
     [
         config.gravity,
         config.cfl,
@@ -77,5 +66,48 @@ fn controls(config: &SolverConfig) -> [f64; 9] {
         config.volume_absolute,
         config.volume_relative,
         config.momentum_film_depth,
+        config.boundary.discharge_absolute,
+        config.boundary.discharge_relative,
+        config.boundary.characteristic_relative,
+        config.boundary.critical_relative,
     ]
+}
+
+fn boundary_bits(left: &BoundaryForcing, right: &BoundaryForcing) -> bool {
+    let optional = |left: Option<f64>, right: Option<f64>| match (left, right) {
+        (Some(left), Some(right)) => left.to_bits() == right.to_bits(),
+        (None, None) => true,
+        _ => false,
+    };
+    match (left, right) {
+        (BoundaryForcing::Flux(left), BoundaryForcing::Flux(right)) => same_bits(
+            &[
+                left.water_rate,
+                left.momentum_rate[0],
+                left.momentum_rate[1],
+                left.signal_speed,
+            ],
+            &[
+                right.water_rate,
+                right.momentum_rate[0],
+                right.momentum_rate[1],
+                right.signal_speed,
+            ],
+        ),
+        (BoundaryForcing::Stage(left), BoundaryForcing::Stage(right)) => {
+            left.elevation.to_bits() == right.elevation.to_bits()
+                && optional(
+                    left.inflow_tangential_velocity,
+                    right.inflow_tangential_velocity,
+                )
+        }
+        (BoundaryForcing::Discharge(left), BoundaryForcing::Discharge(right)) => {
+            left.outward_rate.to_bits() == right.outward_rate.to_bits()
+                && optional(
+                    left.inflow_tangential_velocity,
+                    right.inflow_tangential_velocity,
+                )
+        }
+        _ => false,
+    }
 }

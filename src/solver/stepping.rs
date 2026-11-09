@@ -79,7 +79,15 @@ impl Solver {
             };
             self.finite(&trial.qx, "post-source qx")?;
             self.finite(&trial.qy, "post-source qy")?;
-            let flux = transport::calculate(&self.cpu, &trial, source, config, area)?;
+            let flux = match transport::calculate(&self.cpu, &trial, source, config, area) {
+                Ok(flux) => flux,
+                Err(error @ EngineError::Boundary { .. }) => {
+                    last_reason = error.to_string();
+                    dt *= 0.5;
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
             let (dx, dy) = self.domain().grid().spacing();
             let frequency = flux.speeds[0] / dx + flux.speeds[1] / dy;
             if !frequency.is_finite() {
@@ -168,8 +176,8 @@ impl Solver {
             let storage_after = self.total(&client.mul_scalar(&next.h, area)?)?;
             let rain_volume = self.total(&client.mul_scalar(&rain, area)?)?;
             let withdrawal_volume = self.total(&client.mul_scalar(&loss, area)?)?;
-            let boundary_in = source.boundary_in_rate * dt;
-            let boundary_out = source.boundary_out_rate * dt;
+            let boundary_in = flux.boundary_in_rate * dt;
+            let boundary_out = flux.boundary_out_rate * dt;
             let residual = (storage_after - storage_before)
                 - (rain_volume - withdrawal_volume + boundary_in - boundary_out);
             let scale = storage_before
@@ -222,6 +230,10 @@ impl Solver {
                 max_local_residual,
                 momentum_removed,
                 faces: flux.results(&self.cpu, dt)?,
+                boundary_traces: match &flux.boundary_trace {
+                    Some(trace) => source.characteristic.results(&self.cpu, trace)?,
+                    None => Vec::new(),
+                },
             };
             let ledger = self.ledger().accepted(&diagnostics)?;
             let cumulative_scale = ledger
@@ -367,7 +379,7 @@ mod tests {
                 end: 1.0,
                 rain: vec![0.0],
                 withdrawal: vec![0.0],
-                ports: vec![],
+                boundaries: vec![],
             }],
         )?;
         let solver = Solver::new(domain, state, walls, forcing, SolverConfig::default(), 0.0)?;

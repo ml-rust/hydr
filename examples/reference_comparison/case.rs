@@ -96,7 +96,7 @@ pub(super) fn simulate(case: Case, cells: usize) -> Result<Solver> {
             end: END + 1.0,
             rain: vec![0.0; cells],
             withdrawal: vec![0.0; cells],
-            ports: vec![],
+            boundaries: vec![],
         }],
     )?;
     let mut solver = Solver::new(

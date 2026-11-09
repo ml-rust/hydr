@@ -1,5 +1,6 @@
 //! Typed checkpoint packages and checked accepted-state import.
 
+mod boundary;
 mod check;
 mod package;
 

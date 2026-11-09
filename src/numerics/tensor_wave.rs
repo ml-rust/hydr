@@ -69,7 +69,7 @@ pub(super) fn bounds(
     Ok((sl, sr))
 }
 
-fn shock_speed(
+pub(super) fn shock_speed(
     client: &CpuClient,
     upper: &CpuTensor,
     h: &CpuTensor,
@@ -87,7 +87,7 @@ fn shock_speed(
     Ok(speed)
 }
 
-fn curve(
+pub(super) fn curve(
     client: &CpuClient,
     h: &CpuTensor,
     reference: &CpuTensor,

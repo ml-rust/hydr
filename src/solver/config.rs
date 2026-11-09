@@ -1,5 +1,29 @@
 use super::EngineError;
 
+/// Numerical tolerances for compatible physical boundary traces.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BoundaryTolerances {
+    /// Absolute discharge compatibility tolerance in m²/s.
+    pub discharge_absolute: f64,
+    /// Relative discharge compatibility tolerance.
+    pub discharge_relative: f64,
+    /// Relative velocity compatibility tolerance on the local characteristic scale.
+    pub characteristic_relative: f64,
+    /// Relative speed and endpoint-rate margins separating an admitted trace from critical flow.
+    pub critical_relative: f64,
+}
+
+impl Default for BoundaryTolerances {
+    fn default() -> Self {
+        Self {
+            discharge_absolute: 1e-12,
+            discharge_relative: 1e-12,
+            characteristic_relative: 1e-12,
+            critical_relative: 64.0 * f64::EPSILON,
+        }
+    }
+}
+
 /// Dimensional numerical controls, independent of physical flood thresholds.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SolverConfig {
@@ -25,6 +49,8 @@ pub struct SolverConfig {
     pub volume_relative: f64,
     /// Momentum resets below this depth in metres. Positive water remains stored.
     pub momentum_film_depth: f64,
+    /// Compatibility and regime margins for physical boundary traces.
+    pub boundary: BoundaryTolerances,
 }
 
 impl Default for SolverConfig {
@@ -41,6 +67,7 @@ impl Default for SolverConfig {
             volume_absolute: 1e-9,
             volume_relative: 1e-12,
             momentum_film_depth: 0.0,
+            boundary: BoundaryTolerances::default(),
         }
     }
 }
@@ -77,6 +104,25 @@ impl SolverConfig {
                     "{self:?}: require CFL <=0.45, min_step <=max_step, positive iteration limits, and a finite nonnegative film depth"
                 ),
             ));
+        }
+        for (name, value) in [
+            ("discharge_absolute", self.boundary.discharge_absolute),
+            ("discharge_relative", self.boundary.discharge_relative),
+            (
+                "characteristic_relative",
+                self.boundary.characteristic_relative,
+            ),
+            ("critical_relative", self.boundary.critical_relative),
+        ] {
+            if !value.is_finite() || value <= 0.0 || (name != "discharge_absolute" && value >= 1.0)
+            {
+                return Err(EngineError::rejected(
+                    "config",
+                    format!(
+                        "boundary {name}={value}: supply a finite positive tolerance with relative values below one"
+                    ),
+                ));
+            }
         }
         Ok(())
     }

@@ -26,7 +26,7 @@ fn create(film: f64, rain: f64) -> Result<Solver, Box<dyn std::error::Error>> {
             end: 1.0,
             rain: vec![rain],
             withdrawal: vec![0.0],
-            ports: vec![],
+            boundaries: vec![],
         }],
     )?;
     Ok(Solver::new(

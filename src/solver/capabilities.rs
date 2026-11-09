@@ -43,6 +43,8 @@ pub fn capabilities() -> Capabilities {
         boundaries: &[
             "explicit genuine impermeable walls",
             "source-complete compatible constant-rate flux ports including pressure and conservative wave bounds",
+            "wet-subcritical compatible stage traces with incoming tangent data",
+            "wet-subcritical prescribed numerical discharge traces with incoming tangent data",
         ],
         structures: &[],
         outputs: &[
@@ -52,11 +54,12 @@ pub fn capabilities() -> Capabilities {
             "explicit dry/unsupported status",
             "accepted interval face fluxes and volumes",
             "component water ledger and momentum-reset diagnostics",
+            "accepted physical boundary traces and compatibility residuals",
             "complete versioned continuation packages",
         ],
-        assessment: "selected synthetic analytical, conservation, refinement, and restart checks; established-engine and field comparisons remain unestablished",
+        assessment: "selected synthetic analytical, conservation, refinement, restart, and flat wet/dry Clawpack comparisons; application accuracy remains unestablished",
         unsupported: &[
-            "characteristic stage/discharge outlets",
+            "dry, critical, and supercritical characteristic boundaries or exterior-state reservoir closures",
             "soil infiltration/recovery models",
             "hydrology",
             "structures",

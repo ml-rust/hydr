@@ -69,7 +69,7 @@ fn radial_moving_shoreline_error_decreases_under_refinement()
                 end: 1.0,
                 rain: vec![0.0; n * n],
                 withdrawal: vec![0.0; n * n],
-                ports: vec![],
+                boundaries: vec![],
             }],
         )?;
         let mut solver = Solver::new(

@@ -12,6 +12,9 @@ pub(crate) struct CpuTransport {
     pub flux: [CpuTensor; 3],
     pub pressures: [CpuTensor; 2],
     pub speeds: [f64; 2],
+    pub boundary_in_rate: f64,
+    pub boundary_out_rate: f64,
+    pub boundary_trace: Option<super::boundary::CpuBoundaryTrace>,
 }
 
 pub(crate) fn calculate(
@@ -30,7 +33,7 @@ pub(crate) fn calculate(
         let normal = client.where_cond(&topology.x_mask, &qx, &qy)?;
         let tangent = client.where_cond(&topology.x_mask, &qy, &qx)?;
         let sign = client.where_cond(
-            &source.port_mask,
+            &source.open_mask,
             &client.add_scalar(&client.mul_scalar(sign, 0.0)?, 1.0)?,
             sign,
         )?;
@@ -84,17 +87,31 @@ pub(crate) fn calculate(
             Ok(result) => result,
             Err(error) => return Err(face_error(cpu, (&left, &right), config, error)?),
         };
-    let pressure_left = client.where_cond(&source.port_mask, &zero_face, &result.left_pressure)?;
+    let pressure_left = client.where_cond(&source.open_mask, &zero_face, &result.left_pressure)?;
     let pressure_right =
-        client.where_cond(&source.port_mask, &zero_face, &result.right_pressure)?;
+        client.where_cond(&source.open_mask, &zero_face, &result.right_pressure)?;
     let normal_flux = client.where_cond(&topology.x_mask, &result.shared[1], &result.shared[2])?;
     let tangent_flux = client.where_cond(&topology.x_mask, &result.shared[2], &result.shared[1])?;
-    let flux = [
+    let mut flux = [
         client.where_cond(&source.port_mask, &source.port_flux[0], &result.shared[0])?,
         client.where_cond(&source.port_mask, &source.port_flux[1], &normal_flux)?,
         client.where_cond(&source.port_mask, &source.port_flux[2], &tangent_flux)?,
     ];
-    let speed = client.where_cond(&source.port_mask, &source.port_speed, &result.speed)?;
+    let mut speed = client.where_cond(&source.port_mask, &source.port_speed, &result.speed)?;
+    let boundary_trace = source.characteristic.calculate(cpu, state, config)?;
+    if let Some(trace) = &boundary_trace {
+        let (physical_flux, physical_speed) = source
+            .characteristic
+            .override_flux(cpu, trace, &zero_face)?;
+        for component in 0..3 {
+            flux[component] = client.where_cond(
+                &source.trace_mask,
+                &physical_flux[component],
+                &flux[component],
+            )?;
+        }
+        speed = client.where_cond(&source.trace_mask, &physical_speed, &speed)?;
+    }
     let y_mask = client.rsub_scalar(&topology.x_mask, 1.0)?;
     let speeds = [
         client
@@ -108,6 +125,17 @@ pub(crate) fn calculate(
         client.scatter_reduce(&cpu.zero, 0, ids, values, ScatterReduceOp::Sum, true)
     };
     let rate = client.mul(&flux[0], &topology.widths)?;
+    let exterior_rate = client.mul(&rate, &source.outward_sign)?;
+    let boundary_out_rate = client
+        .sum(&client.maximum(&exterior_rate, &zero_face)?, &[0], false)?
+        .item::<f64>()?;
+    let boundary_in_rate = client
+        .sum(
+            &client.maximum(&client.neg(&exterior_rate)?, &zero_face)?,
+            &[0],
+            false,
+        )?
+        .item::<f64>()?;
     let outgoing_left = client.mul(
         &client.maximum(&rate, &zero_face)?,
         &client.mul_scalar(&topology.left_sign, -1.0)?,
@@ -167,6 +195,9 @@ pub(crate) fn calculate(
         flux,
         pressures: [pressure_left, pressure_right],
         speeds,
+        boundary_in_rate,
+        boundary_out_rate,
+        boundary_trace,
     })
 }
 
