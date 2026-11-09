@@ -16,5 +16,6 @@ pub mod error;
 pub mod grid;
 pub mod model;
 mod numerics;
+pub mod runoff;
 pub mod soil;
 pub mod solver;

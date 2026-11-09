@@ -2,7 +2,7 @@
 
 use super::CpuTensor;
 use crate::soil::{ModifiedGreenAmptParameters, NativeSoilState, SoilError};
-use numr::ops::{BinaryOps, CompareOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps};
+use numr::ops::{BinaryOps, CompareOps, ReduceOps, TypeConversionOps, UnaryOps};
 use numr::runtime::cpu::{CpuClient, CpuDevice, ParallelismConfig};
 
 #[derive(Debug)]
@@ -53,29 +53,8 @@ impl CpuSoilContext {
     }
 
     fn check_arithmetic_environment(&self) -> Result<(), SoilError> {
-        // Probe configured tensor operations. Host constant folding cannot satisfy these checks.
-        let c = &self.client;
-        let half_ulp = self.tensor(&[f64::EPSILON / 2.0])?;
-        let even = c.add(&self.tensor(&[1.0])?, &half_ulp)?.item::<f64>()?;
-        let odd = c
-            .add(
-                &self.tensor(&[f64::from_bits(1.0f64.to_bits() + 1)])?,
-                &half_ulp,
-            )?
-            .item::<f64>()?;
-        let quantum = self.tensor(&[f64::from_bits(1)])?;
-        let subnormal_input = c.add(&quantum, &quantum)?.item::<f64>()?;
-        let subnormal_output = c
-            .mul_scalar(&self.tensor(&[f64::MIN_POSITIVE])?, 0.5)?
-            .item::<f64>()?;
-        if even.to_bits() != 1.0f64.to_bits()
-            || odd.to_bits() != 1.0f64.to_bits() + 2
-            || subnormal_input.to_bits() != 2
-            || subnormal_output.to_bits() != (1u64 << 51)
-        {
-            return Err(SoilError::input(format!(
-                "unsupported CPU arithmetic: even_tie={even:?}, odd_tie={odd:?}, subnormal_input={subnormal_input:?}, subnormal_output={subnormal_output:?}. Select round-to-nearest ties-to-even and disable FTZ/DAZ before creating the soil context"
-            )));
+        if let Some(error) = super::arithmetic::probe_f64(&self.client, self.zero.device())? {
+            return Err(SoilError::input(error.message("soil")));
         }
         Ok(())
     }

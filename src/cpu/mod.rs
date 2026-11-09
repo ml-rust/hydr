@@ -1,9 +1,11 @@
 //! Cached CPU tensors and Cartesian face execution.
 
+mod arithmetic;
 mod boundary;
 mod exterior;
 pub(crate) mod land;
 pub(crate) mod land_sources;
+pub(crate) mod reservoir_storage;
 pub(crate) mod soil_storage;
 mod storage;
 mod topology;

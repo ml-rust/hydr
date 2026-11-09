@@ -50,6 +50,8 @@ Read the [numerical contract](docs/numerics.md), [integration contract](docs/int
 
 The standalone [soil component](docs/soil.md) retains native memory. The [land-source contract](docs/land-sources.md) defines atomic hydraulic integration and correction budgets.
 
+A standalone [conservative reservoir](docs/reservoir.md) retains explicit storage and interval export. Reservoir routing and hydraulic attachment remain unsupported.
+
 ## References
 
 - [Hydroflux](https://github.com/franciscoparrao/hydroflux): Rust shallow-water implementation reference.
