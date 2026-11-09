@@ -5,9 +5,11 @@ use super::{
     SuppressedRectangularWeirParameters,
 };
 
-/// Only the two explicitly admitted physical closures.
+/// Explicitly admitted physical closures with separate applicability declarations.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StructureLaw {
+    /// Thin hydrostatic rectangular aperture with an explicit instantaneous opening.
+    HydrostaticRectangularGate(super::GateParameters),
     /// Explicit oriented reference pump curve with declared speed/applicability policy.
     Pump(super::PumpParameters),
     /// Both supported wet stages must lie strictly above the declared opening crown.

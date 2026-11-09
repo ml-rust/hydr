@@ -2,7 +2,9 @@
 
 pub(crate) mod codes;
 mod context;
+pub(crate) mod gate;
 mod input;
+mod operations;
 mod proposal;
 pub(crate) mod pump;
 

@@ -42,7 +42,9 @@ Grid spacing uses metres. Construction checks geometry without allocating cell s
 
 Scalar stage/discharge traces require wet-subcritical states. Other regimes require complete exterior data or an admitted transmissive policy.
 Atomic land sources integrate pinned Modified Green–Ampt soil, rain, capped evaporation, and prescribed withdrawal.
-Structures, networks, and coupled external components remain unsupported.
+
+Structure/network coupling and coupled external components remain unsupported. Standalone [structure laws](docs/structures.md) provide checked instantaneous proposals and held-head volumes.
+
 Impermeable walls cannot replace unknown outlets or missing terrain.
 Generic numerical operations belong in numr. Generic solving algorithms belong in solvr. Hydraulic equations and acceptance belong in hydr.
 See [Contributing](CONTRIBUTING.md) for development checks.

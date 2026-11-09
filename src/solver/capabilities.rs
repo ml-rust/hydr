@@ -18,7 +18,7 @@ pub struct Capabilities {
     pub sources: &'static [&'static str],
     /// Admitted boundaries.
     pub boundaries: &'static [&'static str],
-    /// Admitted hydraulic structures. Empty until their numerical gates pass.
+    /// Hydraulic structures attached to this solver. Standalone constitutive proposals are separate.
     pub structures: &'static [&'static str],
     /// Available physical outputs and numerical diagnostics.
     pub outputs: &'static [&'static str],
@@ -69,7 +69,7 @@ pub fn capabilities() -> Capabilities {
             "finite external reservoir or component coupling",
             "groundwater and finite subsurface reservoir coupling",
             "catchment hydrology beyond the declared rain, soil, evaporation, and withdrawal mechanisms",
-            "structures",
+            "structures attached to this solver",
             "networks and coupled exchanges",
             "subgrid terrain",
             "3D and nonhydrostatic flow",

@@ -22,10 +22,15 @@ impl StructureBatch {
     }
     /// Evaluate original supported heads without mutating definitions or earlier proposals.
     pub fn propose(&self, heads: &[StructureHeads]) -> Result<StructureProposal, StructureError> {
-        if self.context.pump.is_some() {
+        if self.context.elements.iter().any(|element| {
+            matches!(
+                element.law,
+                super::StructureLaw::Pump(_) | super::StructureLaw::HydrostaticRectangularGate(_)
+            )
+        }) {
             return Err(StructureError::input(
                 super::StructureInputErrorKind::OperatingPoint,
-                "pump operations are missing. Use propose_with_operations with explicit identity-bound operations",
+                "device operations are missing. Use propose_with_operations with explicit identity-bound operations",
             ));
         }
         let operations = self
@@ -38,7 +43,7 @@ impl StructureBatch {
             .collect::<Vec<_>>();
         self.propose_with_operations(heads, &operations)
     }
-    /// Evaluate complete identity-bound passive/pump operations without mutating earlier proposals.
+    /// Evaluate complete identity-bound device operations without mutating earlier proposals.
     pub fn propose_with_operations(
         &self,
         heads: &[StructureHeads],
@@ -47,6 +52,7 @@ impl StructureBatch {
         let input = CpuStructureInput::with_operations(&self.context, heads, operations)?;
         let passive = crate::numerics::structures::evaluate(&self.context, &input)?;
         let result = crate::numerics::structures::pump::evaluate(&self.context, &input, passive)?;
+        let result = crate::numerics::structures::gate::evaluate(&self.context, &input, result)?;
         Ok(StructureProposal::new(
             Arc::clone(&self.context),
             heads.to_vec(),

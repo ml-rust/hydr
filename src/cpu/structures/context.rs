@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 
 #[derive(Debug)]
 pub(crate) struct CpuStructureContext {
+    pub gate: Option<super::gate::CpuGateContext>,
     pub pump: Option<super::pump::CpuPumpContext>,
     pub elements: Vec<StructureElement>,
     pub client: CpuClient,
@@ -83,6 +84,18 @@ impl CpuStructureContext {
                 .at(index));
             }
             let symmetric = match &e.law {
+                StructureLaw::HydrostaticRectangularGate(parameters) => {
+                    orifice.push(0.0);
+                    weir.push(0.0);
+                    crown.push(0.0);
+                    crest.push(0.0);
+                    cd.push(1.0);
+                    area.push(1.0);
+                    cw.push(1.0);
+                    length.push(1.0);
+                    gravity.push(1.0);
+                    parameters.applicability().symmetric_reversal
+                }
                 StructureLaw::Pump(_) => {
                     orifice.push(0.0);
                     weir.push(0.0);
@@ -162,6 +175,7 @@ impl CpuStructureContext {
         let log_weir_scale =
             client.add(&client.log(&tensor(&cw)?)?, &client.log(&tensor(&length)?)?)?;
         let context = Self {
+            gate: super::gate::CpuGateContext::new(&elements, &client, &device)?,
             pump: super::pump::CpuPumpContext::new(&elements, &device)?,
             zero: tensor(&vec![0.0; n])?,
             orifice: tensor(&orifice)?,
@@ -186,6 +200,10 @@ impl CpuStructureContext {
             &context.log_two,
         ] {
             context.finite(value, "cached positive coefficient/geometry logarithm")?;
+        }
+        if let Some(gate) = &context.gate {
+            context.finite(&gate.log_scale, "cached gate coefficient/width logarithm")?;
+            context.finite(&gate.log_root_gravity, "cached gate gravity logarithm")?;
         }
         Ok(context)
     }

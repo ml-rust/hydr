@@ -8,6 +8,7 @@ use crate::structures::{
 
 #[derive(Debug)]
 pub(crate) struct CpuStructureInput {
+    pub gate: Option<super::gate::CpuGateInput>,
     pub pump: Option<super::pump::CpuPumpInput>,
     pub stage_a: CpuTensor,
     pub stage_b: CpuTensor,
@@ -22,7 +23,9 @@ impl CpuStructureInput {
         heads: &[StructureHeads],
         operations: &[crate::structures::StructureOperation],
     ) -> Result<Self, StructureError> {
-        let pump = super::pump::CpuPumpInput::new(context, operations)?;
+        let operations = super::operations::CheckedOperations::new(context, operations)?;
+        let pump = super::pump::CpuPumpInput::new(context, &operations)?;
+        let gate = super::gate::CpuGateInput::new(context, &operations)?;
         if heads.len() != context.elements.len() {
             return Err(StructureError::input(
                 StructureInputErrorKind::Identity,
@@ -59,8 +62,7 @@ impl CpuStructureInput {
                 )
                 .at(index));
             }
-            let isolated = operations[index].operating_point
-                == crate::structures::StructureOperatingPoint::PumpStoppedIsolated;
+            let isolated = operations.isolated(index);
             let (a, ba, wa) =
                 support(&input.endpoint_a.support, isolated).map_err(|e| e.at(index))?;
             let (b, bb, wb) =
@@ -73,6 +75,7 @@ impl CpuStructureInput {
             wet_b.push(wb);
         }
         Ok(Self {
+            gate,
             pump,
             stage_a: context.tensor(&stage_a)?,
             stage_b: context.tensor(&stage_b)?,

@@ -8,10 +8,11 @@ pub(super) fn rounding(
     context: &CpuStructureContext,
     value: &CpuTensor,
 ) -> Result<CpuTensor, StructureError> {
-    let bound =
-        crate::numerics::subcatchment::bounds::rounding_with_client(&context.client, value)?;
-    context.finite(&bound, "pump normalization uncertainty bound overflows")?;
-    Ok(bound)
+    super::super::bounds::rounding(
+        context,
+        value,
+        "pump normalization uncertainty bound overflows",
+    )
 }
 
 pub(super) fn add(
@@ -19,17 +20,12 @@ pub(super) fn add(
     a: &CpuTensor,
     b: &CpuTensor,
 ) -> Result<CpuTensor, StructureError> {
-    let c = &context.client;
-    let a_zero = c.eq(a, &context.zero)?;
-    let b_zero = c.eq(b, &context.zero)?;
-    let both = c.mul(&c.gt(a, &context.zero)?, &c.gt(b, &context.zero)?)?;
-    let sum = c.add(a, b)?;
-    context.finite(&sum, "pump normalization uncertainty bound overflows")?;
-    let used = c.where_cond(&both, &sum, &context.zero)?;
-    let padded = c.add(&used, &rounding(context, &used)?)?;
-    let bound = c.where_cond(&a_zero, b, &c.where_cond(&b_zero, a, &padded)?)?;
-    context.finite(&bound, "pump normalization uncertainty bound overflows")?;
-    Ok(bound)
+    super::super::bounds::add(
+        context,
+        a,
+        b,
+        "pump normalization uncertainty bound overflows",
+    )
 }
 
 pub(super) fn divide(
@@ -37,13 +33,12 @@ pub(super) fn divide(
     numerator: &CpuTensor,
     denominator: &CpuTensor,
 ) -> Result<CpuTensor, StructureError> {
-    let c = &context.client;
-    let quotient = c.div(numerator, denominator)?;
-    context.finite(&quotient, "pump normalization uncertainty bound overflows")?;
-    let padded = c.add(&quotient, &rounding(context, &quotient)?)?;
-    let bound = c.where_cond(&c.eq(numerator, &context.zero)?, &context.zero, &padded)?;
-    context.finite(&bound, "pump normalization uncertainty bound overflows")?;
-    Ok(bound)
+    super::super::bounds::divide(
+        context,
+        numerator,
+        denominator,
+        "pump normalization uncertainty bound overflows",
+    )
 }
 
 pub(super) fn interval(

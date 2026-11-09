@@ -35,6 +35,11 @@ pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, Struc
         .as_ref()
         .map(|r| super::pump::PumpOperandProjection::new(r, n))
         .transpose()?;
+    let gate = r
+        .gate
+        .as_ref()
+        .map(|result| super::gate::GateOperandProjection::new(result, n))
+        .transpose()?;
     (0..n)
         .map(|element| {
             let definition = &data.context.elements[element];
@@ -64,6 +69,19 @@ pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, Struc
                 ))
             } else if status == StructureStatus::Active {
                 Some(match regime {
+                    StructureRegime::FreeGateAperture
+                    | StructureRegime::MixedGateAperture
+                    | StructureRegime::SubmergedGateAperture => {
+                        let operands = gate.as_ref().ok_or_else(|| {
+                            StructureError::numerical(
+                                "evaluated gate output lacks geometry operands",
+                            )
+                            .at(element)
+                        })?;
+                        StructureHydraulicOperands::HydrostaticRectangularGate(
+                            operands.at(element, data.operations[element].operating_point)?,
+                        )
+                    }
                     StructureRegime::SubmergedOrifice => {
                         StructureHydraulicOperands::SubmergedOrifice {
                             head_gap_m: gap[element],
@@ -99,6 +117,9 @@ pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, Struc
                 element,
                 input: data.heads[element].clone(),
                 law: match &definition.law {
+                    StructureLaw::HydrostaticRectangularGate(_) => {
+                        StructureLawKind::HydrostaticRectangularGate
+                    }
                     StructureLaw::Pump(_) => StructureLawKind::Pump,
                     StructureLaw::SubmergedOrifice(_) => StructureLawKind::SubmergedOrifice,
                     StructureLaw::SuppressedRectangularWeir(_) => {
@@ -116,7 +137,17 @@ pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, Struc
         .collect()
 }
 fn regime(value: f64) -> Result<StructureRegime, StructureError> {
-    if value == codes::PUMP_CURVE {
+    if value == codes::GATE_CLOSED {
+        Ok(StructureRegime::GateClosed)
+    } else if value == codes::GATE_BELOW_SILL {
+        Ok(StructureRegime::GateBelowSill)
+    } else if value == codes::FREE_GATE {
+        Ok(StructureRegime::FreeGateAperture)
+    } else if value == codes::MIXED_GATE {
+        Ok(StructureRegime::MixedGateAperture)
+    } else if value == codes::SUBMERGED_GATE {
+        Ok(StructureRegime::SubmergedGateAperture)
+    } else if value == codes::PUMP_CURVE {
         Ok(StructureRegime::PumpCurve)
     } else if value == codes::PUMP_ISOLATED {
         Ok(StructureRegime::PumpIsolated)

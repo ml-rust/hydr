@@ -17,12 +17,13 @@ The example supplies every coefficient and applicability declaration explicitly.
 | `SubmergedOrifice` | Known wet stages strictly above the declared opening crown at both endpoints |
 | `SuppressedRectangularWeir` | Suppressed sharp-crested rectangular free/submerged overflow with the adopted Villemonte correction |
 | `Pump` | Supplied bounded reference curve with explicit fixed orientation, speed policy, and operation |
+| `HydrostaticRectangularGate` | Thin rectangular aperture between hydrostatic quiescent pools with an explicit held opening |
 
 Orifice parameters require positive finite area, dimensionless discharge coefficient, and gravity. Sill/crown elevations require finite values with crown above sill. Weir parameters require positive finite crest length and coefficient, plus finite crest elevation. The weir coefficient uses SI `m^(1/2)/s`.
 
 `OrificeApplicability` retains coefficient provenance and fully submerged applicability evidence. `WeirApplicability` separately retains coefficient provenance, free-nappe/approach assumptions, and correction applicability evidence. Nonempty declarations record the caller's physical claims. They establish no site-specific coefficient accuracy.
 
-The rectangular correction does not apply to contracted, broad-crested, ogee, or other crest geometries. Partial orifices, culverts, moving gates, and inferred blockage remain unsupported. Pump curves follow the separate operating contract below.
+The rectangular correction does not apply to contracted, broad-crested, ogee, or other crest geometries. General partial-orifice models, culverts, gate trajectories, and inferred blockage remain unsupported. Pump curves and hydrostatic gates follow separate operating contracts below.
 
 ## Exact identity and head support
 
@@ -33,8 +34,8 @@ Every `StructureElement` declares a unique structure ID, distinct ordered endpoi
 | Head support | Admission |
 | --- | --- |
 | `Wet { stage_m }` | Original finite water-surface elevation |
-| `Dry { bed_elevation_m }` | Known dry weir connection with finite bed at or below crest |
-| `Unknown` | Rejects influential support. Explicit stopped-isolated pumps retain unknown uninfluential heads |
+| `Dry { bed_elevation_m }` | Known finite dry bed, subject to the concrete law's connection restrictions |
+| `Unknown` | Rejects influential support. Explicit pump isolation and exact zero gate opening admit uninfluential unknown heads |
 
 Dry support never receives a fabricated physical water elevation. Wet-above-crest flow toward eligible dry support uses the free-overflow law. Both dry, or no wet donor above crest, returns below-crest zero.
 
@@ -52,7 +53,7 @@ Direction and regime use original supported heads. Rounded depth differences nev
 
 ## Stable numerical evaluation
 
-The laws use persistent F64 tensors on an explicitly configured one-thread numr CPU client. Coefficient/geometry sums of logarithms remain cached. No Solvr algorithm or copied generic numerical implementation enters these explicit laws.
+The laws use persistent F64 tensors on an explicitly configured one-thread numr CPU client. Coefficient/geometry sums of logarithms remain cached. Passive laws and gates use Numr operations directly. Pumps reuse Solvr interpolation.
 
 For an active fully submerged orifice:
 
@@ -137,8 +138,9 @@ There is no default speed, suction bound, curve, or operating point. A running d
 | `Passive` | Required for passive laws |
 | `PumpStoppedIsolated` | Exact zero with no evaluated hydraulic head operands |
 | `PumpRunning { speed_ratio }` | Explicit positive supported speed and checked curve query |
+| `GateOpening { opening_m }` | Finite original relative opening within the gate's declared inclusive range |
 
-The existing `propose(heads)` remains available for passive-only batches. Missing pump operations reject instead of assuming stopped or running. An operation cannot silently apply to a different structure or passive law.
+The existing `propose(heads)` remains available for passive-only batches. Missing pump or gate operations reject. Operation checks bind every packet to its exact identity and concrete law before any head-support waiver.
 
 Stopped isolation explicitly excludes forward siphoning and reverse flow. It allows unknown or dry support because those heads are uninfluential. Identity, datum, quiescent-stage convention, and malformed known-value checks remain mandatory. Energy-head packets reject even while isolated. No unknown head becomes a fabricated dry elevation.
 
@@ -185,6 +187,91 @@ The comparison checks original TwoSum head witnesses, transformed-head bounds/in
 
 Ordinary flow tolerance is `64*EPSILON*max(abs(reference),abs(output))`, without a unit floor. Exact binary analytical fixtures retain exact expected bits. This numerical evidence establishes no field accuracy, manufacturer-curve accuracy, efficiency, control behavior, or native SWMM parity.
 
+## Hydrostatic rectangular gates
+
+`StructureLaw::HydrostaticRectangularGate(GateParameters)` integrates local pressure-head discharge across a thin vertical rectangular aperture. The connection joins quiescent pools with hydrostatic pressure and negligible approach velocity.
+
+`GateParameters::new` requires explicit width, sill, maximum relative opening, discharge coefficient, gravity, and `GateApplicability`. Width, maximum opening, coefficient, and gravity require positive finite values. The sill requires a finite common-datum elevation. No width-times-opening or absolute maximum-crown representation requirement applies.
+
+`GateApplicability` retains coefficient provenance, hydrostatic/quiescent-pool evidence, complete-aperture connection evidence, and free/submerged coefficient applicability. A single supplied symmetric coefficient covers the declared opening and head envelope. Bidirectional flow requires explicit symmetric applicability. Nonempty evidence establishes no coefficient calibration or field accuracy.
+
+The closure extends the local orifice relation by integrating hydrostatic pressure differences. It establishes no general channel-sluice, vena-contracta, hydraulic-jump, energy-head, air-demand, or nonhydrostatic-jet model. EPA equivalent-weir branches and HEC gated-spillway transitions define different models. No numerical identity with those models is claimed.
+
+Each proposal supplies `GateOpening { opening_m }` within `[0,maximum_opening_m]`. The original opening remains authoritative. A rounded absolute crown minus sill never replaces it.
+
+An exact zero opening declares impermeable closure. Unknown heads become uninfluential only after identity, law, datum, convention, and malformed-known-value checks. No hydraulic operands appear for this closed branch. A positive opening requires known wet or dry support at both endpoints. Every known dry bed must lie at or below the sill, including before ideal flap blocking.
+
+Original wet stages determine direction. A supported wet endpoint above the sill supplies flow toward eligible known-dry support. Both dry endpoints or no wet donor above the sill give exact physical zero. Equal wet stages give exact zero. Positive supported proposals retain nominal direction when blocked by an ideal flap.
+
+Let `U` denote the original donor stage, `D` the wet receiver stage, `z` the sill, and `a` the original opening. Define `t=min(z+a,U)` and `m=min(t,max(z,D))` in exact geometry. For an eligible dry receiver, set `m=z` without inventing a stage.
+
+```text
+Qabs = Cd*width*sqrt(2*g) *
+       [(m-z)*sqrt(U-D) + (2/3)*((U-m)^(3/2)-(U-t)^(3/2))]
+```
+
+The submerged term is absent without wet receiver coverage above the sill. The free term is absent when the receiver covers the complete aperture. Fully submerged geometry reduces to the original opening times the square root of the direct original-stage gap.
+
+`StructureRegime` distinguishes `GateClosed`, `GateBelowSill`, `EqualHeads`, `FreeGateAperture`, `MixedGateAperture`, and `SubmergedGateAperture`. Active outputs carry `GateHydraulicOperands`. Physical-zero and flap-blocked outputs carry no evaluated hydraulic operands.
+
+## Checked gate geometry arithmetic
+
+Numr TwoSum retains the finite crown as `crownHigh+crownLow=sill+opening`. Original stages compare against that expansion. A positive crown overflow places every finite stage below the crown. Invalid overflow residuals never enter active arithmetic.
+
+Fully submerged height uses the original opening and direct stage gap. Unused sill-relative depths can overflow without rejecting this branch. Active required geometry must retain finite representation.
+
+For a full-height donor and partially submerged receiver, retain `(d,e)=TwoSum(D,-sill)`. Represent submerged height by `d` with independent error bound `abs(e)`. Compute the complementary free height through two witnessed subtractions:
+
+```text
+(v,r1) = TwoSum(opening,-d)
+(L,r2) = TwoSum(v,-e)
+freeHeightError >= abs(r1)+abs(r2)
+```
+
+The low receiver-depth component preserves a positive free strip when rounded `d` equals the opening. Partly wetted donors use the direct original `U-D` or `U-sill` difference. No subtraction of independently rounded relative depths decides this strip.
+
+The same witnessed subtraction sequence supplies upper free pressure head `B=U-(crownHigh+crownLow)`. Lower free head uses `A=fl(L+B)`. Its bound includes both input bounds and the addition witness. Original positive `L` remains a separate factor when absorbed into `A`.
+
+Each strictly positive active height or pressure head requires an outward relative error bound at most `64*EPSILON`. Exact-zero error bypasses bound division. This numerical admission has no absolute metre floor. Exact positive subnormal geometry remains eligible. Active overflow, unresolved positive geometry, and excess relative uncertainty reject.
+
+The represented strip sum supplies a closure discrepancy center and an independent uncertainty bound. Original length and target witnesses supply a separate physical allowance. Disjoint intervals reject. These receipts check arithmetic consistency alongside the relative operand restriction. They establish no universal final-flow accuracy bound and never modify physical lengths.
+
+The free pressure integral uses a stable positive form:
+
+```text
+r = B/A
+K = 1+r/(1+sqrt(r))
+Jfree = (2/3)*L*sqrt(A)*K
+```
+
+The represented ratio admits `[0,1]`. Rounded one preserves a positive thin strip through its independent `L` factor. The evaluator forms submerged and free strip logarithms separately. Numr `stack` and `logsumexp` combine them. An absent strip uses negative infinity. Only the final combined discharge is exponentiated.
+
+`GateHydraulicOperands` exposes the original opening, crown expansion, represented strip heights, active pressure heads, and independent bounds. An absent crown expansion identifies positive crown overflow. It also exposes the free ratio/factor, closure receipt, and final log discharge. Absent strip pressures remain undefined through optional getters. Closure bounds are diagnostic evidence, never water adjustments.
+
+Held-head volume proposals retain the same original opening throughout the interval. They establish no motion trajectory, actuator response, motion limit, control state, timer, or hysteresis behavior. Storage advancement, donor availability, and paired-volume acceptance remain separate mechanisms.
+
+## Gate numerical evidence
+
+Forty original-F64 cases freeze their inputs, categories, and tolerances before kernel execution. Independent references use an 800-digit direct pressure integral and exact rational geometry. The reference integral subtracts high-precision powers independently of the production formula.
+
+| Coverage | Result |
+| --- | --- |
+| Original cases | 34 successes, four numerical rejections, and two distinct support rejections |
+| Direction checks | All 80 forward/reversed rows match their frozen categories and applicable numerical gates |
+| Ordinary discharge | Maximum relative error `2.2204460375522126e-16`, below `128*EPSILON` |
+| Extreme discharge | Maximum relative error `3.706741754709129e-14`, below `1e-12` |
+| Positive subnormal | Two-ULP allowance with mandatory positive output |
+| Geometry receipts | Original-input lengths and pressures lie within their independent reported bounds |
+| Batch layouts | Widths 1, 31, 32, 33, 64, and 65, including mixed laws and exact rejection indices |
+| Additional checks | Sill/crown transitions, opening sweeps, repeated proposals, submerged-orifice overlap, and held-volume representation limits |
+
+```sh
+cargo test --test gate_laws
+cargo run --example gate_laws_reference
+```
+
+The observer includes original input bits, signed discharge, held volume, geometry witnesses, and closure receipts. Log-discharge error remains diagnostic because the frozen acceptance gates bound discharge. No universal pre-exponential log-error bound follows from those gates. Numerical agreement establishes no calibrated gate coefficient, field accuracy, control behavior, or accepted coupling.
+
 ## Errors and remaining mechanisms
 
 `StructureError` separates typed input categories, numerical representation errors, and runtime errors. Input categories distinguish definition, identity, datum, head convention, operating point, unknown support, unsupported regime, and nonfinite original data. Ordered element indices remain available without parsing diagnostic strings.
@@ -194,6 +281,7 @@ The component supplies no donor storage, outlet integration, storage snapshots, 
 ## Applicability references
 
 - [USBR submerged-orifice relation](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap09_05.html).
+- [USBR local orifice pressure-head relation](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap02_08.html).
 - [USBR suppressed sharp-crest and approach definitions](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap07_03.html).
 - [HEC rectangular-weir submergence correction](https://www.hec.usace.army.mil/confluence/rasdocs/ras1dtechref/7.0/modeling-gated-spillways-weirs-and-drop-structures/uncontrolled-overflow-weirs/submerged-weir-flow).
 - [USBR submerged-weir measurement limitations](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap07_15.html).

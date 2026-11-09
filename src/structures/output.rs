@@ -5,6 +5,8 @@ use super::{DirectionPolicy, FlowDirection, StructureHeads};
 /// Concrete evaluated constitutive model identity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StructureLawKind {
+    /// Hydrostatic pressure-strip integral across a thin rectangular aperture.
+    HydrostaticRectangularGate,
     /// Fixed-orientation bounded pump reference curve.
     Pump,
     /// Fully submerged opening.
@@ -15,6 +17,16 @@ pub enum StructureLawKind {
 /// Physical classification before ideal flap blocking.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StructureRegime {
+    /// Explicit zero opening isolates the endpoints without evaluating hydraulic heads.
+    GateClosed,
+    /// No supported wet donor lies above the gate sill.
+    GateBelowSill,
+    /// The wetted aperture carries only an atmospheric free strip.
+    FreeGateAperture,
+    /// The wetted aperture contains both submerged and atmospheric free strips.
+    MixedGateAperture,
+    /// Both wet heads cover the complete original opening.
+    SubmergedGateAperture,
     /// Evaluated supported running pump query, including declared zero-flow support.
     PumpCurve,
     /// Explicit stopped isolation makes hydraulic heads uninfluential.
@@ -49,6 +61,8 @@ pub enum StructureStatus {
 /// Original evaluated law operands, including running pump shutoff. Isolated branches expose no fabricated heads.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StructureHydraulicOperands {
+    /// Evaluated hydrostatic-aperture geometry and independent arithmetic witnesses.
+    HydrostaticRectangularGate(super::GateHydraulicOperands),
     /// Evaluated running/shutoff pump query and full normalization evidence.
     Pump(super::PumpHydraulicOperands),
     /// Fully submerged orifice differential-head operands.
@@ -84,7 +98,7 @@ pub enum StructureHydraulicOperands {
 /// Immutable instantaneous proposal. This quantity is never an accepted or availability-limited transfer.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StructureOutput {
-    /// Original passive or explicit pump operation, held during proposal evaluation.
+    /// Original passive or explicit device operation, held during proposal evaluation.
     pub operation: super::StructureOperatingPoint,
     /// Ordered element index.
     pub element: usize,
@@ -102,7 +116,7 @@ pub struct StructureOutput {
     pub proposed_direction: Option<FlowDirection>,
     /// Proposed signed discharge in m³/s. Positive means A to B.
     pub discharge_m3_per_s: f64,
-    /// Evaluated operands, including pump shutoff, absent for passive zeros, flap blocking, and pump isolation.
+    /// Evaluated operands, absent for physical zeros, flap blocking, and isolated operations.
     pub hydraulic_operands: Option<StructureHydraulicOperands>,
 }
 
