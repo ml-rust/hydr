@@ -2,6 +2,7 @@
 
 mod boundary;
 mod exterior;
+pub(crate) mod soil_storage;
 mod storage;
 mod topology;
 pub(crate) mod transport;

@@ -41,11 +41,13 @@ Grid spacing uses metres. Construction checks geometry without allocating cell s
 - Interface: A Rust library without a GUI or HEC-RAS runtime dependency.
 
 Scalar stage/discharge traces require wet-subcritical states. Other regimes require complete exterior data or an admitted transmissive policy.
-Soil, structures, networks, and coupled components remain unsupported.
+Surface integration of soil, structures, networks, and coupled components remains unsupported.
 Impermeable walls cannot replace unknown outlets or missing terrain.
 Generic numerical operations belong in numr. Generic solving algorithms belong in solvr. Hydraulic equations and acceptance belong in hydr.
 See [Contributing](CONTRIBUTING.md) for development checks.
 Read the [numerical contract](docs/numerics.md), [integration contract](docs/integration.md), [physical boundaries](docs/boundaries.md), and [acceptance coverage](docs/acceptance.md).
+
+The standalone [soil component](docs/soil.md) advances pinned Modified Green–Ampt memory using numr CPU tensors.
 
 ## References
 

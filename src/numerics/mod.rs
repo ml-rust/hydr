@@ -3,6 +3,7 @@
 mod boundary;
 #[cfg(test)]
 mod flux;
+pub(crate) mod soil;
 mod tensor_flux;
 mod tensor_types;
 mod tensor_wave;

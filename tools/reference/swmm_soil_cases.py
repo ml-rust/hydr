@@ -8,6 +8,20 @@ MODIFIED = 3
 ZERO = 1e-10
 PARAMETERS = (0.4, 1e-5, 0.3)
 
+# Input fixtures from the pinned EPA capacity-probe frozen plan, not expected outputs.
+# Entries retain original F2 arguments and the native-evidence incoming-rate target.
+CAPACITY_PROBES = (
+    ("F2_ts_below", 0.02, 1.0, 1e-5, 9.999999999999998, "0x1.0b630a91537a1p-11"),
+    ("F2_ts_equal", 0.02, 1.0, 1e-5, 10.0, "0x1.e16bbf5c509cdp-12"),
+    ("F2_ts_above", 0.02, 1.0, 1e-5, 10.000000000000002, "0x1.e16bbf5c509cbp-12"),
+    ("F2_front_below", 0.009999999999999998, 1.0, 1e-5, 1.0, "0x1.f979a30d0acc0p-11"),
+    ("F2_front_equal", 0.01, 1.0, 1e-5, 1.0, "0x1.f979a30d0b270p-11"),
+    ("F2_front_above", 0.010000000000000002, 1.0, 1e-5, 1.0, "0x1.08c3f3e0370d0p-10"),
+    ("F2_zero_c1", 0.1, 0.0, 1e-5, 60.0, "0x1.4f8b588e36911p-17"),
+    ("F2_newton", 0.1, 0.2, 1e-5, 60.0, "0x1.f458148155889p-16"),
+    ("F2_singular_fallback", 0.0, 1.0, 1e-5, 10.0, "0x1.4f8b588e368f1p-17"),
+)
+
 
 @dataclass(frozen=True)
 class Case:
@@ -159,12 +173,83 @@ def cases():
             Case("F2_zero_ks", root=(0.1, 0.2, 0.0, 60.0)),
         )
     )
+    for label, timer in neighbors(60.0):
+        result.append(
+            Case(
+                f"dry_timer_{label}",
+                state=(0.2, 0.01, 0.02, 0, timer),
+                steps=((60.0, 0.0, 0.0),),
+            )
+        )
+    for label, rate in neighbors(available):
+        if label != "equal":
+            result.append(
+                Case(
+                    f"saturated_supply_{label}",
+                    parameters=binary,
+                    state=(0.25, fs, fs, 1, 0.0),
+                    steps=((1.0, rate, 0.0),),
+                )
+            )
+    for label, factor in (("below", 0.5), ("above", 2.0)):
+        result.append(
+            Case(
+                f"ponding_zero_{label}",
+                state=(0.2, 0.01, 0.02, 0, 1000.0),
+                steps=((60.0, 0.0, factor * ZERO * 60.0),),
+            )
+        )
+    result.append(
+        Case(
+            "saturated_signed_fallback",
+            parameters=(0.005, 1e-5, 0.3),
+            state=(0.2, -0.01, 0.02, 1, 5.0),
+            steps=((60.0, 0.001, 0.0),),
+        )
+    )
+    for name, f1, c1, ks, ts, target in CAPACITY_PROBES:
+        for label, rate in neighbors(float.fromhex(target)):
+            result.append(
+                Case(
+                    f"capacity_{name}_{label}",
+                    parameters=(c1, ks, 1.0),
+                    state=(1.0, f1, 0.0, 1, 0.0),
+                    steps=((ts, rate, 0.0),),
+                )
+            )
     return result
 
 
 def check_case(case, outputs):
     """Check source-declared branch consequences without another infiltration solver."""
     final = outputs[-1]
+    if case.name.startswith("dry_timer_"):
+        reset = not case.name.endswith("above")
+        if (final["F"] == 0.0) != reset or (final["T"] <= 0.0) != reset:
+            raise ValueError(f"{case.name}: strict recovery timer branch differs")
+    if case.name.startswith("saturated_supply_"):
+        if final["Sat"] != float(case.name.endswith("above")):
+            raise ValueError(
+                f"{case.name}: strict saturated availability comparison differs"
+            )
+    if case.name.startswith("ponding_zero_"):
+        below = case.name.endswith("below")
+        if (final["rate"] == 0.0) != below or (final["F"] < outputs[0]["F"]) != below:
+            raise ValueError(
+                f"{case.name}: positive ponding effective-ZERO branch differs"
+            )
+    if case.name == "saturated_signed_fallback":
+        f1 = outputs[0]["F"]
+        expected_f2 = f1 + case.parameters[1] * case.steps[0][0]
+        expected_df = expected_f2 - f1
+        if (
+            final["F"] != f1 + expected_df
+            or final["rate"] != expected_df / case.steps[0][0]
+            or final["Sat"] != 1.0
+        ):
+            raise ValueError(
+                "saturated_signed_fallback: native signed-event fallback differs"
+            )
     if case.name in ("recovery_negative_F", "reachable_negative_F") and not (
         final["F"] < 0.0 < final["Fu"]
     ):
