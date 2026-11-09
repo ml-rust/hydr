@@ -9,6 +9,7 @@ pub(crate) mod level_pool;
 pub(crate) mod reservoir_storage;
 pub(crate) mod soil_storage;
 mod storage;
+pub(crate) mod structures;
 pub(crate) mod subcatchment;
 mod topology;
 pub(crate) mod transport;

@@ -20,3 +20,4 @@ pub mod runoff;
 pub mod soil;
 pub mod solver;
 pub mod storage;
+pub mod structures;

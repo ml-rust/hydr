@@ -1,0 +1,130 @@
+//! Explicit proposal projection without numerical host-state advancement.
+
+use super::proposal::ProposalData;
+use super::{
+    FlowDirection, StructureError, StructureHydraulicOperands, StructureLaw, StructureLawKind,
+    StructureOutput, StructureRegime, StructureStatus,
+};
+use crate::cpu::{CpuTensor, structures::codes};
+
+pub(super) fn read(tensor: &CpuTensor, n: usize) -> Result<Vec<f64>, StructureError> {
+    if tensor.shape() != [n] {
+        return Err(StructureError::numerical(format!(
+            "projection shape={:?}: require {n} ordered structure values",
+            tensor.shape()
+        )));
+    }
+    Ok(tensor.try_to_vec::<f64>()?)
+}
+
+pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, StructureError> {
+    let n = data.context.elements.len();
+    let r = &data.result;
+    let discharge = read(&r.discharge, n)?;
+    let regimes = read(&r.regime, n)?;
+    let statuses = read(&r.status, n)?;
+    let directions = read(&r.direction, n)?;
+    let gap = read(&r.head_gap, n)?;
+    let hu = read(&r.upstream_head, n)?;
+    let hd = read(&r.downstream_head, n)?;
+    let ratio = read(&r.ratio, n)?;
+    let k = read(&r.correction_k, n)?;
+    let logarithm = read(&r.log_magnitude, n)?;
+    (0..n)
+        .map(|element| {
+            let definition = &data.context.elements[element];
+            let regime = regime(regimes[element]).map_err(|e| e.at(element))?;
+            let status = status(statuses[element]).map_err(|e| e.at(element))?;
+            let direction = if directions[element] == 1.0 {
+                Some(FlowDirection::AtoB)
+            } else if directions[element] == -1.0 {
+                Some(FlowDirection::BtoA)
+            } else if directions[element] == 0.0 {
+                None
+            } else {
+                return Err(
+                    StructureError::numerical("invalid internal proposal direction code")
+                        .at(element),
+                );
+            };
+            let hydraulic_operands = if status == StructureStatus::Active {
+                Some(match regime {
+                    StructureRegime::SubmergedOrifice => {
+                        StructureHydraulicOperands::SubmergedOrifice {
+                            head_gap_m: gap[element],
+                            log_discharge_magnitude: logarithm[element],
+                        }
+                    }
+                    StructureRegime::FreeWeirOverflow => StructureHydraulicOperands::FreeWeir {
+                        upstream_head_m: hu[element],
+                        log_discharge_magnitude: logarithm[element],
+                    },
+                    StructureRegime::SubmergedWeirOverflow => {
+                        StructureHydraulicOperands::SubmergedWeir {
+                            upstream_head_m: hu[element],
+                            downstream_head_m: hd[element],
+                            head_gap_m: gap[element],
+                            submergence_ratio: ratio[element],
+                            correction_k: k[element],
+                            log_discharge_magnitude: logarithm[element],
+                        }
+                    }
+                    _ => {
+                        return Err(StructureError::numerical(
+                            "physical-zero regime cannot carry active hydraulic operands",
+                        )
+                        .at(element));
+                    }
+                })
+            } else {
+                None
+            };
+            Ok(StructureOutput {
+                element,
+                input: data.heads[element].clone(),
+                law: match &definition.law {
+                    StructureLaw::SubmergedOrifice(_) => StructureLawKind::SubmergedOrifice,
+                    StructureLaw::SuppressedRectangularWeir(_) => {
+                        StructureLawKind::SuppressedRectangularWeir
+                    }
+                },
+                direction_policy: definition.direction,
+                regime,
+                status,
+                proposed_direction: direction,
+                discharge_m3_per_s: discharge[element],
+                hydraulic_operands,
+            })
+        })
+        .collect()
+}
+fn regime(value: f64) -> Result<StructureRegime, StructureError> {
+    if value == codes::ORIFICE {
+        Ok(StructureRegime::SubmergedOrifice)
+    } else if value == codes::FREE_WEIR {
+        Ok(StructureRegime::FreeWeirOverflow)
+    } else if value == codes::SUBMERGED_WEIR {
+        Ok(StructureRegime::SubmergedWeirOverflow)
+    } else if value == codes::BELOW_CREST {
+        Ok(StructureRegime::BelowCrest)
+    } else if value == codes::EQUAL_HEADS {
+        Ok(StructureRegime::EqualHeads)
+    } else {
+        Err(StructureError::numerical(
+            "invalid internal physical-regime code",
+        ))
+    }
+}
+fn status(value: f64) -> Result<StructureStatus, StructureError> {
+    if value == codes::ACTIVE {
+        Ok(StructureStatus::Active)
+    } else if value == codes::PHYSICAL_ZERO {
+        Ok(StructureStatus::PhysicalZero)
+    } else if value == codes::BLOCKED {
+        Ok(StructureStatus::FlapBlocked)
+    } else {
+        Err(StructureError::numerical(
+            "invalid internal proposal-status code",
+        ))
+    }
+}
