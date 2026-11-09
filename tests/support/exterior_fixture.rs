@@ -1,9 +1,13 @@
+#[path = "impervious.rs"]
+mod impervious;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{
     Axis, BoundaryConditions, BoundaryFace, BoundaryForcing, ExteriorBoundary, ExteriorState,
     ForcingInterval, ForcingSchedule, Solver, SolverConfig,
 };
+use impervious::impervious_solver;
 
 pub type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -16,6 +20,7 @@ pub fn interval(
     ForcingInterval {
         start,
         end,
+        potential_evaporation: vec![0.0; count],
         rain: vec![0.0; count],
         withdrawal: vec![0.0; count],
         boundaries,
@@ -67,9 +72,7 @@ pub fn create(
     let boundaries = BoundaryConditions::with_open_faces(&domain, faces)?;
     let forcing = ForcingSchedule::new(&domain, &boundaries, intervals)?;
     let state = FlowState::new(&domain, cells)?;
-    Ok(Solver::new(
-        domain, state, boundaries, forcing, config, 0.0,
-    )?)
+    impervious_solver(domain, state, boundaries, forcing, config, 0.0)
 }
 
 pub fn uniform(

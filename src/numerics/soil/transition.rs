@@ -6,13 +6,27 @@ use crate::cpu::soil_storage::{CpuSoilContext, CpuSoilState};
 use crate::soil::SoilError;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps};
 
+/// Actual source intermediates retained for surface admission, without recomputation.
+pub(crate) struct NativeTrace {
+    pub raw_availability_rate: CpuTensor,
+    pub crossing: CpuTensor,
+    pub saturated: CpuTensor,
+    pub difference: CpuTensor,
+    pub crossing_time: CpuTensor,
+    pub remaining_time_raw: CpuTensor,
+    pub crossing_product: CpuTensor,
+    pub crossing_limit: CpuTensor,
+    pub crossing_increment: CpuTensor,
+    pub supply_endpoint: CpuTensor,
+}
+
 pub(crate) fn advance(
     context: &CpuSoilContext,
     old: &CpuSoilState,
     dt: f64,
     rain: &CpuTensor,
     depth: &CpuTensor,
-) -> Result<(CpuSoilState, CpuTensor), SoilError> {
+) -> Result<(CpuSoilState, CpuTensor, NativeTrace), SoilError> {
     let c = &context.client;
     let zero = &context.zero;
     let one = &context.one;
@@ -60,18 +74,18 @@ pub(crate) fn advance(
     )?;
     let already = c.mul(&high, &c.gt(&old.f, &fs)?)?;
     let supply = c.mul_scalar(&ia, dt)?;
+    let supply_endpoint = c.add(&old.f, &supply)?;
     let remaining = c.mul(
         &high,
-        &c.mul(
-            &c.sub(one, &already)?,
-            &c.lt(&c.add(&old.f, &supply)?, &fs)?,
-        )?,
+        &c.mul(&c.sub(one, &already)?, &c.lt(&supply_endpoint, &fs)?)?,
     )?;
     let crossing = c.mul(&high, &c.sub(one, &c.maximum(&already, &remaining)?)?)?;
     let saturated = c.maximum(&saturation_wet, &already)?;
     let integrating = c.maximum(&crossing, &saturated)?;
     let crossing_ia = c.where_cond(&crossing, &ia, one)?;
-    let ts_raw = c.sub(&duration, &c.div(&c.sub(&fs, &old.f)?, &crossing_ia)?)?;
+    let difference = c.sub(&fs, &old.f)?;
+    let crossing_time = c.div(&difference, &crossing_ia)?;
+    let ts_raw = c.sub(&duration, &crossing_time)?;
     let ts = c.where_cond(&c.le(&ts_raw, zero)?, zero, &ts_raw)?;
     let ts = c.where_cond(&crossing, &ts, &duration)?;
     let f1 = c.where_cond(&crossing, &fs, &old.f)?;
@@ -79,7 +93,8 @@ pub(crate) fn advance(
     let coefficient = c.mul(&safe_sum, &old.imd)?;
     let f2 = integral(context, &f1, &coefficient, &ts, &integrating)?;
 
-    let crossing_limit = c.add(&fs, &c.mul(&ia, &ts)?)?;
+    let crossing_product = c.mul(&ia, &ts)?;
+    let crossing_limit = c.add(&fs, &crossing_product)?;
     let crossing_f2 = c.where_cond(&c.gt(&f2, &crossing_limit)?, &crossing_limit, &f2)?;
     let crossing_df = c.sub(&crossing_f2, &old.f)?;
     let saturated_df = c.sub(&f2, &old.f)?;
@@ -119,5 +134,20 @@ pub(crate) fn advance(
         &[("dt (s)", dt)],
         "Native interval rate is negative. Inspect state and input scales",
     )?;
-    Ok((next, rate))
+    Ok((
+        next,
+        rate,
+        NativeTrace {
+            raw_availability_rate: raw_ia,
+            crossing,
+            saturated,
+            difference,
+            crossing_time,
+            remaining_time_raw: ts_raw,
+            crossing_product,
+            crossing_limit,
+            crossing_increment: crossing_df,
+            supply_endpoint,
+        },
+    ))
 }

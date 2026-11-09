@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), EngineError> {
     let interval = data
+        .setup
         .forcing
         .at(step.start)
         .ok_or_else(|| rejected("boundary interval", "missing forcing coverage"))?;
@@ -53,8 +54,9 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
             "require exactly one witness for each declared transmissive face",
         ));
     }
-    let (dx, dy) = data.domain.grid().spacing();
+    let (dx, dy) = data.setup.domain.grid().spacing();
     let relative = data
+        .setup
         .config
         .boundary
         .characteristic_relative
@@ -128,9 +130,9 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
                     ));
                 }
                 boundary_speeds[axis] = boundary_speeds[axis].max(trace.signal_speed);
-                let c = data.config.gravity.sqrt() * trace.depth.sqrt();
-                let margin =
-                    data.config.boundary.critical_relative * trace.normal_velocity.abs().max(c);
+                let c = data.setup.config.gravity.sqrt() * trace.depth.sqrt();
+                let margin = data.setup.config.boundary.critical_relative
+                    * trace.normal_velocity.abs().max(c);
                 if trace.normal_velocity - c >= -margin
                     || trace.normal_velocity + c <= margin
                     || trace.signal_speed < trace.normal_velocity.abs() + c
@@ -143,7 +145,7 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
                     ));
                 }
                 if trace.characteristic_velocity_residual.abs()
-                    > data.config.boundary.characteristic_relative * 3.0 * c
+                    > data.setup.config.boundary.characteristic_relative * 3.0 * c
                 {
                     return Err(rejected(
                         "boundary compatibility",
@@ -155,8 +157,8 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
                 let incoming = match value {
                     BoundaryForcing::Stage(stage) => {
                         let cell =
-                            crate::solver::boundary::exterior_cell(&data.domain, stage.face)?;
-                        if trace.depth != stage.elevation - data.domain.bed()[cell]
+                            crate::solver::boundary::exterior_cell(&data.setup.domain, stage.face)?;
+                        if trace.depth != stage.elevation - data.setup.domain.bed()[cell]
                             || trace.discharge_residual_per_width != 0.0
                         {
                             return Err(rejected(
@@ -171,8 +173,8 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
                     BoundaryForcing::Discharge(discharge) => {
                         let target = discharge.outward_rate / width;
                         let achieved = trace.outward_water_rate / width;
-                        let tolerance = data.config.boundary.discharge_absolute
-                            + data.config.boundary.discharge_relative
+                        let tolerance = data.setup.config.boundary.discharge_absolute
+                            + data.setup.config.boundary.discharge_relative
                                 * target.abs().max(achieved.abs());
                         if (target - achieved).abs() > tolerance
                             || trace.discharge_residual_per_width.abs() > tolerance
@@ -211,7 +213,7 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
                     ));
                 }
                 let normal = q * trace.normal_velocity
-                    + 0.5 * data.config.gravity * trace.depth * trace.depth;
+                    + 0.5 * data.setup.config.gravity * trace.depth * trace.depth;
                 let tangent = sign * q * trace.tangential_velocity;
                 if face.face.axis == Axis::X {
                     [sign * q, normal, tangent]
@@ -225,7 +227,7 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
                     rejected("transmissive state", "missing accepted trial witness")
                 })?;
                 boundary_speeds[axis] = boundary_speeds[axis].max(face.signal_speed);
-                super::transmissive::flux(state, face, width, &data.config)?
+                super::transmissive::flux(state, face, width, &data.setup.config)?
             }
         };
         if face
@@ -249,7 +251,7 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
         ));
     }
     let necessary_limit = if frequency > 0.0 {
-        data.config.cfl / frequency
+        data.setup.config.cfl / frequency
     } else {
         f64::INFINITY
     };

@@ -1,11 +1,15 @@
 //! Wet-subcritical stage/discharge, orientation, accounting, and transactional boundary checks.
 
+#[path = "support/impervious.rs"]
+mod impervious;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{
     AdvanceStatus, Axis, BoundaryConditions, BoundaryFace, BoundaryForcing, DischargeBoundary,
     ForcingInterval, ForcingSchedule, Solver, SolverConfig, StageBoundary,
 };
+use impervious::impervious_solver;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -62,9 +66,7 @@ fn solver(
     let boundaries = BoundaryConditions::with_open_faces(&domain, faces)?;
     let forcing = ForcingSchedule::new(&domain, &boundaries, intervals)?;
     let state = FlowState::new(&domain, cells)?;
-    Ok(Solver::new(
-        domain, state, boundaries, forcing, config, 0.0,
-    )?)
+    impervious_solver(domain, state, boundaries, forcing, config, 0.0)
 }
 
 fn interval(
@@ -76,6 +78,7 @@ fn interval(
     ForcingInterval {
         start,
         end,
+        potential_evaporation: vec![0.0; count],
         rain: vec![0.0; count],
         withdrawal: vec![0.0; count],
         boundaries,
@@ -394,8 +397,15 @@ fn physical_boundary_restart_and_trace_import_remain_complete() -> TestResult {
     assert!(error.to_string().contains("boundary CFL"));
     assert_eq!(restored.snapshot(), accepted);
     let mut wrong_config = valid.clone();
-    wrong_config.config.boundary.discharge_absolute =
-        f64::from_bits(wrong_config.config.boundary.discharge_absolute.to_bits() + 1);
+    wrong_config.setup.config.boundary.discharge_absolute = f64::from_bits(
+        wrong_config
+            .setup
+            .config
+            .boundary
+            .discharge_absolute
+            .to_bits()
+            + 1,
+    );
     for altered in [wrong_rate, duplicate, wrong_config] {
         assert!(restored.restore_data(&altered).is_err());
         assert_eq!(restored.snapshot(), accepted);

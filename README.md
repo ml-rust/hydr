@@ -5,8 +5,8 @@ hydr advances two-dimensional shallow-water flow on numr's CPU runtime for hydra
 ## Status
 
 The first-order CPU `f64` reference implements checked domains and conservative time advancement.
-Supported inputs include terrain, roughness, initial depth/momentum, interval rain, prescribed land losses, walls, and source-complete flux ports.
-Physical boundaries include wet-subcritical stage/discharge traces, complete wet/dry exterior reservoir states, and admitted transmissive outflow.
+Inputs include terrain, roughness, initial depth/momentum, explicit land/soil memory, rain, potential evaporation, and prescribed withdrawal.
+Boundaries include walls, complete flux ports, wet-subcritical stage/discharge traces, complete wet/dry exterior reservoir states, and admitted transmissive outflow.
 Snapshots preserve complete numerical continuation state. Diagnostics expose accepted steps and component water budgets.
 Measured-event accuracy and agreement with HEC-RAS remain unestablished.
 The crate is unpublished. The existing Git remote remains `ml-rust/rivr`.
@@ -41,13 +41,14 @@ Grid spacing uses metres. Construction checks geometry without allocating cell s
 - Interface: A Rust library without a GUI or HEC-RAS runtime dependency.
 
 Scalar stage/discharge traces require wet-subcritical states. Other regimes require complete exterior data or an admitted transmissive policy.
-Surface integration of soil, structures, networks, and coupled components remains unsupported.
+Atomic land sources integrate pinned Modified Green–Ampt soil, rain, capped evaporation, and prescribed withdrawal.
+Structures, networks, and coupled external components remain unsupported.
 Impermeable walls cannot replace unknown outlets or missing terrain.
 Generic numerical operations belong in numr. Generic solving algorithms belong in solvr. Hydraulic equations and acceptance belong in hydr.
 See [Contributing](CONTRIBUTING.md) for development checks.
 Read the [numerical contract](docs/numerics.md), [integration contract](docs/integration.md), [physical boundaries](docs/boundaries.md), and [acceptance coverage](docs/acceptance.md).
 
-The standalone [soil component](docs/soil.md) advances pinned Modified Green–Ampt memory using numr CPU tensors.
+The standalone [soil component](docs/soil.md) retains native memory. The [land-source contract](docs/land-sources.md) defines atomic hydraulic integration and correction budgets.
 
 ## References
 

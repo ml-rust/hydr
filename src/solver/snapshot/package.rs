@@ -1,8 +1,5 @@
 use super::super::engine::{Accepted, Definition};
-use super::super::{
-    BoundaryConditions, ForcingSchedule, SolverConfig, StepDiagnostics, WaterLedger,
-};
-use crate::model::{Domain, FlowState};
+use super::super::{InitialState, SolverSetup, StepDiagnostics, WaterLedger};
 use std::sync::Arc;
 
 /// Typed checkpoint schema identity.
@@ -18,18 +15,10 @@ pub struct SnapshotData {
     pub schema: String,
     /// Numerical contract identity.
     pub contract: String,
-    /// Immutable domain and spatial metadata.
-    pub domain: Domain,
-    /// Declared walls and ports.
-    pub boundaries: BoundaryConditions,
-    /// Complete bounded forcing schedule.
-    pub forcing: ForcingSchedule,
-    /// Numerical controls.
-    pub config: SolverConfig,
-    /// Accepted elapsed time in seconds.
-    pub time: f64,
-    /// Accepted cell fields.
-    pub state: FlowState,
+    /// Complete immutable numerical definition, including land and forcing.
+    pub setup: SolverSetup,
+    /// Accepted elapsed time, hydraulic fields, and complete native soil memory.
+    pub accepted: InitialState,
     /// Cumulative water accounting.
     pub ledger: WaterLedger,
     /// Number of accepted steps.
@@ -56,12 +45,18 @@ impl Snapshot {
         SnapshotData {
             schema: SNAPSHOT_SCHEMA.into(),
             contract: self.contract.into(),
-            domain: self.definition.domain.clone(),
-            boundaries: self.definition.boundaries.clone(),
-            forcing: self.definition.forcing.clone(),
-            config: self.definition.config.clone(),
-            time: self.accepted.time,
-            state: self.accepted.state.clone(),
+            setup: SolverSetup {
+                domain: self.definition.domain.clone(),
+                land: self.definition.land.clone(),
+                boundaries: self.definition.boundaries.clone(),
+                forcing: self.definition.forcing.clone(),
+                config: self.definition.config.clone(),
+            },
+            accepted: InitialState {
+                time: self.accepted.time,
+                flow: self.accepted.state.clone(),
+                soil: self.accepted.soil.clone(),
+            },
             ledger: self.accepted.ledger.clone(),
             accepted_steps: self.accepted.steps,
             last_step: self.accepted.last.clone(),

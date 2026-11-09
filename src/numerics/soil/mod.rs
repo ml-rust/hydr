@@ -1,6 +1,7 @@
 //! Native Modified Green–Ampt state transitions and hydraulic integration.
 
 mod integration;
-mod transition;
+pub(crate) mod roundoff;
+pub(crate) mod transition;
 
 pub(crate) use transition::advance;

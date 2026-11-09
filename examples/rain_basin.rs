@@ -2,7 +2,11 @@
 
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
-use hydr::solver::{BoundaryConditions, ForcingInterval, ForcingSchedule, Solver, SolverConfig};
+use hydr::soil::{LandModel, SoilState};
+use hydr::solver::{
+    BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, Solver, SolverConfig,
+    SolverSetup,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let grid = CartesianGrid::new(8, 8, 2.0, 2.0)?;
@@ -27,18 +31,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         vec![ForcingInterval {
             start: 0.0,
             end: 60.0,
+            potential_evaporation: vec![0.0; count],
             rain: vec![1e-5; count],
             withdrawal: vec![0.0; count],
             boundaries: vec![],
         }],
     )?;
+    let land = LandModel::impervious(&domain);
+    let soil = SoilState::initialized(&land)?;
     let mut solver = Solver::new(
-        domain,
-        state,
-        boundaries,
-        forcing,
-        SolverConfig::default(),
-        0.0,
+        SolverSetup {
+            domain,
+            land,
+            boundaries,
+            forcing,
+            config: SolverConfig::default(),
+        },
+        InitialState {
+            time: 0.0,
+            flow: state,
+            soil,
+        },
     )?;
     let report = solver.advance_to(60.0, 10_000)?;
     println!(

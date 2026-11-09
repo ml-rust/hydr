@@ -12,18 +12,18 @@ use std::sync::Arc;
 /// Persistent native soil memory with an explicitly configured one-thread numr CPU client.
 #[derive(Debug, Clone)]
 pub struct ModifiedGreenAmptBatch {
-    context: Arc<CpuSoilContext>,
-    state: CpuSoilState,
+    pub(super) context: Arc<CpuSoilContext>,
+    pub(super) state: CpuSoilState,
 }
 
 /// Complete candidate state. Discarding it leaves the borrowed accepted batch unchanged.
 #[derive(Debug)]
 pub struct ModifiedGreenAmptTrial {
-    next: ModifiedGreenAmptBatch,
-    native_rate: CpuTensor,
-    native_depth: CpuTensor,
-    si_rate: CpuTensor,
-    si_depth: CpuTensor,
+    pub(super) next: ModifiedGreenAmptBatch,
+    pub(super) native_rate: CpuTensor,
+    pub(super) native_depth: CpuTensor,
+    pub(super) si_rate: CpuTensor,
+    pub(super) si_depth: CpuTensor,
 }
 
 impl ModifiedGreenAmptBatch {
@@ -112,7 +112,7 @@ impl ModifiedGreenAmptBatch {
         )
     }
 
-    fn check_inputs(&self, dt: f64, count: usize) -> Result<(), SoilError> {
+    pub(super) fn check_inputs(&self, dt: f64, count: usize) -> Result<(), SoilError> {
         if !dt.is_finite() || dt <= 0.0 || count != self.parameters().len() {
             return Err(SoilError::input(format!(
                 "dt={dt}, inputs={count}: require positive finite dt and {} cells",
@@ -128,9 +128,24 @@ impl ModifiedGreenAmptBatch {
         rain: CpuTensor,
         depth: CpuTensor,
     ) -> Result<ModifiedGreenAmptTrial, SoilError> {
+        self.compute_traced(dt, rain, depth).map(|(trial, _)| trial)
+    }
+
+    pub(super) fn compute_traced(
+        &self,
+        dt: f64,
+        rain: CpuTensor,
+        depth: CpuTensor,
+    ) -> Result<
+        (
+            ModifiedGreenAmptTrial,
+            crate::numerics::soil::transition::NativeTrace,
+        ),
+        SoilError,
+    > {
         self.context.finite(&rain, "native incoming rate (ft/s)")?;
         self.context.finite(&depth, "native ponded depth (ft)")?;
-        let (state, native_rate) =
+        let (state, native_rate, trace) =
             crate::numerics::soil::advance(&self.context, &self.state, dt, &rain, &depth)?;
         let c = &self.context.client;
         let native_depth = c.mul_scalar(&native_rate, dt)?;
@@ -151,16 +166,19 @@ impl ModifiedGreenAmptBatch {
                 "Positive infiltration became zero. Rescale the interval or parameters",
             )?;
         }
-        Ok(ModifiedGreenAmptTrial {
-            next: Self {
-                context: Arc::clone(&self.context),
-                state,
+        Ok((
+            ModifiedGreenAmptTrial {
+                next: Self {
+                    context: Arc::clone(&self.context),
+                    state,
+                },
+                native_rate,
+                native_depth,
+                si_rate,
+                si_depth,
             },
-            native_rate,
-            native_depth,
-            si_rate,
-            si_depth,
-        })
+            trace,
+        ))
     }
 }
 
@@ -203,7 +221,7 @@ fn check_input(index: usize, rate: f64, depth: f64) -> Result<(), SoilError> {
     if !rate.is_finite() || rate < 0.0 || !depth.is_finite() || depth < 0.0 {
         return Err(SoilError::input(format!(
             "cell={index}, rate={rate}, depth={depth}: require nonnegative finite incoming rate and ponding"
-        )));
+        )).at_cell(index));
     }
     Ok(())
 }

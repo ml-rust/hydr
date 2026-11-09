@@ -1,9 +1,10 @@
 use super::{SNAPSHOT_SCHEMA, SnapshotData};
 use crate::cpu::CpuState;
+use crate::cpu::land::{CpuLand, static_error};
 use crate::model::FlowState;
+use crate::soil::SoilState;
 use crate::solver::engine::Accepted;
 use crate::solver::{Axis, CONTRACT_VERSION, EngineError, Solver, StepDiagnostics};
-use numr::ops::{ReduceOps, ScalarOps};
 use std::collections::BTreeSet;
 
 impl Solver {
@@ -21,34 +22,36 @@ impl Solver {
             format!("schema={:?}, contract={:?}", data.schema, data.contract),
         )?;
         require(
-            definition.matches(&data.domain, &data.boundaries, &data.forcing, &data.config),
+            definition.matches(
+                &data.setup.domain,
+                &data.setup.land,
+                &data.setup.boundaries,
+                &data.setup.forcing,
+                &data.setup.config,
+            ),
             "definition",
             "domain, boundaries, forcing, or config differs",
         )?;
-        FlowState::new(&data.domain, data.state.cells().to_vec())?;
-        let intervals = data.forcing.intervals();
+        FlowState::new(&data.setup.domain, data.accepted.flow.cells().to_vec())?;
+        let soil = SoilState::new(&data.setup.land, data.accepted.soil.cells().to_vec())
+            .map_err(static_error)?;
+        let land = CpuLand::new(&data.setup.land, &soil)?;
+        let intervals = data.setup.forcing.intervals();
         let start = intervals.first().map(|interval| interval.start);
         let end = intervals.last().map(|interval| interval.end);
         require(
-            data.time.is_finite()
-                && start.is_some_and(|start| data.time >= start)
-                && end.is_some_and(|end| data.time <= end),
+            data.accepted.time.is_finite()
+                && start.is_some_and(|start| data.accepted.time >= start)
+                && end.is_some_and(|end| data.accepted.time <= end),
             "time",
-            format!("time={}", data.time),
+            format!("time={}", data.accepted.time),
         )?;
-        let cpu = CpuState::from_flow(&data.state)?;
-        let storage = self
-            .cpu
-            .client
-            .sum(
-                &self
-                    .cpu
-                    .client
-                    .mul_scalar(&cpu.h, data.domain.grid().cell_area())?,
-                &[0],
-                false,
-            )?
-            .item::<f64>()?;
+        let cpu = CpuState::from_flow(&data.accepted.flow)?;
+        let storage = crate::cpu::land_sources::checked_volume(
+            &self.cpu.client,
+            &cpu.h,
+            data.setup.domain.grid().cell_area(),
+        )?;
         self.check_ledger(data, storage)?;
         require(
             (data.accepted_steps == 0) == data.last_step.is_none(),
@@ -66,6 +69,10 @@ impl Solver {
             require(
                 ledger.storage == ledger.initial_storage
                     && ledger.rain == 0.0
+                    && ledger.infiltration == 0.0
+                    && ledger.evaporation == 0.0
+                    && ledger.water_adjustment == 0.0
+                    && ledger.water_adjustment_abs_bound == 0.0
                     && ledger.withdrawal == 0.0
                     && ledger.boundary_in == 0.0
                     && ledger.boundary_out == 0.0
@@ -76,8 +83,10 @@ impl Solver {
             )?;
         }
         let accepted = Accepted {
-            time: data.time,
-            state: data.state.clone(),
+            time: data.accepted.time,
+            state: data.accepted.flow.clone(),
+            soil,
+            land,
             ledger: data.ledger.clone(),
             steps: data.accepted_steps,
             last: data.last_step.clone(),
@@ -93,11 +102,17 @@ impl Solver {
             ledger.initial_storage,
             ledger.storage,
             ledger.rain,
+            ledger.infiltration,
+            ledger.evaporation,
             ledger.withdrawal,
             ledger.boundary_in,
             ledger.boundary_out,
         ];
         nonnegative(&volumes, "ledger volumes")?;
+        nonnegative(
+            &[ledger.water_adjustment_abs_bound],
+            "ledger adjustment charge",
+        )?;
         finite(
             &[
                 ledger.residual,
@@ -106,10 +121,19 @@ impl Solver {
             ],
             "ledger accounting",
         )?;
+        finite(&[ledger.water_adjustment], "water adjustment")?;
         require(
-            ledger.water_adjustment == 0.0,
-            "water adjustment",
-            format!("water_adjustment={}", ledger.water_adjustment),
+            ledger.water_adjustment_abs_bound >= ledger.water_adjustment.abs()
+                && ledger.water_adjustment_abs_bound
+                    <= data.setup.config.max_cumulative_water_adjustment_m3
+                && (ledger.water_adjustment_abs_bound != 0.0 || ledger.water_adjustment == 0.0),
+            "water adjustment budget",
+            format!(
+                "signed={}, absolute_bound={}, budget={}",
+                ledger.water_adjustment,
+                ledger.water_adjustment_abs_bound,
+                data.setup.config.max_cumulative_water_adjustment_m3
+            ),
         )?;
         require(
             ledger.storage == storage,
@@ -117,8 +141,16 @@ impl Solver {
             format!("ledger={}, represented={storage}", ledger.storage),
         )?;
         let residual = (ledger.storage - ledger.initial_storage)
-            - (ledger.rain + ledger.boundary_in - ledger.boundary_out - ledger.withdrawal);
-        let scale = volumes.into_iter().fold(1.0, f64::max);
+            - (ledger.rain + ledger.boundary_in
+                - ledger.boundary_out
+                - ledger.withdrawal
+                - ledger.infiltration
+                - ledger.evaporation
+                + ledger.water_adjustment);
+        let scale = volumes
+            .into_iter()
+            .fold(1.0, f64::max)
+            .max(ledger.water_adjustment.abs());
         let tolerance = self.checkpoint_tolerance(scale)?;
         require(
             residual.is_finite()
@@ -139,10 +171,10 @@ impl Solver {
         step: &StepDiagnostics,
         storage: f64,
     ) -> Result<(), EngineError> {
-        let config = &data.config;
+        let config = &data.setup.config;
         finite(&[step.start, step.end, step.dt], "last interval")?;
         require(
-            step.end == data.time
+            step.end == data.accepted.time
                 && step.dt > 0.0
                 && step.dt == step.end - step.start
                 && step.end <= step.start + config.max_step
@@ -154,12 +186,13 @@ impl Solver {
             ),
         )?;
         let index = data
+            .setup
             .forcing
             .intervals()
             .iter()
             .position(|interval| interval.start <= step.start && step.start < interval.end)
             .ok_or_else(|| rejected("last interval", format!("start={}", step.start)))?;
-        let interval = &data.forcing.intervals()[index];
+        let interval = &data.setup.forcing.intervals()[index];
         require(
             step.end <= interval.end,
             "forcing edge",
@@ -179,6 +212,8 @@ impl Solver {
             step.storage_before,
             step.storage_after,
             step.rain_volume,
+            step.infiltration_volume,
+            step.evaporation_volume,
             step.withdrawal_volume,
             step.boundary_in,
             step.boundary_out,
@@ -187,6 +222,9 @@ impl Solver {
         nonnegative(&[step.max_local_residual], "local residual")?;
         finite(
             &[
+                step.soil_water_adjustment_volume,
+                step.water_adjustment_volume,
+                step.water_adjustment_abs_charge,
                 step.residual,
                 step.normalized_residual,
                 step.momentum_removed[0],
@@ -202,10 +240,19 @@ impl Solver {
                 step.storage_after
             ),
         )?;
-        let scale = volumes.into_iter().fold(1.0, f64::max);
+        let scale = volumes
+            .into_iter()
+            .fold(1.0, f64::max)
+            .max(step.water_adjustment_volume.abs());
         let tolerance = self.checkpoint_tolerance(scale)?;
         let residual = (step.storage_after - step.storage_before)
-            - (step.rain_volume - step.withdrawal_volume + step.boundary_in - step.boundary_out);
+            - (step.rain_volume
+                - step.infiltration_volume
+                - step.evaporation_volume
+                - step.withdrawal_volume
+                + step.boundary_in
+                - step.boundary_out
+                + step.water_adjustment_volume);
         require(
             residual.is_finite()
                 && residual.abs() <= tolerance
@@ -219,26 +266,10 @@ impl Solver {
                 step.residual, step.normalized_residual
             ),
         )?;
-        let source = &self.cpu.sources[index];
-        let area = data.domain.grid().cell_area();
-        let client = &self.cpu.client;
-        let rain = client
-            .sum(
-                &client.mul_scalar(&client.mul_scalar(&source.rain, step.dt)?, area)?,
-                &[0],
-                false,
-            )?
-            .item::<f64>()?;
-        let withdrawal = client
-            .sum(
-                &client.mul_scalar(&client.mul_scalar(&source.withdrawal, step.dt)?, area)?,
-                &[0],
-                false,
-            )?
-            .item::<f64>()?;
+        super::sources::check(self, data, step, index)?;
         let mut boundary_in: f64 = 0.0;
         let mut boundary_out: f64 = 0.0;
-        let open_faces: BTreeSet<_> = data.boundaries.open_faces().iter().copied().collect();
+        let open_faces: BTreeSet<_> = data.setup.boundaries.open_faces().iter().copied().collect();
         for face in &step.faces {
             if !open_faces.contains(&face.face) {
                 continue;
@@ -252,13 +283,6 @@ impl Solver {
             boundary_out += outward.max(0.0);
         }
         for (name, last, expected, total) in [
-            ("rain", step.rain_volume, rain, data.ledger.rain),
-            (
-                "withdrawal",
-                step.withdrawal_volume,
-                withdrawal,
-                data.ledger.withdrawal,
-            ),
             (
                 "boundary in",
                 step.boundary_in,
@@ -273,9 +297,7 @@ impl Solver {
             ),
         ] {
             require(
-                expected.is_finite()
-                    && (last - expected).abs() <= tolerance
-                    && total >= last - tolerance,
+                expected.is_finite() && (last - expected).abs() <= tolerance && total >= last,
                 name,
                 format!("last={last}, expected={expected}, cumulative={total}"),
             )?;
@@ -289,7 +311,7 @@ impl Solver {
                 self.cpu.topology.faces.len()
             ),
         )?;
-        let (dx, dy) = data.domain.grid().spacing();
+        let (dx, dy) = data.setup.domain.grid().spacing();
         for (index, (face, support)) in step.faces.iter().zip(&self.cpu.topology.faces).enumerate()
         {
             require(
@@ -325,7 +347,7 @@ impl Solver {
     }
 }
 
-fn nonnegative(values: &[f64], name: &'static str) -> Result<(), EngineError> {
+pub(super) fn nonnegative(values: &[f64], name: &'static str) -> Result<(), EngineError> {
     require(
         values
             .iter()
@@ -335,7 +357,7 @@ fn nonnegative(values: &[f64], name: &'static str) -> Result<(), EngineError> {
     )
 }
 
-fn finite(values: &[f64], name: &'static str) -> Result<(), EngineError> {
+pub(super) fn finite(values: &[f64], name: &'static str) -> Result<(), EngineError> {
     require(
         values.iter().all(|value| value.is_finite()),
         name,
@@ -343,7 +365,11 @@ fn finite(values: &[f64], name: &'static str) -> Result<(), EngineError> {
     )
 }
 
-fn require(condition: bool, name: &'static str, input: impl AsRef<str>) -> Result<(), EngineError> {
+pub(super) fn require(
+    condition: bool,
+    name: &'static str,
+    input: impl AsRef<str>,
+) -> Result<(), EngineError> {
     if condition {
         Ok(())
     } else {

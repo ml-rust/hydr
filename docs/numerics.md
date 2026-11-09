@@ -15,8 +15,8 @@ hydr solves hydrostatic, depth-averaged shallow-water equations for hydraulic ap
 
 ## Discretization
 
-1. Integrate interval-constant vertical rainfall with zero horizontal momentum.
-2. Apply prescribed land withdrawals with proportional donor momentum.
+1. Evaluate explicit soil from accepted interval-start ponding and incoming rain once.
+2. Add rain, remove returned native infiltration with bounded reconciliation, cap evaporation, then remove prescribed withdrawal.
 3. Reconstruct each face against the higher adjoining bed.
 4. Calculate shared HLL fluxes and admitted physical boundary traces using conservative normal wave bounds.
 5. Apply side-specific hydrostatic pressure corrections once, without a centred bed source.
@@ -27,7 +27,8 @@ hydr solves hydrostatic, depth-averaged shallow-water equations for hydraulic ap
 
 The discretization remains first order. MUSCL, SSP-RK2, and HLLC remain unimplemented extensions.
 The retained reference matches the first-order candidate's equations and source order.
-Prescribed losses implement no soil state machine and make no Green-Ampt claim.
+Explicit Modified Green–Ampt land preserves pinned native state. Prescribed withdrawal remains a separate demand without a soil interpretation.
+Rain and numerical correction add zero horizontal momentum. Every sink removes proportional donor momentum.
 
 ## Wave bounds
 
@@ -76,14 +77,16 @@ Read [the boundary contract](boundaries.md) for admissibility, critical margins,
 - Depletion: Reserve every outgoing shared face and outward port rate without crediting simultaneous inflow.
 - Trial recalculation: Sources, reconstructions, bounds, and fluxes recompute after interval reduction.
 - Complete fluxes: No pressure/transport scaling limiter changes the shared numerical flux.
-- Negative depth: Reject the trial. No water clipping or water adjustment occurs.
+- Negative depth: Reject the trial without clipping. Proved soil arithmetic excess requires an explicit bounded water adjustment.
 - Positive films: Retain every representable positive depth.
 - Optional film reset: Retain depth, reset momentum, and report signed momentum removal in m⁴/s.
-- Water residual: Storage change minus rain, boundary inflow, boundary outflow, and prescribed losses.
+- Water residual: Storage change minus rain, boundary exchange, infiltration, evaporation, prescribed withdrawal, and signed numerical adjustments.
 - Dimensional controls: `SolverConfig` records root, step, film, and water-ledger tolerances.
 
 Default volume tolerance is `1e-9 m³ + 1e-12*scale`, with a `1 m³` scale floor.
 These computational tolerances establish no physical inundation threshold or observational accuracy target.
+The independent cumulative adjustment budget defaults to `1e-9 m³`. A balanced residual never authorizes unlimited numerical water creation.
+Read [land sources](land-sources.md) for source order, native-state retention, representability, and restart consistency.
 
 ## Execution and limitations
 

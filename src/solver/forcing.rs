@@ -11,6 +11,8 @@ pub struct ForcingInterval {
     pub end: f64,
     /// Cell-supported vertical rain in m/s, with zero horizontal momentum.
     pub rain: Vec<f64>,
+    /// Potential evaporation in m/s, capped by water remaining after infiltration.
+    pub potential_evaporation: Vec<f64>,
     /// Prescribed land-loss demand in m/s. Removes proportional donor momentum.
     ///
     /// This is no infiltration model. Unmet demand rejects a trial without capping demand.
@@ -59,6 +61,7 @@ impl ForcingSchedule {
             }
             for (name, rates) in [
                 ("rain", &interval.rain),
+                ("potential_evaporation", &interval.potential_evaporation),
                 ("withdrawal", &interval.withdrawal),
             ] {
                 if rates.len() != domain.grid().cell_count() {

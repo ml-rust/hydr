@@ -1,8 +1,12 @@
 //! Checks bit-sensitive immutable identities before checkpoint restoration.
 
+#[path = "support/impervious.rs"]
+mod impervious;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{BoundaryConditions, ForcingInterval, ForcingSchedule, Solver, SolverConfig};
+use impervious::impervious_solver;
 
 fn create(film: f64, rain: f64) -> Result<Solver, Box<dyn std::error::Error>> {
     let domain = Domain::new(
@@ -24,12 +28,13 @@ fn create(film: f64, rain: f64) -> Result<Solver, Box<dyn std::error::Error>> {
         vec![ForcingInterval {
             start: 0.0,
             end: 1.0,
+            potential_evaporation: vec![0.0],
             rain: vec![rain],
             withdrawal: vec![0.0],
             boundaries: vec![],
         }],
     )?;
-    Ok(Solver::new(
+    impervious_solver(
         domain,
         state,
         walls,
@@ -39,7 +44,7 @@ fn create(film: f64, rain: f64) -> Result<Solver, Box<dyn std::error::Error>> {
             ..SolverConfig::default()
         },
         0.0,
-    )?)
+    )
 }
 
 #[test]

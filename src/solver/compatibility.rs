@@ -1,17 +1,20 @@
 use super::engine::Definition;
 use super::{BoundaryConditions, BoundaryForcing, ExteriorState, ForcingSchedule, SolverConfig};
 use crate::model::Domain;
+use crate::soil::{LandCell, LandModel};
 
 impl Definition {
     /// Numerical identity includes signed zero. Mathematical equality alone cannot promise bitwise continuation.
     pub(super) fn matches(
         &self,
         domain: &Domain,
+        land: &LandModel,
         boundaries: &BoundaryConditions,
         forcing: &ForcingSchedule,
         config: &SolverConfig,
     ) -> bool {
         if self.domain != *domain
+            || self.land != *land
             || self.boundaries != *boundaries
             || self.forcing != *forcing
             || self.config != *config
@@ -30,6 +33,36 @@ impl Definition {
         {
             return false;
         }
+        if !self
+            .land
+            .cells()
+            .iter()
+            .zip(land.cells())
+            .all(|(a, b)| match (a, b) {
+                (LandCell::Impervious, LandCell::Impervious) => true,
+                (LandCell::ModifiedGreenAmpt(a), LandCell::ModifiedGreenAmpt(b)) => same_bits(
+                    &[
+                        a.suction_ft(),
+                        a.conductivity_ft_per_s(),
+                        a.maximum_deficit(),
+                        a.upper_zone_depth_ft(),
+                        a.capacity_ft(),
+                        a.recovered_deficit_ceiling(),
+                    ],
+                    &[
+                        b.suction_ft(),
+                        b.conductivity_ft_per_s(),
+                        b.maximum_deficit(),
+                        b.upper_zone_depth_ft(),
+                        b.capacity_ft(),
+                        b.recovered_deficit_ceiling(),
+                    ],
+                ),
+                _ => false,
+            })
+        {
+            return false;
+        }
         self.forcing
             .intervals()
             .iter()
@@ -38,6 +71,7 @@ impl Definition {
                 same_bits(&[left.start, left.end], &[right.start, right.end])
                     && same_bits(&left.rain, &right.rain)
                     && same_bits(&left.withdrawal, &right.withdrawal)
+                    && same_bits(&left.potential_evaporation, &right.potential_evaporation)
                     && left
                         .boundaries
                         .iter()
@@ -55,7 +89,7 @@ fn same_bits(left: &[f64], right: &[f64]) -> bool {
             .all(|(left, right)| left.to_bits() == right.to_bits())
 }
 
-fn controls(config: &SolverConfig) -> [f64; 13] {
+fn controls(config: &SolverConfig) -> [f64; 14] {
     [
         config.gravity,
         config.cfl,
@@ -66,6 +100,7 @@ fn controls(config: &SolverConfig) -> [f64; 13] {
         config.volume_absolute,
         config.volume_relative,
         config.momentum_film_depth,
+        config.max_cumulative_water_adjustment_m3,
         config.boundary.discharge_absolute,
         config.boundary.discharge_relative,
         config.boundary.characteristic_relative,

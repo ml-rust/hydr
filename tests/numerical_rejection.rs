@@ -1,11 +1,15 @@
 //! Checks numerical rejections retain accepted state and actionable face context.
 
+#[path = "support/impervious.rs"]
+mod impervious;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{
-    Axis, BoundaryConditions, BoundaryFace, FluxPort, ForcingInterval, ForcingSchedule, Solver,
+    Axis, BoundaryConditions, BoundaryFace, FluxPort, ForcingInterval, ForcingSchedule,
     SolverConfig,
 };
+use impervious::impervious_solver;
 
 fn domain() -> Result<Domain, Box<dyn std::error::Error>> {
     Ok(Domain::new(
@@ -32,6 +36,7 @@ fn forcing(
         vec![ForcingInterval {
             start: 0.0,
             end: 1.0,
+            potential_evaporation: vec![0.0; 2],
             rain: vec![0.0; 2],
             withdrawal: vec![0.0; 2],
             boundaries: ports.into_iter().map(Into::into).collect(),
@@ -58,7 +63,7 @@ fn exhausted_face_bracket_identifies_support_and_preserves_state()
     )?;
     let walls = BoundaryConditions::impermeable_walls();
     let input = forcing(&domain, &walls, vec![])?;
-    let mut solver = Solver::new(
+    let mut solver = impervious_solver(
         domain,
         state,
         walls,
@@ -113,7 +118,7 @@ fn port_bounds_must_include_known_interior_characteristics()
             provenance: "deliberately insufficient manufactured bound".into(),
         }],
     )?;
-    let mut solver = Solver::new(domain, state, ports, input, SolverConfig::default(), 0.0)?;
+    let mut solver = impervious_solver(domain, state, ports, input, SolverConfig::default(), 0.0)?;
     let before = solver.snapshot();
     let error = solver
         .advance_to(0.01, 10)

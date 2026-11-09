@@ -38,7 +38,9 @@ pub fn capabilities() -> Capabilities {
         precision: "IEEE 754 binary64 (f64)",
         sources: &[
             "interval-constant cell rain with zero horizontal momentum",
-            "prescribed land loss with donor momentum",
+            "explicit impervious or pinned Modified Green-Ampt land with complete native antecedent state",
+            "atomic rain, returned native infiltration, capped evaporation, and prescribed withdrawal with donor momentum",
+            "proved soil arithmetic reconciliation under an independent cumulative numerical water-adjustment budget",
         ],
         boundaries: &[
             "explicit genuine impermeable walls",
@@ -56,6 +58,7 @@ pub fn capabilities() -> Capabilities {
             "explicit dry/unsupported status",
             "accepted interval face fluxes and volumes",
             "component water ledger and momentum-reset diagnostics",
+            "accepted complete native soil state, independent sink ledgers, per-cell source receipts, and conservative correction charges",
             "accepted physical boundary traces and compatibility residuals",
             "per-face final numerical signal speeds and accepted transmissive state witnesses",
             "complete versioned continuation packages",
@@ -64,8 +67,8 @@ pub fn capabilities() -> Capabilities {
         unsupported: &[
             "scalar stage/discharge traces outside wet-subcritical regimes",
             "finite external reservoir or component coupling",
-            "soil infiltration/recovery models",
-            "hydrology",
+            "groundwater and finite subsurface reservoir coupling",
+            "catchment hydrology beyond the declared rain, soil, evaporation, and withdrawal mechanisms",
             "structures",
             "networks and coupled exchanges",
             "subgrid terrain",

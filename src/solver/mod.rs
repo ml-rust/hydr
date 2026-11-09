@@ -9,11 +9,13 @@ mod engine;
 mod error;
 mod forcing;
 mod output;
+mod setup;
 mod snapshot;
 mod stepping;
 
 pub use accounting::{
-    BoundaryTraceDiagnostics, StepDiagnostics, TransmissiveDiagnostics, WaterLedger,
+    BoundaryTraceDiagnostics, SoilSourceReceipt, SourceReceipt, StepDiagnostics,
+    TransmissiveDiagnostics, WaterLedger,
 };
 pub use boundary::{
     Axis, BoundaryConditions, BoundaryFace, BoundaryForcing, DischargeBoundary, ExteriorBoundary,
@@ -25,4 +27,5 @@ pub use engine::{AdvanceReport, AdvanceStatus, Solver};
 pub use error::EngineError;
 pub use forcing::{ForcingInterval, ForcingSchedule};
 pub use output::{CellResult, FaceTransfer};
+pub use setup::{InitialState, SolverSetup};
 pub use snapshot::{SNAPSHOT_SCHEMA, Snapshot, SnapshotData};

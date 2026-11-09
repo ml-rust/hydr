@@ -49,6 +49,8 @@ pub struct SolverConfig {
     pub volume_relative: f64,
     /// Momentum resets below this depth in metres. Positive water remains stored.
     pub momentum_film_depth: f64,
+    /// Conservative lifetime numerical water-adjustment budget in m³.
+    pub max_cumulative_water_adjustment_m3: f64,
     /// Compatibility and regime margins for physical boundary traces.
     pub boundary: BoundaryTolerances,
 }
@@ -67,6 +69,7 @@ impl Default for SolverConfig {
             volume_absolute: 1e-9,
             volume_relative: 1e-12,
             momentum_film_depth: 0.0,
+            max_cumulative_water_adjustment_m3: 1e-9,
             boundary: BoundaryTolerances::default(),
         }
     }
@@ -93,15 +96,16 @@ impl SolverConfig {
         }
         if self.cfl > 0.45
             || self.min_step > self.max_step
-            || self.max_retries == 0
             || self.root_iterations == 0
             || !self.momentum_film_depth.is_finite()
             || self.momentum_film_depth < 0.0
+            || !self.max_cumulative_water_adjustment_m3.is_finite()
+            || self.max_cumulative_water_adjustment_m3 < 0.0
         {
             return Err(EngineError::rejected(
                 "config",
                 format!(
-                    "{self:?}: require CFL <=0.45, min_step <=max_step, positive iteration limits, and a finite nonnegative film depth"
+                    "{self:?}: require CFL <=0.45, min_step <=max_step, positive root iterations, and finite nonnegative film depth and adjustment budget"
                 ),
             ));
         }

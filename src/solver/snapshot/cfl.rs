@@ -16,7 +16,7 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
         let axis = if face.face.axis == Axis::X { 0 } else { 1 };
         speeds[axis] = speeds[axis].max(face.signal_speed);
     }
-    let (dx, dy) = data.domain.grid().spacing();
+    let (dx, dy) = data.setup.domain.grid().spacing();
     let frequency = speeds[0] / dx + speeds[1] / dy;
     if !frequency.is_finite() {
         return Err(rejected(
@@ -25,7 +25,7 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
         ));
     }
     let limit = if frequency > 0.0 {
-        data.config.cfl / frequency
+        data.setup.config.cfl / frequency
     } else {
         f64::INFINITY
     };

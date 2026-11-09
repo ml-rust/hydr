@@ -113,7 +113,7 @@ These tests establish selected boundary behaviour. They establish no finite exte
 | Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
 | Independent engine | Nine matched wet-bed/dry-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Analytical front accuracy, independent terrain/transverse-flow comparisons, and broader hydraulic regimes |
-| Extensions | No soil, structure, network, or coupling capability is admitted | Capability-specific acceptance before admission |
+| Extensions | Explicit Modified Green–Ampt land has separate native and atomic-source checks. Structures, networks, and external coupling remain excluded | Capability-specific acceptance before admission |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 
 Lake tests enforce depth and momentum drift below `1e-11` SI.

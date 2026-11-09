@@ -100,3 +100,5 @@ Checked scalar and SIMD logarithm paths conform within the frozen comparison tol
 ## Scope
 
 Outputs are raw empirical soil infiltration. This component supplies no conservative surface-water coupling claim. Surface availability handling, evaporation, coupled retries, lifetime ledgers, checkpoint packaging, and the original Green–Ampt model remain outside this standalone API.
+
+The separate [land-source engine integration](land-sources.md) supplies atomic surface coupling, numerical admission, evaporation, ledgers, and complete-state checkpoints.

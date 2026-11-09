@@ -11,12 +11,18 @@ pub struct WaterLedger {
     pub rain: f64,
     /// Integrated prescribed land losses.
     pub withdrawal: f64,
+    /// Lifetime native-model infiltration removed from surface water.
+    pub infiltration: f64,
+    /// Lifetime availability-limited evaporation.
+    pub evaporation: f64,
     /// Integrated inward port water.
     pub boundary_in: f64,
     /// Integrated outward port water.
     pub boundary_out: f64,
-    /// Numerical water adjustments. This reference rejects negative water and always records zero.
+    /// Signed reported numerical water adjustments.
     pub water_adjustment: f64,
+    /// Conservative cumulative absolute adjustment budget consumption.
+    pub water_adjustment_abs_bound: f64,
     /// Signed cumulative x/y momentum removed by film resets, in m⁴/s.
     pub momentum_removed: [f64; 2],
     /// Signed cumulative storage residual, in m³.
@@ -30,9 +36,12 @@ impl WaterLedger {
             storage,
             rain: 0.0,
             withdrawal: 0.0,
+            infiltration: 0.0,
+            evaporation: 0.0,
             boundary_in: 0.0,
             boundary_out: 0.0,
             water_adjustment: 0.0,
+            water_adjustment_abs_bound: 0.0,
             momentum_removed: [0.0; 2],
             residual: 0.0,
         }
@@ -43,16 +52,33 @@ impl WaterLedger {
         result.storage = step.storage_after;
         result.rain += step.rain_volume;
         result.withdrawal += step.withdrawal_volume;
+        result.infiltration += step.infiltration_volume;
+        result.evaporation += step.evaporation_volume;
+        result.water_adjustment += step.water_adjustment_volume;
+        result.water_adjustment_abs_bound = crate::soil::admission::add_adjustment_charge(
+            self.water_adjustment_abs_bound,
+            step.water_adjustment_abs_charge,
+        )
+        .map_err(crate::cpu::land::static_error)?;
         result.boundary_in += step.boundary_in;
         result.boundary_out += step.boundary_out;
         for axis in 0..2 {
             result.momentum_removed[axis] += step.momentum_removed[axis];
         }
         result.residual = (result.storage - result.initial_storage)
-            - (result.rain + result.boundary_in - result.boundary_out - result.withdrawal);
+            - (result.rain + result.boundary_in
+                - result.boundary_out
+                - result.withdrawal
+                - result.infiltration
+                - result.evaporation
+                + result.water_adjustment);
         if [
             result.rain,
             result.withdrawal,
+            result.infiltration,
+            result.evaporation,
+            result.water_adjustment,
+            result.water_adjustment_abs_bound,
             result.boundary_in,
             result.boundary_out,
             result.residual,
@@ -128,6 +154,16 @@ pub struct StepDiagnostics {
     pub rain_volume: f64,
     /// Integrated prescribed land loss in m³.
     pub withdrawal_volume: f64,
+    /// Removed native-model infiltration in m³.
+    pub infiltration_volume: f64,
+    /// Availability-limited evaporation in m³.
+    pub evaporation_volume: f64,
+    /// Reported numerical water created by soil reconciliation in m³.
+    pub soil_water_adjustment_volume: f64,
+    /// Total signed reported numerical water adjustment in m³.
+    pub water_adjustment_volume: f64,
+    /// Conservative absolute adjustment budget charge in m³.
+    pub water_adjustment_abs_charge: f64,
     /// Inward boundary water in m³.
     pub boundary_in: f64,
     /// Outward boundary water in m³.
@@ -146,4 +182,46 @@ pub struct StepDiagnostics {
     pub boundary_traces: Vec<BoundaryTraceDiagnostics>,
     /// Post-source trial witnesses for accepted transmissive boundaries.
     pub transmissive_states: Vec<TransmissiveDiagnostics>,
+    /// Ordered full-grid accepted source witnesses, including inactive zero bookkeeping.
+    pub sources: Vec<SourceReceipt>,
+}
+
+/// Native soil admission evidence for one accepted source interval.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SoilSourceReceipt {
+    /// Original returned infiltration rate in ft/s.
+    pub native_rate_ft_per_s: f64,
+    /// Raw native available supply in feet.
+    pub native_available_depth_ft: f64,
+    /// Returned native rate times duration, in feet.
+    pub native_infiltration_depth_ft: f64,
+    /// Positive native availability discrepancy, in feet.
+    pub native_excess_depth_ft: f64,
+    /// Outward native branch rounding envelope, in feet.
+    pub native_roundoff_bound_ft: f64,
+    /// Outward SI conversion envelope, in metres.
+    pub bridge_roundoff_bound_m: f64,
+    /// Combined outward native/SI envelope, in metres.
+    pub total_roundoff_bound_m: f64,
+}
+
+/// Full-grid source algebra at an accepted interval, with all depths in metres.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SourceReceipt {
+    /// Global row-major cell identity.
+    pub cell: usize,
+    /// Interval-start ponded water.
+    pub ponded_depth_m: f64,
+    /// Added rain depth.
+    pub rain_depth_m: f64,
+    /// Original soil-model infiltration, without an availability cap.
+    pub infiltration_depth_m: f64,
+    /// Availability-limited evaporation after infiltration.
+    pub evaporation_depth_m: f64,
+    /// Prescribed withdrawal after evaporation.
+    pub withdrawal_depth_m: f64,
+    /// Explicit soil numerical correction, distinct from rainfall.
+    pub water_adjustment_depth_m: f64,
+    /// Native model and bound evidence for pervious cells only.
+    pub soil: Option<SoilSourceReceipt>,
 }

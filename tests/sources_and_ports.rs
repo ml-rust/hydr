@@ -1,11 +1,15 @@
 //! Source momentum, full-flux port signs, and donor-budget contracts in SI units.
 
+#[path = "support/impervious.rs"]
+mod impervious;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{
     AdvanceStatus, Axis, BoundaryConditions, BoundaryFace, FluxPort, ForcingInterval,
     ForcingSchedule, Solver, SolverConfig,
 };
+use impervious::impervious_solver;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -92,14 +96,13 @@ fn solver(
         vec![ForcingInterval {
             start: 0.0,
             end: 2.0,
+            potential_evaporation: vec![0.0; count],
             rain: vec![0.0; count],
             withdrawal: vec![withdrawal; count],
             boundaries: ports.into_iter().map(Into::into).collect(),
         }],
     )?;
-    Ok(Solver::new(
-        domain, state, boundaries, forcing, config, 0.0,
-    )?)
+    impervious_solver(domain, state, boundaries, forcing, config, 0.0)
 }
 
 #[test]

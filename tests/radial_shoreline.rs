@@ -3,11 +3,15 @@
 //! Initial and reference fields use cell-centre point samples, rather than exact cell averages.
 //! The endpoint at 0.5 s checks contraction. Expansion, reversal, and full cycles remain unchecked.
 
+#[path = "support/impervious.rs"]
+mod impervious;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{
-    AdvanceStatus, BoundaryConditions, ForcingInterval, ForcingSchedule, Solver, SolverConfig,
+    AdvanceStatus, BoundaryConditions, ForcingInterval, ForcingSchedule, SolverConfig,
 };
+use impervious::impervious_solver;
 
 const G: f64 = 9.81;
 const B: f64 = 0.1;
@@ -67,12 +71,13 @@ fn radial_moving_shoreline_error_decreases_under_refinement()
             vec![ForcingInterval {
                 start: 0.0,
                 end: 1.0,
+                potential_evaporation: vec![0.0; n * n],
                 rain: vec![0.0; n * n],
                 withdrawal: vec![0.0; n * n],
                 boundaries: vec![],
             }],
         )?;
-        let mut solver = Solver::new(
+        let mut solver = impervious_solver(
             domain,
             state,
             boundaries,

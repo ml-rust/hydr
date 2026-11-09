@@ -1,5 +1,6 @@
 use super::engine::Accepted;
 use super::{EngineError, Solver, StepDiagnostics};
+use crate::cpu::land_sources::{SourceInputs, calculate as calculate_sources, checked_volume};
 use crate::cpu::{CpuState, CpuTensor, transport};
 use numr::dtype::DType;
 use numr::ops::{
@@ -32,6 +33,7 @@ impl Solver {
         let endpoint = target.min(forcing.end).min(time + config.max_step);
         let mut dt = endpoint - time;
         let mut last_reason = String::new();
+        let mut last_source_error = None;
         let zero = &self.cpu.zero;
         let one = client.add_scalar(zero, 1.0)?;
         let area = self.domain().grid().cell_area();
@@ -40,6 +42,9 @@ impl Solver {
             let end = if retry == 0 { endpoint } else { time + dt };
             dt = end - time;
             if !dt.is_finite() || dt <= 0.0 || (dt < config.min_step && end != endpoint) {
+                if let Some(error) = last_source_error {
+                    return Err(error);
+                }
                 return Err(EngineError::rejected(
                     "timestep",
                     format!(
@@ -48,38 +53,41 @@ impl Solver {
                     ),
                 ));
             }
-            // Rain and donor losses execute on persistent numr CPU tensors.
-            let rain = client.mul_scalar(&source.rain, dt)?;
-            let loss = client.mul_scalar(&source.withdrawal, dt)?;
-            let available = client.add(&original.h, &rain)?;
-            self.finite(&rain, "rain depth")?;
-            self.finite(&loss, "withdrawal depth")?;
-            self.finite(&available, "post-rain depth")?;
-            let underflow = client.maximum(
-                &client.mul(&client.eq(&rain, zero)?, &client.gt(&source.rain, zero)?)?,
-                &client.mul(
-                    &client.eq(&loss, zero)?,
-                    &client.gt(&source.withdrawal, zero)?,
-                )?,
-            )?;
-            if self.any(&client.maximum(&client.gt(&loss, &available)?, &underflow)?)? {
-                last_reason = format!(
-                    "time={time}, dt={dt}: prescribed land losses exceed available water or source increments underflow"
-                );
-                dt *= 0.5;
-                continue;
-            }
-            let h = client.sub(&available, &loss)?;
-            let donor_depth = client.where_cond(&client.gt(&available, zero)?, &available, &one)?;
-            let ratio = client.div(&h, &donor_depth)?;
-            let trial = CpuState {
-                h,
-                qx: client.mul(&original.qx, &ratio)?,
-                qy: client.mul(&original.qy, &ratio)?,
+            let sources = match calculate_sources(
+                &self.cpu,
+                SourceInputs {
+                    original,
+                    land: &self.accepted.land,
+                    forcing: source,
+                },
+                area,
+                dt,
+                self.ledger().water_adjustment_abs_bound,
+                config,
+            ) {
+                Ok(sources) => {
+                    last_source_error = None;
+                    sources
+                }
+                Err(error @ EngineError::LandSource { .. })
+                | Err(
+                    error @ EngineError::Soil {
+                        retryable: true, ..
+                    },
+                ) => {
+                    last_reason = error.to_string();
+                    last_source_error = Some(error);
+                    dt *= 0.5;
+                    continue;
+                }
+                Err(error) => return Err(error),
             };
+            let trial = &sources.state;
+            let rain = &sources.rain;
+            let loss = &sources.withdrawal;
             self.finite(&trial.qx, "post-source qx")?;
             self.finite(&trial.qy, "post-source qy")?;
-            let flux = match transport::calculate(&self.cpu, &trial, source, config, area) {
+            let flux = match transport::calculate(&self.cpu, trial, source, config, area) {
                 Ok(flux) => flux,
                 Err(error @ EngineError::Boundary { .. }) => {
                     last_reason = error.to_string();
@@ -142,8 +150,11 @@ impl Solver {
                 continue;
             }
             let local = client.sub(&next_h, &original.h)?;
-            let local = client.sub(&local, &rain)?;
-            let local = client.add(&local, &loss)?;
+            let local = client.sub(&local, rain)?;
+            let local = client.add(&local, loss)?;
+            let local = client.add(&local, &sources.infiltration)?;
+            let local = client.add(&local, &sources.evaporation)?;
+            let local = client.sub(&local, &sources.adjustment)?;
             let local = client.sub(&local, &client.mul_scalar(&flux.derivative.h, dt)?)?;
             let local = client.abs(&client.mul_scalar(&local, area)?)?;
             let max_local_residual = client.max(&local, &[0], false)?.item::<f64>()?;
@@ -173,17 +184,26 @@ impl Solver {
             self.finite(&next.qx, "accepted qx")?;
             self.finite(&next.qy, "accepted qy")?;
             let storage_before = self.ledger().storage;
-            let storage_after = self.total(&client.mul_scalar(&next.h, area)?)?;
-            let rain_volume = self.total(&client.mul_scalar(&rain, area)?)?;
-            let withdrawal_volume = self.total(&client.mul_scalar(&loss, area)?)?;
+            let storage_after = checked_volume(client, &next.h, area)?;
+            let rain_volume = sources.rain_volume;
+            let withdrawal_volume = sources.withdrawal_volume;
+            let infiltration_volume = sources.infiltration_volume;
+            let evaporation_volume = sources.evaporation_volume;
+            let water_adjustment_volume = sources.adjustment_volume;
             let boundary_in = flux.boundary_in_rate * dt;
             let boundary_out = flux.boundary_out_rate * dt;
             let residual = (storage_after - storage_before)
-                - (rain_volume - withdrawal_volume + boundary_in - boundary_out);
+                - (rain_volume - infiltration_volume - evaporation_volume - withdrawal_volume
+                    + boundary_in
+                    - boundary_out
+                    + water_adjustment_volume);
             let scale = storage_before
                 .max(storage_after)
                 .max(rain_volume)
                 .max(withdrawal_volume)
+                .max(infiltration_volume)
+                .max(evaporation_volume)
+                .max(water_adjustment_volume.abs())
                 .max(boundary_in)
                 .max(boundary_out)
                 .max(1.0);
@@ -192,6 +212,9 @@ impl Solver {
                 storage_after,
                 rain_volume,
                 withdrawal_volume,
+                infiltration_volume,
+                evaporation_volume,
+                water_adjustment_volume,
                 boundary_in,
                 boundary_out,
                 residual,
@@ -212,7 +235,7 @@ impl Solver {
                     ),
                 ));
             }
-            let diagnostics = StepDiagnostics {
+            let mut diagnostics = StepDiagnostics {
                 start: time,
                 end,
                 dt,
@@ -223,6 +246,12 @@ impl Solver {
                 storage_after,
                 rain_volume,
                 withdrawal_volume,
+                infiltration_volume,
+                evaporation_volume,
+                soil_water_adjustment_volume: water_adjustment_volume,
+                water_adjustment_volume,
+                water_adjustment_abs_charge: sources.adjustment_charge,
+                sources: Vec::new(),
                 boundary_in,
                 boundary_out,
                 residual,
@@ -242,6 +271,9 @@ impl Solver {
                 .max(ledger.storage)
                 .max(ledger.rain)
                 .max(ledger.withdrawal)
+                .max(ledger.infiltration)
+                .max(ledger.evaporation)
+                .max(ledger.water_adjustment.abs())
                 .max(ledger.boundary_in)
                 .max(ledger.boundary_out)
                 .max(1.0);
@@ -257,6 +289,9 @@ impl Solver {
                 ));
             }
             // This readback serves outputs and input checks, never subsequent numerical execution.
+            diagnostics.sources = sources.receipts(&self.accepted.land, self.state().cells())?;
+            let soil = sources.soil.next.soil_state()?;
+            let land = sources.soil.next;
             let state = next.to_flow(self.domain())?;
             let steps = self.accepted.steps.checked_add(1).ok_or_else(|| {
                 EngineError::rejected(
@@ -267,11 +302,16 @@ impl Solver {
             return Ok(Accepted {
                 time: end,
                 state,
+                soil,
+                land,
                 ledger,
                 steps,
                 last: Some(diagnostics),
                 cpu: next,
             });
+        }
+        if let Some(error) = last_source_error {
+            return Err(error);
         }
         Err(EngineError::rejected(
             "trial retries",
@@ -379,11 +419,27 @@ mod tests {
                 start: 0.0,
                 end: 1.0,
                 rain: vec![0.0],
+                potential_evaporation: vec![0.0],
                 withdrawal: vec![0.0],
                 boundaries: vec![],
             }],
         )?;
-        let solver = Solver::new(domain, state, walls, forcing, SolverConfig::default(), 0.0)?;
+        let land = crate::soil::LandModel::impervious(&domain);
+        let soil = crate::soil::SoilState::initialized(&land)?;
+        let solver = Solver::new(
+            crate::solver::SolverSetup {
+                domain,
+                land,
+                boundaries: walls,
+                forcing,
+                config: SolverConfig::default(),
+            },
+            crate::solver::InitialState {
+                time: 0.0,
+                flow: state,
+                soil,
+            },
+        )?;
         let result = solver
             .friction(solver.accepted.cpu.clone(), 0.1)?
             .to_flow(solver.domain())?;

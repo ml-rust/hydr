@@ -14,12 +14,16 @@
 //! The maximum rotated state-component discrepancy must remain <=1e-11.
 //! Printed peaks describe measured amplitude only. These gates establish no general attenuation bound.
 
+#[path = "support/impervious.rs"]
+mod impervious;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{
     AdvanceStatus, Axis, BoundaryConditions, BoundaryFace, FluxPort, ForcingInterval,
     ForcingSchedule, Solver, SolverConfig,
 };
+use impervious::impervious_solver;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 const GRAVITY: f64 = 9.81;
@@ -122,13 +126,14 @@ fn run(
         vec![ForcingInterval {
             start: 0.0,
             end: 2.0,
+            potential_evaporation: vec![0.0; count],
             rain: vec![0.0; count],
             withdrawal: vec![0.0; count],
             boundaries: ports.into_iter().map(Into::into).collect(),
         }],
     )?;
     let state = FlowState::new(&domain, cells)?;
-    let mut solver = Solver::new(
+    let mut solver = impervious_solver(
         domain,
         state,
         boundaries,

@@ -1,15 +1,18 @@
 use super::{
-    BoundaryConditions, CONTRACT_VERSION, CellResult, EngineError, ForcingSchedule, Snapshot,
-    SolverConfig, StepDiagnostics, WaterLedger,
+    BoundaryConditions, CONTRACT_VERSION, CellResult, EngineError, ForcingSchedule, InitialState,
+    Snapshot, SolverConfig, SolverSetup, StepDiagnostics, WaterLedger,
 };
+use crate::cpu::land::CpuLand;
+use crate::cpu::land_sources::checked_volume;
 use crate::cpu::{CpuDomain, CpuState};
 use crate::model::{CellState, Domain, FlowState};
-use numr::ops::{ReduceOps, ScalarOps};
+use crate::soil::{LandModel, SoilState};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Definition {
     pub domain: Domain,
+    pub land: LandModel,
     pub boundaries: BoundaryConditions,
     pub forcing: ForcingSchedule,
     pub config: SolverConfig,
@@ -19,6 +22,8 @@ pub(super) struct Definition {
 pub(super) struct Accepted {
     pub time: f64,
     pub state: FlowState,
+    pub soil: SoilState,
+    pub land: CpuLand,
     pub ledger: WaterLedger,
     pub steps: usize,
     pub last: Option<StepDiagnostics>,
@@ -29,6 +34,7 @@ impl PartialEq for Accepted {
     fn eq(&self, other: &Self) -> bool {
         self.time == other.time
             && self.state == other.state
+            && self.soil == other.soil
             && self.ledger == other.ledger
             && self.steps == other.steps
             && self.last == other.last
@@ -70,14 +76,19 @@ impl Solver {
     ///
     /// # Errors
     /// Rejects incompatible spatial support, initial time, state, boundaries, or numerical controls.
-    pub fn new(
-        domain: Domain,
-        state: FlowState,
-        boundaries: BoundaryConditions,
-        forcing: ForcingSchedule,
-        config: SolverConfig,
-        initial_time: f64,
-    ) -> Result<Self, EngineError> {
+    pub fn new(setup: SolverSetup, initial: InitialState) -> Result<Self, EngineError> {
+        let SolverSetup {
+            domain,
+            land,
+            boundaries,
+            forcing,
+            config,
+        } = setup;
+        let InitialState {
+            time: initial_time,
+            flow: state,
+            soil,
+        } = initial;
         config.check()?;
         let state = FlowState::new(&domain, state.cells().to_vec())?;
         let boundaries =
@@ -89,20 +100,18 @@ impl Solver {
                 format!("time={initial_time}: supply a finite time inside forcing coverage"),
             ));
         }
+        let land = LandModel::new(&domain, land.cells().to_vec())
+            .map_err(crate::cpu::land::static_error)?;
+        let soil =
+            SoilState::new(&land, soil.cells().to_vec()).map_err(crate::cpu::land::static_error)?;
+        let cpu_land = CpuLand::new(&land, &soil)?;
         let cpu = CpuDomain::new(&domain, &forcing)?;
         let cpu_state = CpuState::from_flow(&state)?;
-        let volume = cpu
-            .client
-            .sum(
-                &cpu.client
-                    .mul_scalar(&cpu_state.h, domain.grid().cell_area())?,
-                &[0],
-                false,
-            )?
-            .item::<f64>()?;
+        let volume = checked_volume(&cpu.client, &cpu_state.h, domain.grid().cell_area())?;
         Ok(Self {
             definition: Arc::new(Definition {
                 domain,
+                land,
                 boundaries,
                 forcing,
                 config,
@@ -110,6 +119,8 @@ impl Solver {
             accepted: Accepted {
                 time: initial_time,
                 state,
+                soil,
+                land: cpu_land,
                 ledger: WaterLedger::new(volume),
                 steps: 0,
                 last: None,
@@ -122,6 +133,16 @@ impl Solver {
     /// Returns the immutable checked domain and reference metadata.
     pub fn domain(&self) -> &Domain {
         &self.definition.domain
+    }
+
+    /// Returns the explicit physical land support.
+    pub fn land(&self) -> &LandModel {
+        &self.definition.land
+    }
+
+    /// Returns complete accepted native soil memory without advancing or reinitializing it.
+    pub fn soil_state(&self) -> &SoilState {
+        &self.accepted.soil
     }
 
     /// Returns the immutable numerical controls.
@@ -166,6 +187,7 @@ impl Solver {
         if snapshot.contract != CONTRACT_VERSION
             || !self.definition.matches(
                 &snapshot.definition.domain,
+                &snapshot.definition.land,
                 &snapshot.definition.boundaries,
                 &snapshot.definition.forcing,
                 &snapshot.definition.config,

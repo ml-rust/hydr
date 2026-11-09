@@ -1,11 +1,15 @@
 //! Frozen terrain invariants and film sensitivity. Overtopping and film differences have no accuracy gate.
 
+#[path = "support/impervious.rs"]
+mod impervious;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{
     AdvanceStatus, BoundaryConditions, ForcingInterval, ForcingSchedule, Solver, SolverConfig,
     StepDiagnostics,
 };
+use impervious::impervious_solver;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -39,12 +43,13 @@ fn create(
         vec![ForcingInterval {
             start: 0.0,
             end: 10.0,
+            potential_evaporation: vec![0.0; count],
             rain: vec![0.0; count],
             withdrawal: vec![0.0; count],
             boundaries: vec![],
         }],
     )?;
-    Ok(Solver::new(
+    impervious_solver(
         domain,
         state,
         boundaries,
@@ -55,7 +60,7 @@ fn create(
             ..SolverConfig::default()
         },
         0.0,
-    )?)
+    )
 }
 
 fn tolerance(scale: f64) -> f64 {

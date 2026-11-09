@@ -1,11 +1,15 @@
 //! Checks lossless checkpoint packages and atomic rejection of inconsistent imports.
 
+#[path = "support/impervious.rs"]
+mod impervious;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{
     BoundaryConditions, ForcingInterval, ForcingSchedule, SNAPSHOT_SCHEMA, SnapshotData, Solver,
     SolverConfig,
 };
+use impervious::impervious_solver;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -36,6 +40,7 @@ fn create(depth: f64) -> Result<Solver, Box<dyn std::error::Error>> {
             ForcingInterval {
                 start: 0.0,
                 end: 0.4,
+                potential_evaporation: vec![0.0; 2],
                 rain: vec![0.001; 2],
                 withdrawal: vec![0.0; 2],
                 boundaries: vec![],
@@ -43,20 +48,21 @@ fn create(depth: f64) -> Result<Solver, Box<dyn std::error::Error>> {
             ForcingInterval {
                 start: 0.4,
                 end: 1.0,
+                potential_evaporation: vec![0.0; 2],
                 rain: vec![0.002; 2],
                 withdrawal: vec![0.0; 2],
                 boundaries: vec![],
             },
         ],
     )?;
-    Ok(Solver::new(
+    impervious_solver(
         domain,
         state,
         boundaries,
         forcing,
         SolverConfig::default(),
         0.0,
-    )?)
+    )
 }
 
 #[test]
@@ -106,8 +112,8 @@ fn package_restart_matches_trusted_continuation_exactly() -> TestResult {
 fn package_preserves_signed_zero_bits() -> TestResult {
     let original = create(0.0)?;
     let mut data = original.snapshot().data();
-    data.state = FlowState::new(
-        &data.domain,
+    data.accepted.flow = FlowState::new(
+        &data.setup.domain,
         vec![
             CellState {
                 h: -0.0,
@@ -124,7 +130,7 @@ fn package_preserves_signed_zero_bits() -> TestResult {
         assert_eq!(cell.qx.to_bits(), (-0.0_f64).to_bits());
     }
     let roundtrip = imported.snapshot().data();
-    for cell in roundtrip.state.cells() {
+    for cell in roundtrip.accepted.flow.cells() {
         assert_eq!(cell.h.to_bits(), (-0.0_f64).to_bits());
         assert_eq!(cell.qx.to_bits(), (-0.0_f64).to_bits());
     }
@@ -160,10 +166,10 @@ fn corrupt_packages_preserve_destination_snapshot() -> TestResult {
     };
     add(|data| data.schema = "unknown".into());
     add(|data| data.contract = "unknown".into());
-    add(|data| data.config.gravity = 10.0);
-    add(|data| data.time = f64::NAN);
-    add(|data| data.time = 2.0);
-    add(|data| data.time = 0.25);
+    add(|data| data.setup.config.gravity = 10.0);
+    add(|data| data.accepted.time = f64::NAN);
+    add(|data| data.accepted.time = 2.0);
+    add(|data| data.accepted.time = 0.25);
     add(|data| data.ledger.storage += 1.0);
     add(|data| data.ledger.rain = -1.0);
     add(|data| data.ledger.residual = 1.0);
@@ -172,9 +178,9 @@ fn corrupt_packages_preserve_destination_snapshot() -> TestResult {
     add(|data| data.accepted_steps = 0);
     add(|data| data.last_step = None);
     let mut changed_state = good.clone();
-    let mut cells = changed_state.state.cells().to_vec();
+    let mut cells = changed_state.accepted.flow.cells().to_vec();
     cells[0].h += 1.0;
-    changed_state.state = FlowState::new(&changed_state.domain, cells)?;
+    changed_state.accepted.flow = FlowState::new(&changed_state.setup.domain, cells)?;
     corrupt.push(changed_state);
     let mut destination = create(0.2)?;
     destination.advance_to(0.02, 100)?;

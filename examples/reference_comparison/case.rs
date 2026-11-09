@@ -1,7 +1,9 @@
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
+use hydr::soil::{LandModel, SoilState};
 use hydr::solver::{
-    AdvanceStatus, BoundaryConditions, ForcingInterval, ForcingSchedule, Solver, SolverConfig,
+    AdvanceStatus, BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, Solver,
+    SolverConfig, SolverSetup,
 };
 
 pub(super) type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -94,21 +96,30 @@ pub(super) fn simulate(case: Case, cells: usize) -> Result<Solver> {
         vec![ForcingInterval {
             start: 0.0,
             end: END + 1.0,
+            potential_evaporation: vec![0.0; cells],
             rain: vec![0.0; cells],
             withdrawal: vec![0.0; cells],
             boundaries: vec![],
         }],
     )?;
+    let land = LandModel::impervious(&domain);
+    let soil = SoilState::initialized(&land)?;
     let mut solver = Solver::new(
-        domain,
-        state,
-        boundaries,
-        forcing,
-        SolverConfig {
-            max_step: STEP,
-            ..SolverConfig::default()
+        SolverSetup {
+            domain,
+            land,
+            boundaries,
+            forcing,
+            config: SolverConfig {
+                max_step: STEP,
+                ..SolverConfig::default()
+            },
         },
-        0.0,
+        InitialState {
+            time: 0.0,
+            flow: state,
+            soil,
+        },
     )?;
     let mut dt_min = f64::INFINITY;
     let mut dt_max = 0.0_f64;

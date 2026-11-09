@@ -1,11 +1,15 @@
 //! Checks numerical execution, conservation, and complete accepted-state restoration.
 
+#[path = "support/impervious.rs"]
+mod impervious;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{
     AdvanceStatus, Axis, BoundaryConditions, BoundaryFace, CellResult, FluxPort, ForcingInterval,
     ForcingSchedule, Solver, SolverConfig,
 };
+use impervious::impervious_solver;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -28,6 +32,7 @@ fn interval(start: f64, end: f64, rain: Vec<f64>, withdrawal: Vec<f64>) -> Forci
     ForcingInterval {
         start,
         end,
+        potential_evaporation: vec![0.0; rain.len()],
         rain,
         withdrawal,
         boundaries: Vec::new(),
@@ -42,14 +47,14 @@ fn walls_solver(
     let state = FlowState::new(&domain, cells)?;
     let boundaries = BoundaryConditions::impermeable_walls();
     let forcing = ForcingSchedule::new(&domain, &boundaries, intervals)?;
-    Ok(Solver::new(
+    impervious_solver(
         domain,
         state,
         boundaries,
         forcing,
         SolverConfig::default(),
         0.0,
-    )?)
+    )
 }
 
 fn resting(depth: f64) -> CellState {
@@ -375,7 +380,7 @@ fn manufactured_ports_account_for_inward_and_outward_volume() -> TestResult {
             .into(),
         );
         let forcing = ForcingSchedule::new(&domain, &boundaries, vec![forcing_interval])?;
-        let mut solver = Solver::new(
+        let mut solver = impervious_solver(
             domain,
             state,
             boundaries,

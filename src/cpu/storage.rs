@@ -70,6 +70,7 @@ pub(crate) struct CpuDomain {
 #[derive(Debug)]
 pub(crate) struct CpuSources {
     pub rain: CpuTensor,
+    pub potential_evaporation: CpuTensor,
     pub withdrawal: CpuTensor,
     pub port_mask: CpuTensor,
     pub open_mask: CpuTensor,
@@ -167,6 +168,7 @@ impl CpuSources {
         };
         Ok(Self {
             rain: tensor(&forcing.rain)?,
+            potential_evaporation: tensor(&forcing.potential_evaporation)?,
             withdrawal: tensor(&forcing.withdrawal)?,
             port_mask: tensor(&mask)?,
             open_mask: tensor(&open_mask)?,
@@ -210,6 +212,7 @@ mod tests {
                 start: 0.0,
                 end: 1.0,
                 rain: vec![0.1],
+                potential_evaporation: vec![0.0],
                 withdrawal: vec![0.2],
                 boundaries: vec![FluxPort {
                     face,

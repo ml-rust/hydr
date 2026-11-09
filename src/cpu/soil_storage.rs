@@ -2,7 +2,7 @@
 
 use super::CpuTensor;
 use crate::soil::{ModifiedGreenAmptParameters, NativeSoilState, SoilError};
-use numr::ops::{BinaryOps, CompareOps, ReduceOps, TypeConversionOps, UnaryOps};
+use numr::ops::{BinaryOps, CompareOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps};
 use numr::runtime::cpu::{CpuClient, CpuDevice, ParallelismConfig};
 
 #[derive(Debug)]
@@ -35,7 +35,7 @@ impl CpuSoilContext {
         }
         let device = CpuDevice::new();
         let tensor = |values: Vec<f64>| CpuTensor::from_slice(&values, &[values.len()], &device);
-        Ok(Self {
+        let context = Self {
             client: CpuClient::new(device.clone())
                 .with_parallelism(ParallelismConfig::new(Some(1), None)),
             parameters: parameters.to_vec(),
@@ -47,7 +47,37 @@ impl CpuSoilContext {
             deficit_ceiling: tensor(parameters.iter().map(|p| p.deficit_ceiling).collect())?,
             zero: tensor(vec![0.0; parameters.len()])?,
             one: tensor(vec![1.0; parameters.len()])?,
-        })
+        };
+        context.check_arithmetic_environment()?;
+        Ok(context)
+    }
+
+    fn check_arithmetic_environment(&self) -> Result<(), SoilError> {
+        // Probe configured tensor operations. Host constant folding cannot satisfy these checks.
+        let c = &self.client;
+        let half_ulp = self.tensor(&[f64::EPSILON / 2.0])?;
+        let even = c.add(&self.tensor(&[1.0])?, &half_ulp)?.item::<f64>()?;
+        let odd = c
+            .add(
+                &self.tensor(&[f64::from_bits(1.0f64.to_bits() + 1)])?,
+                &half_ulp,
+            )?
+            .item::<f64>()?;
+        let quantum = self.tensor(&[f64::from_bits(1)])?;
+        let subnormal_input = c.add(&quantum, &quantum)?.item::<f64>()?;
+        let subnormal_output = c
+            .mul_scalar(&self.tensor(&[f64::MIN_POSITIVE])?, 0.5)?
+            .item::<f64>()?;
+        if even.to_bits() != 1.0f64.to_bits()
+            || odd.to_bits() != 1.0f64.to_bits() + 2
+            || subnormal_input.to_bits() != 2
+            || subnormal_output.to_bits() != (1u64 << 51)
+        {
+            return Err(SoilError::input(format!(
+                "unsupported CPU arithmetic: even_tie={even:?}, odd_tie={odd:?}, subnormal_input={subnormal_input:?}, subnormal_output={subnormal_output:?}. Select round-to-nearest ties-to-even and disable FTZ/DAZ before creating the soil context"
+            )));
+        }
+        Ok(())
     }
 
     pub(crate) fn tensor(&self, values: &[f64]) -> Result<CpuTensor, SoilError> {
@@ -116,9 +146,10 @@ impl CpuSoilContext {
         for (name, value) in scalars {
             context.push_str(&format!(", {name}={value:.17e}"));
         }
-        Err(SoilError::numerical(format!(
-            "{context}, parameters={parameters:?}: {action}"
-        )))
+        Err(
+            SoilError::numerical(format!("{context}, parameters={parameters:?}: {action}"))
+                .at_cell(lane),
+        )
     }
 
     pub(crate) fn check_projection_lengths(
@@ -150,7 +181,9 @@ impl CpuSoilState {
             )));
         }
         for (index, (&state, &parameters)) in states.iter().zip(&context.parameters).enumerate() {
-            state.check(parameters, index)?;
+            state
+                .check(parameters, index)
+                .map_err(|error| error.at_cell(index))?;
         }
         let tensor = |values: Vec<f64>| context.tensor(&values);
         Ok(Self {
