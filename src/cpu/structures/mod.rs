@@ -4,6 +4,7 @@ pub(crate) mod codes;
 mod context;
 mod input;
 mod proposal;
+pub(crate) mod pump;
 
 pub(crate) use context::CpuStructureContext;
 pub(crate) use input::CpuStructureInput;

@@ -5,6 +5,8 @@ use std::fmt;
 /// Explicit input-admission category, independent from numeric representation errors.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StructureInputErrorKind {
+    /// Missing, mismatched-law, malformed-speed, or unsupported-speed operation.
+    OperatingPoint,
     /// Invalid physical definition or explicit interval declaration.
     Definition,
     /// Unknown, duplicate, or reordered structure/endpoint identity.
@@ -106,6 +108,15 @@ impl fmt::Display for StructureError {
 impl std::error::Error for StructureError {}
 impl From<numr::error::Error> for StructureError {
     fn from(error: numr::error::Error) -> Self {
+        Self::Runtime {
+            element: None,
+            context: error.to_string(),
+        }
+    }
+}
+
+impl From<solvr::interpolate::InterpolateError> for StructureError {
+    fn from(error: solvr::interpolate::InterpolateError) -> Self {
         Self::Runtime {
             element: None,
             context: error.to_string(),

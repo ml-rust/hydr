@@ -4,6 +4,7 @@ use crate::cpu::CpuTensor;
 
 #[derive(Debug)]
 pub(crate) struct CpuStructureResult {
+    pub pump: Option<super::pump::CpuPumpResult>,
     pub discharge: CpuTensor,
     pub regime: CpuTensor,
     pub status: CpuTensor,

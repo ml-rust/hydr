@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 
 #[derive(Debug)]
 pub(crate) struct CpuStructureContext {
+    pub pump: Option<super::pump::CpuPumpContext>,
     pub elements: Vec<StructureElement>,
     pub client: CpuClient,
     pub device: CpuDevice,
@@ -82,6 +83,25 @@ impl CpuStructureContext {
                 .at(index));
             }
             let symmetric = match &e.law {
+                StructureLaw::Pump(_) => {
+                    orifice.push(0.0);
+                    weir.push(0.0);
+                    crown.push(0.0);
+                    crest.push(0.0);
+                    cd.push(1.0);
+                    area.push(1.0);
+                    cw.push(1.0);
+                    length.push(1.0);
+                    gravity.push(1.0);
+                    if e.direction == DirectionPolicy::Bidirectional {
+                        return Err(StructureError::input(
+                            StructureInputErrorKind::Definition,
+                            "pump requires fixed A-to-B or B-to-A orientation",
+                        )
+                        .at(index));
+                    }
+                    false
+                }
                 StructureLaw::SubmergedOrifice(p) => {
                     orifice.push(1.0);
                     weir.push(0.0);
@@ -142,6 +162,7 @@ impl CpuStructureContext {
         let log_weir_scale =
             client.add(&client.log(&tensor(&cw)?)?, &client.log(&tensor(&length)?)?)?;
         let context = Self {
+            pump: super::pump::CpuPumpContext::new(&elements, &device)?,
             zero: tensor(&vec![0.0; n])?,
             orifice: tensor(&orifice)?,
             weir: tensor(&weir)?,
@@ -201,6 +222,24 @@ impl CpuStructureContext {
     ) -> Result<(), StructureError> {
         if let Some(index) = self.lane(mask)? {
             return Err(StructureError::input(StructureInputErrorKind::UnsupportedRegime,format!("structure={:?},{quantity}: supply complete support in this law's admitted physical regime",self.elements[index].id)).at(index));
+        }
+        Ok(())
+    }
+    pub(crate) fn reject_input(
+        &self,
+        mask: &CpuTensor,
+        kind: StructureInputErrorKind,
+        quantity: &str,
+    ) -> Result<(), StructureError> {
+        if let Some(index) = self.lane(mask)? {
+            return Err(StructureError::input(
+                kind,
+                format!(
+                    "structure={:?},{quantity}: supply an admitted explicit operating point",
+                    self.elements[index].id
+                ),
+            )
+            .at(index));
         }
         Ok(())
     }

@@ -26,6 +26,7 @@ pub(crate) fn evaluate(
     )?;
     context.finite(&discharge, "final signed structure proposal")?;
     Ok(CpuStructureResult {
+        pump: None,
         discharge,
         regime: class.regime,
         status: class.status,

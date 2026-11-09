@@ -8,6 +8,8 @@ use super::{
 /// Only the two explicitly admitted physical closures.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StructureLaw {
+    /// Explicit oriented reference pump curve with declared speed/applicability policy.
+    Pump(super::PumpParameters),
     /// Both supported wet stages must lie strictly above the declared opening crown.
     SubmergedOrifice(SubmergedOrificeParameters),
     /// Suppressed sharp-crested rectangular free/submerged overflow with adopted Villemonte correction.

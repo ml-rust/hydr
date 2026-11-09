@@ -8,12 +8,12 @@ pub enum HeadSupport {
         /// Water-surface elevation in metres.
         stage_m: f64,
     },
-    /// Known dry bed, admitted only for eligible weir connections.
+    /// Known dry bed, admitted for eligible weirs or explicitly isolated pumps.
     Dry {
-        /// Bed elevation in metres, at or below a weir crest.
+        /// Bed elevation in metres. Influential weir support requires bed at or below crest.
         bed_elevation_m: f64,
     },
-    /// Unknown influential support always rejects.
+    /// Unknown influential support rejects. Explicit isolated pump operation makes it uninfluential.
     Unknown,
 }
 /// Explicit head convention. Energy-head packets remain unsupported.

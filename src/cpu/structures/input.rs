@@ -8,6 +8,7 @@ use crate::structures::{
 
 #[derive(Debug)]
 pub(crate) struct CpuStructureInput {
+    pub pump: Option<super::pump::CpuPumpInput>,
     pub stage_a: CpuTensor,
     pub stage_b: CpuTensor,
     pub bed_a: CpuTensor,
@@ -16,10 +17,12 @@ pub(crate) struct CpuStructureInput {
     pub wet_b: CpuTensor,
 }
 impl CpuStructureInput {
-    pub(crate) fn new(
+    pub(crate) fn with_operations(
         context: &CpuStructureContext,
         heads: &[StructureHeads],
+        operations: &[crate::structures::StructureOperation],
     ) -> Result<Self, StructureError> {
+        let pump = super::pump::CpuPumpInput::new(context, operations)?;
         if heads.len() != context.elements.len() {
             return Err(StructureError::input(
                 StructureInputErrorKind::Identity,
@@ -56,8 +59,12 @@ impl CpuStructureInput {
                 )
                 .at(index));
             }
-            let (a, ba, wa) = support(&input.endpoint_a.support).map_err(|e| e.at(index))?;
-            let (b, bb, wb) = support(&input.endpoint_b.support).map_err(|e| e.at(index))?;
+            let isolated = operations[index].operating_point
+                == crate::structures::StructureOperatingPoint::PumpStoppedIsolated;
+            let (a, ba, wa) =
+                support(&input.endpoint_a.support, isolated).map_err(|e| e.at(index))?;
+            let (b, bb, wb) =
+                support(&input.endpoint_b.support, isolated).map_err(|e| e.at(index))?;
             stage_a.push(a);
             stage_b.push(b);
             bed_a.push(ba);
@@ -66,6 +73,7 @@ impl CpuStructureInput {
             wet_b.push(wb);
         }
         Ok(Self {
+            pump,
             stage_a: context.tensor(&stage_a)?,
             stage_b: context.tensor(&stage_b)?,
             bed_a: context.tensor(&bed_a)?,
@@ -75,12 +83,13 @@ impl CpuStructureInput {
         })
     }
 }
-fn support(value: &HeadSupport) -> Result<(f64, f64, f64), StructureError> {
+fn support(value: &HeadSupport, isolated: bool) -> Result<(f64, f64, f64), StructureError> {
     match value {
         HeadSupport::Wet { stage_m } if stage_m.is_finite() => Ok((*stage_m, 0.0, 1.0)),
         HeadSupport::Dry { bed_elevation_m } if bed_elevation_m.is_finite() => {
             Ok((0.0, *bed_elevation_m, 0.0))
         }
+        HeadSupport::Unknown if isolated => Ok((0.0, 0.0, 0.0)),
         HeadSupport::Unknown => Err(StructureError::input(
             StructureInputErrorKind::UnknownSupport,
             "unknown influential head support cannot become dry or zero. Supply known wet/dry support",

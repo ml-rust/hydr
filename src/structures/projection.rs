@@ -30,6 +30,11 @@ pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, Struc
     let ratio = read(&r.ratio, n)?;
     let k = read(&r.correction_k, n)?;
     let logarithm = read(&r.log_magnitude, n)?;
+    let pump = r
+        .pump
+        .as_ref()
+        .map(|r| super::pump::PumpOperandProjection::new(r, n))
+        .transpose()?;
     (0..n)
         .map(|element| {
             let definition = &data.context.elements[element];
@@ -47,7 +52,17 @@ pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, Struc
                         .at(element),
                 );
             };
-            let hydraulic_operands = if status == StructureStatus::Active {
+            let hydraulic_operands = if status == StructureStatus::PumpRunning
+                || status == StructureStatus::PumpShutoff
+            {
+                let operands = pump.as_ref().ok_or_else(|| {
+                    StructureError::numerical("evaluated pump output lacks normalization operands")
+                        .at(element)
+                })?;
+                Some(StructureHydraulicOperands::Pump(
+                    operands.at(element, data.operations[element].operating_point)?,
+                ))
+            } else if status == StructureStatus::Active {
                 Some(match regime {
                     StructureRegime::SubmergedOrifice => {
                         StructureHydraulicOperands::SubmergedOrifice {
@@ -80,9 +95,11 @@ pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, Struc
                 None
             };
             Ok(StructureOutput {
+                operation: data.operations[element].operating_point,
                 element,
                 input: data.heads[element].clone(),
                 law: match &definition.law {
+                    StructureLaw::Pump(_) => StructureLawKind::Pump,
                     StructureLaw::SubmergedOrifice(_) => StructureLawKind::SubmergedOrifice,
                     StructureLaw::SuppressedRectangularWeir(_) => {
                         StructureLawKind::SuppressedRectangularWeir
@@ -99,7 +116,11 @@ pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, Struc
         .collect()
 }
 fn regime(value: f64) -> Result<StructureRegime, StructureError> {
-    if value == codes::ORIFICE {
+    if value == codes::PUMP_CURVE {
+        Ok(StructureRegime::PumpCurve)
+    } else if value == codes::PUMP_ISOLATED {
+        Ok(StructureRegime::PumpIsolated)
+    } else if value == codes::ORIFICE {
         Ok(StructureRegime::SubmergedOrifice)
     } else if value == codes::FREE_WEIR {
         Ok(StructureRegime::FreeWeirOverflow)
@@ -116,7 +137,13 @@ fn regime(value: f64) -> Result<StructureRegime, StructureError> {
     }
 }
 fn status(value: f64) -> Result<StructureStatus, StructureError> {
-    if value == codes::ACTIVE {
+    if value == codes::PUMP_RUNNING {
+        Ok(StructureStatus::PumpRunning)
+    } else if value == codes::PUMP_SHUTOFF {
+        Ok(StructureStatus::PumpShutoff)
+    } else if value == codes::PUMP_STOPPED {
+        Ok(StructureStatus::PumpStoppedIsolated)
+    } else if value == codes::ACTIVE {
         Ok(StructureStatus::Active)
     } else if value == codes::PHYSICAL_ZERO {
         Ok(StructureStatus::PhysicalZero)

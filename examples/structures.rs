@@ -66,6 +66,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output.proposal.input.structure_id, output.volume_m3
         );
     }
+    let pump=StructureBatch::new(vec![StructureElement{
+        id:"pump".into(),endpoint_a:"upstream".into(),endpoint_b:"downstream".into(),
+        datum:"synthetic datum".into(),direction:DirectionPolicy::AtoBOnly,
+        law:StructureLaw::Pump(hydr::structures::PumpParameters::new(
+            hydr::structures::PumpCurve::new(vec![
+                hydr::structures::PumpCurveKnot{head_m:0.0,discharge_m3_per_s:4.0},
+                hydr::structures::PumpCurveKnot{head_m:4.0,discharge_m3_per_s:2.0},
+                hydr::structures::PumpCurveKnot{head_m:8.0,discharge_m3_per_s:0.0},
+            ],"analytical SI water curve at declared reference speed 1000 rpm".into())?,
+            0.0,hydr::structures::PumpSpeedPolicy::ReferenceOnly,
+            hydr::structures::PumpApplicability{
+                endpoint_stage_head_assertion:"synthetic quiescent common-datum endpoints".into(),
+                connection_losses_and_velocity_head_account:"connection and velocity-head differences are negligible in this synthetic fixture".into(),
+                stopped_isolation_assertion:"declared isolation excludes forward siphoning and reverse flow".into(),
+                operating_envelope:"known wet donor above stage zero and known wet receiver".into(),
+            },
+        )?),
+    }])?;
+    let pump_proposal = pump.propose_with_operations(
+        &[heads("pump", 2.0, 6.0)],
+        &[hydr::structures::StructureOperation {
+            structure_id: "pump".into(),
+            operating_point: hydr::structures::StructureOperatingPoint::PumpRunning {
+                speed_ratio: 1.0,
+            },
+        }],
+    )?;
+    println!("pump_curve_proposal={:?}", pump_proposal.outputs()?);
     Ok(())
 }
 

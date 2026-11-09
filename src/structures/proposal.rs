@@ -9,6 +9,7 @@ pub(super) struct ProposalData {
     pub context: Arc<CpuStructureContext>,
     pub heads: Vec<StructureHeads>,
     pub result: CpuStructureResult,
+    pub operations: Vec<super::StructureOperation>,
 }
 
 /// Immutable constitutive proposals. No donor availability or paired exchange acceptance follows.
@@ -20,6 +21,7 @@ impl StructureProposal {
     pub(super) fn new(
         context: Arc<CpuStructureContext>,
         heads: Vec<StructureHeads>,
+        operations: Vec<super::StructureOperation>,
         result: CpuStructureResult,
     ) -> Self {
         Self {
@@ -27,6 +29,7 @@ impl StructureProposal {
                 context,
                 heads,
                 result,
+                operations,
             }),
         }
     }

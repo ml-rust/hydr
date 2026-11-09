@@ -5,6 +5,7 @@ mod direction;
 mod evaluation;
 pub(crate) mod held;
 mod orifice;
+pub(crate) mod pump;
 mod weir;
 
 pub(crate) use evaluation::evaluate;

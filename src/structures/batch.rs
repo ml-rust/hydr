@@ -22,11 +22,35 @@ impl StructureBatch {
     }
     /// Evaluate original supported heads without mutating definitions or earlier proposals.
     pub fn propose(&self, heads: &[StructureHeads]) -> Result<StructureProposal, StructureError> {
-        let input = CpuStructureInput::new(&self.context, heads)?;
-        let result = crate::numerics::structures::evaluate(&self.context, &input)?;
+        if self.context.pump.is_some() {
+            return Err(StructureError::input(
+                super::StructureInputErrorKind::OperatingPoint,
+                "pump operations are missing. Use propose_with_operations with explicit identity-bound operations",
+            ));
+        }
+        let operations = self
+            .elements()
+            .iter()
+            .map(|e| super::StructureOperation {
+                structure_id: e.id.clone(),
+                operating_point: super::StructureOperatingPoint::Passive,
+            })
+            .collect::<Vec<_>>();
+        self.propose_with_operations(heads, &operations)
+    }
+    /// Evaluate complete identity-bound passive/pump operations without mutating earlier proposals.
+    pub fn propose_with_operations(
+        &self,
+        heads: &[StructureHeads],
+        operations: &[super::StructureOperation],
+    ) -> Result<StructureProposal, StructureError> {
+        let input = CpuStructureInput::with_operations(&self.context, heads, operations)?;
+        let passive = crate::numerics::structures::evaluate(&self.context, &input)?;
+        let result = crate::numerics::structures::pump::evaluate(&self.context, &input, passive)?;
         Ok(StructureProposal::new(
             Arc::clone(&self.context),
             heads.to_vec(),
+            operations.to_vec(),
             result,
         ))
     }
