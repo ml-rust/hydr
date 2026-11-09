@@ -72,13 +72,17 @@ All three runs conserve stored water and record signed removed momentum.
 A separate moving-film case checks retained positive water and signed reset diagnostics.
 The shallow fixture also covers extreme neighboring depth ratios without increasing the root iteration budget.
 
-## Independent wet-bed reference
+## Independent wet-bed and dry-bed references
 
 Six matched wet-bed dam runs pass against independently executed Clawpack PyClaw v5.12.0 sources.
 Both depth and discharge differences decrease through 100, 200, and 400 cells for each downstream depth.
 The threshold-defined fronts occupy matching cells. Both engines conserve water within their declared tolerances.
 Read [the reference comparison](reference-comparison.md) for pinned sources, reproducible commands, measured norms, and scope limits.
-Dry-bed, terrain, and two-dimensional transverse comparisons remain separate gates.
+Three exactly dry Ritter runs also pass against Clawpack's untouched compiled augmented solver.
+Their cross-engine depth and discharge differences decrease under refinement, with matching threshold-defined fronts.
+However, support-matched analytical front errors are `2`, `1`, and `2.5 m`. Front accuracy and convergence remain unestablished.
+Read [the dry-bed comparison](dry-reference-comparison.md) for the analytical diagnostic, external dry policy, and reproduction commands.
+Terrain and genuine two-dimensional transverse comparisons remain separate gates.
 
 ## Gate status
 
@@ -90,7 +94,7 @@ Dry-bed, terrain, and two-dimensional transverse comparisons remain separate gat
 | Conservation | Rain, prescribed losses, shared faces, ports, donor depletion, and barrier isolation | Paired component transfers remain unsupported |
 | Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
-| Independent engine | Six matched wet-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Independent dry-bed, terrain, transverse-flow, and broader hydraulic comparisons |
+| Independent engine | Nine matched wet-bed/dry-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Analytical front accuracy, independent terrain/transverse-flow comparisons, and broader hydraulic regimes |
 | Extensions | No soil, structure, network, or coupling capability is admitted | Capability-specific acceptance before admission |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 

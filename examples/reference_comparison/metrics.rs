@@ -48,6 +48,15 @@ pub(super) fn compare(
         "case={} cells={count} depth_l1={h_l1:.17e} qx_l1={qx_l1:.17e} hydr_front={hydr_front:.17e} reference_front={reference_front:.17e} front_distance={front_distance:.17e} hydr_volume_residual={residual:.17e} reference_volume_residual={reference_residual:.17e} min_h={min_h:.17e} max_h={max_h:.17e}",
         case.name
     );
+    if case.allows_dry() {
+        let analytic_mean_front = super::ritter::mean_front(count, threshold)?;
+        println!(
+            "case={} cells={count} analytic_mean_front={analytic_mean_front:.17e} hydr_signed_front_error={:.17e} reference_signed_front_error={:.17e}",
+            case.name,
+            hydr_front - analytic_mean_front,
+            reference_front - analytic_mean_front,
+        );
+    }
     if h_l1 > 0.03 || qx_l1 > 0.1 || front_distance > 4.0 * dx {
         return Err(format!("comparison case={} cells={count}: require depth_l1<=0.03, qx_l1<=0.1, front_distance<={}", case.name, 4.0*dx).into());
     }

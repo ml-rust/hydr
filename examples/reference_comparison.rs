@@ -1,4 +1,4 @@
-//! Compares matched wet-bed dam fields against an independently executed reference.
+//! Compares matched wet-bed and dry-bed dam fields against independently executed references.
 
 #[path = "reference_comparison/mod.rs"]
 mod comparison;

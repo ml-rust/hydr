@@ -46,9 +46,15 @@ fn parse(reader: impl BufRead, case: Case, cells: usize) -> Result<Vec<CellState
         let x: f64 = values[0].parse()?;
         let h: f64 = values[1].parse()?;
         let qx: f64 = values[2].parse()?;
-        if !x.is_finite() || !h.is_finite() || !qx.is_finite() || h <= 0.0 {
+        if !x.is_finite()
+            || !h.is_finite()
+            || !qx.is_finite()
+            || h < 0.0
+            || (!case.allows_dry() && h == 0.0)
+            || (h == 0.0 && qx != 0.0)
+        {
             return Err(format!(
-                "CSV line {line_number}={line:?}: require finite fields and strictly positive depth"
+                "CSV line {line_number}={line:?}: require finite admitted wet/dry fields with zero dry discharge"
             )
             .into());
         }
@@ -82,7 +88,7 @@ fn check_metadata(metadata: &BTreeMap<String, String>, case: Case, cells: usize)
         ("xmin", "-100".into()),
         ("xmax", "100".into()),
         ("max_step", "0.01".into()),
-        ("method", "pyclaw-python-hll-order1".into()),
+        ("method", case.reference_method().into()),
     ];
     if metadata.len() != required.len() {
         return Err(format!(
@@ -202,6 +208,34 @@ mod tests {
                 "input={invalid:?}"
             );
         }
+    }
+
+    #[test]
+    fn dry_case_requires_augmented_metadata_and_zero_dry_discharge()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let case = Case::parse("dry-ritter")?;
+        let dry = input("0,0,0\n")
+            .replace("# case=wet-quarter", "# case=dry-ritter")
+            .replace("# right_depth=0.25", "# right_depth=0")
+            .replace(
+                "pyclaw-python-hll-order1",
+                "pyclaw-fortran-augmented-order1",
+            );
+        assert!(parse(dry.as_bytes(), case, 1).is_ok());
+        for invalid in [
+            dry.replace("0,0,0\n", "0,0,1e-12\n"),
+            dry.replace("0,0,0\n", "0,-1e-12,0\n"),
+            dry.replace(
+                "pyclaw-fortran-augmented-order1",
+                "pyclaw-python-hll-order1",
+            ),
+        ] {
+            assert!(
+                parse(invalid.as_bytes(), case, 1).is_err(),
+                "input={invalid:?}"
+            );
+        }
+        Ok(())
     }
 
     #[test]

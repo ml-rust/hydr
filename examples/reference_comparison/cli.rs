@@ -4,11 +4,25 @@ use std::path::Path;
 
 pub(crate) fn run() -> Result<()> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
-    if arguments.first().is_some_and(|value| value == "suite") {
+    if arguments
+        .first()
+        .is_some_and(|value| value == "suite" || value == "dry-suite")
+    {
         if !(2..=3).contains(&arguments.len()) {
-            return Err("usage: reference_comparison suite REFERENCE_DIR [FRESH_HYDR_DIR]".into());
+            return Err(
+                "usage: reference_comparison suite|dry-suite REFERENCE_DIR [FRESH_HYDR_DIR]".into(),
+            );
         }
-        return suite(Path::new(&arguments[1]), arguments.get(2).map(Path::new));
+        let cases: &[&str] = if arguments[0] == "dry-suite" {
+            &["dry-ritter"]
+        } else {
+            &["wet-quarter", "wet-tenth"]
+        };
+        return suite(
+            Path::new(&arguments[1]),
+            arguments.get(2).map(Path::new),
+            cases,
+        );
     }
     if !(3..=4).contains(&arguments.len()) {
         return Err("usage: reference_comparison CASE CELLS REFERENCE.csv [NEW_HYDR.csv]".into());
@@ -53,11 +67,11 @@ fn evaluate(
     )
 }
 
-fn suite(directory: &Path, output: Option<&Path>) -> Result<()> {
+fn suite(directory: &Path, output: Option<&Path>, cases: &[&str]) -> Result<()> {
     if let Some(output) = output {
         std::fs::create_dir_all(output)?;
     }
-    for name in ["wet-quarter", "wet-tenth"] {
+    for &name in cases {
         let case = Case::parse(name)?;
         let mut previous = None;
         for cells in [100, 200, 400] {

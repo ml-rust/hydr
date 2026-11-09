@@ -26,7 +26,11 @@ impl Case {
                 name: "wet-tenth",
                 downstream: 0.1,
             }),
-            _ => Err(format!("case={value}: choose wet-quarter or wet-tenth").into()),
+            "dry-ritter" => Ok(Self {
+                name: "dry-ritter",
+                downstream: 0.0,
+            }),
+            _ => Err(format!("case={value}: choose wet-quarter, wet-tenth, or dry-ritter").into()),
         }
     }
 
@@ -35,7 +39,23 @@ impl Case {
     }
 
     pub fn front_threshold(self) -> f64 {
-        self.downstream + 0.05 * (1.0 - self.downstream)
+        if self.allows_dry() {
+            1e-3
+        } else {
+            self.downstream + 0.05 * (1.0 - self.downstream)
+        }
+    }
+
+    pub fn allows_dry(self) -> bool {
+        self.downstream == 0.0
+    }
+
+    pub fn reference_method(self) -> &'static str {
+        if self.allows_dry() {
+            "pyclaw-fortran-augmented-order1"
+        } else {
+            "pyclaw-python-hll-order1"
+        }
     }
 }
 
@@ -92,7 +112,8 @@ pub(super) fn simulate(case: Case, cells: usize) -> Result<Solver> {
     )?;
     let mut dt_min = f64::INFINITY;
     let mut dt_max = 0.0_f64;
-    let mut strictly_wet = true;
+    let mut admitted_states = true;
+    let mut max_abs_qy = 0.0_f64;
     let report = solver.advance_controlled(
         END,
         100_000,
@@ -100,7 +121,15 @@ pub(super) fn simulate(case: Case, cells: usize) -> Result<Solver> {
         |step, cells| {
             dt_min = dt_min.min(step.dt);
             dt_max = dt_max.max(step.dt);
-            strictly_wet &= cells.iter().all(|cell| cell.h > 0.0);
+            admitted_states &= cells.iter().all(|cell| {
+                cell.h >= 0.0
+                    && (case.allows_dry() || cell.h > 0.0)
+                    && (cell.h != 0.0 || (cell.qx == 0.0 && cell.qy == 0.0))
+                    && cell.qy.abs() <= 1e-12
+            });
+            for cell in cells {
+                max_abs_qy = max_abs_qy.max(cell.qy.abs());
+            }
         },
     )?;
     if report.status != AdvanceStatus::ReachedTarget {
@@ -117,15 +146,15 @@ pub(super) fn simulate(case: Case, cells: usize) -> Result<Solver> {
             format!("hydr ledger={ledger:?}: require conserved water without adjustment").into(),
         );
     }
-    if !strictly_wet {
+    if !admitted_states {
         return Err(format!(
-            "hydr case={}: require strictly positive accepted wet-bed depth",
+            "hydr case={}: require admitted wet/dry state, zero dry momentum, and |qy|<=1e-12",
             case.name
         )
         .into());
     }
     println!(
-        "hydr_accepted_steps={} hydr_time={:.17e} hydr_dt_min={dt_min:.17e} hydr_dt_max={dt_max:.17e}",
+        "hydr_accepted_steps={} hydr_time={:.17e} hydr_dt_min={dt_min:.17e} hydr_dt_max={dt_max:.17e} hydr_max_abs_qy={max_abs_qy:.17e}",
         report.accepted_steps, report.accepted_time
     );
     Ok(solver)

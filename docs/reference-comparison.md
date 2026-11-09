@@ -44,6 +44,7 @@ Upstream logging creates a local file and socket. The adapter places its log bes
 The suite rejects missing fronts and malformed or mismatched reference files.
 Exactly dry cases remain excluded because this Python HLL routine divides by depth.
 The harness never replaces a dry bed with a positive film.
+The [exactly dry comparison](dry-reference-comparison.md) uses Clawpack's compiled augmented solver and documents its different dry policy.
 
 ## Reproduce the comparison
 
@@ -70,7 +71,7 @@ mkdir "$comparison_root" || exit 1
 mkdir "$comparison_root/reference" "$comparison_root/hydr" || exit 1
 for case_name in wet-quarter wet-tenth; do
     for cells in 100 200 400; do
-        python3 tools/reference/pyclaw_wet_dam.py \
+        python3 tools/reference/clawpack_dam.py \
             --pyclaw-root resource/reference-engines/clawpack/pyclaw-60de625fb28b2e19db828d06db0cc3247109bd24 \
             --riemann-root resource/reference-engines/clawpack/riemann-c29dcab4af30913fc16e4406fe56fe5f0a322b1f \
             --case "$case_name" --cells "$cells" \
@@ -114,4 +115,5 @@ Python sidecars use NumPy reductions, so their last bits differ from Rust's CSV 
 Whole-domain means include undisturbed cells and dilute local differences.
 Equal threshold-defined fronts establish no exact shock-position accuracy.
 These runs establish selected wet-bed agreement only.
-Independent dry-bed, terrain, two-dimensional transverse-flow, and measured-event comparisons remain open.
+The separate dry-bed comparison passes its cross-engine gates while front accuracy remains unestablished.
+Independent terrain, two-dimensional transverse-flow, and measured-event comparisons remain open.

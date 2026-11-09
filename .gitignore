@@ -17,6 +17,9 @@
 /data/
 /output/
 
+# Python helper bytecode
+__pycache__/
+
 # Credentials and machine-local files
 .env
 .env.*
