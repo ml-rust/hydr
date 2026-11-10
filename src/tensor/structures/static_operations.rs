@@ -22,6 +22,7 @@ impl<R: Runtime<DType = DType>> TensorStaticOperations<R> {
     ) -> Result<Self, StructureError>
     where
         R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::IndexingOps<R>
             + numr::ops::ConditionalOps<R>
             + numr::ops::ReduceOps<R>
             + numr::ops::TypeConversionOps<R>

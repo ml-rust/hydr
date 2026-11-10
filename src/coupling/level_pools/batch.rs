@@ -21,6 +21,11 @@ pub struct CoupledLevelPoolBatch<R: Runtime<DType = DType>> {
     pub(super) external: InflowState<R>,
     pub(super) last: Option<Arc<StoredStep<R>>>,
 }
+impl<R: Runtime<DType = DType>> CoupledLevelPoolBatch<R> {
+    pub(crate) fn matches_setup(&self, setup: &CoupledLevelPoolSetup) -> bool {
+        super::identity::same_setup(&self.context.setup, setup)
+    }
+}
 impl<R: Runtime<DType = DType>> std::fmt::Debug for CoupledLevelPoolBatch<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CoupledLevelPoolBatch")

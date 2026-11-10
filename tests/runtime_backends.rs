@@ -8,6 +8,8 @@ mod inflow_fixture;
 mod inflows;
 #[path = "runtime_backends/interval_volumes.rs"]
 mod interval_volumes;
+#[path = "runtime_backends/runoff_pools.rs"]
+mod runoff_pools;
 #[path = "support/runtime.rs"]
 mod runtime;
 

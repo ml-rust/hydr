@@ -8,6 +8,8 @@ This standalone component does not attach runoff to a hydraulic model or infer G
 cargo run --example subcatchment
 ```
 
+To send free outlet volumes into storage pools, use the [runoff-to-pool coordinator](runoff-pools.md).
+
 ## Define the contributing area
 
 `SubcatchmentGeometry` supplies explicit SI geometry and area fractions. `SubcatchmentParameters::new` checks physical support and uses the checked [reservoir relations](reservoir.md).

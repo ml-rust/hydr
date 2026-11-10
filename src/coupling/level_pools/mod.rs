@@ -11,6 +11,7 @@ mod identity;
 mod inflows;
 mod iteration;
 mod mass;
+mod native_accounting;
 mod output;
 mod projection;
 mod restoration;

@@ -22,42 +22,16 @@ impl CoupledLevelPoolForcingInterval {
         count: usize,
         enabled: bool,
     ) -> Result<(), CoupledLevelPoolError> {
-        if self.sources.is_some() != enabled {
-            return Err(CoupledLevelPoolError::input(
-                "forcing source presence differs from setup policies. Supply complete rates exactly when local sources are enabled",
-            ));
-        }
-        if !self.start_s.is_finite()
-            || !self.end_s.is_finite()
-            || !requested.is_finite()
-            || self.start_s > accepted
-            || accepted >= requested
-            || requested > self.end_s
-            || self
-                .sources
-                .as_ref()
-                .is_some_and(|sources| sources.len() != count)
-        {
-            return Err(CoupledLevelPoolError::input(format!(
-                "forcing interval=[{},{}], accepted={accepted}, requested={requested}, source records={:?}, pools={count}: supply finite coverage and complete records for every enabled process",
-                self.start_s,
-                self.end_s,
-                self.sources.as_ref().map(Vec::len)
-            )));
-        }
-        if self.requires_exact_span()
-            && (self.start_s.to_bits() != accepted.to_bits()
-                || self.end_s.to_bits() != requested.to_bits()
-                || !(self.end_s - self.start_s).is_finite()
-                || self.end_s - self.start_s <= 0.0)
-        {
-            return Err(CoupledLevelPoolError::input(format!(
-                "integrated inflow span=[{},{}], accepted={accepted}, requested={requested}: recompute complete forcing for this exact positive span",
-                self.start_s, self.end_s,
-            )));
-        }
-        Ok(())
+        check_coverage(
+            (self.start_s, self.end_s),
+            (accepted, requested),
+            self.sources.as_ref().map(Vec::len),
+            count,
+            enabled,
+            self.requires_exact_span(),
+        )
     }
+
     pub(super) fn requires_exact_span(&self) -> bool {
         self.inflows
             .iter()
@@ -94,5 +68,114 @@ impl CoupledLevelPoolForcingInterval {
                     && a.input_id == b.input_id
                     && a.value.same_bits(&b.value)
             })
+    }
+}
+
+pub(super) fn check_coverage(
+    coverage: (f64, f64),
+    actual: (f64, f64),
+    source_count: Option<usize>,
+    count: usize,
+    enabled: bool,
+    exact_span: bool,
+) -> Result<(), CoupledLevelPoolError> {
+    let (start_s, end_s) = coverage;
+    let (accepted, requested) = actual;
+    if source_count.is_some() != enabled {
+        return Err(CoupledLevelPoolError::input(
+            "forcing source presence differs from setup policies. Supply complete rates exactly when local sources are enabled",
+        ));
+    }
+    if !start_s.is_finite()
+        || !end_s.is_finite()
+        || !requested.is_finite()
+        || start_s > accepted
+        || accepted >= requested
+        || requested > end_s
+        || source_count.is_some_and(|records| records != count)
+    {
+        return Err(CoupledLevelPoolError::input(format!(
+            "forcing interval=[{},{}], accepted={accepted}, requested={requested}, source records={:?}, pools={count}: supply finite coverage and complete records for every enabled process",
+            start_s, end_s, source_count
+        )));
+    }
+    if exact_span
+        && (start_s.to_bits() != accepted.to_bits()
+            || end_s.to_bits() != requested.to_bits()
+            || !(end_s - start_s).is_finite()
+            || end_s - start_s <= 0.0)
+    {
+        return Err(CoupledLevelPoolError::input(format!(
+            "integrated inflow span=[{},{}], accepted={accepted}, requested={requested}: recompute complete forcing for this exact positive span",
+            start_s, end_s,
+        )));
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct BoundPoolForcing<R: numr::runtime::Runtime<DType = numr::dtype::DType>> {
+    pub start_s: f64,
+    pub end_s: f64,
+    pub sources: Option<Vec<LevelPoolSources>>,
+    pub inflows: super::inflows::BoundInflows<R>,
+}
+
+impl<R: numr::runtime::Runtime<DType = numr::dtype::DType>> BoundPoolForcing<R> {
+    pub fn check(
+        &self,
+        accepted: f64,
+        requested: f64,
+        count: usize,
+        enabled: bool,
+    ) -> Result<(), CoupledLevelPoolError> {
+        check_coverage(
+            (self.start_s, self.end_s),
+            (accepted, requested),
+            self.sources.as_ref().map(Vec::len),
+            count,
+            enabled,
+            self.inflows.has_interval_volumes(),
+        )
+    }
+}
+
+impl<R: numr::runtime::Runtime<DType = numr::dtype::DType>> BoundPoolForcing<R>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::IndexingOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::ShapeOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
+    pub fn project(
+        &self,
+        client: &R::Client,
+        context: &super::inflows::InflowContext<R>,
+    ) -> Result<CoupledLevelPoolForcingInterval, CoupledLevelPoolError> {
+        Ok(CoupledLevelPoolForcingInterval {
+            start_s: self.start_s,
+            end_s: self.end_s,
+            sources: self.sources.clone(),
+            inflows: context.project_inputs(client, &self.inflows)?,
+        })
+    }
+
+    pub fn restore(
+        &self,
+        client: &R::Client,
+        context: &super::inflows::InflowContext<R>,
+    ) -> Result<Self, CoupledLevelPoolError> {
+        Ok(Self {
+            start_s: self.start_s,
+            end_s: self.end_s,
+            sources: self.sources.clone(),
+            inflows: context.restore_inputs(client, &self.inflows)?,
+        })
     }
 }

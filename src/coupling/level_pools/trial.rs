@@ -1,5 +1,7 @@
+use super::forcing::BoundPoolForcing;
 use super::inflows::{BoundInflows, InflowState, InflowStep};
 use super::mass::InflowMass;
+use super::native_accounting::PoolCouplingInterval;
 use super::{
     CoupledLevelPoolBatch, CoupledLevelPoolError, CoupledLevelPoolForcingInterval,
     CoupledLevelPoolStepDiagnostics, exchange::Exchange, heads::Heads,
@@ -27,7 +29,8 @@ pub(super) struct StoredStart<R: Runtime<DType = DType>> {
 pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub start_frame: StoredStart<R>,
     pub external: InflowStep<R>,
-    pub forcing_interval: Option<CoupledLevelPoolForcingInterval>,
+    pub forcing_interval: Option<BoundPoolForcing<R>>,
+    pub coupling: PoolCouplingInterval,
     pub input: Tensor<R>,
     pub exchange: Exchange<R>,
     pub heads: Heads<R>,
@@ -97,20 +100,72 @@ where
             .as_ref()
             .map(|sources| self.pools.bind_source_rates(sources))
             .transpose()?;
-        let inflows = self
-            .context
-            .inflows
-            .bind_inputs(&self.context.client, &interval.inflows)?;
-        self.trial_interval(requested_end, Some(interval), plan.as_ref(), &inflows)
+        let forcing = BoundPoolForcing {
+            start_s: interval.start_s,
+            end_s: interval.end_s,
+            sources: interval.sources.clone(),
+            inflows: self
+                .context
+                .inflows
+                .bind_inputs(&self.context.client, &interval.inflows)?,
+        };
+        self.trial_interval(
+            requested_end,
+            Some(&forcing),
+            plan.as_ref(),
+            &forcing.inflows,
+        )
+    }
+
+    pub(crate) fn trial_with_native_inflows_to(
+        &self,
+        requested_end: f64,
+        sources: Option<&[crate::storage::LevelPoolSources]>,
+        volumes: &Tensor<R>,
+    ) -> Result<CoupledLevelPoolTrial<R>, CoupledLevelPoolError> {
+        super::forcing::check_coverage(
+            (self.time(), requested_end),
+            (self.time(), requested_end),
+            sources.map(|sources| sources.len()),
+            self.context.pool_count(),
+            self.source_policies().is_some(),
+            true,
+        )?;
+        let plan = sources
+            .map(|sources| self.pools.bind_source_rates(sources))
+            .transpose()?;
+        let forcing = BoundPoolForcing {
+            start_s: self.time(),
+            end_s: requested_end,
+            sources: sources.map(|sources| sources.to_vec()),
+            inflows: self
+                .context
+                .inflows
+                .bind_interval_volumes(&self.context.client, volumes)?,
+        };
+        self.trial_interval(
+            requested_end,
+            Some(&forcing),
+            plan.as_ref(),
+            &forcing.inflows,
+        )
     }
     fn trial_interval(
         &self,
         requested_end: f64,
-        forcing_interval: Option<&CoupledLevelPoolForcingInterval>,
+        forcing_interval: Option<&BoundPoolForcing<R>>,
         source_plan: Option<&LevelPoolSourcePlan<'_, R>>,
         inflows: &BoundInflows<R>,
     ) -> Result<CoupledLevelPoolTrial<R>, CoupledLevelPoolError> {
         let start = self.time();
+        if let Some(forcing) = forcing_interval {
+            forcing.check(
+                start,
+                requested_end,
+                self.context.pool_count(),
+                self.source_policies().is_some(),
+            )?;
+        }
         let config = &self.context.setup.config;
         if !requested_end.is_finite() || requested_end <= start {
             return Err(CoupledLevelPoolError::input(format!(
@@ -194,7 +249,7 @@ where
         end: f64,
         requested: f64,
         retries: usize,
-        forcing_interval: Option<&CoupledLevelPoolForcingInterval>,
+        forcing_interval: Option<&BoundPoolForcing<R>>,
         source_plan: Option<&LevelPoolSourcePlan<'_, R>>,
         inflows: &BoundInflows<R>,
     ) -> Result<Self, CoupledLevelPoolError> {
@@ -233,7 +288,7 @@ where
             prepared.as_ref(),
             &external,
         )?;
-        let mass_residual = self.context.mass_check(
+        let checked_mass = self.context.mass_check(
             &self.pools,
             &evaluation.pools,
             evaluation.exchange.aggregation_bound,
@@ -244,7 +299,21 @@ where
                 cumulative: &external_totals,
             },
         )?;
+        let mass_residual = checked_mass.residual;
+        let coupling = self.context.interval_summary(
+            &checked_mass.before,
+            &checked_mass.after,
+            (self.time(), end),
+            evaluation.exchange.aggregation_bound,
+            sources.as_ref(),
+            InflowMass {
+                before: &external_before,
+                interval: &external.summary,
+                cumulative: &external_totals,
+            },
+        )?;
         let step = StoredStep {
+            coupling,
             start_frame: StoredStart {
                 pools: self.pools.snapshot(),
                 external: self.external.clone(),

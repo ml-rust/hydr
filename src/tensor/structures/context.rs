@@ -1,6 +1,7 @@
 //! Configured persistent concrete-law masks and sum-of-logs coefficient caches.
 use numr::ops::BinaryOps;
 use numr::ops::CompareOps;
+use numr::ops::IndexingOps;
 use numr::ops::ReduceOps;
 use numr::ops::ScalarOps;
 use numr::ops::TypeConversionOps;
@@ -239,20 +240,23 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
     }
     fn lane(&self, mask: &Tensor<R>) -> Result<Option<usize>, StructureError>
     where
-        R::Client: numr::ops::ReduceOps<R>,
+        R::Client: numr::ops::ReduceOps<R> + numr::ops::IndexingOps<R>,
     {
         if !self.any(mask)? {
             return Ok(None);
         }
-        let flags = mask.try_to_vec::<f64>()?;
-        let index = flags.iter().position(|v| *v != 0.0).ok_or_else(|| {
-            StructureError::numerical("structure rejection mask contradicts reduction")
-        })?;
+        let rejected = self.client.argmax(mask, 0, false)?.item::<i64>()?;
+        let index = usize::try_from(rejected)
+            .ok()
+            .filter(|&index| index < mask.numel() && index < self.elements.len())
+            .ok_or_else(|| {
+                StructureError::numerical("structure rejection mask contradicts reduction")
+            })?;
         Ok(Some(index))
     }
     pub(crate) fn reject(&self, mask: &Tensor<R>, quantity: &str) -> Result<(), StructureError>
     where
-        R::Client: numr::ops::ReduceOps<R>,
+        R::Client: numr::ops::ReduceOps<R> + numr::ops::IndexingOps<R>,
     {
         if let Some(index) = self.lane(mask)? {
             return Err(StructureError::numerical(format!("structure={:?},{quantity}: rescale supported heads/parameters or select a representable held interval",self.elements[index].id)).at(index));
@@ -265,7 +269,7 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
         quantity: &str,
     ) -> Result<(), StructureError>
     where
-        R::Client: numr::ops::ReduceOps<R>,
+        R::Client: numr::ops::ReduceOps<R> + numr::ops::IndexingOps<R>,
     {
         if let Some(index) = self.lane(mask)? {
             return Err(StructureError::input(StructureInputErrorKind::UnsupportedRegime,format!("structure={:?},{quantity}: supply complete support in this law's admitted physical regime",self.elements[index].id)).at(index));
@@ -279,7 +283,7 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
         quantity: &str,
     ) -> Result<(), StructureError>
     where
-        R::Client: numr::ops::ReduceOps<R>,
+        R::Client: numr::ops::ReduceOps<R> + numr::ops::IndexingOps<R>,
     {
         if let Some(index) = self.lane(mask)? {
             return Err(StructureError::input(
@@ -297,6 +301,7 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
     where
         R::Client: numr::ops::BinaryOps<R>
             + numr::ops::ReduceOps<R>
+            + numr::ops::IndexingOps<R>
             + numr::ops::TypeConversionOps<R>
             + numr::ops::UnaryOps<R>,
     {

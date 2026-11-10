@@ -24,11 +24,13 @@ pub(crate) struct InflowContext<R: Runtime<DType = DType>> {
     pub(super) pool_count: usize,
 }
 
+#[derive(Clone, Debug)]
 pub(crate) struct BoundInflows<R: Runtime<DType = DType>> {
     pub(super) bindings: Arc<Vec<CoupledPoolInflowBinding>>,
     pub(super) values: Tensor<R>,
     pub(super) rate_mask: Tensor<R>,
     pub(super) input_is_rate: Arc<Vec<bool>>,
+    pub(super) projection_order: Arc<Vec<usize>>,
     has_interval_volumes: bool,
 }
 
@@ -152,12 +154,78 @@ where
             kinds.push(input.value.is_rate());
             mask.push(if input.value.is_rate() { 1.0 } else { 0.0 });
         }
+        let indices: HashMap<_, _> = self
+            .bindings
+            .iter()
+            .enumerate()
+            .map(|(index, binding)| (binding.boundary_id.as_str(), index))
+            .collect();
+        let projection_order = inputs
+            .iter()
+            .map(|input| {
+                indices
+                    .get(input.boundary_id.as_str())
+                    .copied()
+                    .ok_or_else(|| {
+                        CoupledLevelPoolError::input(
+                            "original input identity disappeared during binding",
+                        )
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(BoundInflows {
             bindings: Arc::clone(&self.bindings),
+            projection_order: Arc::new(projection_order),
             values: Tensor::from_slice(&ordered, &[ordered.len()], client.device())?,
             rate_mask: Tensor::from_slice(&mask, &[mask.len()], client.device())?,
             has_interval_volumes: kinds.iter().any(|is_rate| !is_rate),
             input_is_rate: Arc::new(kinds),
+        })
+    }
+
+    pub(crate) fn bind_interval_volumes(
+        &self,
+        client: &R::Client,
+        values: &Tensor<R>,
+    ) -> Result<BoundInflows<R>, CoupledLevelPoolError> {
+        if self.bindings.is_empty() {
+            return Err(CoupledLevelPoolError::input(
+                "native interval volumes require declared nonempty receiving boundaries",
+            ));
+        }
+        self.check_tensor(client, values)?;
+        Ok(BoundInflows {
+            bindings: Arc::clone(&self.bindings),
+            values: values.clone(),
+            rate_mask: Tensor::zeros(&[self.bindings.len()], DType::F64, client.device())?,
+            input_is_rate: Arc::new(vec![false; self.bindings.len()]),
+            projection_order: Arc::new((0..self.bindings.len()).collect()),
+            has_interval_volumes: !self.bindings.is_empty(),
+        })
+    }
+
+    pub(crate) fn restore_inputs(
+        &self,
+        client: &R::Client,
+        inputs: &BoundInflows<R>,
+    ) -> Result<BoundInflows<R>, CoupledLevelPoolError> {
+        if self.bindings.as_ref() != inputs.bindings.as_ref()
+            || inputs.input_is_rate.len() != self.bindings.len()
+            || inputs.projection_order.len() != self.bindings.len()
+        {
+            return Err(CoupledLevelPoolError::input(
+                "trusted inflow input identities differ from the destination",
+            ));
+        }
+        self.check_tensor(client, &inputs.values)?;
+        self.check_tensor(client, &inputs.rate_mask)?;
+        Ok(BoundInflows {
+            bindings: Arc::clone(&self.bindings),
+            values: inputs.values.clone(),
+            rate_mask: inputs.rate_mask.clone(),
+            input_is_rate: Arc::clone(&inputs.input_is_rate),
+            projection_order: Arc::clone(&inputs.projection_order),
+            has_interval_volumes: inputs.has_interval_volumes,
         })
     }
 }

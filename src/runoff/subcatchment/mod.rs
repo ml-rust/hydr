@@ -5,6 +5,7 @@ mod accounting_bounds;
 mod batch;
 mod config;
 mod error;
+mod native_exports;
 mod output;
 mod parameters;
 mod projection;

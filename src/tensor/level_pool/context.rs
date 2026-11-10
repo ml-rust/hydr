@@ -2,7 +2,8 @@
 
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, TypeConversionOps,
+    UnaryOps,
 };
 use numr::runtime::{Device, Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -182,10 +183,13 @@ where
         if !self.any(mask)? {
             return Ok(());
         }
-        let values = mask.try_to_vec::<f64>()?;
-        let index = values.iter().position(|v| *v != 0.0).ok_or_else(|| {
-            LevelPoolError::numerical("element rejection mask contradicts its reduction")
-        })?;
+        let rejected = self.client.argmax(mask, 0, false)?.item::<i64>()?;
+        let index = usize::try_from(rejected)
+            .ok()
+            .filter(|&index| index < mask.numel())
+            .ok_or_else(|| {
+                LevelPoolError::numerical("element rejection mask contradicts its reduction")
+            })?;
         Err(LevelPoolError::numerical(format!("{quantity}: rescale storage/transfer quantities or supply an admitted curve and interval")).at(index))
     }
     pub(crate) fn finite(&self, value: &Tensor<R>, quantity: &str) -> Result<(), LevelPoolError> {

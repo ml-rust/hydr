@@ -2,7 +2,8 @@
 
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, TypeConversionOps,
+    UnaryOps,
 };
 use numr::runtime::{Device, Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -154,16 +155,26 @@ where
         if !self.any(mask)? {
             return Ok(());
         }
-        let flags = mask.try_to_vec::<f64>()?;
-        let lane = flags.iter().position(|v| *v != 0.0).ok_or_else(|| {
-            SubcatchmentError::numerical("rejection mask contradicts its reduction")
-        })?;
+        let selected = self.client.argmax(mask, 0, false)?.item::<i64>()?;
+        let lane = usize::try_from(selected)
+            .ok()
+            .filter(|lane| *lane < mask.numel())
+            .ok_or_else(|| {
+                SubcatchmentError::numerical("rejection mask contradicts its reduction")
+            })?;
+        if mask.narrow(0, lane, 1)?.item::<f64>()? == 0.0 {
+            return Err(SubcatchmentError::numerical(
+                "rejection mask contradicts its reduction",
+            ));
+        }
         let mut message = format!("quantity={quantity}");
         for (name, tensor) in fields {
-            let values = tensor.try_to_vec::<f64>()?;
-            let value = values.get(lane).ok_or_else(|| {
-                SubcatchmentError::numerical("diagnostic support differs from rejected mask")
-            })?;
+            if lane >= tensor.numel() {
+                return Err(SubcatchmentError::numerical(
+                    "diagnostic support differs from rejected mask",
+                ));
+            }
+            let value = tensor.narrow(0, lane, 1)?.item::<f64>()?;
             message.push_str(&format!(", {name}={value:.17e}"));
         }
         for (name, value) in scalars {
@@ -214,3 +225,7 @@ impl<R: Runtime<DType = DType>> std::fmt::Debug for TensorSubcatchmentContext<R>
             .finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+#[path = "rejection_tests.rs"]
+mod rejection_tests;

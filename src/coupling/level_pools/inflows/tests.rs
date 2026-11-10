@@ -7,10 +7,12 @@ use numr::tensor::Tensor;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-fn client() -> CpuClient {
+pub(super) fn client() -> CpuClient {
     CpuClient::new(CpuDevice::new()).with_parallelism(ParallelismConfig::new(Some(1), Some(64)))
 }
-fn pools(capacity: f64) -> Result<Vec<LevelPoolElement>, crate::storage::LevelPoolError> {
+pub(super) fn pools(
+    capacity: f64,
+) -> Result<Vec<LevelPoolElement>, crate::storage::LevelPoolError> {
     (0..2)
         .map(|index| {
             Ok(LevelPoolElement {
@@ -35,7 +37,7 @@ fn pools(capacity: f64) -> Result<Vec<LevelPoolElement>, crate::storage::LevelPo
         })
         .collect()
 }
-fn binding(boundary: &str) -> CoupledPoolInflowBinding {
+pub(super) fn binding(boundary: &str) -> CoupledPoolInflowBinding {
     CoupledPoolInflowBinding {
         boundary_id: boundary.into(),
         pool_id: "pool-0".into(),

@@ -11,3 +11,11 @@ pub use level_pools::{
     CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolInflowReceipt,
     CoupledPoolInflowValue, CoupledPoolSupport,
 };
+
+pub mod runoff_pools;
+pub use runoff_pools::{
+    RunoffPoolBatch, RunoffPoolConfig, RunoffPoolError, RunoffPoolForcingInterval,
+    RunoffPoolInitialState, RunoffPoolMeteorology, RunoffPoolOutletBinding, RunoffPoolSetup,
+    RunoffPoolSnapshot, RunoffPoolSnapshotData, RunoffPoolStepDiagnostics, RunoffPoolTrial,
+    RunoffPoolWaterBalance,
+};

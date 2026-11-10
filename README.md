@@ -15,10 +15,11 @@ The library is unpublished. Its components support the following calculations:
 | Rainfall runoff | Stored water and runoff from three catchment subareas | [Reservoir](docs/reservoir.md) and [subcatchment](docs/subcatchment.md) |
 | Storage pools | Water volume and level from supplied storage curves | [Level pools](docs/level-pool.md) |
 | Coupled storage pools | Accepted structure transfers, local rain and losses, and prescribed external rates or integrated volumes | [Coupled level pools](docs/coupled-level-pools.md) |
+| Runoff into pools | Native runoff generation and pool storage accepted over one common interval | [Runoff-to-pool connections](docs/runoff-pools.md) |
 | Structure laws | Flow proposals for openings, weirs, pumps, and gates | [Structures](docs/structures.md) |
 | Operating controls | Sampled commands and explicitly assumed ideal pump or gate responses | [Controls](docs/operating-controls.md), [actuators](docs/gate-actuators.md), [controlled gates](docs/controlled-gates.md), and [controlled pumps](docs/controlled-pumps.md) |
 
-Connected level pools support accepted water transfers, local sources, prescribed external inflows, and static manual operations. Surface-to-network coupling and coordinated advancement with other components remain unsupported.
+Connected level pools support accepted water transfers, local sources, prescribed external inflows, and static manual operations. Runoff-to-pool coordination requires free outlets without downstream feedback. Surface-to-network coupling remains unsupported.
 
 The [operating-source registry](docs/operating-sources.md) assigns one source of operating inputs to each structure. [Contributing-support checks](docs/contributing-support.md) check which areas receive rainfall and where measured inflows replace generated runoff completely. Applications supply the ownership evidence. These checks do not establish hydraulic connections or prove that geographic areas do not overlap.
 

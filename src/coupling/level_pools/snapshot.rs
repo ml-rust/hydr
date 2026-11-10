@@ -145,6 +145,11 @@ where
                 start.accepted_steps(),
             )?;
             let mut stored = (**step).clone();
+            stored.forcing_interval = stored
+                .forcing_interval
+                .as_ref()
+                .map(|forcing| forcing.restore(&self.context.client, &self.context.inflows))
+                .transpose()?;
             stored.start_frame = StoredStart {
                 pools: start.snapshot(),
                 external: start_external,

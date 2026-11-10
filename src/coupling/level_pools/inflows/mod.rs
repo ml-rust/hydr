@@ -18,3 +18,6 @@ pub(super) use state::InflowState;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod native_tests;

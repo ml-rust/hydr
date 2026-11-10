@@ -1,3 +1,4 @@
+use super::forcing::BoundPoolForcing;
 use super::identity::{same_external, same_pools, same_setup, same_step};
 use super::mass::InflowMass;
 use super::snapshot::require;
@@ -147,7 +148,7 @@ where
                     "retained final iterate exceeds its dimensional budgets or changes support",
                 )?;
                 self.context.check_endpoint(&evaluated)?;
-                let mass_residual = self.context.mass_check(
+                let checked_mass = self.context.mass_check(
                     &start,
                     &evaluated.pools,
                     evaluated.exchange.aggregation_bound,
@@ -172,13 +173,34 @@ where
                     ),
                     "external ledger differs from original products or cumulative additions",
                 )?;
+                let mass_residual = checked_mass.residual;
+                let coupling = self.context.interval_summary(
+                    &checked_mass.before,
+                    &checked_mass.after,
+                    (receipt.start_s, receipt.end_s),
+                    evaluated.exchange.aggregation_bound,
+                    sources.as_ref(),
+                    InflowMass {
+                        before: &external_before,
+                        interval: &prepared_external.summary,
+                        cumulative: &external_totals,
+                    },
+                )?;
                 let stored = StoredStep {
+                    coupling,
                     start_frame: StoredStart {
                         pools: start.snapshot(),
                         external: start_external,
                     },
                     external: prepared_external.step,
-                    forcing_interval: receipt.forcing_interval.clone(),
+                    forcing_interval: receipt.forcing_interval.as_ref().map(|forcing| {
+                        BoundPoolForcing {
+                            start_s: forcing.start_s,
+                            end_s: forcing.end_s,
+                            sources: forcing.sources.clone(),
+                            inflows: bound.clone(),
+                        }
+                    }),
                     input,
                     exchange: evaluated.exchange,
                     heads: evaluated.heads,

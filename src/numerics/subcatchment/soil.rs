@@ -125,10 +125,20 @@ where
             )?,
         )?;
         if c.any(&invalid, &[], false)?.item::<f64>()? != 0.0 {
-            let flags = invalid.try_to_vec::<f64>()?;
-            let lane = flags.iter().position(|flag| *flag != 0.0).ok_or_else(|| {
-                ReservoirError::numerical("soil evidence rejection mask contradicts its reduction")
-            })?;
+            let selected = c.argmax(&invalid, 0, false)?.item::<i64>()?;
+            let lane = usize::try_from(selected)
+                .ok()
+                .filter(|lane| *lane < invalid.numel())
+                .ok_or_else(|| {
+                    ReservoirError::numerical(
+                        "soil evidence rejection mask contradicts its reduction",
+                    )
+                })?;
+            if invalid.narrow(0, lane, 1)?.item::<f64>()? == 0.0 {
+                return Err(ReservoirError::numerical(
+                    "soil evidence rejection mask contradicts its reduction",
+                ));
+            }
             let index = *group
                 .soil_slots
                 .get(lane)
@@ -168,3 +178,7 @@ where
         ("total bound", &soil.total_roundoff_bound),
     ]
 }
+
+#[cfg(test)]
+#[path = "soil_rejection_tests.rs"]
+mod rejection_tests;

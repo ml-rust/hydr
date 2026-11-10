@@ -4,6 +4,8 @@ Use `CoupledLevelPoolBatch` to advance water between separate pools through decl
 
 This guide covers static manual operations with optional local sources and prescribed external inflows. Read [acceptance coverage](acceptance.md#connected-pool-checks) for checked cases and accuracy limits.
 
+For generated upstream inflows, use the [runoff-to-pool coordinator](runoff-pools.md). It owns both children and their common interval.
+
 ## Define the physical model
 
 1. Give each pool its own [stage-volume curve](level-pool.md).
@@ -212,7 +214,7 @@ Connections can become unavailable at different elevations. Availability scaling
 
 ### These capabilities remain excluded
 
-- External withdrawals and full native-runoff attachment.
+- External withdrawals and runoff feedback from receiving-pool levels.
 - Measured-replacement selection.
 - Control schedules, trajectories, and actuator frames.
 - Surface-to-network coupling.

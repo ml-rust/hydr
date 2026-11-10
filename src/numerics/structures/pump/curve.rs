@@ -162,16 +162,22 @@ where
     if !context.any(mask)? {
         return Ok(());
     }
-    let flags = mask.try_to_vec::<f64>()?;
-    let lane = flags.iter().position(|v| *v != 0.0).ok_or_else(|| {
-        StructureError::numerical("pump group rejection mask contradicts reduction")
-    })?;
+    let rejected = context.client.argmax(mask, 0, false)?.item::<i64>()?;
+    let lane = usize::try_from(rejected)
+        .ok()
+        .filter(|&lane| lane < mask.numel())
+        .ok_or_else(|| {
+            StructureError::numerical("pump group rejection mask contradicts reduction")
+        })?;
     let index = *group.slots.get(lane).ok_or_else(|| {
+        StructureError::numerical("pump group index does not cover rejected curve lane")
+    })?;
+    let element = context.elements.get(index).ok_or_else(|| {
         StructureError::numerical("pump group index does not cover rejected curve lane")
     })?;
     let message = format!(
         "structure={:?},{quantity}: supply supported heads/speed or resolve the normalized-head uncertainty",
-        context.elements[index].id
+        element.id
     );
     Err(match kind {
         Some(kind) => StructureError::input(kind, message).at(index),

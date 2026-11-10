@@ -42,7 +42,7 @@ where
         })
     }
 
-    pub(super) fn check_tensor(
+    pub(crate) fn check_tensor(
         &self,
         client: &R::Client,
         value: &Tensor<R>,

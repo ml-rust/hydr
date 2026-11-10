@@ -102,10 +102,12 @@ where
                     }
                 }
             }
+            let totals = super::super::accounting::aggregate_step(&candidate.context, &step)?;
             candidate.last = Some(Arc::new(StoredStep {
                 start: last.start,
                 end: last.end,
                 step,
+                totals,
             }));
             require(
                 candidate.last_step()?.as_ref() == Some(last),

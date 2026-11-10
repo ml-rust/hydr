@@ -111,7 +111,8 @@ pub struct SubcatchmentStepDiagnostics {
     pub transfers: Vec<SubcatchmentTransfer>,
 }
 
-pub(super) struct StepTotals {
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct StepTotals {
     pub before: f64,
     pub after: f64,
     pub rain: f64,

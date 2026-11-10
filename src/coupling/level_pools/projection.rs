@@ -108,7 +108,11 @@ where
             .collect();
         Ok(CoupledLevelPoolStepDiagnostics {
             external_inflows: self.inflows.project_step(&self.client, &step.external)?,
-            forcing_interval: step.forcing_interval.clone(),
+            forcing_interval: step
+                .forcing_interval
+                .as_ref()
+                .map(|forcing| forcing.project(&self.client, &self.inflows))
+                .transpose()?,
             start_s: step.start,
             end_s: step.end,
             requested_end_s: step.requested,

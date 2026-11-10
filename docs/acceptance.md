@@ -20,6 +20,7 @@ cargo test --features numr/rayon --test engine_contract --test checkpoint_packag
 cargo test --test coupled_level_pools
 cargo test --test coupled_level_pool_sources
 cargo test --test coupled_pool_inflows
+cargo test --test runoff_pools
 ```
 
 The fixtures need no external datasets or random inputs. [Analytical cases](../tests/analytical_cases.rs) use formulas from [the analytical helpers](../tests/support/analytic.rs), independently of the production tensor kernel.
@@ -234,6 +235,24 @@ CPU/CUDA tests share one mixed-input and complete-restart calculation.
 
 **Scope limit:** These inflow checks prove no measured-replacement selection or geometric ownership. They establish no generated-runoff attachment or full native-runoff attachment.
 
+### Native runoff into pools
+
+Use the [runoff-to-pool guide](runoff-pools.md) to check whether your outlets drain without receiving-pool feedback.
+
+[Runoff/pool cases](../tests/runoff_pools.rs) check both children over one accepted interval:
+
+| Check | Required behavior |
+| --- | --- |
+| Original exports | Rain on an instantaneous impervious area exports exactly `1 m³` into a dry pool |
+| Outlet mapping | Unequal `0.5/1.5 m³` exports retain their destinations when boundary order reverses |
+| Common retries | Pervious soil and internal routing match isolated children at the actual accepted duration |
+| Water ownership | Local losses and outgoing transfers cannot consume incoming runoff during the same interval |
+| Continuation | Complete restart retains both histories. Altered forcing, timing, runon, or internal pairing rejects atomically. |
+
+Global accounting cancels runoff exports against pool imports. A separate lifetime pairing check uses rounding bounds, independent of the physical mass allowance.
+
+These cases establish no downstream feedback, geometric nonoverlap proof, dynamic network flow, or measured-event accuracy.
+
 ## Remaining acceptance work
 
 | Area | Checked scope | Remaining evidence |
@@ -241,11 +260,11 @@ CPU/CUDA tests share one mixed-input and complete-restart calculation.
 | Contract | SI inputs, shapes, references, masks, sources, boundaries, outputs, and exclusions | Physical suitability of each application domain |
 | Determinism | Repeated runs, complete trusted/package restart, bit checks, rollback, and cancellation | Cross-platform bitwise equality remains unsupported |
 | Analytical | Selected lake, dam, vacuum, friction, Manning, contracting radial lake, shear transport, and moving-shoreline cases | Broader hydraulic jumps, radial cycles, and application-specific diffusion budgets |
-| Conservation | Rain, prescribed losses, shared faces, ports, donor depletion, barrier isolation, and closed pool-to-pool transfers | Surface-to-network transfers remain unsupported |
+| Conservation | Rain, prescribed losses, shared faces, ports, donor depletion, barrier isolation, pool transfers, and paired native runoff | Surface-to-network transfers remain unsupported |
 | Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
 | Independent engine | Nine matched wet-bed/dry-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Analytical front accuracy, independent terrain/transverse-flow comparisons, and broader hydraulic regimes |
-| Extensions | Explicit Modified Green–Ampt land and closed pools with static structure operations have separate checks | Wider networks, dynamic coupled controls, and external coupling require separate acceptance |
+| Extensions | Modified Green–Ampt land, pools with static structures, and free runoff outlets into pools have separate checks | Wider networks, dynamic coupled controls, and external coupling require separate acceptance |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 
 ### Numerical limits retained by the checks

@@ -1,6 +1,6 @@
 use super::inflows::{InflowCumulativeSummary, InflowIntervalSummary};
 use super::{CoupledLevelPoolError, context::Context};
-use crate::storage::{LevelPoolBatch, LevelPoolIntervalSources};
+use crate::storage::{LevelPoolBatch, LevelPoolIntervalSources, LevelPoolTotals};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,
@@ -8,6 +8,12 @@ use numr::ops::{
 };
 use numr::runtime::Runtime;
 use solvr::interpolate::Interp1dAlgorithms;
+
+pub(super) struct CheckedPoolMass {
+    pub residual: f64,
+    pub before: LevelPoolTotals,
+    pub after: LevelPoolTotals,
+}
 
 pub(super) struct InflowMass<'a> {
     pub before: &'a InflowCumulativeSummary,
@@ -39,7 +45,7 @@ where
         assembly: f64,
         sources: Option<&LevelPoolIntervalSources>,
         external: InflowMass<'_>,
-    ) -> Result<f64, CoupledLevelPoolError> {
+    ) -> Result<CheckedPoolMass, CoupledLevelPoolError> {
         let old = before.totals()?;
         let new = after.totals()?;
         let delta = new.volume_m3 - old.volume_m3;
@@ -134,7 +140,11 @@ where
                 "mass drift start={prior}, interval={interval}, cumulative={cumulative}, assembly={assembly}, budget={budget}: shorten the interval or inspect physical scales"
             )));
         }
-        Ok(interval)
+        Ok(CheckedPoolMass {
+            residual: interval,
+            before: old,
+            after: new,
+        })
     }
 }
 pub(super) fn charge(a: f64, b: f64) -> Result<f64, CoupledLevelPoolError> {

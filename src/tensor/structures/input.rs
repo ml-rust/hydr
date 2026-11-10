@@ -38,7 +38,7 @@ impl<R: Runtime<DType = DType>> TensorStructureInput<R> {
         operations: &super::TensorStaticOperations<R>,
     ) -> Result<Self, StructureError>
     where
-        R::Client: numr::ops::BinaryOps<R> + numr::ops::ReduceOps<R>,
+        R::Client: numr::ops::BinaryOps<R> + numr::ops::IndexingOps<R> + numr::ops::ReduceOps<R>,
     {
         Self::from_parts(
             context,
@@ -56,6 +56,7 @@ impl<R: Runtime<DType = DType>> TensorStructureInput<R> {
     ) -> Result<Self, StructureError>
     where
         R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::IndexingOps<R>
             + numr::ops::ConditionalOps<R>
             + numr::ops::ReduceOps<R>
             + numr::ops::TypeConversionOps<R>
@@ -189,6 +190,7 @@ impl<R: Runtime<DType = DType>> TensorStructureInput<R> {
     ) -> Result<Self, StructureError>
     where
         R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::IndexingOps<R>
             + numr::ops::ConditionalOps<R>
             + numr::ops::ReduceOps<R>
             + numr::ops::TypeConversionOps<R>
@@ -210,7 +212,7 @@ impl<R: Runtime<DType = DType>> TensorStructureInput<R> {
         isolated: &Tensor<R>,
     ) -> Result<Self, StructureError>
     where
-        R::Client: numr::ops::BinaryOps<R> + numr::ops::ReduceOps<R>,
+        R::Client: numr::ops::BinaryOps<R> + numr::ops::IndexingOps<R> + numr::ops::ReduceOps<R>,
     {
         let input = Self {
             gate,
@@ -233,7 +235,7 @@ impl<R: Runtime<DType = DType>> TensorStructureInput<R> {
         isolated: &Tensor<R>,
     ) -> Result<(), StructureError>
     where
-        R::Client: numr::ops::BinaryOps<R> + numr::ops::ReduceOps<R>,
+        R::Client: numr::ops::BinaryOps<R> + numr::ops::IndexingOps<R> + numr::ops::ReduceOps<R>,
     {
         use numr::ops::BinaryOps;
         let c = &context.client;

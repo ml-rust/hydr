@@ -2,8 +2,8 @@
 
 use super::super::CoupledLevelPoolError;
 use super::{
-    CoupledPoolInflowLedger, CoupledPoolInflowReceipt, CoupledPoolInflowValue, InflowContext,
-    InflowState, InflowStep,
+    BoundInflows, CoupledPoolInflow, CoupledPoolInflowLedger, CoupledPoolInflowReceipt,
+    CoupledPoolInflowValue, InflowContext, InflowState, InflowStep,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -25,6 +25,43 @@ where
         + TypeConversionOps<R>
         + UnaryOps<R>,
 {
+    pub(crate) fn project_inputs(
+        &self,
+        client: &R::Client,
+        inputs: &BoundInflows<R>,
+    ) -> Result<Vec<CoupledPoolInflow>, CoupledLevelPoolError> {
+        let checked = self.restore_inputs(client, inputs)?;
+        let values = checked.values.try_to_vec::<f64>()?;
+        checked
+            .projection_order
+            .iter()
+            .map(|&index| {
+                let binding = self.bindings.get(index).ok_or_else(|| {
+                    CoupledLevelPoolError::input(
+                        "forcing projection index exceeds immutable boundary count",
+                    )
+                })?;
+                let scalar = *values.get(index).ok_or_else(|| {
+                    CoupledLevelPoolError::input("forcing projection lacks original input operand")
+                })?;
+                let is_rate = *checked.input_is_rate.get(index).ok_or_else(|| {
+                    CoupledLevelPoolError::input("forcing projection lacks original input kind")
+                })?;
+                Ok(CoupledPoolInflow {
+                    boundary_id: binding.boundary_id.clone(),
+                    input_id: binding.input_id.clone(),
+                    value: if is_rate {
+                        CoupledPoolInflowValue::Rate {
+                            rate_m3_per_s: scalar,
+                        }
+                    } else {
+                        CoupledPoolInflowValue::IntervalVolume { volume_m3: scalar }
+                    },
+                })
+            })
+            .collect()
+    }
+
     pub(crate) fn project_state(
         &self,
         client: &R::Client,

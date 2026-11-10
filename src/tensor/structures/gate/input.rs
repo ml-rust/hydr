@@ -17,6 +17,7 @@ impl<R: Runtime<DType = DType>> TensorGateInput<R> {
     ) -> Result<Option<Self>, StructureError>
     where
         R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::IndexingOps<R>
             + numr::ops::ConditionalOps<R>
             + numr::ops::ReduceOps<R>
             + numr::ops::TypeConversionOps<R>

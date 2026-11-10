@@ -227,3 +227,13 @@ where
         })
     }
 }
+
+impl<R: Runtime<DType = DType>> InflowStep<R> {
+    pub(crate) fn all_interval_volumes(&self) -> bool {
+        self.input_is_rate.iter().all(|is_rate| !is_rate)
+    }
+
+    pub(crate) fn original_volumes(&self) -> Tensor<R> {
+        self.volumes.clone()
+    }
+}

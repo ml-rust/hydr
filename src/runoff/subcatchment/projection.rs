@@ -9,7 +9,6 @@ use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
-use super::accounting::aggregate_step;
 use super::batch::StoredStep;
 use super::projection_hydraulic::read;
 use super::projection_phase;
@@ -41,7 +40,7 @@ where
     let step = &stored.step;
     let dt = stored.end - stored.start;
     crate::numerics::subcatchment::check_step(context, step, dt)?;
-    let totals = aggregate_step(context, step)?;
+    let totals = &stored.totals;
     let n = context.definitions.len();
     let flat = n * 3;
     let rain = read(&step.input.rain, flat)?;

@@ -9,7 +9,7 @@ use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
-use super::accounting::{aggregate_step, check_ledger};
+use super::accounting::{StepTotals, aggregate_step, check_ledger};
 use super::projection::project_step;
 use super::{
     SubcatchmentConfig, SubcatchmentDefinition, SubcatchmentError, SubcatchmentInput,
@@ -26,6 +26,7 @@ pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub start: f64,
     pub end: f64,
     pub step: TensorSubcatchmentStep<R>,
+    pub totals: StepTotals,
 }
 
 /// Complete immutable three-subarea component state on persistent configured runtime tensors.
@@ -42,7 +43,7 @@ pub struct SubcatchmentBatch<R: Runtime<DType = DType>> {
 /// Complete candidate storage and both native-soil roles. Discarding it leaves accepted state unchanged.
 #[derive(Debug)]
 pub struct SubcatchmentTrial<R: Runtime<DType = DType>> {
-    next: SubcatchmentBatch<R>,
+    pub(super) next: SubcatchmentBatch<R>,
 }
 
 impl<R> SubcatchmentBatch<R>
@@ -158,6 +159,7 @@ where
                     start: self.time,
                     end: end_time,
                     step,
+                    totals,
                 })),
             },
         })

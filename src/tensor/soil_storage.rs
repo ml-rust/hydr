@@ -2,7 +2,8 @@
 
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, TypeConversionOps,
+    UnaryOps,
 };
 use numr::runtime::{Device, Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -115,13 +116,17 @@ where
         if !self.any(mask)? {
             return Ok(());
         }
-        // Read individual values only after the batch rejects.
-        let flags = mask.try_to_vec::<f64>()?;
-        let lane = flags.iter().position(|value| *value != 0.0).ok_or_else(|| {
+        let selected = self.client.argmax(mask, 0, false)?.item::<i64>()?;
+        let lane = usize::try_from(selected).ok().filter(|lane| *lane < mask.numel()).ok_or_else(|| {
             SoilError::numerical(format!(
                 "quantity={quantity}: rejection mask contradicts its reduction. Inspect runtime comparison kernels"
             ))
         })?;
+        if mask.narrow(0, lane, 1)?.item::<f64>()? == 0.0 {
+            return Err(SoilError::numerical(format!(
+                "quantity={quantity}: rejection mask contradicts its reduction. Inspect runtime comparison kernels"
+            )));
+        }
         let parameters = self.parameters.get(lane).ok_or_else(|| {
             SoilError::numerical(format!(
                 "quantity={quantity}, cell={lane}: parameter support differs. Rebuild the soil batch"
@@ -129,12 +134,12 @@ where
         })?;
         let mut context = format!("quantity={quantity}, cell={lane}");
         for (name, tensor) in fields {
-            let values = tensor.try_to_vec::<f64>()?;
-            let value = values.get(lane).ok_or_else(|| {
-                SoilError::numerical(format!(
+            if lane >= tensor.numel() {
+                return Err(SoilError::numerical(format!(
                     "quantity={quantity}, field={name}, cell={lane}: diagnostic support differs. Rebuild the soil batch"
-                ))
-            })?;
+                )));
+            }
+            let value = tensor.narrow(0, lane, 1)?.item::<f64>()?;
             context.push_str(&format!(", {name}={value:.17e}"));
         }
         for (name, value) in scalars {

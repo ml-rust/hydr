@@ -2,7 +2,8 @@
 
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, TypeConversionOps,
+    UnaryOps,
 };
 use numr::runtime::{Device, Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -153,20 +154,27 @@ where
         if !self.any(mask)? {
             return Ok(());
         }
-        let flags = mask.try_to_vec::<f64>()?;
-        let index = flags
-            .iter()
-            .position(|x| *x != 0.0)
+        let selected = self.client.argmax(mask, 0, false)?.item::<i64>()?;
+        let index = usize::try_from(selected)
+            .ok()
+            .filter(|index| *index < mask.numel())
             .ok_or_else(|| ReservoirError::numerical("rejection mask contradicts its reduction"))?;
+        if mask.narrow(0, index, 1)?.item::<f64>()? == 0.0 {
+            return Err(ReservoirError::numerical(
+                "rejection mask contradicts its reduction",
+            ));
+        }
         let element = self.elements.get(index).ok_or_else(|| {
             ReservoirError::numerical("rejection support differs from ordered elements")
         })?;
         let mut context = format!("quantity={quantity}, id={:?}", element.id);
         for (name, tensor) in fields {
-            let values = tensor.try_to_vec::<f64>()?;
-            let value = values.get(index).ok_or_else(|| {
-                ReservoirError::numerical("diagnostic tensor support differs from ordered elements")
-            })?;
+            if index >= tensor.numel() {
+                return Err(ReservoirError::numerical(
+                    "diagnostic tensor support differs from ordered elements",
+                ));
+            }
+            let value = tensor.narrow(0, index, 1)?.item::<f64>()?;
             context.push_str(&format!(", {name}={value:.17e}"));
         }
         for (name, value) in scalars {

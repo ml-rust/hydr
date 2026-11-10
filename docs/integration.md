@@ -61,6 +61,8 @@ Use [coupled level pools](coupled-level-pools.md) for declared pool-to-pool tran
 
 `CoupledLevelPoolBatch` supports static manual operations, optional local sources, and prescribed external inflows. Supply already-selected inputs and physical ownership evidence.
 
+Use [runoff-to-pool connections](runoff-pools.md) to generate upstream inflows and accept both engines over one common interval. Every runoff outlet must drain without receiving-pool feedback.
+
 Surface-to-network coupling remains unsupported.
 
 ## Runtime selection and admission
