@@ -7,6 +7,7 @@ pub use level_pools::{
     CoupledLevelPoolForcingInterval, CoupledLevelPoolInitialState, CoupledLevelPoolIterationData,
     CoupledLevelPoolSetup, CoupledLevelPoolSnapshot, CoupledLevelPoolSnapshotData,
     CoupledLevelPoolStartData, CoupledLevelPoolStepDiagnostics, CoupledLevelPoolTransfer,
-    CoupledLevelPoolTrial, CoupledPoolAttachment, CoupledPoolConnection, CoupledPoolInflowBinding,
-    CoupledPoolInflowLedger, CoupledPoolInflowRate, CoupledPoolInflowReceipt, CoupledPoolSupport,
+    CoupledLevelPoolTrial, CoupledPoolAttachment, CoupledPoolConnection, CoupledPoolInflow,
+    CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolInflowReceipt,
+    CoupledPoolInflowValue, CoupledPoolSupport,
 };

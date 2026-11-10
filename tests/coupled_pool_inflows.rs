@@ -16,3 +16,7 @@ mod restoration;
 mod runtime;
 #[path = "coupled_level_pool_sources/source_fixture.rs"]
 mod source_fixture;
+#[path = "coupled_pool_inflows/volume_continuation.rs"]
+mod volume_continuation;
+#[path = "coupled_pool_inflows/volumes.rs"]
+mod volumes;

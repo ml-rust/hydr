@@ -13,6 +13,17 @@ pub enum CoupledLevelPoolError {
     Runtime(numr::error::Error),
     /// Arithmetic or physical support cannot resolve the attempted interval.
     Numerical(String),
+    /// Integrated inputs require fresh forcing for the suggested smaller interval.
+    RecomputeInterval {
+        /// Unchanged accepted start time in seconds.
+        start_s: f64,
+        /// Original requested endpoint in seconds.
+        requested_end_s: f64,
+        /// Admitted smaller endpoint requiring newly integrated inputs.
+        suggested_end_s: f64,
+        /// Original numerical rejection or timestep restriction.
+        reason: String,
+    },
     /// Iteration or interval-shortening limits stop an unresolved trial.
     Unresolved {
         /// Last attempted interval duration in seconds.
@@ -41,6 +52,15 @@ impl fmt::Display for CoupledLevelPoolError {
             Self::Structure(error) => write!(f, "coupled pool structure: {error}"),
             Self::Runtime(error) => write!(f, "coupled pool runtime: {error}"),
             Self::Numerical(message) => write!(f, "coupled pool arithmetic: {message}"),
+            Self::RecomputeInterval {
+                start_s,
+                requested_end_s,
+                suggested_end_s,
+                reason,
+            } => write!(
+                f,
+                "integrated inflow interval [{start_s},{requested_end_s}] requires endpoint {suggested_end_s}: {reason}. Recompute every input for the suggested span",
+            ),
             Self::Unresolved {
                 dt_s,
                 retries,

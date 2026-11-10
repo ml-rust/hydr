@@ -1,7 +1,7 @@
 //! Checked physical bindings and cached boundary-to-pool assembly.
 
 use super::super::{CoupledLevelPoolError, topology::TransferTree};
-use super::{CoupledPoolInflowBinding, CoupledPoolInflowRate};
+use super::{CoupledPoolInflow, CoupledPoolInflowBinding};
 use crate::soil::admission::AdjustmentReduction;
 use crate::storage::LevelPoolElement;
 use numr::dtype::DType;
@@ -26,7 +26,10 @@ pub(crate) struct InflowContext<R: Runtime<DType = DType>> {
 
 pub(crate) struct BoundInflows<R: Runtime<DType = DType>> {
     pub(super) bindings: Arc<Vec<CoupledPoolInflowBinding>>,
-    pub(super) rates: Tensor<R>,
+    pub(super) values: Tensor<R>,
+    pub(super) rate_mask: Tensor<R>,
+    pub(super) input_is_rate: Arc<Vec<bool>>,
+    has_interval_volumes: bool,
 }
 
 impl<R: Runtime<DType = DType>> InflowContext<R>
@@ -101,56 +104,70 @@ where
         })
     }
 
-    pub(crate) fn bind_rates(
+    pub(crate) fn bind_inputs(
         &self,
         client: &R::Client,
-        rates: &[CoupledPoolInflowRate],
+        inputs: &[CoupledPoolInflow],
     ) -> Result<BoundInflows<R>, CoupledLevelPoolError> {
-        if rates.len() != self.bindings.len() {
+        if inputs.len() != self.bindings.len() {
             return Err(CoupledLevelPoolError::input(
-                "supply one explicit external rate per declared boundary, including zeros",
+                "supply one explicit external input per declared boundary, including zeros",
             ));
         }
-        let mut supplied = HashMap::with_capacity(rates.len());
-        for rate in rates {
-            if !rate.rate_m3_per_s.is_finite() || rate.rate_m3_per_s < 0.0 {
+        let mut supplied = HashMap::with_capacity(inputs.len());
+        for input in inputs {
+            let scalar = input.value.scalar();
+            if !scalar.is_finite() || scalar < 0.0 {
                 return Err(CoupledLevelPoolError::input(format!(
-                    "external rate {}={} must be finite and nonnegative",
-                    rate.boundary_id, rate.rate_m3_per_s
+                    "external input {}={:?} must be finite and nonnegative",
+                    input.boundary_id, input.value,
                 )));
             }
-            if supplied.insert(rate.boundary_id.as_str(), rate).is_some() {
+            if supplied.insert(input.boundary_id.as_str(), input).is_some() {
                 return Err(CoupledLevelPoolError::input(format!(
-                    "external rate {} is duplicated",
-                    rate.boundary_id
+                    "external input {} is duplicated",
+                    input.boundary_id,
                 )));
             }
         }
-        let mut ordered = Vec::with_capacity(rates.len());
+        let mut ordered = Vec::with_capacity(inputs.len());
+        let mut mask = Vec::with_capacity(inputs.len());
+        let mut kinds = Vec::with_capacity(inputs.len());
         for binding in self.bindings.iter() {
-            let rate = supplied
+            let input = supplied
                 .remove(binding.boundary_id.as_str())
                 .ok_or_else(|| {
                     CoupledLevelPoolError::input(format!(
-                        "external boundary {} has no supplied rate",
+                        "external boundary {} has no supplied input",
                         binding.boundary_id
                     ))
                 })?;
-            if rate.input_id != binding.input_id {
+            if input.input_id != binding.input_id {
                 return Err(CoupledLevelPoolError::input(format!(
                     "external boundary {} expects input {}, received {}",
-                    binding.boundary_id, binding.input_id, rate.input_id
+                    binding.boundary_id, binding.input_id, input.input_id,
                 )));
             }
-            ordered.push(rate.rate_m3_per_s);
+            ordered.push(input.value.scalar());
+            kinds.push(input.value.is_rate());
+            mask.push(if input.value.is_rate() { 1.0 } else { 0.0 });
         }
         Ok(BoundInflows {
             bindings: Arc::clone(&self.bindings),
-            rates: Tensor::from_slice(&ordered, &[ordered.len()], client.device())?,
+            values: Tensor::from_slice(&ordered, &[ordered.len()], client.device())?,
+            rate_mask: Tensor::from_slice(&mask, &[mask.len()], client.device())?,
+            has_interval_volumes: kinds.iter().any(|is_rate| !is_rate),
+            input_is_rate: Arc::new(kinds),
         })
     }
 }
 
 pub(super) fn map_error(error: crate::soil::SoilError) -> CoupledLevelPoolError {
     CoupledLevelPoolError::numerical(error.to_string())
+}
+
+impl<R: Runtime<DType = DType>> BoundInflows<R> {
+    pub(crate) fn has_interval_volumes(&self) -> bool {
+        self.has_interval_volumes
+    }
 }

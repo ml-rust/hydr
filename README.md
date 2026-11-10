@@ -12,7 +12,7 @@ The library is unpublished. Its components support the following calculations:
 | Soil and land sources | Rain, Modified Green–Ampt infiltration, capped evaporation, and withdrawals with complete soil memory | [Soil](docs/soil.md) and [land sources](docs/land-sources.md) |
 | Rainfall runoff | Stored water and runoff from three catchment subareas | [Reservoir](docs/reservoir.md) and [subcatchment](docs/subcatchment.md) |
 | Storage pools | Water volume and level from supplied storage curves | [Level pools](docs/level-pool.md) |
-| Coupled storage pools | Accepted structure transfers between separate pools, with local rain, losses, and prescribed external inflows | [Coupled level pools](docs/coupled-level-pools.md) |
+| Coupled storage pools | Accepted structure transfers, local rain and losses, and prescribed external rates or integrated volumes | [Coupled level pools](docs/coupled-level-pools.md) |
 | Structure laws | Flow proposals for openings, weirs, pumps, and gates | [Structures](docs/structures.md) |
 | Operating controls | Sampled commands and explicitly assumed ideal pump or gate responses | [Controls](docs/operating-controls.md), [actuators](docs/gate-actuators.md), [controlled gates](docs/controlled-gates.md), and [controlled pumps](docs/controlled-pumps.md) |
 

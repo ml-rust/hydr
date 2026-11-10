@@ -35,6 +35,6 @@ pub use trial::CoupledLevelPoolTrial;
 pub use forcing::CoupledLevelPoolForcingInterval;
 
 pub use inflows::{
-    CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolInflowRate,
-    CoupledPoolInflowReceipt,
+    CoupledPoolInflow, CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolInflowReceipt,
+    CoupledPoolInflowValue,
 };

@@ -35,7 +35,7 @@ pub struct CoupledLevelPoolIterationData {
 pub struct CoupledLevelPoolStepDiagnostics {
     /// Complete original boundary products and cumulative additions in binding order.
     pub external_inflows: Vec<super::CoupledPoolInflowReceipt>,
-    /// Original covered source and external rates. Explicit zero forcing remains present.
+    /// Original covered local rates and external inputs. Explicit zero forcing remains present.
     pub forcing_interval: Option<super::CoupledLevelPoolForcingInterval>,
     /// Accepted interval start in seconds.
     pub start_s: f64,

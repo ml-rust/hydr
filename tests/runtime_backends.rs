@@ -6,6 +6,8 @@ mod coupled_pool_fixture;
 mod inflow_fixture;
 #[path = "runtime_backends/inflows.rs"]
 mod inflows;
+#[path = "runtime_backends/interval_volumes.rs"]
+mod interval_volumes;
 #[path = "support/runtime.rs"]
 mod runtime;
 

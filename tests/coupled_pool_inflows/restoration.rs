@@ -1,6 +1,7 @@
 use super::fixture::Result;
 use super::inflow_fixture::{binding, forcing, rate};
 use super::source_fixture::{Batch, policies, pump_case, rates};
+use hydr::coupling::CoupledPoolInflowValue;
 use hydr::coupling::{
     CoupledLevelPoolForcingInterval, CoupledLevelPoolInitialState, CoupledLevelPoolSetup,
 };
@@ -86,7 +87,11 @@ fn altered_current_start_and_original_external_operands_reject_atomically() -> R
                 match mode {
                     6 => receipt.volume_m3 += 0.125,
                     7 => receipt.addition_witness_m3 = 1.0,
-                    8 => receipt.rate_m3_per_s *= 0.5,
+                    8 => {
+                        receipt.input = CoupledPoolInflowValue::Rate {
+                            rate_m3_per_s: 0.25,
+                        }
+                    }
                     9 => receipt.dt_s *= 0.5,
                     10 => receipt.cumulative_before_m3 += 0.25,
                     11 => receipt.cumulative_after_m3 += 0.25,
@@ -103,7 +108,9 @@ fn altered_current_start_and_original_external_operands_reject_atomically() -> R
                     .as_mut()
                     .ok_or("Missing original forcing")?
                     .inflows[0]
-                    .rate_m3_per_s += 0.25
+                    .value = CoupledPoolInflowValue::Rate {
+                    rate_m3_per_s: 0.75,
+                }
             }
             14 => {
                 altered.external_inflows.pop();

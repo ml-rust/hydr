@@ -1,7 +1,7 @@
-use super::{CoupledLevelPoolError, CoupledPoolInflowRate};
+use super::{CoupledLevelPoolError, CoupledPoolInflow, CoupledPoolInflowValue};
 use crate::storage::LevelPoolSources;
 
-/// Complete constant local source and external inflow rates over an explicit interval.
+/// Complete local source rates and prescribed external inputs over an explicit interval.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoupledLevelPoolForcingInterval {
     /// Earliest covered time in seconds.
@@ -10,8 +10,8 @@ pub struct CoupledLevelPoolForcingInterval {
     pub end_s: f64,
     /// One checked rain, bottom-loss, and evaporation record per ordered pool.
     pub sources: Option<Vec<LevelPoolSources>>,
-    /// Complete original external rates, resolved into immutable binding order during admission.
-    pub inflows: Vec<CoupledPoolInflowRate>,
+    /// Complete original external inputs, resolved into immutable binding order during admission.
+    pub inflows: Vec<CoupledPoolInflow>,
 }
 
 impl CoupledLevelPoolForcingInterval {
@@ -45,7 +45,23 @@ impl CoupledLevelPoolForcingInterval {
                 self.sources.as_ref().map(Vec::len)
             )));
         }
+        if self.requires_exact_span()
+            && (self.start_s.to_bits() != accepted.to_bits()
+                || self.end_s.to_bits() != requested.to_bits()
+                || !(self.end_s - self.start_s).is_finite()
+                || self.end_s - self.start_s <= 0.0)
+        {
+            return Err(CoupledLevelPoolError::input(format!(
+                "integrated inflow span=[{},{}], accepted={accepted}, requested={requested}: recompute complete forcing for this exact positive span",
+                self.start_s, self.end_s,
+            )));
+        }
         Ok(())
+    }
+    pub(super) fn requires_exact_span(&self) -> bool {
+        self.inflows
+            .iter()
+            .any(|inflow| matches!(inflow.value, CoupledPoolInflowValue::IntervalVolume { .. }))
     }
     pub(super) fn same_bits(&self, other: &Self) -> bool {
         let source_bits = match (&self.sources, &other.sources) {
@@ -76,7 +92,7 @@ impl CoupledLevelPoolForcingInterval {
             && self.inflows.iter().zip(&other.inflows).all(|(a, b)| {
                 a.boundary_id == b.boundary_id
                     && a.input_id == b.input_id
-                    && a.rate_m3_per_s.to_bits() == b.rate_m3_per_s.to_bits()
+                    && a.value.same_bits(&b.value)
             })
     }
 }

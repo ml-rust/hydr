@@ -2,7 +2,8 @@
 
 use super::super::CoupledLevelPoolError;
 use super::{
-    CoupledPoolInflowLedger, CoupledPoolInflowReceipt, InflowContext, InflowState, InflowStep,
+    CoupledPoolInflowLedger, CoupledPoolInflowReceipt, CoupledPoolInflowValue, InflowContext,
+    InflowState, InflowStep,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -56,7 +57,7 @@ where
     ) -> Result<Vec<CoupledPoolInflowReceipt>, CoupledLevelPoolError> {
         let count = self.bindings.len();
         for value in [
-            &step.rates,
+            &step.input_values,
             &step.volumes,
             &step.before.volume,
             &step.next.volume,
@@ -73,7 +74,24 @@ where
                 ));
             }
         }
-        let rates = step.rates.try_to_vec::<f64>()?;
+        if step.input_is_rate.len() != count {
+            return Err(CoupledLevelPoolError::input(
+                "external receipt kinds differ from declared boundary count",
+            ));
+        }
+        let inputs = step
+            .input_is_rate
+            .iter()
+            .zip(step.input_values.try_to_vec::<f64>()?)
+            .map(|(is_rate, value)| {
+                if *is_rate {
+                    CoupledPoolInflowValue::Rate {
+                        rate_m3_per_s: value,
+                    }
+                } else {
+                    CoupledPoolInflowValue::IntervalVolume { volume_m3: value }
+                }
+            });
         let volumes = step.volumes.try_to_vec::<f64>()?;
         let before = step.before.volume.try_to_vec::<f64>()?;
         let after = step.next.volume.try_to_vec::<f64>()?;
@@ -83,7 +101,7 @@ where
         Ok(self
             .bindings
             .iter()
-            .zip(rates)
+            .zip(inputs)
             .zip(volumes)
             .zip(before)
             .zip(after)
@@ -95,7 +113,7 @@ where
                     (
                         (
                             (
-                                (((binding, rate_m3_per_s), volume_m3), cumulative_before_m3),
+                                (((binding, input), volume_m3), cumulative_before_m3),
                                 cumulative_after_m3,
                             ),
                             addition_witness_m3,
@@ -106,7 +124,7 @@ where
                 )| CoupledPoolInflowReceipt {
                     boundary_id: binding.boundary_id.clone(),
                     input_id: binding.input_id.clone(),
-                    rate_m3_per_s,
+                    input,
                     dt_s: step.dt_s,
                     volume_m3,
                     cumulative_before_m3,

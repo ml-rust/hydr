@@ -48,9 +48,21 @@ Boundary IDs and selected input IDs must each be unique. Distinct, independently
 
 Ownership asserts an external origin without duplicated inputs or overlap with represented pool storage and local rainfall. Identity checks establish no geometry. Your application supplies already-selected flows and the physical evidence. Hydr neither selects measured replacements nor proves GIS overlap or contributing-area ownership.
 
-Supply one `CoupledPoolInflowRate` per declared boundary in `CoupledLevelPoolForcingInterval.inflows`, including explicit zeros. Rates use finite nonnegative m³/s. Record order can differ from binding order. Missing, duplicate, unknown, and mismatched inputs reject.
+Supply one `CoupledPoolInflow` per declared boundary in `CoupledLevelPoolForcingInterval.inflows`, including explicit zeros. Choose `CoupledPoolInflowValue::Rate` for finite nonnegative m³/s. Choose `IntervalVolume` for a supplied finite nonnegative integrated volume in m³. Record order can differ from binding order. Missing, duplicate, unknown, and mismatched inputs reject.
 
 External water enters after local losses and structure withdrawals. It cannot fund those earlier operations during the same interval. Shortened trials recalculate boundary volumes from the original rates and actual duration.
+
+## Supply integrated interval volumes
+
+Integrated volumes retain their original floating-point operands. Hydr never divides a supplied volume by duration and multiplies it back.
+
+Any integrated input requires exact forcing-span bits, including when its volume is zero. Use accepted-time bits for `start_s` and requested-endpoint bits for `end_s`. Rate and volume inputs can share one forcing interval.
+
+Rate-only forcing supports automatic interval shortening. Integrated forcing returns `RecomputeInterval` when the maximum step or a retryable calculation requires a smaller interval. Recompute every contributing input for the suggested span and submit fresh forcing. Never scale or slice the old integrated inputs.
+
+Recalculation requests preserve the complete accepted state. A successful integrated interval reaches its requested endpoint with zero internal retries. An impossible smaller interval returns `Unresolved`.
+
+Exact volume retention does not bypass hydraulic head checks. Positive water still requires a represented positive midpoint depth. A dry pool receiving the smallest positive floating-point volume cannot represent that midpoint and rejects.
 
 `external_inflows()` returns cumulative external volumes and rounding bounds by boundary. Native incoming counters also contain structure transfers. Do not subtract native incoming and outgoing counters to infer external water.
 
@@ -62,13 +74,14 @@ External water enters after local losses and structure withdrawals. It cannot fu
 | --- | --- |
 | Successful trial | Read the accepted endpoint and consume `into_next` to retain the candidate. |
 | Shortened interval | Continue from the actual accepted time. The requested endpoint remains incomplete. |
+| `RecomputeInterval` | Recompute contributions for the suggested span and submit fresh forcing. |
 | Rejected interval | Read the error. The original accepted state remains unchanged. |
 
 The calculation estimates connection flow from midpoint water levels. It repeats the trial until head and transfer-volume changes meet their separate tolerances. Support flags must also agree exactly.
 
 Head means water elevation. A support flag records whether water reaches a pool or connection.
 
-Nonconvergence shortens the interval and recalculates it. Iteration, retry, and minimum-step limits stop unresolved calculations.
+Rate-only nonconvergence shortens the interval and recalculates it. Integrated inputs require fresh forcing instead. Iteration, retry, and minimum-step limits stop unresolved calculations.
 
 ## Understand the water balance
 
@@ -92,7 +105,7 @@ Forcing checkpoints retain source policies, external bindings, cumulative proces
 
 ## Current limits
 
-- Forcing: Explicit local rain, supplied bottom loss, evaporation, and prescribed external inflows are supported. External withdrawals, generated-runoff attachment, and replacement selection remain excluded.
+- Forcing: Local rain, supplied bottom loss, evaporation, and prescribed external rates or integrated volumes are supported. External withdrawals, full native-runoff attachment, and replacement selection remain excluded.
 - Operations: Static manual operations are supported. Control schedules, trajectories, and actuator frames remain excluded.
 - Regimes: Existing structure restrictions still apply. Running pumps require wet support. Submerged orifices require water above the opening's top elevation at both endpoints.
 - Crossings: Unresolved bed or hydraulic-cutoff transitions return errors after bounded interval shortening.

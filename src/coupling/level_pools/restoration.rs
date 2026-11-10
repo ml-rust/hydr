@@ -101,14 +101,14 @@ where
                         None
                     }
                 };
-                let original_rates = receipt
+                let original_inputs = receipt
                     .forcing_interval
                     .as_ref()
                     .map_or(&[][..], |forcing| forcing.inflows.as_slice());
                 let bound = self
                     .context
                     .inflows
-                    .bind_rates(&self.context.client, original_rates)?;
+                    .bind_inputs(&self.context.client, original_inputs)?;
                 let prepared_external = self.context.inflows.prepare(
                     &self.context.client,
                     &bound,
@@ -227,6 +227,16 @@ where
             step.iterations < c.iteration_limit && step.retries <= c.retry_limit,
             "retained iteration or retry count exceeds original limits",
         )?;
+        if step
+            .forcing_interval
+            .as_ref()
+            .is_some_and(|forcing| forcing.requires_exact_span())
+        {
+            require(
+                step.end_s.to_bits() == step.requested_end_s.to_bits() && step.retries == 0,
+                "integrated inflow receipt contains a shortened endpoint or child retries",
+            )?;
+        }
         let mut expected = step.requested_end_s.min(step.start_s + c.maximum_step_s);
         for _ in 0..step.retries {
             let shorter = step.start_s + (expected - step.start_s) * 0.5;

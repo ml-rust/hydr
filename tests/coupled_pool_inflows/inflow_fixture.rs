@@ -1,5 +1,6 @@
 use hydr::coupling::{
-    CoupledLevelPoolForcingInterval, CoupledPoolInflowBinding, CoupledPoolInflowRate,
+    CoupledLevelPoolForcingInterval, CoupledPoolInflow, CoupledPoolInflowBinding,
+    CoupledPoolInflowValue,
 };
 
 pub fn binding(boundary: &str, pool: &str) -> CoupledPoolInflowBinding {
@@ -14,18 +15,34 @@ pub fn binding(boundary: &str, pool: &str) -> CoupledPoolInflowBinding {
     }
 }
 
-pub fn rate(boundary: &str, rate_m3_per_s: f64) -> CoupledPoolInflowRate {
-    CoupledPoolInflowRate {
+pub fn rate(boundary: &str, rate_m3_per_s: f64) -> CoupledPoolInflow {
+    CoupledPoolInflow {
         boundary_id: boundary.into(),
         input_id: format!("selected-input-{boundary}"),
-        rate_m3_per_s,
+        value: CoupledPoolInflowValue::Rate { rate_m3_per_s },
     }
 }
 
-pub fn forcing(inflows: Vec<CoupledPoolInflowRate>) -> CoupledLevelPoolForcingInterval {
+pub fn volume(boundary: &str, volume_m3: f64) -> CoupledPoolInflow {
+    CoupledPoolInflow {
+        boundary_id: boundary.into(),
+        input_id: format!("selected-input-{boundary}"),
+        value: CoupledPoolInflowValue::IntervalVolume { volume_m3 },
+    }
+}
+
+pub fn forcing(inflows: Vec<CoupledPoolInflow>) -> CoupledLevelPoolForcingInterval {
+    span(0.0, 2.0, inflows)
+}
+
+pub fn span(
+    start_s: f64,
+    end_s: f64,
+    inflows: Vec<CoupledPoolInflow>,
+) -> CoupledLevelPoolForcingInterval {
     CoupledLevelPoolForcingInterval {
-        start_s: 0.0,
-        end_s: 2.0,
+        start_s,
+        end_s,
         sources: None,
         inflows,
     }

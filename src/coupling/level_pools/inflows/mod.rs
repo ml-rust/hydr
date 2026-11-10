@@ -10,8 +10,8 @@ mod state;
 pub(super) use accounting::{InflowCumulativeSummary, InflowIntervalSummary};
 pub(super) use context::{BoundInflows, InflowContext};
 pub use definition::{
-    CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolInflowRate,
-    CoupledPoolInflowReceipt,
+    CoupledPoolInflow, CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolInflowReceipt,
+    CoupledPoolInflowValue,
 };
 pub(super) use preparation::{InflowStep, PreparedInflows};
 pub(super) use state::InflowState;

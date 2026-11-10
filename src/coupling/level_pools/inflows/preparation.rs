@@ -17,7 +17,8 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub(crate) struct InflowStep<R: Runtime<DType = DType>> {
-    pub(super) rates: Tensor<R>,
+    pub(super) input_values: Tensor<R>,
+    pub(super) input_is_rate: Arc<Vec<bool>>,
     pub(super) volumes: Tensor<R>,
     pub(super) before: InflowState<R>,
     pub(super) next: InflowState<R>,
@@ -53,7 +54,7 @@ where
     pub(crate) fn prepare(
         &self,
         client: &R::Client,
-        rates: &BoundInflows<R>,
+        inputs: &BoundInflows<R>,
         state: &InflowState<R>,
         dt_s: f64,
         accepted_steps_after: usize,
@@ -63,9 +64,9 @@ where
                 "external inflow duration must be finite and strictly positive",
             ));
         }
-        if !Arc::ptr_eq(&self.bindings, &rates.bindings) {
+        if !Arc::ptr_eq(&self.bindings, &inputs.bindings) {
             return Err(CoupledLevelPoolError::input(
-                "external rates belong to another immutable boundary context",
+                "external inputs belong to another immutable boundary context",
             ));
         }
         let steps_before = accepted_steps_after.checked_sub(1).ok_or_else(|| {
@@ -74,15 +75,52 @@ where
             )
         })?;
         self.check_state(client, state, steps_before)?;
-        self.check_tensor(client, &rates.rates)?;
-        let volumes = client.mul_scalar(&rates.rates, dt_s)?;
+        self.check_tensor(client, &inputs.values)?;
+        let zero = Tensor::<R>::zeros(&[], DType::F64, client.device())?;
+        let rate_values = if inputs.has_interval_volumes() {
+            client.where_cond(&inputs.rate_mask, &inputs.values, &zero)?
+        } else {
+            inputs.values.clone()
+        };
+        let rate_volumes = client.mul_scalar(&rate_values, dt_s)?;
+        let volumes = if inputs.has_interval_volumes() {
+            client.where_cond(&inputs.rate_mask, &rate_volumes, &inputs.values)?
+        } else {
+            rate_volumes
+        };
+        if !self.bindings.is_empty() {
+            finite(client, &volumes, "original external interval volume")?;
+            reject(
+                client,
+                &client.mul(
+                    &client.gt(&rate_values, &zero)?,
+                    &client.eq(&volumes, &zero)?,
+                )?,
+                "positive external rate-times-duration volume underflows. Rescale the inflow or interval",
+            )?;
+        }
+        self.prepare_volumes(client, inputs, state, dt_s, accepted_steps_after, volumes)
+    }
+
+    // Original represented volumes enter assembly directly. This path performs no V/dt conversion.
+    fn prepare_volumes(
+        &self,
+        client: &R::Client,
+        inputs: &BoundInflows<R>,
+        state: &InflowState<R>,
+        dt_s: f64,
+        accepted_steps_after: usize,
+        volumes: Tensor<R>,
+    ) -> Result<PreparedInflows<R>, CoupledLevelPoolError> {
+        self.check_tensor(client, &volumes)?;
         let aggregated = self.tree.aggregate(client, &volumes)?;
         if self.bindings.is_empty() {
             return Ok(PreparedInflows {
                 incoming: aggregated.volume,
                 next: state.clone(),
                 step: InflowStep {
-                    rates: rates.rates.clone(),
+                    input_values: inputs.values.clone(),
+                    input_is_rate: Arc::clone(&inputs.input_is_rate),
                     volumes,
                     before: state.clone(),
                     next: state.clone(),
@@ -93,15 +131,6 @@ where
             });
         }
         let zero = Tensor::<R>::zeros(&[], DType::F64, client.device())?;
-        finite(client, &volumes, "external rate-times-duration volume")?;
-        reject(
-            client,
-            &client.mul(
-                &client.gt(&rates.rates, &zero)?,
-                &client.eq(&volumes, &zero)?,
-            )?,
-            "positive external rate-times-duration volume underflows. Rescale the inflow or interval",
-        )?;
         reject(
             client,
             &client.gt(&volumes, &self.capacity)?,
@@ -132,7 +161,8 @@ where
             incoming: aggregated.volume,
             next: next.clone(),
             step: InflowStep {
-                rates: rates.rates.clone(),
+                input_values: inputs.values.clone(),
+                input_is_rate: Arc::clone(&inputs.input_is_rate),
                 volumes,
                 before: state.clone(),
                 next,

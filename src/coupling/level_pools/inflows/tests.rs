@@ -46,11 +46,13 @@ fn binding(boundary: &str) -> CoupledPoolInflowBinding {
             "independent selected input excludes represented water and local rainfall".into(),
     }
 }
-fn rate(boundary: &str, value: f64) -> CoupledPoolInflowRate {
-    CoupledPoolInflowRate {
+fn rate(boundary: &str, value: f64) -> CoupledPoolInflow {
+    CoupledPoolInflow {
         boundary_id: boundary.into(),
         input_id: format!("input-{boundary}"),
-        rate_m3_per_s: value,
+        value: CoupledPoolInflowValue::Rate {
+            rate_m3_per_s: value,
+        },
     }
 }
 fn ledger(value: f64, bound: f64) -> CoupledPoolInflowLedger {
@@ -72,7 +74,7 @@ fn empty_and_explicit_zero_inflows_preserve_incoming_bits() -> TestResult {
         } else {
             vec![rate("boundary", 0.0)]
         };
-        let rates = context.bind_rates(&client, &rates)?;
+        let rates = context.bind_inputs(&client, &rates)?;
         let original = context.zero_state(&client)?;
         let prepared = context.prepare(&client, &rates, &original, 1.0, 1)?;
         let incoming = Tensor::<CpuRuntime>::from_slice(&[-0.0f64, 1.0], &[2], client.device())?;
@@ -103,7 +105,7 @@ fn original_interval_volume_survives_cumulative_counter_absorption() -> TestResu
     let context = InflowContext::<CpuRuntime>::new(&client, &pools(4.0)?, &[binding("boundary")])?;
     let original = context.import_state(&client, &[ledger(1.0, 0.0)], 1)?;
     let value = f64::EPSILON / 4.0;
-    let rates = context.bind_rates(&client, &[rate("boundary", value)])?;
+    let rates = context.bind_inputs(&client, &[rate("boundary", value)])?;
     let prepared = context.prepare(&client, &rates, &original, 1.0, 2)?;
     assert_eq!(prepared.summary.volume_m3, value);
     assert!(prepared.summary.counter_roundoff_bound_m3 >= value);
@@ -137,7 +139,7 @@ fn grouped_boundaries_reject_absorbed_positive_volumes() -> TestResult {
         &pools(4.0)?,
         &[binding("large"), binding("small")],
     )?;
-    let rates = context.bind_rates(
+    let rates = context.bind_inputs(
         &client,
         &[rate("small", f64::EPSILON / 4.0), rate("large", 1.0)],
     )?;
@@ -213,16 +215,155 @@ fn original_products_reject_positive_underflow_and_overflow() -> TestResult {
     let context = InflowContext::<CpuRuntime>::new(&client, &pools(4.0)?, &[binding("boundary")])?;
     let original = context.zero_state(&client)?;
     for (value, duration) in [(f64::from_bits(1), 0.25), (f64::MAX, 2.0)] {
-        let rates = context.bind_rates(&client, &[rate("boundary", value)])?;
+        let rates = context.bind_inputs(&client, &[rate("boundary", value)])?;
         assert!(
             context
                 .prepare(&client, &rates, &original, duration, 1)
                 .is_err()
         );
     }
-    let rates = context.bind_rates(&client, &[rate("boundary", 0.25)])?;
+    let rates = context.bind_inputs(&client, &[rate("boundary", 0.25)])?;
     let prepared = context.prepare(&client, &rates, &original, 2.0, 1)?;
     assert_eq!(prepared.incoming.dtype(), DType::F64);
     assert_eq!(prepared.incoming.try_to_vec::<f64>()?, vec![0.5, 0.0]);
+    Ok(())
+}
+
+fn volume(boundary: &str, value: f64) -> CoupledPoolInflow {
+    CoupledPoolInflow {
+        boundary_id: boundary.into(),
+        input_id: format!("input-{boundary}"),
+        value: CoupledPoolInflowValue::IntervalVolume { volume_m3: value },
+    }
+}
+
+#[test]
+fn authoritative_subnormal_volume_never_passes_through_a_rate() -> TestResult {
+    let client = client();
+    let context = InflowContext::<CpuRuntime>::new(&client, &pools(4.0)?, &[binding("boundary")])?;
+    let original = context.zero_state(&client)?;
+    let quantum = f64::from_bits(1);
+    assert_eq!(quantum / 2.0, 0.0);
+    let inputs = context.bind_inputs(&client, &[volume("boundary", quantum)])?;
+    assert!(inputs.has_interval_volumes());
+    let prepared = context.prepare(&client, &inputs, &original, 2.0, 1)?;
+    assert_eq!(
+        prepared
+            .incoming
+            .try_to_vec::<f64>()?
+            .first()
+            .map(|value| value.to_bits()),
+        Some(quantum.to_bits())
+    );
+    let receipt = context
+        .project_step(&client, &prepared.step)?
+        .pop()
+        .ok_or("missing interval-volume receipt")?;
+    assert!(
+        receipt
+            .input
+            .same_bits(&CoupledPoolInflowValue::IntervalVolume { volume_m3: quantum })
+    );
+    assert_eq!(receipt.volume_m3.to_bits(), quantum.to_bits());
+    assert_eq!(receipt.cumulative_after_m3.to_bits(), quantum.to_bits());
+    Ok(())
+}
+
+#[test]
+fn integrated_lanes_are_masked_before_unused_rate_multiplication() -> TestResult {
+    let client = client();
+    let context = InflowContext::<CpuRuntime>::new(&client, &pools(4.0)?, &[binding("boundary")])?;
+    let original = context.zero_state(&client)?;
+    let inputs = context.bind_inputs(&client, &[volume("boundary", 3.0)])?;
+    let prepared = context.prepare(&client, &inputs, &original, f64::MAX, 1)?;
+    assert_eq!(prepared.incoming.try_to_vec::<f64>()?, vec![3.0, 0.0]);
+    let rate_inputs = context.bind_inputs(&client, &[rate("boundary", 3.0)])?;
+    assert!(!rate_inputs.has_interval_volumes());
+    assert!(
+        context
+            .prepare(&client, &rate_inputs, &original, f64::MAX, 1)
+            .is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn mixed_inputs_preserve_original_variants_and_mask_underflow_checks() -> TestResult {
+    let client = client();
+    let mut receiving_rate = binding("rate");
+    receiving_rate.pool_id = "pool-1".into();
+    let context = InflowContext::<CpuRuntime>::new(
+        &client,
+        &pools(4.0)?,
+        &[binding("volume"), receiving_rate],
+    )?;
+    let original = context.zero_state(&client)?;
+    let quantum = f64::from_bits(1);
+    let inputs = context.bind_inputs(&client, &[rate("rate", 0.25), volume("volume", quantum)])?;
+    let prepared = context.prepare(&client, &inputs, &original, 2.0, 1)?;
+    assert_eq!(prepared.incoming.try_to_vec::<f64>()?, vec![quantum, 0.5]);
+    let receipts = context.project_step(&client, &prepared.step)?;
+    let first = receipts.first().ok_or("missing integrated receipt")?;
+    assert!(
+        first
+            .input
+            .same_bits(&CoupledPoolInflowValue::IntervalVolume { volume_m3: quantum })
+    );
+    let mut altered = first.clone();
+    altered.input = CoupledPoolInflowValue::Rate {
+        rate_m3_per_s: quantum,
+    };
+    assert!(!first.same_bits(&altered));
+    let last = receipts.last().ok_or("missing rate receipt")?;
+    assert!(last.input.same_bits(&CoupledPoolInflowValue::Rate {
+        rate_m3_per_s: 0.25
+    }));
+    let underflow =
+        context.bind_inputs(&client, &[volume("volume", quantum), rate("rate", quantum)])?;
+    assert!(
+        context
+            .prepare(&client, &underflow, &original, 0.25, 1)
+            .is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn zero_integrated_input_keeps_its_kind_and_original_operand_bits() -> TestResult {
+    let client = client();
+    let context = InflowContext::<CpuRuntime>::new(&client, &pools(4.0)?, &[binding("boundary")])?;
+    let original = context.zero_state(&client)?;
+    let inputs = context.bind_inputs(&client, &[volume("boundary", -0.0)])?;
+    assert!(inputs.has_interval_volumes());
+    let prepared = context.prepare(&client, &inputs, &original, 1.0, 1)?;
+    let receipt = context
+        .project_step(&client, &prepared.step)?
+        .pop()
+        .ok_or("missing zero-volume receipt")?;
+    assert!(
+        receipt
+            .input
+            .same_bits(&CoupledPoolInflowValue::IntervalVolume { volume_m3: -0.0 })
+    );
+    assert!(
+        !receipt
+            .input
+            .same_bits(&CoupledPoolInflowValue::IntervalVolume { volume_m3: 0.0 })
+    );
+    assert!(!receipt.input.same_bits(&CoupledPoolInflowValue::Rate {
+        rate_m3_per_s: -0.0
+    }));
+    assert_eq!(receipt.volume_m3.to_bits(), (-0.0f64).to_bits());
+    for invalid in [-1.0, f64::NAN, f64::INFINITY] {
+        assert!(
+            context
+                .bind_inputs(&client, &[volume("boundary", invalid)])
+                .is_err()
+        );
+    }
+    assert_eq!(
+        context.project_state(&client, &original)?,
+        vec![ledger(0.0, 0.0)]
+    );
     Ok(())
 }

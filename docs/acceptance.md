@@ -146,6 +146,10 @@ These source fixtures establish no runoff attachment or field accuracy.
 
 Explicit-zero boundaries retain common closed and source-only numerical bits. Actual CPU/CUDA tests share one inflow and complete-restart body. These synthetic checks establish no measured-replacement selection, generated-runoff attachment, geometric ownership proof, or field accuracy.
 
+Integrated-volume cases check original operand bits, mixed rate/volume inputs, exact spans including zero, and fresh forcing after recalculation requests. A positive receiver film accepts the smallest supplied volume over `2 s`, although dividing that input by duration rounds to zero. Dry receivers retain `3` times that smallest volume exactly, although dividing and multiplying it back changes its bits. Filling a dry receiver with the smallest volume rejects because its midpoint depth is unrepresentable.
+
+Exact/mixed restart checks preserve complete state and original forcing kinds. Forged operands, durations, and retries reject atomically. CPU/CUDA tests share one mixed-input and complete-restart body. Supplied integrated volumes establish no full native-runoff attachment.
+
 ## Gate status
 
 | Gate | Checked scope | Remaining evidence |

@@ -71,10 +71,13 @@ where
     ) -> Result<CoupledLevelPoolTrial<R>, CoupledLevelPoolError> {
         if self.source_policies().is_some() || !self.setup().external_inflows.is_empty() {
             return Err(CoupledLevelPoolError::input(
-                "forced setup lacks interval rates. Supply trial_with_forcing_to with complete coverage",
+                "forced setup lacks interval inputs. Supply trial_with_forcing_to with complete coverage",
             ));
         }
-        let inflows = self.context.inflows.bind_rates(&self.context.client, &[])?;
+        let inflows = self
+            .context
+            .inflows
+            .bind_inputs(&self.context.client, &[])?;
         self.trial_interval(requested_end, None, None, &inflows)
     }
     /// Solve covered local sources and external inflows, preparing each attempted duration independently.
@@ -97,7 +100,7 @@ where
         let inflows = self
             .context
             .inflows
-            .bind_rates(&self.context.client, &interval.inflows)?;
+            .bind_inputs(&self.context.client, &interval.inflows)?;
         self.trial_interval(requested_end, Some(interval), plan.as_ref(), &inflows)
     }
     fn trial_interval(
@@ -114,6 +117,16 @@ where
                 "requested end={requested_end}, accepted time={start}: supply a finite later endpoint"
             )));
         }
+        let mut end = requested_end.min(start + config.maximum_step_s);
+        if inflows.has_interval_volumes() && end < requested_end {
+            return Err(recompute_request(
+                start,
+                requested_end,
+                end,
+                config.minimum_step_s,
+                "requested duration exceeds the configured maximum step".into(),
+            ));
+        }
         let start_heads = self.context.heads(
             &self.pools.stages_tensor()?,
             &self.context.wet(self.pools.volumes_tensor())?,
@@ -126,7 +139,6 @@ where
             &start_heads.wet_a,
             &start_heads.wet_b,
         )?;
-        let mut end = requested_end.min(start + config.maximum_step_s);
         let mut retries = 0;
         loop {
             let dt = end - start;
@@ -151,6 +163,15 @@ where
                         return Err(error);
                     }
                     let shorter = start + dt * 0.5;
+                    if inflows.has_interval_volumes() {
+                        return Err(recompute_request(
+                            start,
+                            requested_end,
+                            shorter,
+                            config.minimum_step_s,
+                            error.to_string(),
+                        ));
+                    }
                     if retries >= config.retry_limit
                         || shorter - start < config.minimum_step_s
                         || shorter <= start
@@ -297,4 +318,33 @@ fn retryable(error: &CoupledLevelPoolError) -> bool {
                 ..
             })
     )
+}
+
+fn recompute_request(
+    start: f64,
+    requested: f64,
+    suggested: f64,
+    minimum_step: f64,
+    reason: String,
+) -> CoupledLevelPoolError {
+    let dt = suggested - start;
+    if !suggested.is_finite()
+        || !dt.is_finite()
+        || suggested <= start
+        || suggested >= requested
+        || dt < minimum_step
+    {
+        CoupledLevelPoolError::Unresolved {
+            dt_s: requested - start,
+            retries: 0,
+            reason,
+        }
+    } else {
+        CoupledLevelPoolError::RecomputeInterval {
+            start_s: start,
+            requested_end_s: requested,
+            suggested_end_s: suggested,
+            reason,
+        }
+    }
 }

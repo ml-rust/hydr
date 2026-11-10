@@ -1,6 +1,7 @@
 use super::fixture::{Result, near};
 use super::inflow_fixture::{binding, forcing, rate};
 use super::source_fixture::{Batch, inactive_case, pump_case};
+use hydr::coupling::CoupledPoolInflowValue;
 
 #[test]
 fn external_boundaries_require_complete_unique_identity_and_ownership_evidence() -> Result {
@@ -69,9 +70,21 @@ fn complete_forcing_including_zero_rates_is_required_before_any_trial() -> Resul
             2 => interval.inflows[1] = rate("left", 0.0),
             3 => interval.inflows[1] = rate("unknown", 0.0),
             4 => interval.inflows[0].input_id = "different-input".into(),
-            5 => interval.inflows[0].rate_m3_per_s = -1.0,
-            6 => interval.inflows[0].rate_m3_per_s = f64::INFINITY,
-            7 => interval.inflows[0].rate_m3_per_s = f64::NAN,
+            5 => {
+                interval.inflows[0].value = CoupledPoolInflowValue::Rate {
+                    rate_m3_per_s: -1.0,
+                }
+            }
+            6 => {
+                interval.inflows[0].value = CoupledPoolInflowValue::Rate {
+                    rate_m3_per_s: f64::INFINITY,
+                }
+            }
+            7 => {
+                interval.inflows[0].value = CoupledPoolInflowValue::Rate {
+                    rate_m3_per_s: f64::NAN,
+                }
+            }
             8 => interval.start_s = 0.25,
             9 => interval.end_s = 0.25,
             _ => return Err("Unknown external forcing mutation".into()),
