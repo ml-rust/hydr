@@ -73,3 +73,9 @@ pub use operating_source::{
 pub(crate) use actuator::{
     project_actuator_phase, project_actuator_position, same_actuator_context,
 };
+
+mod controlled_gate;
+pub use controlled_gate::{
+    ControlledGateBatch, ControlledGateEvent, ControlledGateSnapshot, ControlledGateSnapshotData,
+    ControlledGateTrial,
+};

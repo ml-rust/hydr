@@ -4,6 +4,7 @@ use super::CpuActuatorContext;
 use crate::cpu::CpuTensor;
 use crate::structures::StructureError;
 use numr::ops::ConditionalOps;
+use std::sync::Arc;
 
 pub(crate) trait TensorRecord: Clone {
     type Values;
@@ -41,6 +42,35 @@ impl TensorRecord for CpuTensor {
         values: &Self::Values,
     ) -> Result<Self, StructureError> {
         context.tensor(values)
+    }
+}
+// Indirection changes ownership only. Each operation retains the record's original field order.
+impl<T: TensorRecord> TensorRecord for Arc<T> {
+    type Values = T::Values;
+    fn zero(context: &CpuActuatorContext) -> Self {
+        Arc::new(T::zero(context))
+    }
+    fn select(
+        context: &CpuActuatorContext,
+        mask: &CpuTensor,
+        yes: &Self,
+        no: &Self,
+    ) -> Result<Self, StructureError> {
+        Ok(Arc::new(T::select(
+            context,
+            mask,
+            yes.as_ref(),
+            no.as_ref(),
+        )?))
+    }
+    fn project(&self) -> Result<Self::Values, StructureError> {
+        self.as_ref().project()
+    }
+    fn from_values(
+        context: &CpuActuatorContext,
+        values: &Self::Values,
+    ) -> Result<Self, StructureError> {
+        Ok(Arc::new(T::from_values(context, values)?))
     }
 }
 macro_rules! record {

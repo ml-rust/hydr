@@ -13,12 +13,13 @@ use crate::cpu::{
 };
 use crate::structures::StructureError;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
+use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub(crate) struct CpuActuatorEvaluation {
     pub position: CpuActuatorPosition,
     pub forward: CpuActuatorForward,
-    pub completion: CpuActuatorCompletion,
+    pub completion: Arc<CpuActuatorCompletion>,
     pub completed: CpuTensor,
     pub phase: CpuTensor,
 }
@@ -131,15 +132,19 @@ pub(crate) fn evaluate_at(
         effective_upper,
         width_high: wh,
         width_low: wl,
-        forward: CpuActuatorForward::select(
+        forward: Arc::new(CpuActuatorForward::select(
             ctx,
             &receipt_forward,
             &forward,
             &CpuActuatorForward::zero(ctx),
-        )?,
+        )?),
     };
-    let completion =
-        CpuActuatorCompletion::select(ctx, &completed, &candidate, &state.last_completion)?;
+    let completion = Arc::new(CpuActuatorCompletion::select(
+        ctx,
+        &completed,
+        &candidate,
+        &state.last_completion,
+    )?);
     let complete = c.maximum(&known, &singleton)?;
     let canonical = CpuActuatorPosition {
         center: state.target.clone(),

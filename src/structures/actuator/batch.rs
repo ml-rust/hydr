@@ -1,6 +1,8 @@
 //! Immutable accepted ideal-actuator batches and positive-duration trials.
 
-use crate::cpu::structures::actuator::{CpuActuatorContext, CpuActuatorState, CpuActuatorStep};
+use crate::cpu::structures::actuator::{
+    CpuActuatorContext, CpuActuatorState, CpuActuatorStep, CpuActuatorUpdate, record::TensorRecord,
+};
 use std::sync::Arc;
 
 /// Accepted persistent ideal response state bound to the complete actual structure context.
@@ -87,6 +89,39 @@ impl GateActuatorBatch {
         end_s: f64,
         target_updates: &[GateTargetUpdate],
     ) -> Result<GateActuatorTrial, StructureError> {
+        self.trial_admitting(end_s, |context, expected| {
+            crate::numerics::structures::actuator::admit_update(
+                context,
+                target_updates,
+                end_s,
+                expected,
+            )
+        })
+    }
+    /// Advance with a complete tensor update admitted by the bound command owner.
+    pub(crate) fn trial_to_with_update(
+        &self,
+        end_s: f64,
+        update: Option<CpuActuatorUpdate>,
+    ) -> Result<GateActuatorTrial, StructureError> {
+        self.trial_admitting(end_s, |context, expected| match (expected, update) {
+            (true, Some(update)) => Ok(update),
+            (false, None) => Ok(CpuActuatorUpdate::zero(context)),
+            (true, None) => Err(StructureError::input(
+                StructureInputErrorKind::OperatingPoint,
+                "target event requires a complete admitted tensor update",
+            )),
+            (false, Some(_)) => Err(StructureError::input(
+                StructureInputErrorKind::OperatingPoint,
+                "non-target actuator interval requires no tensor update",
+            )),
+        })
+    }
+    fn trial_admitting(
+        &self,
+        end_s: f64,
+        admit: impl FnOnce(&CpuActuatorContext, bool) -> Result<CpuActuatorUpdate, StructureError>,
+    ) -> Result<GateActuatorTrial, StructureError> {
         let duration = end_s - self.time;
         if !end_s.is_finite() || !duration.is_finite() || duration <= 0.0 {
             return Err(StructureError::input(
@@ -125,6 +160,7 @@ impl GateActuatorBatch {
         } else {
             self.next_target
         };
+        let update = admit(&self.context, target_index.is_some())?;
         let step = crate::numerics::structures::actuator::step(
             &self.context,
             &self.state,
@@ -132,7 +168,7 @@ impl GateActuatorBatch {
             end_s,
             event,
             target_index,
-            target_updates,
+            update,
         )?;
         let next = Self {
             context: Arc::clone(&self.context),

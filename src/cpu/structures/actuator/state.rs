@@ -1,8 +1,9 @@
-//! Persistent batched finite-rate state tensors.
+//! Persistent batched state with heap-owned immutable bounded receipts.
 
 use super::record::record;
 use super::*;
 use crate::cpu::CpuTensor;
+use std::sync::Arc;
 
 record!(
     CpuActuatorCompletion,
@@ -17,7 +18,7 @@ record!(
         effective_upper: CpuTensor,
         width_high: CpuTensor,
         width_low: CpuTensor,
-        forward: CpuActuatorForward,
+        forward: Arc<CpuActuatorForward>,
     }
 );
 record!(
@@ -60,7 +61,7 @@ record!(
         active_valid: CpuTensor,
         active_index: CpuTensor,
         latest_update: CpuActuatorUpdate,
-        last_change: CpuActuatorChange,
-        last_completion: CpuActuatorCompletion,
+        last_change: Arc<CpuActuatorChange>,
+        last_completion: Arc<CpuActuatorCompletion>,
     }
 );
