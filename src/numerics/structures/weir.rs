@@ -1,26 +1,41 @@
 //! Stable all-log suppressed rectangular weir laws with direct original-stage gap.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::ops::ScalarOps;
+use numr::ops::UnaryOps;
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::direction::Classification;
-use crate::cpu::{CpuTensor, structures::CpuStructureContext};
 use crate::structures::StructureError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps, UnaryOps};
+use crate::tensor::structures::TensorStructureContext;
+use numr::tensor::Tensor;
 
 const VILLEMONTE_EXPONENT: f64 = 0.385;
 
-pub(super) struct WeirResult {
-    pub magnitude: CpuTensor,
-    pub logarithm: CpuTensor,
-    pub upstream: CpuTensor,
-    pub downstream: CpuTensor,
-    pub gap: CpuTensor,
-    pub ratio: CpuTensor,
-    pub k: CpuTensor,
+pub(super) struct WeirResult<R: Runtime<DType = DType>> {
+    pub magnitude: Tensor<R>,
+    pub logarithm: Tensor<R>,
+    pub upstream: Tensor<R>,
+    pub downstream: Tensor<R>,
+    pub gap: Tensor<R>,
+    pub ratio: Tensor<R>,
+    pub k: Tensor<R>,
 }
 
-pub(super) fn free(
-    context: &CpuStructureContext,
-    class: &Classification,
-) -> Result<WeirResult, StructureError> {
+pub(super) fn free<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    class: &Classification<R>,
+) -> Result<WeirResult<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     let active = &class.free_weir;
     let high = c.where_cond(active, &class.high, &context.one)?;
@@ -43,10 +58,19 @@ pub(super) fn free(
     })
 }
 
-pub(super) fn submerged(
-    context: &CpuStructureContext,
-    class: &Classification,
-) -> Result<WeirResult, StructureError> {
+pub(super) fn submerged<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    class: &Classification<R>,
+) -> Result<WeirResult<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     let active = &class.submerged_weir;
     let high = c.where_cond(active, &class.high, &context.one)?;

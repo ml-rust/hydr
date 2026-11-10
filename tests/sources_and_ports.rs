@@ -1,5 +1,9 @@
 //! Source momentum, full-flux port signs, and donor-budget contracts in SI units.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "support/impervious.rs"]
 mod impervious;
 
@@ -85,7 +89,7 @@ fn solver(
     ports: Vec<FluxPort>,
     withdrawal: f64,
     config: SolverConfig,
-) -> Result<Solver, Box<dyn std::error::Error>> {
+) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let count = domain.grid().cell_count();
     let state = FlowState::new(&domain, cells)?;
     let boundaries =
@@ -126,12 +130,12 @@ fn opposing_full_flux_ports_preserve_two_dimensional_uniform_flow() -> TestResul
         solver.advance_to(0.1, 100)?.status,
         AdvanceStatus::ReachedTarget
     );
-    for actual in solver.state().cells() {
+    for actual in solver.state()?.cells() {
         assert!((actual.h - cell.h).abs() <= 1e-12, "{actual:?}");
         assert!((actual.qx - cell.qx).abs() <= 1e-12, "{actual:?}");
         assert!((actual.qy - cell.qy).abs() <= 1e-12, "{actual:?}");
     }
-    let step = solver.last_step().ok_or("accepted step is absent")?;
+    let step = solver.last_step()?.ok_or("accepted step is absent")?;
     for port in &ports {
         let face = step
             .faces
@@ -181,7 +185,7 @@ fn competing_interior_and_port_exports_share_one_donor_budget() -> TestResult {
     let report = solver.advance_to(1.0, 1)?;
     assert_eq!(report.status, AdvanceStatus::StepLimit);
     assert_eq!(report.accepted_steps, 1);
-    let step = solver.last_step().ok_or("accepted step is absent")?;
+    let step = solver.last_step()?.ok_or("accepted step is absent")?;
     assert!(step.retries > 0);
     let interior = step
         .faces
@@ -218,7 +222,7 @@ fn competing_interior_and_port_exports_share_one_donor_budget() -> TestResult {
     assert!(step.dt <= combined_limit);
     assert!(combined_rate * step.dt <= 1.0);
     assert!((step.boundary_out - 10.0 * step.dt).abs() <= 1e-12);
-    assert!(solver.state().cells().iter().all(|cell| cell.h >= 0.0));
+    assert!(solver.state()?.cells().iter().all(|cell| cell.h >= 0.0));
     assert_eq!(solver.ledger().water_adjustment, 0.0);
     Ok(())
 }
@@ -242,9 +246,9 @@ fn land_withdrawal_removes_proportional_donor_momentum() -> TestResult {
         },
     )?;
     solver.advance_to(0.1, 1)?;
-    let step = solver.last_step().ok_or("accepted step is absent")?;
+    let step = solver.last_step()?.ok_or("accepted step is absent")?;
     assert_eq!(step.dt, 0.1);
-    let center = solver.state().cells()[3];
+    let center = solver.state()?.cells()[3];
     assert!((center.h - 1.99).abs() <= 1e-12);
     assert!((center.qx - 0.995).abs() <= 1e-12);
     assert_eq!(center.qy, 0.0);
@@ -275,8 +279,8 @@ fn film_resets_record_signed_momentum_without_removing_water() -> TestResult {
         },
     )?;
     solver.advance_to(0.1, 1)?;
-    let step = solver.last_step().ok_or("accepted step is absent")?;
-    for actual in solver.state().cells() {
+    let step = solver.last_step()?.ok_or("accepted step is absent")?;
+    for actual in solver.state()?.cells() {
         assert!((actual.h - cell.h).abs() <= 1e-15);
         assert!(actual.h > 0.0);
         assert_eq!([actual.qx, actual.qy], [0.0; 2]);

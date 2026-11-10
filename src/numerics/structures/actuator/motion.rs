@@ -4,21 +4,33 @@ use super::{
     arithmetic::{down, finite, not, outward_add, up, used},
     fused,
 };
-use crate::cpu::{
-    CpuTensor,
-    structures::actuator::{CpuActuatorContext, CpuActuatorEndpoint, CpuActuatorMotion},
-};
 use crate::structures::StructureError;
+use crate::tensor::structures::actuator::{
+    TensorActuatorContext, TensorActuatorEndpoint, TensorActuatorMotion,
+};
+use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, TwoSumOps, UnaryOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(super) fn motion(
-    ctx: &CpuActuatorContext,
-    x: &CpuTensor,
-    target: &CpuTensor,
-    h: &CpuTensor,
-    l: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<(CpuTensor, CpuActuatorMotion), StructureError> {
+pub(super) fn motion<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    x: &Tensor<R>,
+    target: &Tensor<R>,
+    h: &Tensor<R>,
+    l: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<(Tensor<R>, TensorActuatorMotion<R>), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let opening = c.lt(x, target)?;
     let rate = c.where_cond(&opening, &ctx.opening_rate, &ctx.closing_rate)?;
@@ -45,7 +57,7 @@ pub(super) fn motion(
     let center = c.where_cond(&opening, &c.minimum(&s, target)?, &c.maximum(&s, target)?)?;
     Ok((
         c.where_cond(&moving, &center, x)?,
-        CpuActuatorMotion {
+        TensorActuatorMotion {
             valid: moving,
             direction: opening,
             rate,
@@ -59,13 +71,23 @@ pub(super) fn motion(
         },
     ))
 }
-fn raw(
-    ctx: &CpuActuatorContext,
-    s: &CpuTensor,
-    error: &CpuTensor,
-    active: &CpuTensor,
+fn raw<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    s: &Tensor<R>,
+    error: &Tensor<R>,
+    active: &Tensor<R>,
     upper: bool,
-) -> Result<(CpuTensor, CpuTensor), StructureError> {
+) -> Result<(Tensor<R>, Tensor<R>), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let signed = if upper { error.clone() } else { c.neg(error)? };
     let ordinary = c.add(s, &signed)?;
@@ -95,14 +117,24 @@ fn raw(
     let valid = c.mul(&ordinary_finite, &finite(ctx, &raw)?)?;
     Ok((valid.clone(), c.where_cond(&valid, &raw, &ctx.zero)?))
 }
-pub(super) fn endpoint(
-    ctx: &CpuActuatorContext,
-    x: &CpuTensor,
-    target: &CpuTensor,
-    h: &CpuTensor,
-    l: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<(CpuTensor, CpuActuatorEndpoint), StructureError> {
+pub(super) fn endpoint<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    x: &Tensor<R>,
+    target: &Tensor<R>,
+    h: &Tensor<R>,
+    l: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<(Tensor<R>, TensorActuatorEndpoint<R>), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let (center, motion) = motion(ctx, x, target, h, l, active)?;
     let physical_low = c.minimum(x, target)?;
@@ -125,7 +157,7 @@ pub(super) fn endpoint(
     )?;
     Ok((
         center,
-        CpuActuatorEndpoint {
+        TensorActuatorEndpoint {
             anchor: x.clone(),
             lower: c.where_cond(&motion.valid, &lo, x)?,
             upper: c.where_cond(&motion.valid, &hi, x)?,

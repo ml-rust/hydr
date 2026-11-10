@@ -1,39 +1,41 @@
 //! Immutable point-only hydraulic/source pairing without integrated-transfer APIs.
 
 use super::{OperatingSourceDetail, OperatingSourceOutput, OperatingSourceReceipt};
-use crate::cpu::structures::{
-    actuator::record::TensorRecord,
-    operating_source::{
-        CpuOperatingSourceContext, CpuOperatingSourceKind, CpuOperatingSourcePoint,
-        CpuOperatingSourceValue,
-    },
-};
 use crate::structures::{
     ControlLatch, GateActuatorSupport, StructureError, StructureOperatingPoint, StructureOperation,
     StructureProposal,
 };
+use crate::tensor::structures::{
+    actuator::record::TensorRecord,
+    operating_source::{
+        TensorOperatingSourceContext, TensorOperatingSourceKind, TensorOperatingSourcePoint,
+        TensorOperatingSourceValue,
+    },
+};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 use std::sync::Arc;
 
 #[derive(Debug)]
-struct PointData {
-    context: Arc<CpuOperatingSourceContext>,
+struct PointData<R: Runtime<DType = DType>> {
+    context: Arc<TensorOperatingSourceContext<R>>,
     time_s: f64,
-    hydraulic: StructureProposal,
-    point: CpuOperatingSourcePoint,
+    hydraulic: StructureProposal<R>,
+    point: TensorOperatingSourcePoint<R>,
 }
 /// Immutable point proposal paired with retained operation provenance and gate-opening evidence.
 ///
 /// No held-volume API or implicit integrated-transfer conversion exists on this type.
 #[derive(Clone, Debug)]
-pub struct OperatingSourceProposal {
-    inner: Arc<PointData>,
+pub struct OperatingSourceProposal<R: Runtime<DType = DType>> {
+    inner: Arc<PointData<R>>,
 }
-impl OperatingSourceProposal {
+impl<R: Runtime<DType = DType>> OperatingSourceProposal<R> {
     pub(crate) fn new(
-        context: Arc<CpuOperatingSourceContext>,
+        context: Arc<TensorOperatingSourceContext<R>>,
         time_s: f64,
-        hydraulic: StructureProposal,
-        point: CpuOperatingSourcePoint,
+        hydraulic: StructureProposal<R>,
+        point: TensorOperatingSourcePoint<R>,
     ) -> Self {
         Self {
             inner: Arc::new(PointData {
@@ -60,14 +62,14 @@ impl OperatingSourceProposal {
         let mut details = vec![None; n];
         for (group, value) in data.context.groups.iter().zip(&data.point.values) {
             match (&group.kind, value) {
-                (CpuOperatingSourceKind::Manual, CpuOperatingSourceValue::Manual) => {
+                (TensorOperatingSourceKind::Manual, TensorOperatingSourceValue::Manual) => {
                     for &slot in &group.slots {
                         details[slot] = Some(OperatingSourceDetail::Manual);
                     }
                 }
                 (
-                    CpuOperatingSourceKind::Prescribed(source),
-                    CpuOperatingSourceValue::Prescribed,
+                    TensorOperatingSourceKind::Prescribed(source),
+                    TensorOperatingSourceValue::Prescribed,
                 ) => {
                     for (&slot, &lane) in group.slots.iter().zip(&source.lanes) {
                         let metadata =
@@ -85,8 +87,8 @@ impl OperatingSourceProposal {
                     }
                 }
                 (
-                    CpuOperatingSourceKind::Actuated(context),
-                    CpuOperatingSourceValue::Actuated(value),
+                    TensorOperatingSourceKind::Actuated(context),
+                    TensorOperatingSourceValue::Actuated(value),
                 ) => {
                     let position = value.position.project()?;
                     let phase =
@@ -113,8 +115,8 @@ impl OperatingSourceProposal {
                     }
                 }
                 (
-                    CpuOperatingSourceKind::ControlledPump(context),
-                    CpuOperatingSourceValue::ControlledPump(value),
+                    TensorOperatingSourceKind::ControlledPump(context),
+                    TensorOperatingSourceValue::ControlledPump(value),
                 ) => {
                     let count = group.slots.len();
                     let running = crate::structures::projection::read(&value.running, count)?;

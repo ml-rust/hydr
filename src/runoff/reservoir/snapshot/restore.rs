@@ -1,13 +1,43 @@
+use numr::runtime::Device;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+
 use super::super::batch::StoredStep;
 use super::{ReservoirSnapshot, ReservoirSnapshotData};
 use crate::runoff::{ReservoirBatch, ReservoirConfig, ReservoirElement, ReservoirError};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::{Runtime, RuntimeClient};
 use std::sync::Arc;
 
-impl ReservoirBatch {
+impl<R> ReservoirBatch<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     /// Restore a trusted clone after checking every immutable definition bit.
-    pub fn restore(&mut self, snapshot: &ReservoirSnapshot) -> Result<(), ReservoirError> {
+    pub fn restore(&mut self, snapshot: &ReservoirSnapshot<R>) -> Result<(), ReservoirError> {
         self.check_snapshot_definition(snapshot.batch.elements(), snapshot.batch.config())?;
-        *self = snapshot.batch.clone();
+        require(
+            self.context
+                .client
+                .device()
+                .is_same(snapshot.batch.context.client.device()),
+            "trusted snapshot device differs from the target runtime client",
+        )?;
+        self.state = snapshot.batch.state.clone();
+        self.time = snapshot.batch.time;
+        self.ledger = snapshot.batch.ledger.clone();
+        self.steps = snapshot.batch.steps;
+        self.last = snapshot.batch.last.clone();
         Ok(())
     }
 
@@ -18,6 +48,7 @@ impl ReservoirBatch {
     pub fn restore_data(&mut self, data: &ReservoirSnapshotData) -> Result<(), ReservoirError> {
         self.check_snapshot_definition(&data.elements, &data.config)?;
         let mut candidate = Self::new(
+            self.context.client.clone(),
             data.elements.clone(),
             data.states.clone(),
             data.time,
@@ -123,5 +154,41 @@ pub(super) fn require(condition: bool, context: impl Into<String>) -> Result<(),
             "reservoir checkpoint: {}. Supply an unchanged complete same-build package",
             context.into()
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runoff::{ReservoirParameters, ReservoirState};
+    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+
+    #[test]
+    fn trusted_restore_preserves_destination_client() -> Result<(), ReservoirError> {
+        let client = CpuClient::new(CpuDevice::new());
+        let elements = vec![ReservoirElement {
+            id: "reservoir".into(),
+            parameters: ReservoirParameters::from_si(1.0, 1.0, 0.0, 0.0, 1.0, 0.0)?,
+        }];
+        let mut target = ReservoirBatch::<CpuRuntime>::new(
+            client.with_parallelism(ParallelismConfig::new(Some(1), Some(64))),
+            elements.clone(),
+            vec![ReservoirState { depth_m: 0.0 }],
+            0.0,
+            ReservoirConfig::default(),
+        )?;
+        let source = ReservoirBatch::<CpuRuntime>::new(
+            client.with_parallelism(ParallelismConfig::new(Some(1), Some(128))),
+            elements,
+            vec![ReservoirState { depth_m: 0.5 }],
+            2.0,
+            ReservoirConfig::default(),
+        )?;
+        let context = Arc::clone(&target.context);
+        target.restore(&source.snapshot())?;
+        assert!(Arc::ptr_eq(&target.context, &context));
+        assert_eq!(target.context.client.parallelism().chunk_size, Some(64));
+        assert_eq!(target.snapshot_data()?, source.snapshot_data()?);
+        Ok(())
     }
 }

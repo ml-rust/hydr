@@ -1,5 +1,9 @@
 //! Conservative nonlinear reservoir admission and analytical accuracy.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "nonlinear_reservoir/accuracy.rs"]
 mod accuracy;
 #[path = "nonlinear_reservoir/branches.rs"]

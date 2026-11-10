@@ -52,7 +52,10 @@ fn trusted_and_caller_snapshots_restart_identical_supplied_histories() -> Result
 #[test]
 fn incompatible_original_bits_and_context_reject_both_snapshot_forms_atomically() -> Result {
     let source = accept(batch("inclusive_thresholds_and_band_hold", 1)?, 1.0, 2.0)?;
-    let context = StructureBatch::new(source.elements().to_vec())?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        source.elements().to_vec(),
+    )?;
     let mut definitions = source.definitions().to_vec();
     definitions[0].high_qualification_delay_s = -0.0;
     let mut destination = context.with_operating_controls(

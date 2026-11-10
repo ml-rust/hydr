@@ -12,7 +12,8 @@ fn value(operation: &StructureOperation) -> Result<f64> {
 fn many_registered_groups_preserve_original_slot_values_and_source_receipts() -> Result {
     const WIDTH: usize = 129;
     let time = 0.3;
-    let context = StructureBatch::new(
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         (0..WIDTH)
             .map(|lane| gate(&format!("gate-{lane}")))
             .collect::<Result<Vec<_>>>()?,

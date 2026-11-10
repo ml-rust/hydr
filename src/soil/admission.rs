@@ -1,12 +1,13 @@
 //! Source-volume adjustment admission, separate from conservation tolerances.
 
-use super::SoilError;
-use crate::cpu::CpuTensor;
-use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
 };
-use numr::runtime::cpu::CpuClient;
+use numr::runtime::{Device, Runtime, RuntimeClient};
+use numr::tensor::Tensor;
+
+use super::SoilError;
+use numr::dtype::DType;
 
 /// One stored-F64 binade spacing, including the smallest subnormal quantum.
 pub(crate) fn rounding_bound(value: f64) -> Result<f64, SoilError> {
@@ -70,14 +71,25 @@ impl AdjustmentReduction {
         Ok(Self { count, denominator })
     }
 
-    pub(crate) fn totals(
+    pub(crate) fn totals<R>(
         self,
-        client: &CpuClient,
-        depths: &CpuTensor,
+        client: &R::Client,
+        depths: &Tensor<R>,
         area: f64,
-    ) -> Result<(f64, f64), SoilError> {
+    ) -> Result<(f64, f64), SoilError>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: BinaryOps<R>
+            + CompareOps<R>
+            + ConditionalOps<R>
+            + ReduceOps<R>
+            + ScalarOps<R>
+            + TypeConversionOps<R>
+            + UnaryOps<R>,
+    {
         if depths.shape() != [self.count]
             || depths.dtype() != DType::F64
+            || !depths.device().is_same(client.device())
             || !area.is_finite()
             || area <= 0.0
         {
@@ -91,16 +103,28 @@ impl AdjustmentReduction {
     }
 
     /// Reduce corrections with checked positive per-lane F64 areas, without broadcasting.
-    pub(crate) fn totals_with_areas(
+    pub(crate) fn totals_with_areas<R>(
         self,
-        client: &CpuClient,
-        depths: &CpuTensor,
-        areas: &CpuTensor,
-    ) -> Result<(f64, f64), SoilError> {
+        client: &R::Client,
+        depths: &Tensor<R>,
+        areas: &Tensor<R>,
+    ) -> Result<(f64, f64), SoilError>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: BinaryOps<R>
+            + CompareOps<R>
+            + ConditionalOps<R>
+            + ReduceOps<R>
+            + ScalarOps<R>
+            + TypeConversionOps<R>
+            + UnaryOps<R>,
+    {
         if depths.shape() != [self.count]
             || areas.shape() != [self.count]
             || depths.dtype() != DType::F64
+            || !depths.device().is_same(client.device())
             || areas.dtype() != DType::F64
+            || !areas.device().is_same(client.device())
         {
             return Err(SoilError::input(format!(
                 "correction shape={:?}, dtype={:?}, area shape={:?}, dtype={:?}: require {} matching flat F64 entries",
@@ -114,7 +138,7 @@ impl AdjustmentReduction {
         if self.count == 0 {
             return Ok((0.0, 0.0));
         }
-        let zero = CpuTensor::zeros(areas.shape(), DType::F64, areas.device())?;
+        let zero = Tensor::<R>::zeros(areas.shape(), DType::F64, areas.device())?;
         let invalid = client.maximum(
             &client.cast(&client.isnan(areas)?, DType::F64)?,
             &client.cast(&client.isinf(areas)?, DType::F64)?,
@@ -129,16 +153,26 @@ impl AdjustmentReduction {
         self.totals_with_product(client, depths, || client.mul(depths, areas))
     }
 
-    fn totals_with_product(
+    fn totals_with_product<R>(
         self,
-        client: &CpuClient,
-        depths: &CpuTensor,
-        multiply: impl FnOnce() -> numr::error::Result<CpuTensor>,
-    ) -> Result<(f64, f64), SoilError> {
+        client: &R::Client,
+        depths: &Tensor<R>,
+        multiply: impl FnOnce() -> numr::error::Result<Tensor<R>>,
+    ) -> Result<(f64, f64), SoilError>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: BinaryOps<R>
+            + CompareOps<R>
+            + ConditionalOps<R>
+            + ReduceOps<R>
+            + ScalarOps<R>
+            + TypeConversionOps<R>
+            + UnaryOps<R>,
+    {
         if self.count == 0 {
             return Ok((0.0, 0.0));
         }
-        let zero = CpuTensor::zeros(depths.shape(), DType::F64, depths.device())?;
+        let zero = Tensor::<R>::zeros(depths.shape(), DType::F64, depths.device())?;
         check_tensor_finite(client, depths, "adjustment depth")?;
         reject(
             client,
@@ -180,11 +214,21 @@ impl AdjustmentReduction {
     }
 }
 
-pub(crate) fn adjustment_volume_totals(
-    client: &CpuClient,
-    depths: &CpuTensor,
+pub(crate) fn adjustment_volume_totals<R>(
+    client: &R::Client,
+    depths: &Tensor<R>,
     area: f64,
-) -> Result<(f64, f64), SoilError> {
+) -> Result<(f64, f64), SoilError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     AdjustmentReduction::new(depths.numel())?.totals(client, depths, area)
 }
 
@@ -209,11 +253,21 @@ fn nonnegative(value: f64, quantity: &str) -> Result<f64, SoilError> {
     }
 }
 
-fn check_tensor_finite(
-    client: &CpuClient,
-    value: &CpuTensor,
+fn check_tensor_finite<R>(
+    client: &R::Client,
+    value: &Tensor<R>,
     quantity: &str,
-) -> Result<(), SoilError> {
+) -> Result<(), SoilError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     let invalid = client.maximum(
         &client.cast(&client.isnan(value)?, value.dtype())?,
         &client.cast(&client.isinf(value)?, value.dtype())?,
@@ -225,14 +279,34 @@ fn check_tensor_finite(
     )
 }
 
-fn reject(client: &CpuClient, mask: &CpuTensor, context: &str) -> Result<(), SoilError> {
+fn reject<R>(client: &R::Client, mask: &Tensor<R>, context: &str) -> Result<(), SoilError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     if let Some(index) = rejected_lane(client, mask)? {
         return Err(SoilError::numerical(context).at_cell(index));
     }
     Ok(())
 }
 
-fn rejected_lane(client: &CpuClient, mask: &CpuTensor) -> Result<Option<usize>, SoilError> {
+fn rejected_lane<R>(client: &R::Client, mask: &Tensor<R>) -> Result<Option<usize>, SoilError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     if client.any(mask, &[], false)?.item::<f64>()? == 0.0 {
         return Ok(None);
     }
@@ -251,6 +325,7 @@ mod variable_areas_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use numr::runtime::cpu::CpuClient;
     use numr::runtime::cpu::{CpuDevice, ParallelismConfig};
 
     #[test]
@@ -271,16 +346,26 @@ mod tests {
         let client =
             CpuClient::new(device.clone()).with_parallelism(ParallelismConfig::new(Some(1), None));
         for count in [1, 31, 32, 33, 63, 64, 65] {
-            let depths = CpuTensor::from_slice(&vec![2f64.powi(-70); count], &[count], &device)?;
+            let depths = Tensor::<numr::runtime::cpu::CpuRuntime>::from_slice(
+                &vec![2f64.powi(-70); count],
+                &[count],
+                &device,
+            )?;
             let (reported, charge) = adjustment_volume_totals(&client, &depths, 1.0)?;
             assert_eq!(reported, count as f64 * 2f64.powi(-70));
             assert!(charge > reported);
-            let zero = CpuTensor::zeros(&[count], DType::F64, &device)?;
+            let zero =
+                Tensor::<numr::runtime::cpu::CpuRuntime>::zeros(&[count], DType::F64, &device)?;
             assert_eq!(adjustment_volume_totals(&client, &zero, 1.0)?, (0.0, 0.0));
         }
-        let tiny = CpuTensor::from_slice(&[f64::from_bits(1)], &[1], &device)?;
+        let tiny = Tensor::<numr::runtime::cpu::CpuRuntime>::from_slice(
+            &[f64::from_bits(1)],
+            &[1],
+            &device,
+        )?;
         assert!(adjustment_volume_totals(&client, &tiny, 0.5).is_err());
-        let huge = CpuTensor::from_slice(&[f64::MAX], &[1], &device)?;
+        let huge =
+            Tensor::<numr::runtime::cpu::CpuRuntime>::from_slice(&[f64::MAX], &[1], &device)?;
         assert!(adjustment_volume_totals(&client, &huge, 2.0).is_err());
         Ok(())
     }

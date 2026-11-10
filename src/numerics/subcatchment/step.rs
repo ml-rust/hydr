@@ -1,75 +1,78 @@
 //! Persistent complete source, routing, and drainage tensor receipts.
 
+use numr::dtype::DType;
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use super::bridge::Bridge;
 use super::transfer::{Merged, Partition};
-use crate::cpu::CpuTensor;
-use crate::cpu::subcatchment::CpuSubcatchmentInput;
 use crate::numerics::reservoir::drainage::DrainageResult;
+use crate::tensor::subcatchment::TensorSubcatchmentInput;
 
 #[derive(Clone, Debug)]
-pub(crate) struct CpuSubcatchmentSoilStep {
-    pub infiltration_depth: CpuTensor,
-    pub adjustment_depth: CpuTensor,
-    pub native_rate: CpuTensor,
-    pub native_available_depth: CpuTensor,
-    pub native_infiltration_depth: CpuTensor,
-    pub native_excess_depth: CpuTensor,
-    pub native_roundoff_bound: CpuTensor,
-    pub bridge_roundoff_bound: CpuTensor,
-    pub total_roundoff_bound: CpuTensor,
+pub(crate) struct TensorSubcatchmentSoilStep<R: Runtime<DType = DType>> {
+    pub infiltration_depth: Tensor<R>,
+    pub adjustment_depth: Tensor<R>,
+    pub native_rate: Tensor<R>,
+    pub native_available_depth: Tensor<R>,
+    pub native_infiltration_depth: Tensor<R>,
+    pub native_excess_depth: Tensor<R>,
+    pub native_roundoff_bound: Tensor<R>,
+    pub bridge_roundoff_bound: Tensor<R>,
+    pub total_roundoff_bound: Tensor<R>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct CpuSubareaStep {
-    pub old_depth: CpuTensor,
-    pub rain_rate: CpuTensor,
-    pub potential_evaporation: CpuTensor,
-    pub external_volume: CpuTensor,
-    pub received_by_donor: [CpuTensor; 3],
-    pub merged: Merged,
-    pub bridge: Bridge,
-    pub soil: Option<CpuSubcatchmentSoilStep>,
-    pub infiltration_depth: CpuTensor,
-    pub adjustment_depth: CpuTensor,
-    pub evaporation_depth: CpuTensor,
-    pub available_depth: CpuTensor,
-    pub timing_rate: CpuTensor,
-    pub direct_timing: CpuTensor,
-    pub active_duration: CpuTensor,
-    pub drainage: DrainageResult,
-    pub partition: Partition,
-    pub storage_before: CpuTensor,
-    pub rain_volume: CpuTensor,
-    pub internal_received_volume: CpuTensor,
-    pub infiltration_volume: CpuTensor,
-    pub evaporation_volume: CpuTensor,
-    pub adjustment_volume: CpuTensor,
-    pub water_residual: CpuTensor,
-    pub water_scale: CpuTensor,
-    pub rain_area_bound: CpuTensor,
+pub(crate) struct TensorSubareaStep<R: Runtime<DType = DType>> {
+    pub old_depth: Tensor<R>,
+    pub rain_rate: Tensor<R>,
+    pub potential_evaporation: Tensor<R>,
+    pub external_volume: Tensor<R>,
+    pub received_by_donor: [Tensor<R>; 3],
+    pub merged: Merged<R>,
+    pub bridge: Bridge<R>,
+    pub soil: Option<TensorSubcatchmentSoilStep<R>>,
+    pub infiltration_depth: Tensor<R>,
+    pub adjustment_depth: Tensor<R>,
+    pub evaporation_depth: Tensor<R>,
+    pub available_depth: Tensor<R>,
+    pub timing_rate: Tensor<R>,
+    pub direct_timing: Tensor<R>,
+    pub active_duration: Tensor<R>,
+    pub drainage: DrainageResult<R>,
+    pub partition: Partition<R>,
+    pub storage_before: Tensor<R>,
+    pub rain_volume: Tensor<R>,
+    pub internal_received_volume: Tensor<R>,
+    pub infiltration_volume: Tensor<R>,
+    pub evaporation_volume: Tensor<R>,
+    pub adjustment_volume: Tensor<R>,
+    pub water_residual: Tensor<R>,
+    pub water_scale: Tensor<R>,
+    pub rain_area_bound: Tensor<R>,
     pub adjustment_charge: f64,
     pub uncertainty_charge: f64,
     pub physical_scale_lower: f64,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct CpuSubcatchmentTotals {
-    pub storage_before: CpuTensor,
-    pub storage_after: CpuTensor,
-    pub applied_rain: CpuTensor,
-    pub external_runon: CpuTensor,
-    pub infiltration: CpuTensor,
-    pub evaporation: CpuTensor,
-    pub outlet: CpuTensor,
-    pub soil_adjustment: CpuTensor,
-    pub internal_received: CpuTensor,
-    pub water_residual: CpuTensor,
-    pub water_scale: CpuTensor,
-    pub rain_area_bound: CpuTensor,
-    pub catchment_water_residual: CpuTensor,
-    pub catchment_water_scale: CpuTensor,
-    pub catchment_rain_area_difference: CpuTensor,
-    pub catchment_rain_area_bound: CpuTensor,
+pub(crate) struct TensorSubcatchmentTotals<R: Runtime<DType = DType>> {
+    pub storage_before: Tensor<R>,
+    pub storage_after: Tensor<R>,
+    pub applied_rain: Tensor<R>,
+    pub external_runon: Tensor<R>,
+    pub infiltration: Tensor<R>,
+    pub evaporation: Tensor<R>,
+    pub outlet: Tensor<R>,
+    pub soil_adjustment: Tensor<R>,
+    pub internal_received: Tensor<R>,
+    pub water_residual: Tensor<R>,
+    pub water_scale: Tensor<R>,
+    pub rain_area_bound: Tensor<R>,
+    pub catchment_water_residual: Tensor<R>,
+    pub catchment_water_scale: Tensor<R>,
+    pub catchment_rain_area_difference: Tensor<R>,
+    pub catchment_rain_area_bound: Tensor<R>,
     pub adjustment_charge: f64,
     pub uncertainty_charge: f64,
     pub physical_scale_lower: f64,
@@ -77,12 +80,12 @@ pub(crate) struct CpuSubcatchmentTotals {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct CpuSubcatchmentStep {
-    pub old_depth: CpuTensor,
-    pub input: CpuSubcatchmentInput,
-    pub depth: CpuTensor,
-    pub phase1: Option<CpuSubareaStep>,
-    pub phase2: Option<CpuSubareaStep>,
-    pub received_by_donor: [CpuTensor; 3],
-    pub totals: CpuSubcatchmentTotals,
+pub(crate) struct TensorSubcatchmentStep<R: Runtime<DType = DType>> {
+    pub old_depth: Tensor<R>,
+    pub input: TensorSubcatchmentInput<R>,
+    pub depth: Tensor<R>,
+    pub phase1: Option<TensorSubareaStep<R>>,
+    pub phase2: Option<TensorSubareaStep<R>>,
+    pub received_by_donor: [Tensor<R>; 3],
+    pub totals: TensorSubcatchmentTotals<R>,
 }

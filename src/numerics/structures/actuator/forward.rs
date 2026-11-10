@@ -4,22 +4,32 @@ use super::{
     arithmetic::{difference_upper, finite, not, sum, up, used},
     motion,
 };
-use crate::cpu::{
-    CpuTensor,
-    structures::actuator::{
-        CpuActuatorAnchor, CpuActuatorContext, CpuActuatorForward, CpuActuatorPosition,
-    },
-};
 use crate::structures::StructureError;
+use crate::tensor::structures::actuator::{
+    TensorActuatorAnchor, TensorActuatorContext, TensorActuatorForward, TensorActuatorPosition,
+};
+use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, UnaryOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(crate) fn forward(
-    ctx: &CpuActuatorContext,
-    anchor: &CpuActuatorAnchor,
-    target: &CpuTensor,
-    query: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<CpuActuatorForward, StructureError> {
+pub(crate) fn forward<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    anchor: &TensorActuatorAnchor<R>,
+    target: &Tensor<R>,
+    query: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<TensorActuatorForward<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let qt = query.clone();
     let (h, l) = sum(ctx, &qt, &c.neg(&anchor.epoch)?, active)?;
@@ -88,13 +98,13 @@ pub(crate) fn forward(
         &c.maximum(&absolute, &relative)?,
         "actuator opening error exceeds explicit absolute or outward-relative allowance",
     )?;
-    let position = CpuActuatorPosition {
+    let position = TensorActuatorPosition {
         center: c.where_cond(&exact, target, &center)?,
         lower: c.where_cond(&exact, target, &lo)?,
         upper: c.where_cond(&exact, target, &hi)?,
         error: c.where_cond(&exact, &ctx.zero, &error)?,
     };
-    Ok(CpuActuatorForward {
+    Ok(TensorActuatorForward {
         valid: active.clone(),
         anchor: anchor.clone(),
         query: qt,

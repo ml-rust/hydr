@@ -27,9 +27,7 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
         })
         .map(BoundaryForcing::face)
         .collect();
-    if traces.len() != step.boundary_traces.len()
-        || traces.keys().copied().collect::<BTreeSet<_>>() != expected
-    {
+    if traces.len() != step.boundary_traces.len() || !traces.keys().eq(expected.iter()) {
         return Err(rejected(
             "boundary traces",
             "require one diagnostic for each physical boundary and none for full-flux ports",
@@ -47,7 +45,7 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
         .map(BoundaryForcing::face)
         .collect();
     if transmissive.len() != step.transmissive_states.len()
-        || transmissive.keys().copied().collect::<BTreeSet<_>>() != expected_transmissive
+        || !transmissive.keys().eq(expected_transmissive.iter())
     {
         return Err(rejected(
             "transmissive states",

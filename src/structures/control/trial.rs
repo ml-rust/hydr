@@ -2,13 +2,15 @@
 
 use super::{ControlCommandOutput, ControlState, ControlStepDiagnostics, OperatingControlBatch};
 use crate::structures::StructureError;
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
 /// Complete immutable candidate. Dropping it preserves the accepted batch.
 #[derive(Debug)]
-pub struct OperatingControlTrial {
-    pub(crate) next: OperatingControlBatch,
+pub struct OperatingControlTrial<R: Runtime<DType = DType>> {
+    pub(crate) next: OperatingControlBatch<R>,
 }
-impl OperatingControlTrial {
+impl<R: Runtime<DType = DType>> OperatingControlTrial<R> {
     /// Explicitly project right-interval candidate commands.
     pub fn commands(&self) -> Result<Vec<ControlCommandOutput>, StructureError> {
         self.next.commands()
@@ -24,7 +26,7 @@ impl OperatingControlTrial {
         })
     }
     /// Accept this complete candidate by ownership.
-    pub fn into_next(self) -> OperatingControlBatch {
+    pub fn into_next(self) -> OperatingControlBatch<R> {
         self.next
     }
 }

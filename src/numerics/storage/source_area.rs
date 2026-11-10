@@ -1,13 +1,36 @@
 //! Right-sided accepted-state secant area through existing Numr lookup primitives.
 
-use crate::cpu::{CpuTensor, level_pool::CpuPoolContext};
-use crate::storage::LevelPoolError;
-use numr::ops::{BinaryOps, IndexingOps, ShapeOps, SortingOps};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::interpolate::Interp1dAlgorithms;
 
-pub(super) fn select(
-    context: &CpuPoolContext,
-    volume: &CpuTensor,
-) -> Result<(CpuTensor, CpuTensor), LevelPoolError> {
+use crate::storage::LevelPoolError;
+use crate::tensor::level_pool::TensorPoolContext;
+
+pub(super) fn select<R>(
+    context: &TensorPoolContext<R>,
+    volume: &Tensor<R>,
+) -> Result<(Tensor<R>, Tensor<R>), LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let c = &context.client;
     let mut areas = Vec::with_capacity(context.groups.len());
     let mut segments = Vec::with_capacity(context.groups.len());

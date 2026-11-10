@@ -4,7 +4,7 @@ The engine advances surface flow and explicit soil memory together. Every shorte
 
 ## Setup and antecedent state
 
-`Solver::new` takes two aggregate values:
+`Solver::<R>::new(client, setup, initial)` receives a configured Numr client and two aggregate values:
 
 | Value | Fields |
 | --- | --- |
@@ -55,7 +55,7 @@ The budget is independent of water-residual tolerances. Conservation balance alo
 
 This admission requires round-to-nearest F64 arithmetic and gradual underflow. Flush-to-zero execution is unsupported. Initial/accepted storage and actual source volumes require representable positive per-cell products. Rain and withdrawal increments cannot silently underflow. Potential evaporation increments must remain finite. Positive potential underflow rejects on a wet post-soil donor. A dry donor permits zero actual evaporation.
 
-The configured CPU reduction cache bounds full-grid correction-volume sums. Its count includes zero entries. The conservative charge covers product, reduction, and cumulative addition rounding separately from reported signed totals.
+The configured runtime reduction cache bounds full-grid correction-volume sums. Its count includes zero entries. The conservative charge covers product, reduction, and cumulative addition rounding separately from reported signed totals.
 
 ## Atomic retries and diagnostics
 
@@ -63,9 +63,9 @@ Timestep-dependent numerical source and budget errors use bounded retries. Inval
 
 Rejected trials preserve all accepted surface, soil, counters, and diagnostics. Typed soil errors map compact pervious lanes back to global hydraulic cell identities. Successful continuation uses cached tensors without native-state projection during trials.
 
-`Solver::soil_state()` exposes accepted complete native memory. `WaterLedger` independently records infiltration, evaporation, prescribed withdrawal, signed water adjustments, and conservative absolute adjustment consumption.
+`Solver::soil_state()` fallibly projects accepted complete native memory. `WaterLedger` independently records infiltration, evaporation, prescribed withdrawal, signed water adjustments, and conservative absolute adjustment consumption.
 
-`StepDiagnostics.sources` contains one ordered receipt per full-grid cell. It records original ponding and rain, infiltration, evaporation, withdrawal, and correction depths. Pervious receipts also retain native rate, native available/infiltration depths, native excess, and separate native/bridge/total bounds.
+Explicit diagnostic projection produces `StepDiagnostics.sources` with one ordered receipt per full-grid cell. It records original ponding and rain, infiltration, evaporation, withdrawal, and correction depths. Pervious receipts also retain native rate, native available/infiltration depths, native excess, and separate native/bridge/total bounds.
 
 Source corrections remain separate from momentum-film resets. Film resets remove momentum without removing water.
 

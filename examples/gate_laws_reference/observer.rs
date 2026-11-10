@@ -54,7 +54,7 @@ fn head_fields(support: &HeadSupport) -> [String; 2] {
 }
 
 fn input_fields(
-    batch: &StructureBatch,
+    batch: &StructureBatch<crate::runtime::Runtime>,
     input: &StructureHeads,
     operation: StructureOperatingPoint,
 ) -> Result<Vec<String>> {
@@ -89,7 +89,10 @@ pub fn run() -> Result {
     let mut errors = Vec::new();
     for case in cases() {
         for reverse in [false, true] {
-            let batch = StructureBatch::new(vec![definition(case, case.id)?])?;
+            let batch = StructureBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
+                vec![definition(case, case.id)?],
+            )?;
             let packet = packet(case, case.id, reverse);
             let operation = operation(case, case.id);
             let mut row = vec![

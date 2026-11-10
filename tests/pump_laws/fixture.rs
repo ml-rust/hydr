@@ -128,7 +128,7 @@ pub fn running(id: &str, speed_ratio: f64) -> StructureOperation {
     operation(id, StructureOperatingPoint::PumpRunning { speed_ratio })
 }
 
-pub fn first(proposal: &StructureProposal) -> Result<StructureOutput> {
+pub fn first(proposal: &StructureProposal<crate::runtime::Runtime>) -> Result<StructureOutput> {
     proposal
         .outputs()?
         .into_iter()
@@ -144,7 +144,7 @@ pub fn rejection<T>(result: std::result::Result<T, StructureError>) -> Result<St
 }
 
 pub fn kind(
-    batch: &StructureBatch,
+    batch: &StructureBatch<crate::runtime::Runtime>,
     heads: &[StructureHeads],
     operations: &[StructureOperation],
     expected: StructureInputErrorKind,

@@ -12,7 +12,7 @@ pub fn case(id: &str) -> Result<&'static Case> {
         .ok_or_else(|| format!("Missing trajectory reference {id}").into())
 }
 
-pub fn bind(id: &str, width: usize) -> Result<GateTrajectoryBatch> {
+pub fn bind(id: &str, width: usize) -> Result<GateTrajectoryBatch<crate::runtime::Runtime>> {
     let case = case(id)?;
     let definition = reference_case::trajectory(case)?;
     Ok(reference_case::structure_batch(case, width)?
@@ -154,13 +154,16 @@ pub fn pump(id: &str) -> Result<StructureElement> {
     ))
 }
 
-pub fn mixed() -> Result<StructureBatch> {
-    Ok(StructureBatch::new(vec![
-        passive("passive")?,
-        reference_case::gate("gate-0", 1.0)?,
-        pump("pump")?,
-        reference_case::gate("gate-1", 1.0)?,
-    ])?)
+pub fn mixed() -> Result<StructureBatch<crate::runtime::Runtime>> {
+    Ok(StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![
+            passive("passive")?,
+            reference_case::gate("gate-0", 1.0)?,
+            pump("pump")?,
+            reference_case::gate("gate-1", 1.0)?,
+        ],
+    )?)
 }
 
 pub fn mixed_assignment(

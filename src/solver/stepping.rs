@@ -1,17 +1,36 @@
 use super::engine::Accepted;
 use super::{EngineError, Solver, StepDiagnostics};
-use crate::cpu::land_sources::{SourceInputs, calculate as calculate_sources, checked_volume};
-use crate::cpu::{CpuState, CpuTensor, transport};
+use crate::tensor::land_sources::{SourceInputs, calculate as calculate_sources, checked_volume};
+use crate::tensor::{TensorState, transport};
 use numr::dtype::DType;
+use numr::ops::IndexingOps;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, HypotOps, ReduceOps, ScalarOps, TypeConversionOps,
     UnaryOps,
 };
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedNewtonAlgorithms};
 
-impl Solver {
-    pub(super) fn next_accepted(&self, target: f64) -> Result<Accepted, EngineError> {
+impl<R: Runtime<DType = DType>> Solver<R>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + IndexingOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>
+        + TypeConversionOps<R>
+        + HypotOps<R>
+        + numr::ops::CumulativeOps<R>
+        + numr::ops::ShapeOps<R>
+        + BatchedBisectionAlgorithms<R>
+        + BatchedNewtonAlgorithms<R>,
+{
+    pub(super) fn next_accepted(&self, target: f64) -> Result<Accepted<R>, EngineError> {
         let config = self.config();
-        let client = &self.cpu.client;
+        let client = &self.context.client;
         let time = self.time();
         let index = self
             .definition
@@ -29,15 +48,15 @@ impl Solver {
                     format!("time={time}: supply the next explicit interval"),
                 )
             })?;
-        let source = &self.cpu.sources[index];
+        let source = &self.context.sources[index];
         let endpoint = target.min(forcing.end).min(time + config.max_step);
         let mut dt = endpoint - time;
         let mut last_reason = String::new();
         let mut last_source_error = None;
-        let zero = &self.cpu.zero;
+        let zero = &self.context.zero;
         let one = client.add_scalar(zero, 1.0)?;
         let area = self.domain().grid().cell_area();
-        let original = &self.accepted.cpu;
+        let original = &self.accepted.flow;
         for retry in 0..=config.max_retries {
             let end = if retry == 0 { endpoint } else { time + dt };
             dt = end - time;
@@ -54,7 +73,7 @@ impl Solver {
                 ));
             }
             let sources = match calculate_sources(
-                &self.cpu,
+                &self.context,
                 SourceInputs {
                     original,
                     land: &self.accepted.land,
@@ -87,7 +106,7 @@ impl Solver {
             let loss = &sources.withdrawal;
             self.finite(&trial.qx, "post-source qx")?;
             self.finite(&trial.qy, "post-source qy")?;
-            let flux = match transport::calculate(&self.cpu, trial, source, config, area) {
+            let flux = match transport::calculate(&self.context, trial, source, config, area) {
                 Ok(flux) => flux,
                 Err(error @ EngineError::Boundary { .. }) => {
                     last_reason = error.to_string();
@@ -159,7 +178,7 @@ impl Solver {
             let local = client.abs(&client.mul_scalar(&local, area)?)?;
             let max_local_residual = client.max(&local, &[0], false)?.item::<f64>()?;
             let mut next = self.friction(
-                CpuState {
+                TensorState {
                     h: next_h,
                     qx: next_qx,
                     qy: next_qy,
@@ -235,7 +254,7 @@ impl Solver {
                     ),
                 ));
             }
-            let mut diagnostics = StepDiagnostics {
+            let diagnostics = StepDiagnostics {
                 start: time,
                 end,
                 dt,
@@ -258,12 +277,9 @@ impl Solver {
                 normalized_residual: residual / scale,
                 max_local_residual,
                 momentum_removed,
-                faces: flux.results(&self.cpu, dt)?,
-                transmissive_states: source.exterior.results(flux.transmissive_state.as_ref())?,
-                boundary_traces: match &flux.boundary_trace {
-                    Some(trace) => source.characteristic.results(&self.cpu, trace)?,
-                    None => Vec::new(),
-                },
+                faces: Vec::new(),
+                transmissive_states: Vec::new(),
+                boundary_traces: Vec::new(),
             };
             let ledger = self.ledger().accepted(&diagnostics)?;
             let cumulative_scale = ledger
@@ -288,11 +304,17 @@ impl Solver {
                     ),
                 ));
             }
-            // This readback serves outputs and input checks, never subsequent numerical execution.
-            diagnostics.sources = sources.receipts(&self.accepted.land, self.state().cells())?;
-            let soil = sources.soil.next.soil_state()?;
-            let land = sources.soil.next;
-            let state = next.to_flow(self.domain())?;
+            self.check_admission(&next)?;
+            let land = sources.soil.next.clone();
+            let receipt = super::receipts::StepReceipt::Device(Box::new(
+                super::receipts::DeviceStepReceipt {
+                    scalar: diagnostics,
+                    forcing_index: index,
+                    flux,
+                    sources,
+                    start_depth: original.h.clone(),
+                },
+            ));
             let steps = self.accepted.steps.checked_add(1).ok_or_else(|| {
                 EngineError::rejected(
                     "step counter",
@@ -301,13 +323,11 @@ impl Solver {
             })?;
             return Ok(Accepted {
                 time: end,
-                state,
-                soil,
                 land,
                 ledger,
                 steps,
-                last: Some(diagnostics),
-                cpu: next,
+                last: Some(receipt),
+                flow: next,
             });
         }
         if let Some(error) = last_source_error {
@@ -319,47 +339,51 @@ impl Solver {
         ))
     }
 
-    fn friction(&self, state: CpuState, dt: f64) -> Result<CpuState, EngineError> {
-        let client = &self.cpu.client;
-        let zero = &self.cpu.zero;
+    fn friction(&self, state: TensorState<R>, dt: f64) -> Result<TensorState<R>, EngineError> {
+        let client = &self.context.client;
+        let zero = &self.context.zero;
         let wet = client.gt(&state.h, zero)?;
         let depth = client.where_cond(&wet, &state.h, &client.add_scalar(zero, 1.0)?)?;
         let speed = client.hypot(&state.qx, &state.qy)?;
         self.finite(&speed, "Manning discharge magnitude")?;
         let active_drag = client.mul(
             &client.gt(&speed, zero)?,
-            &client.gt(&self.cpu.manning, zero)?,
+            &client.gt(&self.context.manning, zero)?,
         )?;
         let power = client.pow_scalar(&depth, 7.0 / 3.0)?;
         let safe_power = client.where_cond(&active_drag, &power, &client.add_scalar(zero, 1.0)?)?;
-        let drag = client.mul(&self.cpu.manning, &self.cpu.manning)?;
+        let drag = client.mul(&self.context.manning, &self.context.manning)?;
         let drag = client.mul(&drag, &speed)?;
         let drag = client.mul_scalar(&drag, self.config().gravity * dt)?;
         let drag = client.div(&drag, &safe_power)?;
         let denominator = client.add_scalar(&drag, 1.0)?;
         self.finite(&denominator, "Manning denominator")?;
-        Ok(CpuState {
+        Ok(TensorState {
             h: state.h,
             qx: client.div(&state.qx, &denominator)?,
             qy: client.div(&state.qy, &denominator)?,
         })
     }
 
-    fn total(&self, values: &CpuTensor) -> Result<f64, EngineError> {
-        Ok(self.cpu.client.sum(values, &[0], false)?.item::<f64>()?)
+    fn total(&self, values: &Tensor<R>) -> Result<f64, EngineError> {
+        Ok(self
+            .context
+            .client
+            .sum(values, &[0], false)?
+            .item::<f64>()?)
     }
 
-    fn any(&self, mask: &CpuTensor) -> Result<bool, EngineError> {
+    fn any(&self, mask: &Tensor<R>) -> Result<bool, EngineError> {
         Ok(self
-            .cpu
+            .context
             .client
-            .any(&self.cpu.client.cast(mask, DType::F64)?, &[0], false)?
+            .any(&self.context.client.cast(mask, DType::F64)?, &[0], false)?
             .item::<f64>()?
             != 0.0)
     }
 
-    fn finite(&self, values: &CpuTensor, name: &'static str) -> Result<(), EngineError> {
-        let client = &self.cpu.client;
+    fn finite(&self, values: &Tensor<R>, name: &'static str) -> Result<(), EngineError> {
+        let client = &self.context.client;
         let invalid = client.maximum(
             &client.cast(&client.isnan(values)?, DType::F64)?,
             &client.cast(&client.isinf(values)?, DType::F64)?,
@@ -388,6 +412,7 @@ mod tests {
     use crate::grid::CartesianGrid;
     use crate::model::{CellState, Domain, FlowState, SpatialReference};
     use crate::solver::{BoundaryConditions, ForcingInterval, ForcingSchedule, SolverConfig};
+    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 
     #[test]
     fn numr_friction_matches_exact_fixed_depth_vector_decay()
@@ -426,7 +451,9 @@ mod tests {
         )?;
         let land = crate::soil::LandModel::impervious(&domain);
         let soil = crate::soil::SoilState::initialized(&land)?;
-        let solver = Solver::new(
+        let solver = Solver::<CpuRuntime>::new(
+            CpuClient::new(CpuDevice::new())
+                .with_parallelism(ParallelismConfig::new(Some(1), None)),
             crate::solver::SolverSetup {
                 domain,
                 land,
@@ -441,7 +468,7 @@ mod tests {
             },
         )?;
         let result = solver
-            .friction(solver.accepted.cpu.clone(), 0.1)?
+            .friction(solver.accepted.flow.clone(), 0.1)?
             .to_flow(solver.domain())?;
         let denominator = 1.0 + 9.81 * 0.03_f64.powi(2) * 5.0_f64.sqrt() * 0.1;
         assert!((result.cells()[0].qx - 2.0 / denominator).abs() <= 1e-12);

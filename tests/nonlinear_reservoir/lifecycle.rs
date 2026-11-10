@@ -69,7 +69,13 @@ fn mixed_simd_and_tail_layouts_meet_the_same_lane_accuracy_gates() -> Result {
                 incoming_rate_m_per_s: lane.2,
             })
             .collect();
-        let batch = ReservoirBatch::new(elements, states, 0.0, ReservoirConfig::default())?;
+        let batch = ReservoirBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            elements,
+            states,
+            0.0,
+            ReservoirConfig::default(),
+        )?;
         let trial = batch.trial_to(1.0, &inputs)?;
         let outputs = trial.outputs()?;
         for (index, (p, initial_depth, rate)) in lanes.into_iter().enumerate() {

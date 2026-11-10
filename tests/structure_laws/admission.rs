@@ -2,7 +2,7 @@ use super::fixture::*;
 use hydr::structures::*;
 
 fn check_kind(
-    batch: &StructureBatch,
+    batch: &StructureBatch<crate::runtime::Runtime>,
     packets: &[StructureHeads],
     kind: StructureInputErrorKind,
 ) -> Result {
@@ -21,7 +21,10 @@ fn support_eligibility_precedes_equal_heads_and_flap_policy() -> Result {
         9.81,
         orifice_evidence(),
     )?);
-    let batch = StructureBatch::new(vec![element("orifice", law, DirectionPolicy::BtoAOnly)])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![element("orifice", law, DirectionPolicy::BtoAOnly)],
+    )?;
     for packet in [
         heads("orifice", 1.0, 1.0),
         heads("orifice", 3.0, 1.0),
@@ -63,11 +66,14 @@ fn support_eligibility_precedes_equal_heads_and_flap_policy() -> Result {
 
 #[test]
 fn known_dry_weir_support_retains_identity_without_invented_stage() -> Result {
-    let batch = StructureBatch::new(vec![element(
-        "weir",
-        weir(1.7, 2.0, 10.0)?,
-        DirectionPolicy::Bidirectional,
-    )])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![element(
+            "weir",
+            weir(1.7, 2.0, 10.0)?,
+            DirectionPolicy::Bidirectional,
+        )],
+    )?;
     let dry = packet(
         "weir",
         HeadSupport::Wet { stage_m: 11.0 },
@@ -126,11 +132,14 @@ fn known_dry_weir_support_retains_identity_without_invented_stage() -> Result {
 
 #[test]
 fn packet_metadata_rejects_before_zero_and_blocked_shortcuts() -> Result {
-    let batch = StructureBatch::new(vec![element(
-        "weir",
-        weir(1.0, 1.0, 0.0)?,
-        DirectionPolicy::BtoAOnly,
-    )])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![element(
+            "weir",
+            weir(1.0, 1.0, 0.0)?,
+            DirectionPolicy::BtoAOnly,
+        )],
+    )?;
     for (a, b) in [(0.0, 0.0), (1.0, 0.0)] {
         let base = heads("weir", a, b);
         let mut wrong = base.clone();
@@ -160,10 +169,13 @@ fn packet_metadata_rejects_before_zero_and_blocked_shortcuts() -> Result {
 #[test]
 fn ordered_packets_cannot_change_parallel_structure_destinations() -> Result {
     let law = weir(1.0, 1.0, 0.0)?;
-    let batch = StructureBatch::new(vec![
-        element("first", law.clone(), DirectionPolicy::Bidirectional),
-        element("second", law, DirectionPolicy::Bidirectional),
-    ])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![
+            element("first", law.clone(), DirectionPolicy::Bidirectional),
+            element("second", law, DirectionPolicy::Bidirectional),
+        ],
+    )?;
     let packets = [heads("first", 1.0, 0.0), heads("second", 2.0, 0.0)];
     let original = batch.propose(&packets)?.outputs()?;
     check_kind(
@@ -177,11 +189,14 @@ fn ordered_packets_cannot_change_parallel_structure_destinations() -> Result {
 
 #[test]
 fn blocked_supported_regime_skips_unneeded_unrepresentable_law() -> Result {
-    let batch = StructureBatch::new(vec![element(
-        "blocked",
-        weir(f64::MAX, 1.0, -f64::MAX)?,
-        DirectionPolicy::BtoAOnly,
-    )])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![element(
+            "blocked",
+            weir(f64::MAX, 1.0, -f64::MAX)?,
+            DirectionPolicy::BtoAOnly,
+        )],
+    )?;
     let output = first(&batch.propose(&[heads("blocked", f64::MAX, 0.0)])?)?;
     assert_eq!(output.status, StructureStatus::FlapBlocked);
     assert_eq!(output.regime, StructureRegime::SubmergedWeirOverflow);
@@ -219,10 +234,19 @@ fn definitions_require_physical_geometry_identity_and_explicit_applicability() -
     evidence.submergence_correction_assertion = "invalid\nevidence".into();
     assert!(SuppressedRectangularWeirParameters::new(1.0, 0.0, 1.0, evidence).is_err());
     let base = element("weir", weir(1.0, 1.0, 0.0)?, DirectionPolicy::Bidirectional);
-    assert!(StructureBatch::new(vec![base.clone(), base.clone()]).is_err());
+    assert!(
+        StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![base.clone(), base.clone()]
+        )
+        .is_err()
+    );
     let mut same = base.clone();
     same.endpoint_b = same.endpoint_a.clone();
-    assert!(StructureBatch::new(vec![same]).is_err());
+    assert!(
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), vec![same])
+            .is_err()
+    );
     for field in 0..4 {
         let mut invalid = base.clone();
         match field {
@@ -231,7 +255,10 @@ fn definitions_require_physical_geometry_identity_and_explicit_applicability() -
             2 => invalid.endpoint_b.clear(),
             _ => invalid.datum.clear(),
         }
-        assert!(StructureBatch::new(vec![invalid]).is_err());
+        assert!(
+            StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), vec![invalid])
+                .is_err()
+        );
     }
     let mut asymmetric = weir_evidence();
     asymmetric.symmetric_reversal = false;
@@ -239,13 +266,22 @@ fn definitions_require_physical_geometry_identity_and_explicit_applicability() -
         1.0, 0.0, 1.0, asymmetric,
     )?);
     assert!(
-        StructureBatch::new(vec![element(
-            "asymmetric",
-            law.clone(),
-            DirectionPolicy::Bidirectional
-        )])
+        StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![element(
+                "asymmetric",
+                law.clone(),
+                DirectionPolicy::Bidirectional
+            )]
+        )
         .is_err()
     );
-    assert!(StructureBatch::new(vec![element("one-way", law, DirectionPolicy::AtoBOnly)]).is_ok());
+    assert!(
+        StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![element("one-way", law, DirectionPolicy::AtoBOnly)]
+        )
+        .is_ok()
+    );
     Ok(())
 }

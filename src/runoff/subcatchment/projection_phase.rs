@@ -1,15 +1,39 @@
 //! Linear accepted-output assembly from each compact phase tensor exactly once.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::projection_hydraulic::{self, read};
 use super::{Subarea, SubareaReceipt, SubcatchmentError, SubcatchmentPhaseDiagnostics};
-use crate::cpu::subcatchment::CpuSubareaGroup;
-use crate::numerics::subcatchment::CpuSubareaStep;
+use crate::numerics::subcatchment::TensorSubareaStep;
 use crate::soil::SoilSourceReceipt;
+use crate::tensor::subcatchment::TensorSubareaGroup;
 
-pub(super) fn phase(
-    group: &CpuSubareaGroup,
-    step: &CpuSubareaStep,
-) -> Result<Vec<SubareaReceipt>, SubcatchmentError> {
+pub(super) fn phase<R>(
+    group: &TensorSubareaGroup<R>,
+    step: &TensorSubareaStep<R>,
+) -> Result<Vec<SubareaReceipt>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let n = group.slots.len();
     let fields = [
         &step.old_depth,
@@ -84,10 +108,25 @@ pub(super) fn phase(
         .collect()
 }
 
-fn soil(
-    group: &CpuSubareaGroup,
-    step: &CpuSubareaStep,
-) -> Result<Vec<Option<SoilSourceReceipt>>, SubcatchmentError> {
+fn soil<R>(
+    group: &TensorSubareaGroup<R>,
+    step: &TensorSubareaStep<R>,
+) -> Result<Vec<Option<SoilSourceReceipt>>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let mut result = vec![None; group.slots.len()];
     let Some(s) = &step.soil else {
         return Ok(result);
@@ -122,7 +161,22 @@ fn soil(
     Ok(result)
 }
 
-pub(super) fn diagnostics(step: &CpuSubareaStep) -> SubcatchmentPhaseDiagnostics {
+pub(super) fn diagnostics<R>(step: &TensorSubareaStep<R>) -> SubcatchmentPhaseDiagnostics
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     SubcatchmentPhaseDiagnostics {
         root_iterations: step.drainage.iterations,
         soil_water_adjustment_abs_charge_m3: step.adjustment_charge,

@@ -1,5 +1,9 @@
 //! Explicit instantaneous pump response with sampled qualification and point proposals.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 use hydr::structures::{
     ControlCommand, ControlDecisionSchedule, ControlInitialState, ControlLatch, ControlSample,
     ControlStageSignal, ControlledPumpBatch, DirectionPolicy, EndpointHead, HeadConvention,
@@ -11,43 +15,52 @@ use hydr::structures::{
 
 const DATUM: &str = "synthetic common datum";
 
-fn model() -> Result<(StructureBatch, ControlledPumpBatch), Box<dyn std::error::Error>> {
-    let structures = StructureBatch::new(vec![StructureElement {
-        id: "pump".into(),
-        endpoint_a: "donor-pool".into(),
-        endpoint_b: "receiving-pool".into(),
-        datum: DATUM.into(),
-        direction: DirectionPolicy::AtoBOnly,
-        law: StructureLaw::Pump(PumpParameters::new(
-            PumpCurve::new(
-                vec![
-                    PumpCurveKnot {
-                        head_m: 0.0,
-                        discharge_m3_per_s: 4.0,
-                    },
-                    PumpCurveKnot {
-                        head_m: 4.0,
-                        discharge_m3_per_s: 0.0,
-                    },
-                ],
-                "explicit synthetic reference-speed curve without field calibration".into(),
-            )?,
-            0.0,
-            PumpSpeedPolicy::DeclaredAffinity {
-                minimum_ratio: 0.5,
-                maximum_ratio: 2.0,
-                applicability: "synthetic unchanged-geometry speed envelope".into(),
-            },
-            PumpApplicability {
-                endpoint_stage_head_assertion: "synthetic quiescent endpoint stages".into(),
-                connection_losses_and_velocity_head_account:
-                    "synthetic curve includes connection losses".into(),
-                stopped_isolation_assertion:
-                    "stopped synthetic device blocks siphoning and reverse flow".into(),
-                operating_envelope: "synthetic wet suction and receiving support".into(),
-            },
-        )?),
-    }])?;
+fn model() -> Result<
+    (
+        StructureBatch<crate::runtime::Runtime>,
+        ControlledPumpBatch<crate::runtime::Runtime>,
+    ),
+    Box<dyn std::error::Error>,
+> {
+    let structures = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![StructureElement {
+            id: "pump".into(),
+            endpoint_a: "donor-pool".into(),
+            endpoint_b: "receiving-pool".into(),
+            datum: DATUM.into(),
+            direction: DirectionPolicy::AtoBOnly,
+            law: StructureLaw::Pump(PumpParameters::new(
+                PumpCurve::new(
+                    vec![
+                        PumpCurveKnot {
+                            head_m: 0.0,
+                            discharge_m3_per_s: 4.0,
+                        },
+                        PumpCurveKnot {
+                            head_m: 4.0,
+                            discharge_m3_per_s: 0.0,
+                        },
+                    ],
+                    "explicit synthetic reference-speed curve without field calibration".into(),
+                )?,
+                0.0,
+                PumpSpeedPolicy::DeclaredAffinity {
+                    minimum_ratio: 0.5,
+                    maximum_ratio: 2.0,
+                    applicability: "synthetic unchanged-geometry speed envelope".into(),
+                },
+                PumpApplicability {
+                    endpoint_stage_head_assertion: "synthetic quiescent endpoint stages".into(),
+                    connection_losses_and_velocity_head_account:
+                        "synthetic curve includes connection losses".into(),
+                    stopped_isolation_assertion:
+                        "stopped synthetic device blocks siphoning and reverse flow".into(),
+                    operating_envelope: "synthetic wet suction and receiving support".into(),
+                },
+            )?),
+        }],
+    )?;
     let controls = structures.with_operating_controls(
         vec![OperatingControlDefinition {
             controller_id: "relay".into(),
@@ -84,7 +97,7 @@ fn model() -> Result<(StructureBatch, ControlledPumpBatch), Box<dyn std::error::
                 "synthetic one-second decisions without continuous trigger claims".into(),
         },
     )?;
-    let pump = ControlledPumpBatch::new(
+    let pump = ControlledPumpBatch::<crate::runtime::Runtime>::new(
         controls,
         vec![PumpResponseDefinition {
             structure_id: "pump".into(),

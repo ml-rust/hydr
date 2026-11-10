@@ -5,25 +5,27 @@ use super::{
     ControlSample, ControlState, ControlStepDiagnostics, OperatingControlDefinition,
     OperatingControlTrial, SampledControlTiming,
 };
-use crate::cpu::structures::control::{
-    CpuControlContext, CpuControlState, CpuControlStep, CpuControlTimer,
-};
 use crate::structures::{
     StructureBatch, StructureElement, StructureError, StructureInputErrorKind,
 };
+use crate::tensor::structures::control::{
+    TensorControlContext, TensorControlState, TensorControlStep, TensorControlTimer,
+};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Complete sampled command continuation without hydraulic or actuator advancement.
 #[derive(Clone, Debug)]
-pub struct OperatingControlBatch {
-    pub(crate) context: Arc<CpuControlContext>,
-    pub(crate) state: CpuControlState,
+pub struct OperatingControlBatch<R: Runtime<DType = DType>> {
+    pub(crate) context: Arc<TensorControlContext<R>>,
+    pub(crate) state: TensorControlState<R>,
     pub(crate) time: f64,
     pub(crate) next_decision: usize,
     pub(crate) steps: usize,
-    pub(crate) last: Option<Arc<CpuControlStep>>,
+    pub(crate) last: Option<Arc<TensorControlStep<R>>>,
 }
-impl StructureBatch {
+impl<R: Runtime<DType = DType>> StructureBatch<R> {
     /// Bind explicit sampled relay definitions to actual devices and complete initial memory.
     pub fn with_operating_controls(
         &self,
@@ -31,15 +33,25 @@ impl StructureBatch {
         initial_states: Vec<ControlInitialState>,
         schedule: ControlDecisionSchedule,
         timing: SampledControlTiming,
-    ) -> Result<OperatingControlBatch, StructureError> {
-        let context = Arc::new(CpuControlContext::new(
+    ) -> Result<OperatingControlBatch<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
+        let context = Arc::new(TensorControlContext::new(
             Arc::clone(&self.context),
             definitions,
             initial_states,
             schedule,
             timing,
         )?);
-        let state = CpuControlState::initial(&context)?;
+        let state = TensorControlState::initial(&context)?;
         Ok(OperatingControlBatch {
             time: context.schedule.initial_time_s,
             context,
@@ -50,7 +62,7 @@ impl StructureBatch {
         })
     }
 }
-impl OperatingControlBatch {
+impl<R: Runtime<DType = DType>> OperatingControlBatch<R> {
     /// Complete immutable actual structure definitions.
     pub fn elements(&self) -> &[StructureElement] {
         &self.context.structures.elements
@@ -117,7 +129,17 @@ impl OperatingControlBatch {
         &self,
         end_s: f64,
         decision_samples: &[ControlSample],
-    ) -> Result<OperatingControlTrial, StructureError> {
+    ) -> Result<OperatingControlTrial<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         let duration = end_s - self.time;
         if !end_s.is_finite() || !duration.is_finite() || duration <= 0.0 {
             return Err(StructureError::input(
@@ -147,7 +169,7 @@ impl OperatingControlBatch {
         };
         let step = match decision {
             Some(index) => {
-                let input = crate::cpu::structures::control::input::decision_samples(
+                let input = crate::tensor::structures::control::input::decision_samples(
                     &self.context,
                     decision_samples,
                     end_s,
@@ -169,7 +191,7 @@ impl OperatingControlBatch {
                         "non-decision control interval requires an empty sample slice",
                     ));
                 }
-                CpuControlStep {
+                TensorControlStep {
                     start: self.time,
                     end: end_s,
                     decision_index: None,
@@ -177,7 +199,7 @@ impl OperatingControlBatch {
                     after: self.state.clone(),
                     samples: Vec::new(),
                     qualifies: self.context.zero.clone(),
-                    timer: CpuControlTimer::zero(&self.context),
+                    timer: TensorControlTimer::zero(&self.context),
                     transitioned: self.context.zero.clone(),
                 }
             }

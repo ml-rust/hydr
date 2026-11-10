@@ -1,33 +1,35 @@
 //! Owning sampled control continuation with explicitly assumed instantaneous pump response.
 
 use super::{ControlledPumpOutput, ControlledPumpTrial, PumpResponseDefinition};
-use crate::cpu::structures::controlled_pump::{
-    CpuControlledPumpContext, CpuControlledPumpSelection,
-};
 use crate::structures::{
     ControlEvent, ControlSample, OperatingControlBatch, StructureError, StructureOperation,
 };
+use crate::tensor::structures::controlled_pump::{
+    TensorControlledPumpContext, TensorControlledPumpSelection,
+};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Complete accepted controls and an explicit memoryless actual pump response model.
 #[derive(Clone, Debug)]
-pub struct ControlledPumpBatch {
-    pub(crate) context: Arc<CpuControlledPumpContext>,
-    pub(crate) controls: OperatingControlBatch,
+pub struct ControlledPumpBatch<R: Runtime<DType = DType>> {
+    pub(crate) context: Arc<TensorControlledPumpContext<R>>,
+    pub(crate) controls: OperatingControlBatch<R>,
 }
-impl ControlledPumpBatch {
+impl<R: Runtime<DType = DType>> ControlledPumpBatch<R> {
     /// Adopt any checked pump-only controller continuation with complete explicit response evidence.
     ///
     /// Advanced controls remain eligible because this response has no independent continuation memory.
     pub fn new(
-        controls: OperatingControlBatch,
+        controls: OperatingControlBatch<R>,
         definitions: Vec<PumpResponseDefinition>,
     ) -> Result<Self, StructureError> {
-        let context = Arc::new(CpuControlledPumpContext::new(&controls, definitions)?);
+        let context = Arc::new(TensorControlledPumpContext::new(&controls, definitions)?);
         Ok(Self { context, controls })
     }
     /// Accepted command continuation, exposed immutably for explicit control projections.
-    pub fn controls(&self) -> &OperatingControlBatch {
+    pub fn controls(&self) -> &OperatingControlBatch<R> {
         &self.controls
     }
     /// Complete original ordered response assumptions and provenance.
@@ -53,7 +55,17 @@ impl ControlledPumpBatch {
         &self,
         end_s: f64,
         samples: &[ControlSample],
-    ) -> Result<ControlledPumpTrial, StructureError> {
+    ) -> Result<ControlledPumpTrial<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         let controls = self.controls.trial_to(end_s, samples)?.into_next();
         Ok(ControlledPumpTrial {
             next: Self {
@@ -62,15 +74,24 @@ impl ControlledPumpBatch {
             },
         })
     }
-    pub(crate) fn selected(&self) -> Result<CpuControlledPumpSelection, StructureError> {
+    pub(crate) fn selected(&self) -> Result<TensorControlledPumpSelection<R>, StructureError>
+    where
+        R::Client: numr::ops::ConditionalOps<R>,
+    {
         self.context.select(&self.controls.state.high)
     }
     /// Explicitly project actual operation, original controller identity, and response assumptions.
-    pub fn outputs(&self) -> Result<Vec<ControlledPumpOutput>, StructureError> {
+    pub fn outputs(&self) -> Result<Vec<ControlledPumpOutput>, StructureError>
+    where
+        R::Client: numr::ops::ConditionalOps<R>,
+    {
         super::projection::outputs(self)
     }
     /// Explicitly project original-order operation packets without claiming hydraulic or transfer acceptance.
-    pub fn operations(&self) -> Result<Vec<StructureOperation>, StructureError> {
+    pub fn operations(&self) -> Result<Vec<StructureOperation>, StructureError>
+    where
+        R::Client: numr::ops::ConditionalOps<R>,
+    {
         Ok(self
             .outputs()?
             .into_iter()

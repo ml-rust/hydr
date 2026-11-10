@@ -9,7 +9,7 @@ mod receipt;
 pub(crate) use advance::advance;
 pub(crate) use check::check_step;
 pub(crate) use drainage::EXPONENT;
-pub(crate) use receipt::CpuReservoirStep;
+pub(crate) use receipt::TensorReservoirStep;
 
 #[cfg(test)]
 mod tests;

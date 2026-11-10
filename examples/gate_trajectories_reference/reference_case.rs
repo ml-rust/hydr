@@ -62,8 +62,9 @@ pub fn gate(
 pub fn structure_batch(
     case: &Case,
     width: usize,
-) -> std::result::Result<StructureBatch, StructureError> {
-    StructureBatch::new(
+) -> std::result::Result<StructureBatch<crate::runtime::Runtime>, StructureError> {
+    StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         (0..width)
             .map(|lane| gate(&element_id(lane), case.maximum_opening))
             .collect::<std::result::Result<Vec<_>, _>>()?,

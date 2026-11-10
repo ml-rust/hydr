@@ -1,5 +1,9 @@
 //! Closed volume-authoritative storage with explicit original interval exchanges.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 use hydr::storage::{
     LevelPoolBatch, LevelPoolConfig, LevelPoolCurve, LevelPoolElement, LevelPoolInput,
     LevelPoolKnot, LevelPoolState,
@@ -20,7 +24,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "synthetic vertical datum".into(),
         "explicit constant-area tank, area 2 m2".into(),
     )?;
-    let batch = LevelPoolBatch::new(
+    let batch = LevelPoolBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         vec![LevelPoolElement {
             id: "tank".into(),
             curve,
@@ -55,7 +60,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut restored = batch;
     restored.restore_data(&accepted.snapshot_data()?)?;
     println!("restored={:?}", restored.outputs()?);
-    let enabled = LevelPoolBatch::new_with_sources(
+    let enabled = LevelPoolBatch::<crate::runtime::Runtime>::new_with_sources(
+        crate::runtime::client(),
         restored.elements().to_vec(),
         restored.states()?,
         restored.time(),

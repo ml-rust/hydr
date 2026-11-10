@@ -145,7 +145,10 @@ fn intervals_admit_only_explicit_events_and_complete_support() -> fixture::Resul
 #[test]
 fn empty_calendars_hold_explicit_initial_commands_to_the_terminal_boundary() -> fixture::Result {
     let case = fixture::case("inclusive_thresholds_and_band_hold")?;
-    let structures = StructureBatch::new(vec![reference_case::pump(&reference_case::device(0))?])?;
+    let structures = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![reference_case::pump(&reference_case::device(0))?],
+    )?;
     let batch = structures.with_operating_controls(
         vec![reference_case::definition(
             case,

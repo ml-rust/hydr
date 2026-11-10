@@ -3,7 +3,10 @@ use hydr::structures::*;
 
 #[test]
 fn exactly_coincident_knots_keep_registration_order_and_common_terminal() -> Result {
-    let context = StructureBatch::new(vec![gate("a")?, gate("b")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("a")?, gate("b")?],
+    )?;
     let a = trajectory(&context, "a", &[(0.0, 0.25), (1.0, 0.5), (3.0, 0.75)])?;
     let b = trajectory(&context, "b", &[(0.0, 0.75), (1.0, 0.5), (2.0, 0.25)])?;
     let registry = context.with_operating_sources(vec![
@@ -55,7 +58,10 @@ fn exactly_coincident_knots_keep_registration_order_and_common_terminal() -> Res
 
 #[test]
 fn adjacent_representable_knots_remain_separate_events() -> Result {
-    let context = StructureBatch::new(vec![gate("a")?, gate("b")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("a")?, gate("b")?],
+    )?;
     let adjacent = f64::from_bits(1.0f64.to_bits() + 1);
     let a = trajectory(&context, "a", &[(0.0, 0.25), (1.0, 0.5), (2.0, 0.75)])?;
     let b = trajectory(&context, "b", &[(0.0, 0.75), (adjacent, 0.5), (2.0, 0.25)])?;
@@ -86,7 +92,10 @@ fn adjacent_representable_knots_remain_separate_events() -> Result {
 
 #[test]
 fn fresh_actuator_arrival_flags_join_original_knots_without_advancing_sources() -> Result {
-    let context = StructureBatch::new(vec![gate("actual")?, gate("path")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("actual")?, gate("path")?],
+    )?;
     let actual = actuator(&context, "actual", 0.0, 0.5, (0.5, 0.5), 0.0, 3.0)?;
     let path = trajectory(&context, "path", &[(0.0, 0.25), (1.0, 0.5), (2.0, 0.75)])?;
     let registry = context.with_operating_sources(vec![
@@ -147,7 +156,10 @@ fn fresh_actuator_arrival_flags_join_original_knots_without_advancing_sources() 
 #[test]
 fn empty_common_support_rejects_and_single_actuator_prescribed_intersection_remains_a_point()
 -> Result {
-    let context = StructureBatch::new(vec![gate("a")?, gate("b")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("a")?, gate("b")?],
+    )?;
     let a = trajectory(&context, "a", &[(0.0, 0.25), (1.0, 0.5)])?;
     let disjoint = trajectory(&context, "b", &[(2.0, 0.25), (3.0, 0.5)])?;
     kind(

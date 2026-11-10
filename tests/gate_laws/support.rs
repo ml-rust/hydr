@@ -3,7 +3,10 @@ use hydr::structures::*;
 
 #[test]
 fn closed_gate_retains_support_without_evaluating_influential_heads() -> Result {
-    let batch = StructureBatch::new(vec![standard("gate", DirectionPolicy::Bidirectional)?])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![standard("gate", DirectionPolicy::Bidirectional)?],
+    )?;
     for input in [
         packet("gate", HeadSupport::Unknown, HeadSupport::Unknown),
         packet(
@@ -36,7 +39,10 @@ fn closed_gate_retains_support_without_evaluating_influential_heads() -> Result 
 
 #[test]
 fn closed_gate_still_checks_every_supplied_identity_datum_convention_and_value() -> Result {
-    let batch = StructureBatch::new(vec![standard("gate", DirectionPolicy::BtoAOnly)?])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![standard("gate", DirectionPolicy::BtoAOnly)?],
+    )?;
     let closed = [opening("gate", 0.0)];
     let base = packet("gate", HeadSupport::Unknown, HeadSupport::Unknown);
     for field in 0..3 {
@@ -100,7 +106,10 @@ fn closed_gate_still_checks_every_supplied_identity_datum_convention_and_value()
 
 #[test]
 fn positive_opening_checks_support_before_ideal_flap_blocking() -> Result {
-    let batch = StructureBatch::new(vec![standard("gate", DirectionPolicy::BtoAOnly)?])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![standard("gate", DirectionPolicy::BtoAOnly)?],
+    )?;
     let open = [opening("gate", 1.0)];
     for (a, b) in [
         (HeadSupport::Unknown, HeadSupport::Wet { stage_m: 2.0 }),

@@ -75,7 +75,10 @@ fn duplicate_non_gate_reordered_and_unknown_authority_reject_at_construction() -
 
 #[test]
 fn malformed_original_rates_policies_and_schedule_reject_without_defaults() -> Result {
-    let context = StructureBatch::new(vec![gate("gate", 1.0)?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("gate", 1.0)?],
+    )?;
     for variant in 0..9 {
         let mut definition = definition("actuator", "gate", 0.25, 0.5);
         match variant {

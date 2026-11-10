@@ -2,6 +2,14 @@ use super::super::{
     SubcatchmentBatch, SubcatchmentConfig, SubcatchmentDefinition, SubcatchmentError,
     SubcatchmentLedger, SubcatchmentState, SubcatchmentStepDiagnostics,
 };
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 /// Caller-owned complete storage, soil, and accounting continuation values.
 ///
@@ -27,11 +35,26 @@ pub struct SubcatchmentSnapshotData {
 
 /// Trusted immutable clone of complete numerical continuation state.
 #[derive(Clone, Debug)]
-pub struct SubcatchmentSnapshot {
-    pub(super) batch: SubcatchmentBatch,
+pub struct SubcatchmentSnapshot<R: Runtime<DType = DType>> {
+    pub(super) batch: SubcatchmentBatch<R>,
 }
 
-impl SubcatchmentSnapshot {
+impl<R> SubcatchmentSnapshot<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     /// Project complete values for caller-owned encoding and persistence.
     pub fn data(&self) -> Result<SubcatchmentSnapshotData, SubcatchmentError> {
         self.batch.snapshot_data()
@@ -43,9 +66,24 @@ impl SubcatchmentSnapshot {
     }
 }
 
-impl SubcatchmentBatch {
+impl<R> SubcatchmentBatch<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     /// Clone complete state without projecting tensors or advancing either soil group.
-    pub fn snapshot(&self) -> SubcatchmentSnapshot {
+    pub fn snapshot(&self) -> SubcatchmentSnapshot<R> {
         SubcatchmentSnapshot {
             batch: self.clone(),
         }

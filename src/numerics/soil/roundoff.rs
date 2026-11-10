@@ -1,16 +1,31 @@
-//! Outward hydraulic source-admission bounds on configured CPU tensors.
+//! Outward hydraulic source-admission bounds on configured runtime tensors.
 
-use crate::cpu::CpuTensor;
-use crate::cpu::soil_storage::CpuSoilContext;
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use crate::soil::SoilError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps, UnaryOps};
+use crate::tensor::soil_storage::TensorSoilContext;
 
-pub(crate) struct Bounds<'a> {
-    pub context: &'a CpuSoilContext,
+pub(crate) struct Bounds<'a, R: Runtime<DType = DType>> {
+    pub context: &'a TensorSoilContext<R>,
 }
 
-impl Bounds<'_> {
-    pub fn select(&self, active: &CpuTensor, value: &CpuTensor) -> Result<CpuTensor, SoilError> {
+impl<R> Bounds<'_, R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
+    pub fn select(&self, active: &Tensor<R>, value: &Tensor<R>) -> Result<Tensor<R>, SoilError> {
         let value = self
             .context
             .client
@@ -20,7 +35,7 @@ impl Bounds<'_> {
         Ok(value)
     }
 
-    pub fn bound(&self, value: &CpuTensor) -> Result<CpuTensor, SoilError> {
+    pub fn bound(&self, value: &Tensor<R>) -> Result<Tensor<R>, SoilError> {
         let c = &self.context.client;
         let bound = c.add_scalar(
             &c.mul_scalar(&c.abs(value)?, f64::EPSILON)?,
@@ -30,26 +45,26 @@ impl Bounds<'_> {
         Ok(bound)
     }
 
-    pub fn upper(&self, value: &CpuTensor) -> Result<CpuTensor, SoilError> {
+    pub fn upper(&self, value: &Tensor<R>) -> Result<Tensor<R>, SoilError> {
         self.context.finite(value, "source bound intermediate")?;
         let result = self.context.client.add(value, &self.bound(value)?)?;
         self.context.finite(&result, "outward source bound")?;
         Ok(result)
     }
 
-    pub fn add(&self, a: &CpuTensor, b: &CpuTensor) -> Result<CpuTensor, SoilError> {
+    pub fn add(&self, a: &Tensor<R>, b: &Tensor<R>) -> Result<Tensor<R>, SoilError> {
         self.upper(&self.context.client.add(a, b)?)
     }
 
-    pub fn mul(&self, a: &CpuTensor, b: &CpuTensor) -> Result<CpuTensor, SoilError> {
+    pub fn mul(&self, a: &Tensor<R>, b: &Tensor<R>) -> Result<Tensor<R>, SoilError> {
         self.upper(&self.context.client.mul(a, b)?)
     }
 
-    pub fn scale(&self, a: &CpuTensor, scalar: f64) -> Result<CpuTensor, SoilError> {
+    pub fn scale(&self, a: &Tensor<R>, scalar: f64) -> Result<Tensor<R>, SoilError> {
         self.upper(&self.context.client.mul_scalar(a, scalar)?)
     }
 
-    pub fn sum(&self, terms: &[CpuTensor]) -> Result<CpuTensor, SoilError> {
+    pub fn sum(&self, terms: &[Tensor<R>]) -> Result<Tensor<R>, SoilError> {
         let mut sum = self.context.zero.clone();
         for term in terms {
             sum = self.add(&sum, term)?;
@@ -58,14 +73,24 @@ impl Bounds<'_> {
     }
 }
 
-impl Bounds<'_> {
+impl<R> Bounds<'_, R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     pub fn native(
         &self,
-        trace: &super::transition::NativeTrace,
-        rate: &CpuTensor,
-        depth: &CpuTensor,
+        trace: &super::transition::NativeTrace<R>,
+        rate: &Tensor<R>,
+        depth: &Tensor<R>,
         dt: f64,
-    ) -> Result<CpuTensor, SoilError> {
+    ) -> Result<Tensor<R>, SoilError> {
         let c = &self.context.client;
         let positive = c.gt(rate, &self.context.zero)?;
         let crossing = c.mul(&trace.crossing, &positive)?;

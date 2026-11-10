@@ -65,7 +65,7 @@ pub(super) fn centre(index: usize, cells: usize) -> f64 {
     -0.5 * LENGTH + (index as f64 + 0.5) * LENGTH / cells as f64
 }
 
-pub(super) fn simulate(case: Case, cells: usize) -> Result<Solver> {
+pub(super) fn simulate(case: Case, cells: usize) -> Result<Solver<crate::runtime::Runtime>> {
     let domain = Domain::new(
         CartesianGrid::new(cells, 1, LENGTH / cells as f64, 1.0)?,
         vec![0.0; cells],
@@ -104,7 +104,8 @@ pub(super) fn simulate(case: Case, cells: usize) -> Result<Solver> {
     )?;
     let land = LandModel::impervious(&domain);
     let soil = SoilState::initialized(&land)?;
-    let mut solver = Solver::new(
+    let mut solver = Solver::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         SolverSetup {
             domain,
             land,

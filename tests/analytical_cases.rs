@@ -2,6 +2,10 @@
 //!
 //! Vacuum uses exact supercritical far-field flux ports because its initial states flow through both channel ends.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 mod support;
 
 #[path = "support/impervious.rs"]
@@ -39,7 +43,7 @@ fn advance(
     ports: Vec<FluxPort>,
     target: f64,
     max_step: f64,
-) -> Result<Solver, Box<dyn std::error::Error>> {
+) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let count = domain.grid().cell_count();
     let boundaries = if ports.is_empty() {
         BoundaryConditions::impermeable_walls()
@@ -75,7 +79,7 @@ fn advance(
         solver.advance_to(target, 1_000_000)?.status,
         AdvanceStatus::ReachedTarget
     );
-    assert!(solver.state().cells().iter().all(|cell| cell.h >= 0.0));
+    assert!(solver.state()?.cells().iter().all(|cell| cell.h >= 0.0));
     Ok(solver)
 }
 
@@ -107,7 +111,7 @@ fn channel_error(
         .collect();
     // Dam fixtures have stationary remote walls. Separating fans supply exact far-field ports.
     let solver = advance(domain, cells, ports, target, max_step)?;
-    let (depth_sum, discharge_sum) = solver.state().cells().iter().zip(&centres).fold(
+    let (depth_sum, discharge_sum) = solver.state()?.cells().iter().zip(&centres).fold(
         (0.0, 0.0),
         |(depth, discharge), (cell, &x)| {
             let (h, q) = exact(x, target, GRAVITY);
@@ -121,7 +125,7 @@ fn channel_error(
     );
     Ok(ChannelResult {
         error: depth_error,
-        depth: solver.state().cells().iter().map(|cell| cell.h).collect(),
+        depth: solver.state()?.cells().iter().map(|cell| cell.h).collect(),
     })
 }
 
@@ -253,7 +257,7 @@ fn thacker_shoreline_depth_error_decreases_under_refinement() -> TestResult {
             .collect();
         let solver = advance(domain, cells, vec![], target, 1.0)?;
         let error = solver
-            .state()
+            .state()?
             .cells()
             .iter()
             .zip(&centres)
@@ -313,7 +317,8 @@ fn manning_equilibrium_drift_decreases_under_refinement() -> TestResult {
             1.0,
         )?;
         // The central half excludes both source-complete boundary stencils.
-        let interior = &solver.state().cells()[nx / 4..3 * nx / 4];
+        let flow = solver.state()?;
+        let interior = &flow.cells()[nx / 4..3 * nx / 4];
         let depth_error = interior
             .iter()
             .map(|cell| (cell.h - 1.0).abs())

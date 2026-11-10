@@ -1,5 +1,9 @@
 //! Complete soil continuation and source-accounting checks at owned snapshot boundaries.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "land_sources/fixture.rs"]
 mod fixture;
 
@@ -10,7 +14,7 @@ use hydr::soil::{
 };
 use hydr::solver::{ForcingSchedule, SnapshotData, Solver};
 
-fn continued_case() -> Result<Solver> {
+fn continued_case() -> Result<Solver<crate::runtime::Runtime>> {
     let p = ModifiedGreenAmptParameters::from_native(0.4, 1e-5, 0.3)?;
     let mut case = SourceCase::uniform(
         2,
@@ -26,7 +30,7 @@ fn continued_case() -> Result<Solver> {
     case.evaporation.fill(1e-6);
     case.withdrawal.fill(2e-7);
     case.config.max_step = 0.04;
-    let data = case.build()?.snapshot().data();
+    let data = case.build()?.snapshot().data()?;
     let mut setup = data.setup;
     let mut first = setup.forcing.intervals()[0].clone();
     first.end = 0.1;
@@ -36,7 +40,11 @@ fn continued_case() -> Result<Solver> {
     second.rain.fill(0.0);
     second.potential_evaporation.fill(2e-6);
     setup.forcing = ForcingSchedule::new(&setup.domain, &setup.boundaries, vec![first, second])?;
-    Ok(Solver::new(setup, data.accepted)?)
+    Ok(Solver::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        setup,
+        data.accepted,
+    )?)
 }
 
 #[test]
@@ -44,7 +52,7 @@ fn owned_restart_preserves_soil_and_ledgers_across_a_forcing_edge() -> Result {
     let mut continuous = continued_case()?;
     continuous.advance_to(0.1, 100)?;
     let snapshot = continuous.snapshot();
-    let package = snapshot.data();
+    let package = snapshot.data()?;
     assert_eq!(package.accepted.time, 0.1);
     assert!(package.ledger.infiltration > 0.0);
     assert!(package.ledger.evaporation > 0.0);
@@ -52,13 +60,13 @@ fn owned_restart_preserves_soil_and_ledgers_across_a_forcing_edge() -> Result {
     let mut imported = continued_case()?;
     trusted.restore(&snapshot)?;
     imported.restore_data(&package)?;
-    assert_eq!(imported.snapshot().data(), package);
+    assert_eq!(imported.snapshot().data()?, package);
     continuous.advance_to(0.2, 100)?;
     trusted.advance_to(0.2, 100)?;
     imported.advance_to(0.2, 100)?;
-    assert_eq!(continuous.snapshot(), trusted.snapshot());
-    assert_eq!(continuous.snapshot(), imported.snapshot());
-    assert_eq!(continuous.soil_state(), imported.soil_state());
+    assert_eq!(continuous.snapshot().data()?, trusted.snapshot().data()?);
+    assert_eq!(continuous.snapshot().data()?, imported.snapshot().data()?);
+    assert_eq!(continuous.soil_state()?, imported.soil_state()?);
     assert_eq!(continuous.ledger(), imported.ledger());
     Ok(())
 }
@@ -79,9 +87,9 @@ fn antecedent_memory_and_signed_zeros_do_not_create_lifetime_infiltration() -> R
     assert_eq!(original.ledger().infiltration, 0.0);
     let mut destination =
         SourceCase::uniform(1, 1, LandCell::ModifiedGreenAmpt(p), CellState::default())?.build()?;
-    destination.restore_data(&original.snapshot().data())?;
+    destination.restore_data(&original.snapshot().data()?)?;
     assert_eq!(
-        destination.soil_state().cells()[0],
+        destination.soil_state()?.cells()[0],
         SoilCellState::ModifiedGreenAmpt(native)
     );
     assert_eq!(destination.ledger().infiltration, 0.0);
@@ -99,8 +107,8 @@ fn antecedent_memory_and_signed_zeros_do_not_create_lifetime_infiltration() -> R
     let original = case.build()?;
     let mut destination =
         SourceCase::uniform(1, 1, LandCell::ModifiedGreenAmpt(p), CellState::default())?.build()?;
-    destination.restore_data(&original.snapshot().data())?;
-    let SoilCellState::ModifiedGreenAmpt(actual) = destination.soil_state().cells()[0] else {
+    destination.restore_data(&original.snapshot().data()?)?;
+    let SoilCellState::ModifiedGreenAmpt(actual) = destination.soil_state()?.cells()[0] else {
         return Err("missing native soil state".into());
     };
     for value in [actual.imd, actual.f_ft, actual.fu_ft, actual.t_s] {
@@ -109,7 +117,7 @@ fn antecedent_memory_and_signed_zeros_do_not_create_lifetime_infiltration() -> R
     Ok(())
 }
 
-fn adjusted_case() -> Result<Solver> {
+fn adjusted_case() -> Result<Solver<crate::runtime::Runtime>> {
     let p = ModifiedGreenAmptParameters::from_native(0.4, 1e-5, 0.3)?;
     let mut case = SourceCase::uniform(1, 1, LandCell::ModifiedGreenAmpt(p), CellState::default())?;
     case.rain[0] = f64::from_bits(0x3e86_d127_d053_94fe);
@@ -120,15 +128,15 @@ fn adjusted_case() -> Result<Solver> {
 fn accepted_adjustment_charge_survives_owned_restart() -> Result {
     let mut original = adjusted_case()?;
     original.advance_to(1.0, 1)?;
-    let package = original.snapshot().data();
+    let package = original.snapshot().data()?;
     assert!(package.ledger.water_adjustment > 0.0);
     assert!(package.ledger.water_adjustment_abs_bound >= package.ledger.water_adjustment);
     let mut resumed = adjusted_case()?;
     resumed.restore_data(&package)?;
-    assert_eq!(resumed.snapshot().data(), package);
+    assert_eq!(resumed.snapshot().data()?, package);
     original.advance_to(2.0, 1)?;
     resumed.advance_to(2.0, 1)?;
-    assert_eq!(original.snapshot(), resumed.snapshot());
+    assert_eq!(original.snapshot().data()?, resumed.snapshot().data()?);
     Ok(())
 }
 
@@ -136,7 +144,7 @@ fn accepted_adjustment_charge_survives_owned_restart() -> Result {
 fn inconsistent_source_packages_preserve_the_destination() -> Result {
     let mut source = adjusted_case()?;
     source.advance_to(1.0, 1)?;
-    let good = source.snapshot().data();
+    let good = source.snapshot().data()?;
     let mut corrupt = Vec::new();
     let changes: &[fn(&mut SnapshotData)] = &[
         |data| data.ledger.infiltration = -1.0,
@@ -200,7 +208,11 @@ fn inconsistent_source_packages_preserve_the_destination() -> Result {
             destination.restore_data(package).is_err(),
             "source corruption {index}"
         );
-        assert_eq!(destination.snapshot(), before, "source corruption {index}");
+        assert_eq!(
+            destination.snapshot().data()?,
+            before.data()?,
+            "source corruption {index}"
+        );
     }
     Ok(())
 }
@@ -209,7 +221,7 @@ fn inconsistent_source_packages_preserve_the_destination() -> Result {
 fn immutable_land_and_evaporation_require_exact_definition_identity() -> Result {
     let mut source = adjusted_case()?;
     source.advance_to(1.0, 1)?;
-    let good = source.snapshot().data();
+    let good = source.snapshot().data()?;
     let mut corrupt = Vec::new();
     let mut changed_land = good.clone();
     changed_land.setup.land = LandModel::impervious(&changed_land.setup.domain);
@@ -227,7 +239,7 @@ fn immutable_land_and_evaporation_require_exact_definition_identity() -> Result 
     let before = destination.snapshot();
     for package in corrupt {
         assert!(destination.restore_data(&package).is_err());
-        assert_eq!(destination.snapshot(), before);
+        assert_eq!(destination.snapshot().data()?, before.data()?);
     }
     Ok(())
 }

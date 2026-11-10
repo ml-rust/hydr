@@ -1,26 +1,48 @@
 //! Shared outward arithmetic for independent structure-expression witnesses.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::{CpuTensor, structures::CpuStructureContext};
 use crate::structures::StructureError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
+use crate::tensor::structures::TensorStructureContext;
+use numr::tensor::Tensor;
 
-pub(super) fn rounding(
-    context: &CpuStructureContext,
-    value: &CpuTensor,
+pub(super) fn rounding<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    value: &Tensor<R>,
     quantity: &str,
-) -> Result<CpuTensor, StructureError> {
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let bound =
         crate::numerics::subcatchment::bounds::rounding_with_client(&context.client, value)?;
     context.finite(&bound, quantity)?;
     Ok(bound)
 }
 
-pub(super) fn add(
-    context: &CpuStructureContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
+pub(super) fn add<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
     quantity: &str,
-) -> Result<CpuTensor, StructureError> {
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     let a_zero = c.eq(a, &context.zero)?;
     let b_zero = c.eq(b, &context.zero)?;
@@ -34,12 +56,21 @@ pub(super) fn add(
     Ok(bound)
 }
 
-pub(super) fn divide(
-    context: &CpuStructureContext,
-    numerator: &CpuTensor,
-    denominator: &CpuTensor,
+pub(super) fn divide<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    numerator: &Tensor<R>,
+    denominator: &Tensor<R>,
     quantity: &str,
-) -> Result<CpuTensor, StructureError> {
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     let quotient = c.div(numerator, denominator)?;
     context.finite(&quotient, quantity)?;

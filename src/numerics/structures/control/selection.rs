@@ -1,39 +1,47 @@
 //! Tensor-only bounded last-transition selection.
 
-use crate::cpu::{
-    CpuTensor,
-    structures::control::{CpuControlContext, CpuControlSample, CpuControlTimer},
-};
 use crate::structures::StructureError;
+use crate::tensor::structures::control::{
+    TensorControlContext, TensorControlSample, TensorControlTimer,
+};
+use numr::dtype::DType;
 use numr::ops::ConditionalOps;
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(super) fn sample(
-    context: &CpuControlContext,
-    mask: &CpuTensor,
-    new: &CpuControlSample,
-    old: &CpuControlSample,
-) -> Result<CpuControlSample, StructureError> {
+pub(super) fn sample<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
+    mask: &Tensor<R>,
+    new: &TensorControlSample<R>,
+    old: &TensorControlSample<R>,
+) -> Result<TensorControlSample<R>, StructureError>
+where
+    R::Client: numr::ops::ConditionalOps<R>,
+{
     let c = &context.structures.client;
-    Ok(CpuControlSample {
+    Ok(TensorControlSample {
         valid: c.where_cond(mask, &new.valid, &old.valid)?,
         observed: c.where_cond(mask, &new.observed, &old.observed)?,
         available: c.where_cond(mask, &new.available, &old.available)?,
         stage: c.where_cond(mask, &new.stage, &old.stage)?,
     })
 }
-pub(super) fn timer(
-    context: &CpuControlContext,
-    mask: &CpuTensor,
-    new: &CpuControlTimer,
-    old: &CpuControlTimer,
-) -> Result<CpuControlTimer, StructureError> {
+pub(super) fn timer<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
+    mask: &Tensor<R>,
+    new: &TensorControlTimer<R>,
+    old: &TensorControlTimer<R>,
+) -> Result<TensorControlTimer<R>, StructureError>
+where
+    R::Client: numr::ops::ConditionalOps<R>,
+{
     let c = &context.structures.client;
     macro_rules! choose {
         ($field:ident) => {
             c.where_cond(mask, &new.$field, &old.$field)?
         };
     }
-    Ok(CpuControlTimer {
+    Ok(TensorControlTimer {
         active: choose!(active),
         started: choose!(started),
         evaluated: choose!(evaluated),

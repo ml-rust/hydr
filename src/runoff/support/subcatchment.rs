@@ -1,5 +1,14 @@
 //! Actual ordered immutable numerical trials without host-state advancement.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::{AdmittedInterval, SupportError, SupportErrorKind, SupportPlan};
 use crate::runoff::{SubcatchmentBatch, SubcatchmentTrial};
 
@@ -7,11 +16,26 @@ impl SupportPlan {
     /// Trial the actual selected numerical component against the exact original interval.
     ///
     /// The batch retains its independently checked numerical config. The plan binds definitions and time.
-    pub fn trial_subcatchments(
+    pub fn trial_subcatchments<R>(
         &self,
         packet: &AdmittedInterval,
-        batch: Option<&SubcatchmentBatch>,
-    ) -> Result<Option<SubcatchmentTrial>, SupportError> {
+        batch: Option<&SubcatchmentBatch<R>>,
+    ) -> Result<Option<SubcatchmentTrial<R>>, SupportError>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: BinaryOps<R>
+            + CompareOps<R>
+            + ConditionalOps<R>
+            + ReduceOps<R>
+            + ScalarOps<R>
+            + TypeConversionOps<R>
+            + UnaryOps<R>
+            + IndexingOps<R>
+            + ShapeOps<R>
+            + TwoSumOps<R>
+            + BatchedNewtonAlgorithms<R>
+            + BatchedBisectionAlgorithms<R>,
+    {
         self.check_packet(packet)?;
         if self.inner.definitions.is_empty() {
             if batch.is_some() {

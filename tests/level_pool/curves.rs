@@ -73,14 +73,40 @@ fn identities_connected_assertions_and_complete_states_remain_explicit() -> Resu
             _ => return Err("unknown identity fixture".into()),
         }
         let states = vec![LevelPoolState { volume_m3: 0.0 }; elements.len()];
-        assert!(LevelPoolBatch::new(elements, states, 0.0, LevelPoolConfig::default()).is_err());
+        assert!(
+            LevelPoolBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
+                elements,
+                states,
+                0.0,
+                LevelPoolConfig::default()
+            )
+            .is_err()
+        );
     }
     assert!(
-        LevelPoolBatch::new(vec![base.clone()], vec![], 0.0, LevelPoolConfig::default()).is_err()
+        LevelPoolBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![base.clone()],
+            vec![],
+            0.0,
+            LevelPoolConfig::default()
+        )
+        .is_err()
     );
-    assert!(LevelPoolBatch::new(vec![], vec![], 0.0, LevelPoolConfig::default()).is_err());
     assert!(
-        LevelPoolBatch::new(
+        LevelPoolBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![],
+            vec![],
+            0.0,
+            LevelPoolConfig::default()
+        )
+        .is_err()
+    );
+    assert!(
+        LevelPoolBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
             vec![base],
             vec![LevelPoolState {
                 volume_m3: f64::NAN

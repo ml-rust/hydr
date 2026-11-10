@@ -36,7 +36,7 @@ Qualification establishes persistence across the supplied samples only. It estab
 
 ## Numerical timing
 
-Numr CPU F64 tensors retain the relay state, predicates, timer anchors, transition counters, and receipts. Original timestamps anchor timers. Repeated interval additions never accumulate timer age.
+Selected-runtime F64 `Tensor<R>` fields retain relay state, predicates, timer anchors, transition counters, and receipts. Controls inherit their bound `StructureBatch<R>` client and [arithmetic admission](integration.md#runtime-selection-and-admission). Original timestamps anchor timers. Repeated interval additions never accumulate timer age.
 
 TwoSum retains exact finite elapsed high and low components. Readiness compares that expansion against the original delay. Lateness compares elapsed against the exact finite delay-plus-allowance expansion. Equal highs compare through their lows. Used elapsed overflow rejects numerically before residual arithmetic.
 
@@ -50,7 +50,7 @@ Exact schedule-gap checks cover initial, consecutive, terminal, and declared ant
 
 Dropping a trial preserves accepted state, timers, counters, and retained diagnostics. `into_next()` accepts the complete candidate by ownership. This component does not atomically accept hydraulic state or conserved transfers.
 
-Normal advancement retains derived state and commands as tensors. `commands()`, `states()`, `diagnostics()`, and snapshot value packages are explicit projections. Retained last-step storage contains immediate before/after tensors and original inputs. It contains no previous batch or recursive step chain.
+Normal advancement retains derived state and commands as tensors. `commands()`, `states()`, `diagnostics()`, and snapshot value packages are explicit fallible projections. Retained last-step storage contains immediate before/after tensors and original inputs. It contains no previous batch or recursive step chain.
 
 ## Complete restoration
 

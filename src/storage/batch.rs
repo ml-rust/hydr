@@ -1,56 +1,89 @@
 //! Immutable authoritative-volume trials with lazy output projection.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::interpolate::Interp1dAlgorithms;
+
 use super::{
     LevelPoolConfig, LevelPoolElement, LevelPoolElementLedger, LevelPoolError, LevelPoolInput,
     LevelPoolOutput, LevelPoolState, LevelPoolStepDiagnostics, LevelPoolTotals,
 };
-use crate::cpu::level_pool::{CpuPoolContext, CpuPoolState, CpuPoolStep};
+use crate::tensor::level_pool::{TensorPoolContext, TensorPoolState, TensorPoolStep};
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub(super) struct StoredStep {
+pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub start: f64,
     pub end: f64,
-    pub step: CpuPoolStep,
+    pub step: TensorPoolStep<R>,
 }
 
 /// Complete persistent pool continuation with optional explicit sources and no outlet law.
 #[derive(Clone, Debug)]
-pub struct LevelPoolBatch {
-    pub(super) context: Arc<CpuPoolContext>,
-    pub(super) state: CpuPoolState,
+pub struct LevelPoolBatch<R: Runtime<DType = DType>> {
+    pub(super) context: Arc<TensorPoolContext<R>>,
+    pub(super) state: TensorPoolState<R>,
     pub(super) time: f64,
     pub(super) steps: usize,
-    pub(super) last: Option<Arc<StoredStep>>,
+    pub(super) last: Option<Arc<StoredStep<R>>>,
 }
 
 /// Complete candidate state. Dropping it preserves accepted volume and accounting.
 #[derive(Debug)]
-pub struct LevelPoolTrial {
-    pub(super) next: LevelPoolBatch,
+pub struct LevelPoolTrial<R: Runtime<DType = DType>> {
+    pub(super) next: LevelPoolBatch<R>,
 }
 
-impl LevelPoolBatch {
+impl<R> LevelPoolBatch<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     /// Construct explicit pool definitions, accepted volumes, elapsed time, and dimensional controls.
     pub fn new(
+        client: R::Client,
         elements: Vec<LevelPoolElement>,
         states: Vec<LevelPoolState>,
         time: f64,
         config: LevelPoolConfig,
     ) -> Result<Self, LevelPoolError> {
-        Self::construct(elements, states, time, config, None)
+        Self::construct(client, elements, states, time, config, None)
     }
     /// Enable the frozen-area source policy with explicit evidence for every ordered pool.
     pub fn new_with_sources(
+        client: R::Client,
         elements: Vec<LevelPoolElement>,
         states: Vec<LevelPoolState>,
         time: f64,
         config: LevelPoolConfig,
         source_policies: Vec<super::LevelPoolSourcePolicy>,
     ) -> Result<Self, LevelPoolError> {
-        Self::construct(elements, states, time, config, Some(source_policies))
+        Self::construct(
+            client,
+            elements,
+            states,
+            time,
+            config,
+            Some(source_policies),
+        )
     }
     fn construct(
+        client: R::Client,
         elements: Vec<LevelPoolElement>,
         states: Vec<LevelPoolState>,
         time: f64,
@@ -63,10 +96,12 @@ impl LevelPoolBatch {
             )));
         }
         let context = Arc::new(match source_policies {
-            None => CpuPoolContext::new(elements, config)?,
-            Some(policies) => CpuPoolContext::new_with_sources(elements, config, Some(policies))?,
+            None => TensorPoolContext::<R>::new(client, elements, config)?,
+            Some(policies) => {
+                TensorPoolContext::<R>::new_with_sources(client, elements, config, Some(policies))?
+            }
         });
-        let state = CpuPoolState::new(&context, &states)?;
+        let state = TensorPoolState::<R>::new(&context, &states)?;
         crate::numerics::storage::curves::evaluate(&context, &state.volume_m3)?;
         crate::numerics::storage::accounting::check_state(&context, &state, 0)?;
         super::accounting::totals(&context, &state)?;
@@ -131,7 +166,7 @@ impl LevelPoolBatch {
         &self,
         end: f64,
         inputs: &[LevelPoolInput],
-    ) -> Result<LevelPoolTrial, LevelPoolError> {
+    ) -> Result<LevelPoolTrial<R>, LevelPoolError> {
         self.trial_inputs(end, inputs, None)
     }
     /// Apply frozen-area rain, capped bottom demand, and capped evaporation before original exchanges.
@@ -140,7 +175,7 @@ impl LevelPoolBatch {
         end: f64,
         inputs: &[LevelPoolInput],
         sources: &[super::LevelPoolSources],
-    ) -> Result<LevelPoolTrial, LevelPoolError> {
+    ) -> Result<LevelPoolTrial<R>, LevelPoolError> {
         self.trial_inputs(end, inputs, Some(sources))
     }
     fn trial_inputs(
@@ -148,7 +183,7 @@ impl LevelPoolBatch {
         end: f64,
         inputs: &[LevelPoolInput],
         sources: Option<&[super::LevelPoolSources]>,
-    ) -> Result<LevelPoolTrial, LevelPoolError> {
+    ) -> Result<LevelPoolTrial<R>, LevelPoolError> {
         let dt = end - self.time;
         if !end.is_finite() || !dt.is_finite() || dt <= 0.0 {
             return Err(LevelPoolError::input(format!(
@@ -193,7 +228,8 @@ impl LevelPoolBatch {
                 .collect::<Vec<_>>(),
         )?;
         let (state, step) = if let Some(sources) = sources {
-            let input = crate::cpu::level_pool::CpuPoolSourceInput::new(&self.context, sources)?;
+            let input =
+                crate::tensor::level_pool::TensorPoolSourceInput::<R>::new(&self.context, sources)?;
             crate::numerics::storage::advance_with_sources(
                 &self.context,
                 &self.state,
@@ -230,7 +266,22 @@ impl LevelPoolBatch {
         })
     }
 }
-impl LevelPoolTrial {
+impl<R> LevelPoolTrial<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     /// Explicitly project candidate physical storage and wet stage.
     pub fn outputs(&self) -> Result<Vec<LevelPoolOutput>, LevelPoolError> {
         self.next.outputs()
@@ -242,7 +293,7 @@ impl LevelPoolTrial {
             .ok_or_else(|| LevelPoolError::numerical("candidate lacks complete interval receipts"))
     }
     /// Accept complete persistent state by ownership without numerical projection.
-    pub fn into_next(self) -> LevelPoolBatch {
+    pub fn into_next(self) -> LevelPoolBatch<R> {
         self.next
     }
 }

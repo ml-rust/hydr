@@ -1,5 +1,9 @@
 //! Complete reservoir continuation and atomic owned-package admission.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "nonlinear_reservoir/fixture.rs"]
 mod fixture;
 

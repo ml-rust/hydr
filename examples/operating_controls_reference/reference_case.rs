@@ -144,7 +144,7 @@ pub fn timing(case: &Case) -> SampledControlTiming {
 pub fn build(
     case: &Case,
     width: usize,
-) -> std::result::Result<OperatingControlBatch, StructureError> {
+) -> std::result::Result<OperatingControlBatch<crate::runtime::Runtime>, StructureError> {
     let elements=(0..width).map(|lane|if matches!(case.low_command,ControlCommand::GateTarget {..}) {
         gate(&device(lane))
     } else if case.id=="explicit_initial_high_reversed_commands" {
@@ -153,14 +153,15 @@ pub fn build(
             applicability:"Synthetic unchanged-geometry half-speed and reference-speed command envelope".into(),
         })
     } else {pump(&device(lane))}).collect::<std::result::Result<Vec<_>,_>>()?;
-    StructureBatch::new(elements)?.with_operating_controls(
-        (0..width)
-            .map(|lane| definition(case, lane, &device(lane)))
-            .collect(),
-        (0..width).map(|lane| initial(case, lane)).collect(),
-        schedule(case),
-        timing(case),
-    )
+    StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?
+        .with_operating_controls(
+            (0..width)
+                .map(|lane| definition(case, lane, &device(lane)))
+                .collect(),
+            (0..width).map(|lane| initial(case, lane)).collect(),
+            schedule(case),
+            timing(case),
+        )
 }
 
 pub fn category(error: &StructureError) -> String {

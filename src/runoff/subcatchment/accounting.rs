@@ -1,9 +1,18 @@
 //! Complete scalar lifetime counters and interval metadata.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::{SubcatchmentError, SubcatchmentReceipt, SubcatchmentTransfer};
-use crate::cpu::subcatchment::CpuSubcatchmentContext;
-use crate::numerics::subcatchment::{CpuSubcatchmentStep, bounds};
+use crate::numerics::subcatchment::{TensorSubcatchmentStep, bounds};
 use crate::soil::admission::add_adjustment_charge;
+use crate::tensor::subcatchment::TensorSubcatchmentContext;
 
 /// Independent physical mass counters and separate numerical admission budgets.
 #[derive(Clone, Debug, PartialEq)]
@@ -118,10 +127,25 @@ pub(super) struct StepTotals {
     pub rain_bound: f64,
 }
 
-pub(super) fn aggregate_step(
-    context: &CpuSubcatchmentContext,
-    step: &CpuSubcatchmentStep,
-) -> Result<StepTotals, SubcatchmentError> {
+pub(super) fn aggregate_step<R>(
+    context: &TensorSubcatchmentContext<R>,
+    step: &TensorSubcatchmentStep<R>,
+) -> Result<StepTotals, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let t = &step.totals;
     let before = context.total(&t.storage_before, "original storage")?;
     let after = context.total(&t.storage_after, "accepted storage")?;
@@ -185,13 +209,28 @@ impl SubcatchmentLedger {
             residual_m3: 0.0,
         }
     }
-    pub(super) fn advance(
+    pub(super) fn advance<R>(
         &self,
-        context: &CpuSubcatchmentContext,
-        step: &CpuSubcatchmentStep,
+        context: &TensorSubcatchmentContext<R>,
+        step: &TensorSubcatchmentStep<R>,
         totals: &StepTotals,
         steps: usize,
-    ) -> Result<Self, SubcatchmentError> {
+    ) -> Result<Self, SubcatchmentError>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: BinaryOps<R>
+            + CompareOps<R>
+            + ConditionalOps<R>
+            + ReduceOps<R>
+            + ScalarOps<R>
+            + TypeConversionOps<R>
+            + UnaryOps<R>
+            + IndexingOps<R>
+            + ShapeOps<R>
+            + TwoSumOps<R>
+            + BatchedNewtonAlgorithms<R>
+            + BatchedBisectionAlgorithms<R>,
+    {
         let mut next = Self {
             initial_storage_m3: self.initial_storage_m3,
             storage_m3: totals.after,
@@ -228,11 +267,26 @@ impl SubcatchmentLedger {
     }
 }
 
-pub(super) fn check_ledger(
-    context: &CpuSubcatchmentContext,
+pub(super) fn check_ledger<R>(
+    context: &TensorSubcatchmentContext<R>,
     ledger: &SubcatchmentLedger,
     steps: usize,
-) -> Result<(), SubcatchmentError> {
+) -> Result<(), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let counters = [
         ledger.initial_storage_m3,
         ledger.storage_m3,
@@ -313,12 +367,27 @@ pub(super) fn check_ledger(
     )
 }
 
-fn check_residual(
-    context: &CpuSubcatchmentContext,
+fn check_residual<R>(
+    context: &TensorSubcatchmentContext<R>,
     residual: f64,
     scale: f64,
     quantity: &str,
-) -> Result<(), SubcatchmentError> {
+) -> Result<(), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let tolerance =
         context.config.reservoir.volume_absolute + context.config.reservoir.volume_relative * scale;
     if !residual.is_finite()

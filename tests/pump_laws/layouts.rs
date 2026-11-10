@@ -59,7 +59,10 @@ fn mixed_passive_and_pump_layouts_preserve_all_admitted_references() -> Result {
                     operations.push(operation(&id, StructureOperatingPoint::PumpStoppedIsolated));
                 }
             }
-            let batch = StructureBatch::new(definitions)?;
+            let batch = StructureBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
+                definitions,
+            )?;
             let outputs = batch
                 .propose_with_operations(&packets, &operations)?
                 .outputs()?;
@@ -72,7 +75,10 @@ fn mixed_passive_and_pump_layouts_preserve_all_admitted_references() -> Result {
                     check_output(case, &output, lane % 2 == 1)?;
                 } else if slot == cases.len() {
                     let id = format!("structure-{lane}");
-                    let single = StructureBatch::new(vec![passive(&id)?])?;
+                    let single = StructureBatch::<crate::runtime::Runtime>::new(
+                        crate::runtime::client(),
+                        vec![passive(&id)?],
+                    )?;
                     let expected = first(&single.propose(&[heads(&id, 11.0, 9.0)])?)?;
                     assert_eq!(
                         output.discharge_m3_per_s.to_bits(),

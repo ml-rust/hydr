@@ -1,16 +1,34 @@
 //! Fixed-orientation running/shutoff/isolation proposals with immutable operating metadata.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::ops::ScalarOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::structures::{
-    CpuStructureContext, CpuStructureInput, CpuStructureResult, codes, pump::CpuPumpResult,
-};
 use crate::structures::StructureError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps};
+use crate::tensor::structures::{
+    TensorStructureContext, TensorStructureInput, TensorStructureResult, codes,
+    pump::TensorPumpResult,
+};
 
-pub(crate) fn evaluate(
-    context: &CpuStructureContext,
-    input: &CpuStructureInput,
-    mut result: CpuStructureResult,
-) -> Result<CpuStructureResult, StructureError> {
+pub(crate) fn evaluate<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    input: &TensorStructureInput<R>,
+    mut result: TensorStructureResult<R>,
+) -> Result<TensorStructureResult<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::IndexingOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::ShapeOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>
+        + solvr::interpolate::Interp1dAlgorithms<R>,
+{
     let Some(pump) = &context.pump else {
         return Ok(result);
     };
@@ -57,7 +75,7 @@ pub(crate) fn evaluate(
         &c.where_cond(&positive, &pump.orientation, &context.zero)?,
         &result.direction,
     )?;
-    result.pump = Some(CpuPumpResult {
+    result.pump = Some(TensorPumpResult {
         head_high: normalized.high,
         head_low: normalized.low,
         reference_head: normalized.query,

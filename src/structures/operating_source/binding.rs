@@ -1,14 +1,16 @@
 //! Exhaustive unique actual-element writer admission and closed support intersection.
 
 use super::{OperatingSourceBinding, OperatingSourceSupport};
-use crate::cpu::structures::{
-    CpuStructureContext,
+use crate::structures::{StructureBatch, StructureError, StructureInputErrorKind};
+use crate::tensor::structures::{
+    TensorStructureContext,
     operating_source::{
-        CpuOperatingSourceContext, CpuOperatingSourceGroup, CpuOperatingSourceKind,
-        CpuPrescribedSource,
+        TensorOperatingSourceContext, TensorOperatingSourceGroup, TensorOperatingSourceKind,
+        TensorPrescribedSource,
     },
 };
-use crate::structures::{StructureBatch, StructureError, StructureInputErrorKind};
+use numr::dtype::DType;
+use numr::runtime::{Device, Runtime};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -17,12 +19,15 @@ use std::{
 fn error(kind: StructureInputErrorKind, id: &str, message: &str) -> StructureError {
     StructureError::input(kind, format!("source={id:?}: {message}"))
 }
-fn compatible(
-    a: &Arc<CpuStructureContext>,
-    b: &Arc<CpuStructureContext>,
+fn compatible<R: Runtime<DType = DType>>(
+    a: &Arc<TensorStructureContext<R>>,
+    b: &Arc<TensorStructureContext<R>>,
     id: &str,
 ) -> Result<(), StructureError> {
-    if Arc::ptr_eq(a, b) || crate::structures::identity::same_elements(&a.elements, &b.elements) {
+    if a.device.is_same(&b.device)
+        && (Arc::ptr_eq(a, b)
+            || crate::structures::identity::same_elements(&a.elements, &b.elements))
+    {
         Ok(())
     } else {
         Err(error(
@@ -57,10 +62,20 @@ fn intersection(
     *current = Some(merged);
     Ok(())
 }
-pub(super) fn build(
-    context: Arc<CpuStructureContext>,
-    sources: Vec<OperatingSourceBinding<'_>>,
-) -> Result<CpuOperatingSourceContext, StructureError> {
+pub(super) fn build<R: Runtime<DType = DType>>(
+    context: Arc<TensorStructureContext<R>>,
+    sources: Vec<OperatingSourceBinding<'_, R>>,
+) -> Result<TensorOperatingSourceContext<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let elements = context
         .elements
         .iter()
@@ -92,7 +107,7 @@ pub(super) fn build(
                     }
                     slots.push(slot);
                 }
-                (source_id, slots, CpuOperatingSourceKind::Manual)
+                (source_id, slots, TensorOperatingSourceKind::Manual)
             }
             OperatingSourceBinding::Prescribed {
                 source_id,
@@ -118,7 +133,7 @@ pub(super) fn build(
                 (
                     source_id,
                     trajectory.inner.slots.clone(),
-                    CpuOperatingSourceKind::Prescribed(CpuPrescribedSource {
+                    TensorOperatingSourceKind::Prescribed(TensorPrescribedSource {
                         support: OperatingSourceSupport {
                             start_s: domain.start_s,
                             end_s: domain.end_s,
@@ -149,7 +164,7 @@ pub(super) fn build(
                 (
                     source_id,
                     actuator.context.slots.clone(),
-                    CpuOperatingSourceKind::Actuated(Arc::clone(&actuator.context)),
+                    TensorOperatingSourceKind::Actuated(Arc::clone(&actuator.context)),
                 )
             }
             OperatingSourceBinding::ControlledPump { source_id, pump } => {
@@ -165,7 +180,7 @@ pub(super) fn build(
                 (
                     source_id,
                     pump.context.controls.slots.clone(),
-                    CpuOperatingSourceKind::ControlledPump(Arc::clone(&pump.context)),
+                    TensorOperatingSourceKind::ControlledPump(Arc::clone(&pump.context)),
                 )
             }
         };
@@ -198,7 +213,7 @@ pub(super) fn build(
                 .at(slot));
             }
         }
-        groups.push(CpuOperatingSourceGroup { id, slots, kind });
+        groups.push(TensorOperatingSourceGroup { id, slots, kind });
     }
     let owner = owner
         .into_iter()
@@ -230,5 +245,5 @@ pub(super) fn build(
             )?,
         )
     };
-    CpuOperatingSourceContext::new(context, groups, owner, support, prescribed)
+    TensorOperatingSourceContext::new(context, groups, owner, support, prescribed)
 }

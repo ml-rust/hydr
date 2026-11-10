@@ -25,7 +25,7 @@ fn state(case: &str, actual: NativeSoilState, expected: NativeSoilState) -> Resu
     Ok(())
 }
 
-fn one_state(batch: &ModifiedGreenAmptBatch) -> Result<NativeSoilState> {
+fn one_state(batch: &ModifiedGreenAmptBatch<crate::runtime::Runtime>) -> Result<NativeSoilState> {
     batch
         .native_states()?
         .first()
@@ -46,7 +46,11 @@ fn direct_root(row: &Record) -> Result<()> {
         saturated: true,
         t_s: 0.0,
     };
-    let batch = ModifiedGreenAmptBatch::from_native_states(&[parameters], &[initial])?;
+    let batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[parameters],
+        &[initial],
+    )?;
     let trial = batch.trial_native(
         dt,
         &[NativeSoilInput {
@@ -101,9 +105,16 @@ pub fn compare(records: &[Record]) -> Result<()> {
                 row.value(7)?,
             )?;
             let initialized = if row.initial_mode == "INIT" {
-                ModifiedGreenAmptBatch::initialized(&[parameters])?
+                ModifiedGreenAmptBatch::<crate::runtime::Runtime>::initialized(
+                    crate::runtime::client(),
+                    &[parameters],
+                )?
             } else {
-                ModifiedGreenAmptBatch::from_native_states(&[parameters], &[row.state(8)?])?
+                ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+                    crate::runtime::client(),
+                    &[parameters],
+                    &[row.state(8)?],
+                )?
             };
             let actual = one_state(&initialized)?;
             state(&row.case, actual, row.state(8)?)?;
@@ -307,7 +318,11 @@ fn compare_batches(records: &[Record]) -> Result<()> {
                 let parameters: Vec<_> = lanes.iter().map(|p| p.parameters).collect();
                 let initial: Vec<_> = lanes.iter().map(|p| p.initial).collect();
                 let inputs: Vec<_> = lanes.iter().map(|p| p.input).collect();
-                let batch = ModifiedGreenAmptBatch::from_native_states(&parameters, &initial)?;
+                let batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+                    crate::runtime::client(),
+                    &parameters,
+                    &initial,
+                )?;
                 let trial = batch.trial_native(probes[0].dt, &inputs)?;
                 let outputs = trial.outputs()?;
                 let states = trial.into_next().native_states()?;

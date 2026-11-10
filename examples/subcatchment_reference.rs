@@ -1,5 +1,9 @@
 //! Public source/routing observations for independent temporal reference comparisons.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 #[path = "subcatchment_reference/cases.rs"]
 mod cases;
 #[path = "subcatchment_reference/observe.rs"]

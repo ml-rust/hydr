@@ -1,26 +1,40 @@
 //! Represented reservoir law, geometry products, and root reconstruction.
 
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use super::budget::DrainageBudget;
-use crate::cpu::CpuTensor;
-use crate::cpu::reservoir_storage::CpuReservoirContext;
 use crate::runoff::ReservoirError;
+use crate::tensor::reservoir_storage::TensorReservoirContext;
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps};
 use numr::runtime::Device;
 
 pub(crate) const EXPONENT: f64 = 1.6666667;
 
-pub(crate) fn check_metadata(
-    context: &CpuReservoirContext,
-    value: &CpuTensor,
+pub(crate) fn check_metadata<R>(
+    context: &TensorReservoirContext<R>,
+    value: &Tensor<R>,
     quantity: &str,
-) -> Result<(), ReservoirError> {
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     if value.shape() != context.zero.shape()
         || value.dtype() != DType::F64
         || !value.device().is_same(context.zero.device())
     {
         return Err(ReservoirError::input(format!(
-            "{quantity}: shape={:?}, dtype={:?}: require the configured CPU F64 shape {:?} on the matching device",
+            "{quantity}: shape={:?}, dtype={:?}: require the configured runtime F64 shape {:?} on the matching device",
             value.shape(),
             value.dtype(),
             context.zero.shape()
@@ -29,11 +43,21 @@ pub(crate) fn check_metadata(
     Ok(())
 }
 
-pub(crate) fn volume(
-    context: &CpuReservoirContext,
-    depth: &CpuTensor,
+pub(crate) fn volume<R>(
+    context: &TensorReservoirContext<R>,
+    depth: &Tensor<R>,
     quantity: &str,
-) -> Result<CpuTensor, ReservoirError> {
+) -> Result<Tensor<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     let c = &context.client;
     let result = c.mul(&context.area, depth)?;
     context.finite(&result, quantity)?;
@@ -47,11 +71,21 @@ pub(crate) fn volume(
     Ok(result)
 }
 
-pub(super) fn law(
-    context: &CpuReservoirContext,
-    excess: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<CpuTensor, ReservoirError> {
+pub(super) fn law<R>(
+    context: &TensorReservoirContext<R>,
+    excess: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<Tensor<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     let c = &context.client;
     let x = c.where_cond(active, excess, &context.zero)?;
     let power = c.pow_scalar(&x, EXPONENT)?;
@@ -69,11 +103,21 @@ pub(super) fn law(
     Ok(rate)
 }
 
-pub(super) fn residual(
-    context: &CpuReservoirContext,
-    x: &CpuTensor,
-    prepared: &DrainageBudget<'_>,
-) -> numr::error::Result<CpuTensor> {
+pub(super) fn residual<R>(
+    context: &TensorReservoirContext<R>,
+    x: &Tensor<R>,
+    prepared: &DrainageBudget<'_, R>,
+) -> numr::error::Result<Tensor<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     let c = &context.client;
     let x = c.where_cond(prepared.active(), x, &context.zero)?;
     let alpha = c.where_cond(prepared.active(), &context.alpha, &context.zero)?;
@@ -86,11 +130,21 @@ pub(super) fn residual(
     )
 }
 
-pub(super) fn candidate_depth(
-    context: &CpuReservoirContext,
-    prepared: &DrainageBudget<'_>,
-    upper: &CpuTensor,
-) -> Result<CpuTensor, ReservoirError> {
+pub(super) fn candidate_depth<R>(
+    context: &TensorReservoirContext<R>,
+    prepared: &DrainageBudget<'_, R>,
+    upper: &Tensor<R>,
+) -> Result<Tensor<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     let c = &context.client;
     let algebraic = c.where_cond(
         &context.instantaneous,

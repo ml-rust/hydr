@@ -104,7 +104,10 @@ fn actuated_frames_require_registered_order_identity_and_exact_accepted_time() -
 fn separately_reconstructed_and_cold_restored_frames_preserve_full_immutable_identity() -> Result {
     let fixture = Mixed::new()?;
     let source = &fixture.actuators[0];
-    let reconstructed_context = StructureBatch::new(fixture.context.elements().to_vec())?;
+    let reconstructed_context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        fixture.context.elements().to_vec(),
+    )?;
     let rebuilt = reconstructed_context.with_gate_actuators(
         source.definitions().to_vec(),
         source.initial_states().to_vec(),
@@ -170,7 +173,8 @@ fn matching_current_centers_do_not_waive_original_frame_definition_or_context_bi
             3 => elements[0].endpoint_b.push_str(" altered"),
             _ => return Err("Unknown frame-context mutation".into()),
         }
-        let context = StructureBatch::new(elements)?;
+        let context =
+            StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?;
         let foreign = context.with_gate_actuators(definitions, initial, schedule)?;
         assert_eq!(
             foreign.outputs()?[0].position.opening_m,
@@ -198,7 +202,10 @@ fn matching_current_centers_do_not_waive_original_frame_definition_or_context_bi
 
 #[test]
 fn numerically_equal_signed_zero_frame_and_query_times_keep_separate_original_receipts() -> Result {
-    let context = StructureBatch::new(vec![gate("gate")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("gate")?],
+    )?;
     for (frame_time, query_time) in [(-0.0, 0.0), (0.0, -0.0)] {
         let actual = actuator(&context, "gate", 0.0, 0.0, (0.0, 0.0), frame_time, 1.0)?;
         let registry = context.with_operating_sources(vec![OperatingSourceBinding::Actuated {
@@ -225,7 +232,10 @@ fn numerically_equal_signed_zero_frame_and_query_times_keep_separate_original_re
 
 #[test]
 fn raw_initial_clock_bits_remain_part_of_immutable_actuator_frame_identity() -> Result {
-    let context = StructureBatch::new(vec![gate("gate")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("gate")?],
+    )?;
     let registered = actuator(&context, "gate", 0.0, 0.0, (0.0, 0.0), -0.0, 1.0)?;
     let foreign = actuator(&context, "gate", 0.0, 0.0, (0.0, 0.0), 0.0, 1.0)?;
     let registry = context.with_operating_sources(vec![OperatingSourceBinding::Actuated {

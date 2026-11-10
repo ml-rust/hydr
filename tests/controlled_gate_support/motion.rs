@@ -270,7 +270,10 @@ fn rejected_old_target_endpoint_discards_a_successful_new_control_decision() -> 
 fn operating_sources_consume_actual_child_position_without_substituting_its_target() -> Result {
     let config = Config::switching();
     let context = config.context()?;
-    let batch = ControlledGateBatch::new(config.controls(&context)?, config.actuators(&context)?)?;
+    let batch = ControlledGateBatch::<crate::runtime::Runtime>::new(
+        config.controls(&context)?,
+        config.actuators(&context)?,
+    )?;
     let registry = context.with_operating_sources(vec![OperatingSourceBinding::Actuated {
         source_id: "controlled-response".into(),
         actuator: batch.actuators(),

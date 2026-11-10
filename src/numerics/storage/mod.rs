@@ -1,4 +1,4 @@
-//! Closed storage arithmetic and admission over configured persistent CPU tensors.
+//! Closed storage arithmetic and admission over configured persistent runtime tensors.
 
 pub(crate) mod accounting;
 mod admission;

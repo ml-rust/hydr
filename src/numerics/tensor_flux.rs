@@ -1,25 +1,36 @@
-//! Hydrostatic HLL calculations executed through numr CPU tensor operations.
+//! Hydrostatic HLL calculations executed through numr tensor operations.
 
-use super::tensor_types::{
-    CpuTensor, TensorFaceFlux, TensorFaceState, check_finite, check_state, constant,
-};
+use super::tensor_types::{TensorFaceFlux, TensorFaceState, check_finite, check_state, constant};
 use super::tensor_wave;
 use crate::solver::{EngineError, SolverConfig};
-use numr::prelude::{
-    BinaryOps, CompareOps, ConditionalOps, CpuClient, ReduceOps, ScalarOps, UnaryOps,
-};
+use numr::dtype::DType;
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
+use numr::runtime::{Device, Runtime, RuntimeClient};
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
 /// Compute batched fluxes from equal-length finite F64 face state arrays.
 ///
 /// The caller assigns face identities and rotates normal/tangent components for y-faces.
 /// Reflected input states implement walls. Positive films remain wet.
-pub(crate) fn hydrostatic_hll_tensor(
-    client: &CpuClient,
-    left: TensorFaceState,
-    right: TensorFaceState,
+pub(crate) fn hydrostatic_hll_tensor<R, C>(
+    client: &C,
+    left: TensorFaceState<R>,
+    right: TensorFaceState<R>,
     gravity: f64,
     config: &SolverConfig,
-) -> Result<TensorFaceFlux, EngineError> {
+) -> Result<TensorFaceFlux<R>, EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     calculate(client, &left, &right, gravity, config).map_err(|error| {
         EngineError::rejected(
             "tensor face flux",
@@ -32,13 +43,24 @@ pub(crate) fn hydrostatic_hll_tensor(
     })
 }
 
-fn calculate(
-    client: &CpuClient,
-    left: &TensorFaceState,
-    right: &TensorFaceState,
+fn calculate<R, C>(
+    client: &C,
+    left: &TensorFaceState<R>,
+    right: &TensorFaceState<R>,
     gravity: f64,
     config: &SolverConfig,
-) -> Result<TensorFaceFlux, EngineError> {
+) -> Result<TensorFaceFlux<R>, EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     if left.h.shape().len() != 1 {
         return Err(EngineError::rejected(
             "face inputs",
@@ -80,7 +102,7 @@ fn calculate(
     let fr = physical_flux(client, &r, gravity)?;
     let ul = [&l.h, &l.q_normal, &l.q_tangent];
     let ur = [&r.h, &r.q_normal, &r.q_tangent];
-    let component = |index| -> Result<CpuTensor, EngineError> {
+    let component = |index| -> Result<Tensor<R>, EngineError> {
         let middle = client.add(
             &client.add(&client.mul(&wl, &fl[index])?, &client.mul(&wr, &fr[index])?)?,
             &client.mul(&diffusion, &client.sub(ur[index], ul[index])?)?,
@@ -106,11 +128,20 @@ fn calculate(
     })
 }
 
-fn reconstruct(
-    client: &CpuClient,
-    state: &TensorFaceState,
-    bed: &CpuTensor,
-) -> Result<TensorFaceState, EngineError> {
+fn reconstruct<R, C>(
+    client: &C,
+    state: &TensorFaceState<R>,
+    bed: &Tensor<R>,
+) -> Result<TensorFaceState<R>, EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + UnaryOps<R>,
+{
     let zero = constant(&state.h, 0.0)?;
     let one = constant(&state.h, 1.0)?;
     let step = client.sub(bed, &state.bed)?;
@@ -127,12 +158,16 @@ fn reconstruct(
     })
 }
 
-fn pressure_correction(
-    client: &CpuClient,
-    h: &CpuTensor,
-    reconstructed: &CpuTensor,
+fn pressure_correction<R, C>(
+    client: &C,
+    h: &Tensor<R>,
+    reconstructed: &Tensor<R>,
     gravity: f64,
-) -> Result<CpuTensor, EngineError> {
+) -> Result<Tensor<R>, EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R> + BinaryOps<R> + CompareOps<R> + ConditionalOps<R> + ScalarOps<R>,
+{
     let correction = client.mul(
         &client.mul_scalar(&client.sub(h, reconstructed)?, 0.5 * gravity)?,
         &client.add(h, reconstructed)?,
@@ -144,11 +179,15 @@ fn pressure_correction(
     )?)
 }
 
-fn physical_flux(
-    client: &CpuClient,
-    state: &TensorFaceState,
+fn physical_flux<R, C>(
+    client: &C,
+    state: &TensorFaceState<R>,
     gravity: f64,
-) -> Result<[CpuTensor; 3], EngineError> {
+) -> Result<[Tensor<R>; 3], EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R> + BinaryOps<R> + CompareOps<R> + ConditionalOps<R> + ScalarOps<R>,
+{
     let wet = client.gt(&state.h, &constant(&state.h, 0.0)?)?;
     let denominator = client.where_cond(&wet, &state.h, &constant(&state.h, 1.0)?)?;
     let velocity = client.div(&state.q_normal, &denominator)?;
@@ -162,7 +201,11 @@ fn physical_flux(
     ])
 }
 
-fn state_summary(client: &CpuClient, state: &TensorFaceState) -> String {
+fn state_summary<R, C>(client: &C, state: &TensorFaceState<R>) -> String
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R> + ReduceOps<R>,
+{
     let mut result = format!("shape={:?}", state.h.shape());
     if state.h.shape().len() == 1 && state.h.numel() > 0 {
         for (name, value) in [
@@ -171,6 +214,10 @@ fn state_summary(client: &CpuClient, state: &TensorFaceState) -> String {
             ("qt", &state.q_tangent),
             ("bed", &state.bed),
         ] {
+            if !value.device().is_same(client.device()) {
+                result.push_str(&format!(" {name}=different device context"));
+                continue;
+            }
             let minimum = client.min(value, &[0], false).and_then(|x| x.item::<f64>());
             let maximum = client.max(value, &[0], false).and_then(|x| x.item::<f64>());
             result.push_str(&format!(" {name}=[{minimum:?},{maximum:?}]"));
@@ -182,13 +229,14 @@ fn state_summary(client: &CpuClient, state: &TensorFaceState) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use numr::prelude::{CpuDevice, CpuRuntime, Runtime};
+    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 
     #[test]
     fn tensor_batches_match_independent_scalar_face_arithmetic() -> Result<(), EngineError> {
         use crate::numerics::flux::{FaceState, WaveConfig, hydrostatic_hll};
         let device = CpuDevice::new();
-        let client = CpuRuntime::default_client(&device);
+        let client =
+            CpuClient::new(device.clone()).with_parallelism(ParallelismConfig::new(Some(1), None));
         let count = 48;
         let mut left = Vec::with_capacity(count);
         let mut right = Vec::with_capacity(count);
@@ -209,8 +257,9 @@ mod tests {
                 bed: 0.04 * (index % 3) as f64,
             });
         }
-        let tensor = |states: &[FaceState]| -> Result<TensorFaceState, EngineError> {
-            let make = |values: Vec<f64>| CpuTensor::from_slice(&values, &[count], &device);
+        let tensor = |states: &[FaceState]| -> Result<TensorFaceState<CpuRuntime>, EngineError> {
+            let make =
+                |values: Vec<f64>| Tensor::<CpuRuntime>::from_slice(&values, &[count], &device);
             Ok(TensorFaceState {
                 h: make(states.iter().map(|s| s.h).collect())?,
                 q_normal: make(states.iter().map(|s| s.q_normal).collect())?,
@@ -255,8 +304,8 @@ mod tests {
         q: f64,
         qt: f64,
         bed: f64,
-    ) -> Result<TensorFaceState, EngineError> {
-        let make = |x| CpuTensor::from_slice(&[x], &[1], device);
+    ) -> Result<TensorFaceState<CpuRuntime>, EngineError> {
+        let make = |x| Tensor::<CpuRuntime>::from_slice(&[x], &[1], device);
         Ok(TensorFaceState {
             h: make(h)?,
             q_normal: make(q)?,
@@ -268,7 +317,8 @@ mod tests {
     #[test]
     fn tensor_uniform_flow_transports_tangent_momentum() -> Result<(), EngineError> {
         let device = CpuDevice::new();
-        let client = CpuRuntime::default_client(&device);
+        let client =
+            CpuClient::new(device.clone()).with_parallelism(ParallelismConfig::new(Some(1), None));
         let result = hydrostatic_hll_tensor(
             &client,
             state(&device, 2.0, 6.0, -8.0, 0.0)?,
@@ -285,7 +335,8 @@ mod tests {
     #[test]
     fn tensor_compressed_films_have_ordered_finite_bounds() -> Result<(), EngineError> {
         let device = CpuDevice::new();
-        let client = CpuRuntime::default_client(&device);
+        let client =
+            CpuClient::new(device.clone()).with_parallelism(ParallelismConfig::new(Some(1), None));
         for (hl, ql, hr, qr) in [
             (
                 5.7660025090732485e-86,
@@ -321,7 +372,8 @@ mod tests {
     #[test]
     fn tensor_stepped_lake_retains_both_pressures() -> Result<(), EngineError> {
         let device = CpuDevice::new();
-        let client = CpuRuntime::default_client(&device);
+        let client =
+            CpuClient::new(device.clone()).with_parallelism(ParallelismConfig::new(Some(1), None));
         let result = hydrostatic_hll_tensor(
             &client,
             state(&device, 2.0, 0.0, 0.0, 0.0)?,
@@ -344,7 +396,8 @@ mod tests {
     #[test]
     fn tensor_dry_and_vacuum_bounds_cover_analytic_fronts() -> Result<(), EngineError> {
         let device = CpuDevice::new();
-        let client = CpuRuntime::default_client(&device);
+        let client =
+            CpuClient::new(device.clone()).with_parallelism(ParallelismConfig::new(Some(1), None));
         for (hl, ql, hr, qr, expected) in [
             (1.0, 0.0, 0.0, 0.0, 2.0 * 9.81_f64.sqrt()),
             (0.0, 0.0, 1.0, 0.0, 2.0 * 9.81_f64.sqrt()),
@@ -368,7 +421,8 @@ mod tests {
     #[test]
     fn tensor_root_iteration_exhaustion_returns_an_error() -> Result<(), EngineError> {
         let device = CpuDevice::new();
-        let client = CpuRuntime::default_client(&device);
+        let client =
+            CpuClient::new(device.clone()).with_parallelism(ParallelismConfig::new(Some(1), None));
         let config = SolverConfig {
             root_iterations: 1,
             ..SolverConfig::default()

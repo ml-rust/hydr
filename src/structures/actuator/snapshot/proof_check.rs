@@ -3,14 +3,16 @@
 use super::super::*;
 use super::compatibility::{as_definition, require};
 use super::receipt_bits::ReceiptBits;
-use crate::cpu::structures::actuator::{
-    CpuActuatorContext, CpuActuatorState, import_values, record::TensorRecord,
-};
 use crate::numerics::structures::actuator as math;
 use crate::structures::{StructureError, StructureLaw};
+use crate::tensor::structures::actuator::{
+    TensorActuatorContext, TensorActuatorState, import_values, record::TensorRecord,
+};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 use std::sync::Arc;
 
-fn hold(c: &CpuActuatorContext, i: usize) -> GateActuatorState {
+fn hold<R: Runtime<DType = DType>>(c: &TensorActuatorContext<R>, i: usize) -> GateActuatorState {
     GateActuatorState {
         actuator_id: c.definitions[i].actuator_id.clone(),
         anchor: GateActuatorAnchor {
@@ -40,15 +42,38 @@ fn hold(c: &CpuActuatorContext, i: usize) -> GateActuatorState {
         last_completion: None,
     }
 }
-fn arrival(c: &CpuActuatorContext, state: &mut CpuActuatorState) -> Result<(), StructureError> {
+fn arrival<R: Runtime<DType = DType>>(
+    c: &TensorActuatorContext<R>,
+    state: &mut TensorActuatorState<R>,
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     state.arrival =
         math::arrival::arrival(c, &state.anchor, &state.target).map_err(as_definition)?;
     Ok(())
 }
-pub(super) fn completions(
-    c: &CpuActuatorContext,
+pub(super) fn completions<R: Runtime<DType = DType>>(
+    c: &TensorActuatorContext<R>,
     receipts: &[Option<&GateActuatorCompletionReceipt>],
-) -> Result<(), StructureError> {
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     require(
         receipts.len() == c.definitions.len(),
         "retained actuator completion vector has incompatible length",
@@ -166,10 +191,20 @@ pub(super) fn completions(
     }
     Ok(())
 }
-pub(super) fn changes(
-    c: &Arc<CpuActuatorContext>,
+pub(super) fn changes<R: Runtime<DType = DType>>(
+    c: &Arc<TensorActuatorContext<R>>,
     rows: &[GateActuatorState],
-) -> Result<(), StructureError> {
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let previous = rows
         .iter()
         .map(|s| {
@@ -224,10 +259,20 @@ pub(super) fn changes(
     Ok(())
 }
 
-pub(super) fn anchors(
-    c: &CpuActuatorContext,
+pub(super) fn anchors<R: Runtime<DType = DType>>(
+    c: &TensorActuatorContext<R>,
     anchors: &[GateActuatorAnchor],
-) -> Result<(), StructureError> {
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     require(
         anchors.len() == c.definitions.len(),
         "imported actuator anchor vector has incompatible length",

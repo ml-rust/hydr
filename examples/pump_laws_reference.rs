@@ -1,5 +1,9 @@
 //! Public pump proposals for independently frozen exact-rational comparisons.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 #[path = "pump_laws_reference/fixtures.rs"]
 mod fixtures;
 
@@ -68,14 +72,17 @@ fn observe(output: &mut impl Write, case: &Case) -> Result<(), Box<dyn std::erro
             operating_envelope: EVIDENCE.into(),
         },
     )?;
-    let batch = StructureBatch::new(vec![StructureElement {
-        id: case.id.into(),
-        endpoint_a: "reference-a".into(),
-        endpoint_b: "reference-b".into(),
-        datum: DATUM.into(),
-        direction: DirectionPolicy::AtoBOnly,
-        law: StructureLaw::Pump(parameters),
-    }])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![StructureElement {
+            id: case.id.into(),
+            endpoint_a: "reference-a".into(),
+            endpoint_b: "reference-b".into(),
+            datum: DATUM.into(),
+            direction: DirectionPolicy::AtoBOnly,
+            law: StructureLaw::Pump(parameters),
+        }],
+    )?;
     let heads = [StructureHeads {
         structure_id: case.id.into(),
         endpoint_a: EndpointHead {

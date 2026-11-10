@@ -1,7 +1,7 @@
 use super::fixture::{Result, constant, curve, input, rejection, single, unit};
 use hydr::storage::{LevelPoolBatch, LevelPoolCurve, LevelPoolSnapshotData};
 
-fn history() -> Result<LevelPoolBatch> {
+fn history() -> Result<LevelPoolBatch<crate::runtime::Runtime>> {
     let mut batch = single(constant()?, 1.0)?;
     for end in [1.0, 2.0] {
         batch = batch.trial_to(end, &[input(0.2, 0.1)])?.into_next();

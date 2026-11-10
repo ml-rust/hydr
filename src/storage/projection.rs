@@ -1,17 +1,40 @@
 //! Explicit projection boundaries. Numerical continuation never consumes projected arrays.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::interpolate::Interp1dAlgorithms;
+
 use super::accounting::read;
 use super::batch::StoredStep;
 use super::{
     LevelPoolElementLedger, LevelPoolError, LevelPoolOutput, LevelPoolReceipt,
     LevelPoolStepDiagnostics,
 };
-use crate::cpu::level_pool::{CpuPoolContext, CpuPoolState};
+use crate::tensor::level_pool::{TensorPoolContext, TensorPoolState};
 
-pub(crate) fn outputs(
-    context: &CpuPoolContext,
-    state: &CpuPoolState,
-) -> Result<Vec<LevelPoolOutput>, LevelPoolError> {
+pub(crate) fn outputs<R>(
+    context: &TensorPoolContext<R>,
+    state: &TensorPoolState<R>,
+) -> Result<Vec<LevelPoolOutput>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let stage = crate::numerics::storage::curves::evaluate(context, &state.volume_m3)?;
     let n = context.elements.len();
     let volume = read(&state.volume_m3, n)?;
@@ -29,10 +52,25 @@ pub(crate) fn outputs(
         .collect())
 }
 
-pub(crate) fn ledgers(
-    context: &CpuPoolContext,
-    state: &CpuPoolState,
-) -> Result<Vec<LevelPoolElementLedger>, LevelPoolError> {
+pub(crate) fn ledgers<R>(
+    context: &TensorPoolContext<R>,
+    state: &TensorPoolState<R>,
+) -> Result<Vec<LevelPoolElementLedger>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let n = context.elements.len();
     let sources = super::source_projection::ledgers(context, state.sources.as_ref())?;
     let initial_volume_m3 = read(&state.initial_volume_m3, n)?;
@@ -60,10 +98,25 @@ pub(crate) fn ledgers(
         .collect())
 }
 
-pub(crate) fn step(
-    context: &CpuPoolContext,
-    stored: &StoredStep,
-) -> Result<LevelPoolStepDiagnostics, LevelPoolError> {
+pub(crate) fn step<R>(
+    context: &TensorPoolContext<R>,
+    stored: &StoredStep<R>,
+) -> Result<LevelPoolStepDiagnostics, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     crate::numerics::storage::check_step(context, &stored.step)?;
     let totals = super::accounting::step_totals(context, &stored.step)?;
     let source = super::source_projection::receipts(context, stored.step.source.as_ref())?;

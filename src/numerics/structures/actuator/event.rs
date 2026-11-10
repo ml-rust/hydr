@@ -1,16 +1,24 @@
 //! Scalar event reductions over complete batched original arrival certificates.
 
 use super::{arithmetic::not, evaluate::current_completion};
-use crate::cpu::structures::actuator::{CpuActuatorContext, CpuActuatorState};
 use crate::structures::{GateActuatorEvent, StructureError};
+use crate::tensor::structures::actuator::{TensorActuatorContext, TensorActuatorState};
+use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps};
+use numr::runtime::Runtime;
 
-pub(crate) fn next_event(
-    ctx: &CpuActuatorContext,
-    state: &CpuActuatorState,
+pub(crate) fn next_event<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    state: &TensorActuatorState<R>,
     time: f64,
     next_target: usize,
-) -> Result<Option<GateActuatorEvent>, StructureError> {
+) -> Result<Option<GateActuatorEvent>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>,
+{
     if time == ctx.schedule.end_s {
         return Ok(None);
     }

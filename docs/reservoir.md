@@ -107,7 +107,7 @@ No clipping or numerical water adjustment repairs rejected state. The caller can
 
 ## Persistent state and outputs
 
-The primitive keeps SI F64 tensors on an explicitly configured one-thread numr CPU client. Shared environment probes require round-to-nearest ties-to-even and gradual underflow. FTZ/DAZ execution is unsupported.
+The primitive keeps SI F64 `Tensor<R>` fields on a caller-configured Numr client. The checked CPU reference uses one thread. Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission). Shared environment probes require round-to-nearest ties-to-even and gradual underflow. FTZ/DAZ execution is unsupported.
 
 Trials borrow accepted state immutably. Rejection or discarding a trial preserves every depth, time, counter, and ledger. `into_next` accepts ownership without numerical readback or state reconstruction.
 
@@ -119,7 +119,7 @@ Trials borrow accepted state immutably. Rejection or discarding a trial preserve
 | Trial `diagnostics()` | Exact interval, root work, aggregate volumes/scales, and ordered receipts |
 | `ledger()` | Original/current storage, lifetime input/export, and cumulative residual |
 
-Receipts retain old depth, supply, active duration, root bracket, represented accepted depth, and export. They also retain law quantities, physical volumes, and independent residual scales. Numerical continuation never consumes projected receipt arrays.
+Array output methods return fallible projections. Receipts retain old depth, supply, active duration, root bracket, represented accepted depth, and export. They also retain law quantities, physical volumes, and independent residual scales. Numerical continuation never consumes projected receipt arrays.
 
 ## Complete restart and limits
 

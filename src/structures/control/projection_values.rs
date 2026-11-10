@@ -1,15 +1,17 @@
 //! Explicit finite tensor values for public continuation packages.
 
 use super::{ControlSample, ControlTimeExpansion, ControlTimerWitness};
-use crate::cpu::{
-    CpuTensor,
-    structures::control::{CpuControlContext, CpuControlSample, CpuControlTimer, MAX_EXACT_COUNT},
-};
 use crate::structures::StructureError;
+use crate::tensor::structures::control::{
+    MAX_EXACT_COUNT, TensorControlContext, TensorControlSample, TensorControlTimer,
+};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(super) fn read(
-    context: &CpuControlContext,
-    tensor: &CpuTensor,
+pub(super) fn read<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
+    tensor: &Tensor<R>,
 ) -> Result<Vec<f64>, StructureError> {
     crate::structures::projection::read(tensor, context.definitions.len())
 }
@@ -33,9 +35,9 @@ pub(super) struct SampleValues {
     stage: Vec<f64>,
 }
 impl SampleValues {
-    pub(super) fn new(
-        context: &CpuControlContext,
-        sample: &CpuControlSample,
+    pub(super) fn new<R: Runtime<DType = DType>>(
+        context: &TensorControlContext<R>,
+        sample: &TensorControlSample<R>,
     ) -> Result<Self, StructureError> {
         Ok(Self {
             valid: read(context, &sample.valid)?,
@@ -44,7 +46,11 @@ impl SampleValues {
             stage: read(context, &sample.stage)?,
         })
     }
-    pub(super) fn at(&self, context: &CpuControlContext, lane: usize) -> Option<ControlSample> {
+    pub(super) fn at<R: Runtime<DType = DType>>(
+        &self,
+        context: &TensorControlContext<R>,
+        lane: usize,
+    ) -> Option<ControlSample> {
         if self.valid[lane] == 0.0 {
             return None;
         }
@@ -74,9 +80,9 @@ pub(super) struct TimerValues {
     within: Vec<f64>,
 }
 impl TimerValues {
-    pub(super) fn new(
-        context: &CpuControlContext,
-        timer: &CpuControlTimer,
+    pub(super) fn new<R: Runtime<DType = DType>>(
+        context: &TensorControlContext<R>,
+        timer: &TensorControlTimer<R>,
     ) -> Result<Self, StructureError> {
         Ok(Self {
             active: read(context, &timer.active)?,

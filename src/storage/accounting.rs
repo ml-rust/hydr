@@ -1,10 +1,16 @@
 //! Aggregate reductions independent of per-element physical admission.
 
-use super::{LevelPoolError, LevelPoolTotals};
-use crate::cpu::{
-    CpuTensor,
-    level_pool::{CpuPoolContext, CpuPoolState, CpuPoolStep},
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
 };
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::interpolate::Interp1dAlgorithms;
+
+use super::{LevelPoolError, LevelPoolTotals};
+use crate::tensor::level_pool::{TensorPoolContext, TensorPoolState, TensorPoolStep};
 
 fn outward_add(a: f64, b: f64) -> Result<f64, LevelPoolError> {
     if a == 0.0 {
@@ -16,7 +22,22 @@ fn outward_add(a: f64, b: f64) -> Result<f64, LevelPoolError> {
     crate::soil::admission::upward_add(a, b).map_err(|e| LevelPoolError::numerical(e.to_string()))
 }
 
-fn reduction_bound(context: &CpuPoolContext, sums: &[f64]) -> Result<f64, LevelPoolError> {
+fn reduction_bound<R>(context: &TensorPoolContext<R>, sums: &[f64]) -> Result<f64, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let n = context.elements.len();
     if n <= 1 {
         return Ok(0.0);
@@ -55,21 +76,51 @@ fn reduction_bound(context: &CpuPoolContext, sums: &[f64]) -> Result<f64, LevelP
     Ok(total)
 }
 
-pub(crate) fn sum_bound(
-    context: &CpuPoolContext,
-    value: &CpuTensor,
+pub(crate) fn sum_bound<R>(
+    context: &TensorPoolContext<R>,
+    value: &Tensor<R>,
     quantity: &str,
-) -> Result<f64, LevelPoolError> {
+) -> Result<f64, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let sum = context.sum(value, quantity)?;
     outward_add(sum, reduction_bound(context, &[sum])?)
 }
 
-pub(crate) fn check_scalar(
-    context: &CpuPoolContext,
+pub(crate) fn check_scalar<R>(
+    context: &TensorPoolContext<R>,
     residual: f64,
     scale: f64,
     quantity: &str,
-) -> Result<(), LevelPoolError> {
+) -> Result<(), LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let tolerance = context.config.volume_absolute + context.config.volume_relative * scale;
     if !residual.is_finite()
         || !scale.is_finite()
@@ -83,10 +134,25 @@ pub(crate) fn check_scalar(
     Ok(())
 }
 
-pub(crate) fn totals(
-    context: &CpuPoolContext,
-    state: &CpuPoolState,
-) -> Result<LevelPoolTotals, LevelPoolError> {
+pub(crate) fn totals<R>(
+    context: &TensorPoolContext<R>,
+    state: &TensorPoolState<R>,
+) -> Result<LevelPoolTotals, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let initial = context.sum(&state.initial_volume_m3, "aggregate original volume")?;
     let volume = context.sum(&state.volume_m3, "aggregate current volume")?;
     let incoming = context.sum(
@@ -151,10 +217,25 @@ pub(crate) struct StepTotals {
     pub scale: f64,
     pub bound: f64,
 }
-pub(crate) fn step_totals(
-    context: &CpuPoolContext,
-    step: &CpuPoolStep,
-) -> Result<StepTotals, LevelPoolError> {
+pub(crate) fn step_totals<R>(
+    context: &TensorPoolContext<R>,
+    step: &TensorPoolStep<R>,
+) -> Result<StepTotals, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let before = context.sum(&step.old_volume_m3, "aggregate interval original volume")?;
     let after = context.sum(&step.volume_m3, "aggregate interval accepted volume")?;
     let incoming = context.sum(&step.incoming_volume_m3, "aggregate interval incoming")?;
@@ -193,7 +274,22 @@ pub(crate) fn step_totals(
     })
 }
 
-pub(crate) fn read(value: &CpuTensor, count: usize) -> Result<Vec<f64>, LevelPoolError> {
+pub(crate) fn read<R>(value: &Tensor<R>, count: usize) -> Result<Vec<f64>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     if value.shape() != [count] {
         return Err(LevelPoolError::numerical(format!(
             "projection shape={:?}: require {count} ordered pool values",

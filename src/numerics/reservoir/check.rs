@@ -1,18 +1,33 @@
 //! Primitive source-ledger checks composed with shared hydraulic admission.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use super::algebra::{self, Prepared};
 use super::drainage::{self, DrainageResult, DrainageRoot};
-use super::receipt::CpuReservoirStep;
-use crate::cpu::CpuTensor;
-use crate::cpu::reservoir_storage::CpuReservoirContext;
+use super::receipt::TensorReservoirStep;
 use crate::runoff::ReservoirError;
-use numr::ops::BinaryOps;
+use crate::tensor::reservoir_storage::TensorReservoirContext;
 
-pub(crate) fn check_step(
-    context: &CpuReservoirContext,
-    step: &CpuReservoirStep,
+pub(crate) fn check_step<R>(
+    context: &TensorReservoirContext<R>,
+    step: &TensorReservoirStep<R>,
     dt: f64,
-) -> Result<(), ReservoirError> {
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     for (name, value) in fields(step) {
         drainage::check_metadata(context, value, name)?;
         context.finite(value, name)?;
@@ -40,13 +55,23 @@ pub(crate) fn check_step(
     Ok(())
 }
 
-pub(super) fn finish(
-    context: &CpuReservoirContext,
-    prepared: Prepared<'_>,
-    old: &CpuTensor,
-    incoming: &CpuTensor,
-    drained: DrainageResult,
-) -> Result<CpuReservoirStep, ReservoirError> {
+pub(super) fn finish<R>(
+    context: &TensorReservoirContext<R>,
+    prepared: Prepared<'_, R>,
+    old: &Tensor<R>,
+    incoming: &Tensor<R>,
+    drained: DrainageResult<R>,
+) -> Result<TensorReservoirStep<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     let DrainageResult {
         lower,
         upper,
@@ -78,7 +103,7 @@ pub(super) fn finish(
         &context.one,
         "interval water residual",
     )?;
-    Ok(CpuReservoirStep {
+    Ok(TensorReservoirStep {
         old_depth: old.clone(),
         incoming_rate: incoming.clone(),
         incoming_depth: prepared.incoming_depth,
@@ -104,7 +129,17 @@ pub(super) fn finish(
     })
 }
 
-fn fields(step: &CpuReservoirStep) -> [(&str, &CpuTensor); 21] {
+fn fields<R>(step: &TensorReservoirStep<R>) -> [(&str, &Tensor<R>); 21]
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     [
         ("old depth", &step.old_depth),
         ("incoming rate", &step.incoming_rate),

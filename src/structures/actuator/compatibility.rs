@@ -1,14 +1,16 @@
 //! Exact immutable actuator identity shared by snapshots and source frames.
 
-use crate::cpu::structures::actuator::CpuActuatorContext;
 use crate::structures::identity::{bits, same_elements};
 use crate::structures::{
     GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule, StructureElement,
 };
+use crate::tensor::structures::actuator::TensorActuatorContext;
+use numr::dtype::DType;
+use numr::runtime::{Device, Runtime};
 use std::sync::Arc;
 
-pub(crate) fn same_original(
-    context: &CpuActuatorContext,
+pub(crate) fn same_original<R: Runtime<DType = DType>>(
+    context: &TensorActuatorContext<R>,
     elements: &[StructureElement],
     definitions: &[GateActuatorDefinition],
     initial: &[GateActuatorInitialState],
@@ -17,8 +19,8 @@ pub(crate) fn same_original(
     same_elements(&context.structures.elements, elements)
         && same_inputs(context, definitions, initial, schedule)
 }
-fn same_inputs(
-    context: &CpuActuatorContext,
+fn same_inputs<R: Runtime<DType = DType>>(
+    context: &TensorActuatorContext<R>,
     definitions: &[GateActuatorDefinition],
     initial: &[GateActuatorInitialState],
     schedule: &GateActuatorSchedule,
@@ -58,9 +60,13 @@ fn same_inputs(
         )
         && bits(&context.schedule.target_times_s, &schedule.target_times_s)
 }
-pub(crate) fn same_context(a: &Arc<CpuActuatorContext>, b: &Arc<CpuActuatorContext>) -> bool {
-    Arc::ptr_eq(a, b)
-        || ((Arc::ptr_eq(&a.structures, &b.structures)
-            || same_elements(&a.structures.elements, &b.structures.elements))
-            && same_inputs(a, &b.definitions, &b.initial_states, &b.schedule))
+pub(crate) fn same_context<R: Runtime<DType = DType>>(
+    a: &Arc<TensorActuatorContext<R>>,
+    b: &Arc<TensorActuatorContext<R>>,
+) -> bool {
+    a.structures.device.is_same(&b.structures.device)
+        && (Arc::ptr_eq(a, b)
+            || ((Arc::ptr_eq(&a.structures, &b.structures)
+                || same_elements(&a.structures.elements, &b.structures.elements))
+                && same_inputs(a, &b.definitions, &b.initial_states, &b.schedule)))
 }

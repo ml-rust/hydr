@@ -1,14 +1,26 @@
 use super::admission::reject_mask;
 use crate::numerics::tensor_types::{TensorFaceState, check_state, constant};
 use crate::solver::{BoundaryFace, EngineError, SolverConfig};
-use numr::prelude::{BinaryOps, CompareOps, ConditionalOps, CpuClient, ScalarOps, UnaryOps};
+use numr::dtype::DType;
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
+use numr::runtime::{Runtime, RuntimeClient};
 
-pub(crate) fn check_transmissive(
-    client: &CpuClient,
-    state: &TensorFaceState,
+pub(crate) fn check_transmissive<R, C>(
+    client: &C,
+    state: &TensorFaceState<R>,
     faces: &[BoundaryFace],
     config: &SolverConfig,
-) -> Result<(), EngineError> {
+) -> Result<(), EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>,
+{
     check_state(client, state, &[faces.len()])?;
     let zero = constant(&state.h, 0.0)?;
     let wet = client.gt(&state.h, &zero)?;

@@ -1,5 +1,9 @@
 //! Prescribed opening support, checked motion, and deferred structure operations.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "gate_trajectories/accuracy.rs"]
 mod accuracy;
 #[path = "gate_trajectories/admission.rs"]

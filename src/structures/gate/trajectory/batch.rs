@@ -1,28 +1,39 @@
 //! Immutable prescribed gate evaluation on the complete original structure context.
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::{
     GateTrajectoryAssignment, GateTrajectoryEvaluation, GateTrajectoryEvent,
     GateTrajectoryInterval, GateTrajectorySupport,
 };
 use super::{binding::GateTrajectoryData, evaluation::GateTrajectoryEvaluationData};
-use crate::cpu::structures::CpuStructureInput;
 use crate::structures::{
     StructureBatch, StructureElement, StructureError, StructureHeads, StructureInputErrorKind,
     StructureOperation, StructureProposal,
 };
+use crate::tensor::structures::TensorStructureInput;
 use std::sync::Arc;
 
 /// Persistent prescribed trajectories bound to complete original structure definitions.
 #[derive(Clone, Debug)]
-pub struct GateTrajectoryBatch {
-    pub(crate) inner: Arc<GateTrajectoryData>,
+pub struct GateTrajectoryBatch<R: Runtime<DType = DType>> {
+    pub(crate) inner: Arc<GateTrajectoryData<R>>,
 }
-impl StructureBatch {
+impl<R: Runtime<DType = DType>> StructureBatch<R> {
     /// Bind every gate exactly once in its original subsequence order.
     pub fn with_gate_trajectories(
         &self,
         assignments: Vec<GateTrajectoryAssignment>,
-    ) -> Result<GateTrajectoryBatch, StructureError> {
+    ) -> Result<GateTrajectoryBatch<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         Ok(GateTrajectoryBatch {
             inner: Arc::new(GateTrajectoryData::new(
                 Arc::clone(&self.context),
@@ -37,7 +48,17 @@ impl StructureBatch {
     pub fn with_gate_trajectory_subset(
         &self,
         assignments: Vec<GateTrajectoryAssignment>,
-    ) -> Result<GateTrajectoryBatch, StructureError> {
+    ) -> Result<GateTrajectoryBatch<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         Ok(GateTrajectoryBatch {
             inner: Arc::new(GateTrajectoryData::subset(
                 Arc::clone(&self.context),
@@ -46,7 +67,7 @@ impl StructureBatch {
         })
     }
 }
-impl GateTrajectoryBatch {
+impl<R: Runtime<DType = DType>> GateTrajectoryBatch<R> {
     /// Complete original law definitions.
     pub fn elements(&self) -> &[StructureElement] {
         &self.inner.context.elements
@@ -60,7 +81,20 @@ impl GateTrajectoryBatch {
         self.inner.support
     }
     /// Evaluate immutable point tensors with original support and explicit receipt admission.
-    pub fn evaluate(&self, time_s: f64) -> Result<GateTrajectoryEvaluation, StructureError> {
+    pub fn evaluate(&self, time_s: f64) -> Result<GateTrajectoryEvaluation<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::IndexingOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::ShapeOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>
+            + solvr::interpolate::LinearInterp1dDiagnostics<R>,
+    {
         super::events::check_query(self.inner.support, time_s)?;
         let (opening, absolute_error, input) =
             crate::numerics::structures::gate::trajectory::evaluate(
@@ -89,9 +123,24 @@ impl GateTrajectoryBatch {
         time_s: f64,
         heads: &[StructureHeads],
         other_operations: &[StructureOperation],
-    ) -> Result<StructureProposal, StructureError> {
+    ) -> Result<StructureProposal<R>, StructureError>
+    where
+        R::Client: numr::ops::CumulativeOps<R>
+            + numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::IndexingOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::ShapeOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>
+            + solvr::interpolate::Interp1dAlgorithms<R>
+            + solvr::interpolate::LinearInterp1dDiagnostics<R>,
+    {
         let evaluation = self.evaluate(time_s)?;
-        let input = CpuStructureInput::with_trajectory(
+        let input = TensorStructureInput::with_trajectory(
             &self.inner.context,
             heads,
             &evaluation.inner,

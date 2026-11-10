@@ -1,24 +1,39 @@
 //! Checked Linear point evaluation without derived-opening host projection.
-
-use crate::cpu::{
-    CpuTensor,
-    structures::{
-        CpuStructureContext,
-        gate::trajectory::{CpuTrajectoryContext, CpuTrajectoryInput},
-    },
-};
-use crate::structures::{GateTrajectoryAssignment, StructureError};
-use numr::ops::{IndexingOps, ShapeOps};
+use numr::ops::IndexingOps;
+use numr::ops::ShapeOps;
+use numr::{dtype::DType, runtime::Runtime};
 use solvr::interpolate::LinearInterp1dDiagnostics;
 
-pub(crate) fn evaluate(
-    context: &CpuStructureContext,
-    trajectory: &CpuTrajectoryContext,
+use crate::structures::{GateTrajectoryAssignment, StructureError};
+use crate::tensor::structures::{
+    TensorStructureContext,
+    gate::trajectory::{TensorTrajectoryContext, TensorTrajectoryInput},
+};
+use numr::tensor::Tensor;
+
+type TrajectoryPointTensors<R> = (Tensor<R>, Tensor<R>, TensorTrajectoryInput<R>);
+
+pub(crate) fn evaluate<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    trajectory: &TensorTrajectoryContext<R>,
     assignments: &[GateTrajectoryAssignment],
     slots: &[usize],
     time_s: f64,
-) -> Result<(CpuTensor, CpuTensor, CpuTrajectoryInput), StructureError> {
-    let input = CpuTrajectoryInput::new(context, assignments, slots, time_s)?;
+) -> Result<TrajectoryPointTensors<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::IndexingOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::ShapeOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>
+        + solvr::interpolate::LinearInterp1dDiagnostics<R>,
+{
+    let input = TensorTrajectoryInput::new(context, assignments, slots, time_s)?;
     let c = &context.client;
     let mut opening_parts = Vec::with_capacity(trajectory.curves.len());
     let mut error_parts = Vec::with_capacity(trajectory.curves.len());

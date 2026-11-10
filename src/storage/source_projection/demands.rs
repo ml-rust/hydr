@@ -1,8 +1,16 @@
 //! Explicit cap/counter projection helpers shared by complete source receipts.
 
-use crate::cpu::level_pool::{CpuPoolCap, CpuPoolCounter};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::interpolate::Interp1dAlgorithms;
+
 use crate::storage::accounting::read;
 use crate::storage::{LevelPoolCounterReceipt, LevelPoolDemandCapReceipt, LevelPoolError};
+use crate::tensor::level_pool::{TensorPoolCap, TensorPoolCounter};
 pub(super) struct CapVectors {
     potential_volume_m3: Vec<f64>,
     actual_volume_m3: Vec<f64>,
@@ -14,7 +22,22 @@ pub(super) struct CapVectors {
     availability_limited: Vec<f64>,
 }
 impl CapVectors {
-    pub(super) fn new(value: &CpuPoolCap, n: usize) -> Result<Self, LevelPoolError> {
+    pub(super) fn new<R>(value: &TensorPoolCap<R>, n: usize) -> Result<Self, LevelPoolError>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: BinaryOps<R>
+            + CompareOps<R>
+            + ConditionalOps<R>
+            + ReduceOps<R>
+            + ScalarOps<R>
+            + TypeConversionOps<R>
+            + UnaryOps<R>
+            + IndexingOps<R>
+            + ShapeOps<R>
+            + TwoSumOps<R>
+            + SortingOps<R>
+            + Interp1dAlgorithms<R>,
+    {
         Ok(Self {
             potential_volume_m3: read(&value.potential_volume_m3, n)?,
             actual_volume_m3: read(&value.actual_volume_m3, n)?,
@@ -47,7 +70,22 @@ pub(super) struct CounterVectors {
     bound_after_m3: Vec<f64>,
 }
 impl CounterVectors {
-    pub(super) fn new(value: &CpuPoolCounter, n: usize) -> Result<Self, LevelPoolError> {
+    pub(super) fn new<R>(value: &TensorPoolCounter<R>, n: usize) -> Result<Self, LevelPoolError>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: BinaryOps<R>
+            + CompareOps<R>
+            + ConditionalOps<R>
+            + ReduceOps<R>
+            + ScalarOps<R>
+            + TypeConversionOps<R>
+            + UnaryOps<R>
+            + IndexingOps<R>
+            + ShapeOps<R>
+            + TwoSumOps<R>
+            + SortingOps<R>
+            + Interp1dAlgorithms<R>,
+    {
         Ok(Self {
             before_m3: read(&value.before_m3, n)?,
             after_m3: read(&value.after_m3, n)?,

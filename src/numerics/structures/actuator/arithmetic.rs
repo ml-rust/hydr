@@ -1,10 +1,19 @@
 //! Shape-preserving outward arithmetic and checked exact expansions.
 
-use crate::cpu::{CpuTensor, structures::actuator::CpuActuatorContext};
 use crate::structures::StructureError;
+use crate::tensor::structures::actuator::TensorActuatorContext;
+use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, TwoSumOps, TypeConversionOps, UnaryOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(super) fn finite(ctx: &CpuActuatorContext, x: &CpuTensor) -> Result<CpuTensor, StructureError> {
+pub(super) fn finite<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    x: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R> + numr::ops::TypeConversionOps<R> + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     Ok(c.sub(
         &ctx.one,
@@ -14,38 +23,73 @@ pub(super) fn finite(ctx: &CpuActuatorContext, x: &CpuTensor) -> Result<CpuTenso
         )?,
     )?)
 }
-pub(super) fn bound(ctx: &CpuActuatorContext, x: &CpuTensor) -> Result<CpuTensor, StructureError> {
+pub(super) fn bound<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    x: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::ScalarOps<R> + numr::ops::UnaryOps<R>,
+{
     Ok(crate::numerics::subcatchment::bounds::rounding_with_client(
         &ctx.structures.client,
         x,
     )?)
 }
-pub(super) fn up(ctx: &CpuActuatorContext, x: &CpuTensor) -> Result<CpuTensor, StructureError> {
+pub(super) fn up<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    x: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R> + numr::ops::ScalarOps<R> + numr::ops::UnaryOps<R>,
+{
     Ok(ctx.structures.client.add(x, &bound(ctx, x)?)?)
 }
-pub(super) fn down(ctx: &CpuActuatorContext, x: &CpuTensor) -> Result<CpuTensor, StructureError> {
+pub(super) fn down<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    x: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R> + numr::ops::ScalarOps<R> + numr::ops::UnaryOps<R>,
+{
     Ok(ctx.structures.client.sub(x, &bound(ctx, x)?)?)
 }
-pub(super) fn not(ctx: &CpuActuatorContext, x: &CpuTensor) -> Result<CpuTensor, StructureError> {
+pub(super) fn not<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    x: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>,
+{
     Ok(ctx.structures.client.sub(&ctx.one, x)?)
 }
-pub(super) fn used(
-    ctx: &CpuActuatorContext,
-    active: &CpuTensor,
-    valid: &CpuTensor,
+pub(super) fn used<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    active: &Tensor<R>,
+    valid: &Tensor<R>,
     message: &str,
-) -> Result<(), StructureError> {
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R> + numr::ops::ReduceOps<R>,
+{
     ctx.reject(
         &ctx.structures.client.mul(active, &not(ctx, valid)?)?,
         message,
     )
 }
-pub(super) fn sum(
-    ctx: &CpuActuatorContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<(CpuTensor, CpuTensor), StructureError> {
+pub(super) fn sum<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<(Tensor<R>, Tensor<R>), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let a = c.where_cond(active, a, &ctx.zero)?;
     let b = c.where_cond(active, b, &ctx.zero)?;
@@ -65,12 +109,21 @@ pub(super) fn sum(
     )?;
     Ok((high, low))
 }
-pub(super) fn outward_add(
-    ctx: &CpuActuatorContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(super) fn outward_add<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let a = c.where_cond(active, a, &ctx.zero)?;
     let b = c.where_cond(active, b, &ctx.zero)?;
@@ -91,23 +144,42 @@ pub(super) fn outward_add(
     )?;
     Ok(value)
 }
-pub(super) fn difference_upper(
-    ctx: &CpuActuatorContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(super) fn difference_upper<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let (h, l) = sum(ctx, a, &c.neg(b)?, active)?;
     let padded = c.minimum(&up(ctx, &h)?, &ctx.maximum)?;
     Ok(c.where_cond(&c.gt(&l, &ctx.zero)?, &padded, &h)?)
 }
-pub(super) fn width(
-    ctx: &CpuActuatorContext,
-    lower: &CpuTensor,
-    upper: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<(CpuTensor, CpuTensor), StructureError> {
+pub(super) fn width<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    lower: &Tensor<R>,
+    upper: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<(Tensor<R>, Tensor<R>), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let (h, l) = sum(ctx, upper, &c.neg(lower)?, active)?;
     let valid = c.maximum(
@@ -122,11 +194,14 @@ pub(super) fn width(
     )?;
     Ok((h, l))
 }
-pub(super) fn count(
-    ctx: &CpuActuatorContext,
-    old: &CpuTensor,
-    increment: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(super) fn count<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    old: &Tensor<R>,
+    increment: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R> + numr::ops::CompareOps<R> + numr::ops::ReduceOps<R>,
+{
     let c = &ctx.structures.client;
     let next = c.add(old, increment)?;
     let absorbed = c.mul(&c.gt(increment, &ctx.zero)?, &c.le(&next, old)?)?;

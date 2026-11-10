@@ -1,9 +1,16 @@
 //! Explicit caller-boundary projections of accepted tensor receipts.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+
 use super::accounting::aggregate_step;
 use super::batch::StoredStep;
 use super::{ReservoirError, ReservoirReceipt, ReservoirStepDiagnostics};
-use crate::cpu::reservoir_storage::CpuReservoirContext;
+use crate::tensor::reservoir_storage::TensorReservoirContext;
 
 /// Raw element output for one represented accepted interval.
 #[derive(Clone, Debug, PartialEq)]
@@ -26,10 +33,21 @@ pub struct ReservoirOutput {
     pub constitutive_residual_m3: f64,
 }
 
-pub(super) fn project_step(
-    context: &CpuReservoirContext,
-    stored: &StoredStep,
-) -> Result<ReservoirStepDiagnostics, ReservoirError> {
+pub(super) fn project_step<R>(
+    context: &TensorReservoirContext<R>,
+    stored: &StoredStep<R>,
+) -> Result<ReservoirStepDiagnostics, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let step = &stored.step;
     let dt = stored.end - stored.start;
     crate::numerics::reservoir::check_step(context, step, dt)?;

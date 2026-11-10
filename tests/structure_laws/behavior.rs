@@ -21,7 +21,8 @@ fn mixed_layouts_preserve_every_positive_reference() -> Result {
                 ));
                 packets.push(heads(&id, row.high, row.low));
             }
-            let batch = StructureBatch::new(elements)?;
+            let batch =
+                StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?;
             let outputs = batch.propose(&packets)?.outputs()?;
             assert_eq!(outputs.len(), count);
             for (lane, output) in outputs.into_iter().enumerate() {
@@ -38,11 +39,14 @@ fn mixed_layouts_preserve_every_positive_reference() -> Result {
 
 #[test]
 fn tailwater_reduces_submerged_weir_discharge_and_preserves_free_limit() -> Result {
-    let batch = StructureBatch::new(vec![element(
-        "weir",
-        weir(1.7, 2.0, 10.0)?,
-        DirectionPolicy::Bidirectional,
-    )])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![element(
+            "weir",
+            weir(1.7, 2.0, 10.0)?,
+            DirectionPolicy::Bidirectional,
+        )],
+    )?;
     let mut previous = f64::INFINITY;
     for tailwater in [10.0, 10.25, 10.5, 10.75, 10.99] {
         let output = first(&batch.propose(&[heads("weir", 11.0, tailwater)])?)?;
@@ -54,11 +58,14 @@ fn tailwater_reduces_submerged_weir_discharge_and_preserves_free_limit() -> Resu
     assert_eq!(equal.regime, StructureRegime::EqualHeads);
     assert_eq!(equal.status, StructureStatus::PhysicalZero);
     assert_eq!(equal.discharge_m3_per_s, 0.0);
-    let batch = StructureBatch::new(vec![element(
-        "limit",
-        weir(1.0, 1.0, 0.0)?,
-        DirectionPolicy::Bidirectional,
-    )])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![element(
+            "limit",
+            weir(1.0, 1.0, 0.0)?,
+            DirectionPolicy::Bidirectional,
+        )],
+    )?;
     for tailwater in [0.0, f64::from_bits(1)] {
         close(
             first(&batch.propose(&[heads("limit", 1.0, tailwater)])?)?.discharge_m3_per_s,
@@ -77,11 +84,10 @@ fn rounded_depth_plateau_retains_original_positive_head_gap() -> Result {
             "weir_rounded_depth_plateau" | "weir_normalized_gap_underflow"
         )
     }) {
-        let batch = StructureBatch::new(vec![element(
-            row.id,
-            row.law,
-            DirectionPolicy::Bidirectional,
-        )])?;
+        let batch = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![element(row.id, row.law, DirectionPolicy::Bidirectional)],
+        )?;
         let output = first(&batch.propose(&[heads(row.id, row.high, row.low)])?)?;
         match output.hydraulic_operands {
             Some(StructureHydraulicOperands::SubmergedWeir {

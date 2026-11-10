@@ -63,18 +63,20 @@ pub fn build(
     rates: (f64, f64),
     times: &[f64],
     end: f64,
-) -> Result<GateActuatorBatch> {
-    Ok(
-        StructureBatch::new(vec![gate("gate", 1.0)?])?.with_gate_actuators(
-            vec![definition("actuator", "gate", rates.0, rates.1)],
-            vec![initial("actuator", opening, target)],
-            GateActuatorSchedule {
-                initial_time_s: 0.0,
-                target_times_s: times.to_vec(),
-                end_s: end,
-            },
-        )?,
-    )
+) -> Result<GateActuatorBatch<crate::runtime::Runtime>> {
+    Ok(StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("gate", 1.0)?],
+    )?
+    .with_gate_actuators(
+        vec![definition("actuator", "gate", rates.0, rates.1)],
+        vec![initial("actuator", opening, target)],
+        GateActuatorSchedule {
+            initial_time_s: 0.0,
+            target_times_s: times.to_vec(),
+            end_s: end,
+        },
+    )?)
 }
 
 pub fn update(time: f64, target: f64) -> GateTargetUpdate {
@@ -88,10 +90,10 @@ pub fn update(time: f64, target: f64) -> GateTargetUpdate {
 }
 
 pub fn walk(
-    mut batch: GateActuatorBatch,
+    mut batch: GateActuatorBatch<crate::runtime::Runtime>,
     end: f64,
     updates: &[GateTargetUpdate],
-) -> Result<GateActuatorBatch> {
+) -> Result<GateActuatorBatch<crate::runtime::Runtime>> {
     while let Some(event) = batch.next_event()? {
         assert!(
             event.time_s > batch.time(),
@@ -142,7 +144,11 @@ pub fn walk(
         .into_next())
 }
 
-pub fn frozen(id: &str, policy: &str, width: usize) -> Result<GateActuatorBatch> {
+pub fn frozen(
+    id: &str,
+    policy: &str,
+    width: usize,
+) -> Result<GateActuatorBatch<crate::runtime::Runtime>> {
     let case = reference_inputs::cases()
         .into_iter()
         .find(|case| case.id == id && case.policy == policy)
@@ -150,7 +156,10 @@ pub fn frozen(id: &str, policy: &str, width: usize) -> Result<GateActuatorBatch>
     Ok(reference_context::build(&case, width)?)
 }
 
-pub fn position(batch: &GateActuatorBatch, exact: f64) -> Result<GateActuatorOutput> {
+pub fn position(
+    batch: &GateActuatorBatch<crate::runtime::Runtime>,
+    exact: f64,
+) -> Result<GateActuatorOutput> {
     let output = batch
         .outputs()?
         .into_iter()
@@ -180,7 +189,7 @@ pub fn kind<T>(
 }
 
 pub fn malformed_restore(
-    destination: &mut GateActuatorBatch,
+    destination: &mut GateActuatorBatch<crate::runtime::Runtime>,
     data: &GateActuatorSnapshotData,
 ) -> Result {
     let before = destination.snapshot_data()?;
@@ -192,7 +201,7 @@ pub fn malformed_restore(
     Ok(())
 }
 
-pub fn mixed_context() -> Result<StructureBatch> {
+pub fn mixed_context() -> Result<StructureBatch<crate::runtime::Runtime>> {
     let passive = StructureElement {
         id: "weir".into(),
         endpoint_a: "reservoir".into(),
@@ -211,9 +220,8 @@ pub fn mixed_context() -> Result<StructureBatch> {
             },
         )?),
     };
-    Ok(StructureBatch::new(vec![
-        gate("gate-0", 1.0)?,
-        passive,
-        gate("gate-2", 1.0)?,
-    ])?)
+    Ok(StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("gate-0", 1.0)?, passive, gate("gate-2", 1.0)?],
+    )?)
 }

@@ -15,6 +15,6 @@ pub(crate) mod transfer;
 
 pub(crate) use admission::check_step;
 pub(crate) use step::{
-    CpuSubareaStep, CpuSubcatchmentSoilStep, CpuSubcatchmentStep, CpuSubcatchmentTotals,
+    TensorSubareaStep, TensorSubcatchmentSoilStep, TensorSubcatchmentStep, TensorSubcatchmentTotals,
 };
 pub(crate) use trial::{advance, initial_storage_scale_lower};

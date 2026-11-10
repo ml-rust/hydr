@@ -1,15 +1,33 @@
 //! Reconstruct checked receipt tensors without replaying reservoir integration.
 
-use super::restore::require;
-use crate::cpu::CpuTensor;
-use crate::cpu::reservoir_storage::CpuReservoirContext;
-use crate::numerics::reservoir::{CpuReservoirStep, check_step};
-use crate::runoff::{ReservoirError, ReservoirReceipt, ReservoirStepDiagnostics};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
-pub(super) fn import(
-    context: &CpuReservoirContext,
+use super::restore::require;
+use crate::numerics::reservoir::{TensorReservoirStep, check_step};
+use crate::runoff::{ReservoirError, ReservoirReceipt, ReservoirStepDiagnostics};
+use crate::tensor::reservoir_storage::TensorReservoirContext;
+
+pub(super) fn import<R>(
+    context: &TensorReservoirContext<R>,
     diagnostics: &ReservoirStepDiagnostics,
-) -> Result<CpuReservoirStep, ReservoirError> {
+) -> Result<TensorReservoirStep<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     require(
         diagnostics.receipts.len() == context.elements.len(),
         format!(
@@ -36,7 +54,7 @@ pub(super) fn import(
         .map_err(|error| error.at_element(index))?;
     }
     let tensor = |select| from_receipts(context, &diagnostics.receipts, select);
-    let step = CpuReservoirStep {
+    let step = TensorReservoirStep {
         old_depth: tensor(|r| r.old_depth_m)?,
         incoming_rate: tensor(|r| r.incoming_rate_m_per_s)?,
         incoming_depth: tensor(|r| r.incoming_depth_m)?,
@@ -64,11 +82,22 @@ pub(super) fn import(
     Ok(step)
 }
 
-fn from_receipts(
-    context: &CpuReservoirContext,
+fn from_receipts<R>(
+    context: &TensorReservoirContext<R>,
     receipts: &[ReservoirReceipt],
     select: fn(&ReservoirReceipt) -> f64,
-) -> Result<CpuTensor, ReservoirError> {
+) -> Result<Tensor<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let values: Vec<_> = receipts.iter().map(select).collect();
     context.tensor(&values)
 }

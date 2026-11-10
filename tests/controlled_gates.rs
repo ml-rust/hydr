@@ -1,5 +1,9 @@
 //! Atomic sampled commands, actual gate motion, and complete paired continuation.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "controlled_gate_support/admission.rs"]
 mod admission;
 #[path = "controlled_gate_support/fixture.rs"]

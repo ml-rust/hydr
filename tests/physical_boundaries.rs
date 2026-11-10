@@ -1,5 +1,9 @@
 //! Wet-subcritical stage/discharge, orientation, accounting, and transactional boundary checks.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "support/impervious.rs"]
 mod impervious;
 
@@ -55,7 +59,7 @@ fn solver(
     cells: Vec<CellState>,
     intervals: Vec<ForcingInterval>,
     config: SolverConfig,
-) -> Result<Solver, Box<dyn std::error::Error>> {
+) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let faces = intervals
         .first()
         .ok_or("missing forcing interval")?
@@ -133,14 +137,14 @@ fn matching_stage_preserves_a_stepped_lake_with_open_faces() -> TestResult {
         engine.advance_to(0.2, 10_000)?.status,
         AdvanceStatus::ReachedTarget
     );
-    for (actual, initial) in engine.state().cells().iter().zip(cells) {
+    for (actual, initial) in engine.state()?.cells().iter().zip(cells) {
         assert!((actual.h - initial.h).abs() <= 1e-11);
         assert!(actual.qx.abs() <= 1e-11 && actual.qy.abs() <= 1e-11);
     }
     assert!(engine.ledger().residual.abs() <= 1e-9 + 1e-12 * engine.ledger().storage.max(1.0));
     assert_eq!(
         engine
-            .last_step()
+            .last_step()?
             .ok_or("missing accepted step")?
             .boundary_traces
             .len(),
@@ -149,7 +153,11 @@ fn matching_stage_preserves_a_stepped_lake_with_open_faces() -> TestResult {
     Ok(())
 }
 
-fn uniform(discharge_mode: bool, u: f64, v: f64) -> Result<Solver, Box<dyn std::error::Error>> {
+fn uniform(
+    discharge_mode: bool,
+    u: f64,
+    v: f64,
+) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let faces = all_faces(1, 1);
     let data = faces
         .into_iter()
@@ -188,8 +196,8 @@ fn four_orientations_preserve_uniform_flow_and_exact_discharge_budgets() -> Test
         let mut rotated = uniform(discharge_mode, 0.2, 0.5)?;
         original.advance_to(0.2, 10_000)?;
         rotated.advance_to(0.2, 10_000)?;
-        let cell = original.state().cells()[0];
-        let turn = rotated.state().cells()[0];
+        let cell = original.state()?.cells()[0];
+        let turn = rotated.state()?.cells()[0];
         assert!((cell.h - 1.0).abs() <= 1e-11);
         assert!((cell.qx - 0.5).abs() <= 1e-11 && (cell.qy + 0.2).abs() <= 1e-11);
         assert!(
@@ -202,10 +210,10 @@ fn four_orientations_preserve_uniform_flow_and_exact_discharge_budgets() -> Test
             assert!((engine.ledger().boundary_out - 0.14).abs() <= 1e-12);
             assert_eq!(engine.ledger().water_adjustment, 0.0);
         }
-        let data = original.snapshot().data();
+        let data = original.snapshot().data()?;
         let mut restored = uniform(discharge_mode, 0.5, -0.2)?;
         restored.restore_data(&data)?;
-        assert_eq!(restored.snapshot(), original.snapshot());
+        assert_eq!(restored.snapshot().data()?, original.snapshot().data()?);
     }
     Ok(())
 }
@@ -313,7 +321,7 @@ fn inadmissible_boundary_trials_preserve_the_accepted_snapshot() -> TestResult {
         )?;
         let before = engine.snapshot();
         assert!(engine.advance_to(0.01, 1000).is_err());
-        assert_eq!(engine.snapshot(), before);
+        assert_eq!(engine.snapshot().data()?, before.data()?);
     }
     Ok(())
 }
@@ -325,7 +333,7 @@ fn boundary_source_retries_reproduce_direct_accepted_transport() -> TestResult {
         column: 1,
         row: 0,
     };
-    let create = |max_step| -> Result<Solver, Box<dyn std::error::Error>> {
+    let create = |max_step| -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
         let mut forcing = interval(0.0, 1.0, 1, vec![discharge(face, 0.8, None)]);
         forcing.withdrawal[0] = 1.0;
         solver(
@@ -345,7 +353,7 @@ fn boundary_source_retries_reproduce_direct_accepted_transport() -> TestResult {
     let mut retried = create(1.0)?;
     let report = retried.advance_to(1.0, 1)?;
     assert_eq!(report.status, AdvanceStatus::StepLimit);
-    let step = retried.last_step().ok_or("missing accepted retry")?;
+    let step = retried.last_step()?.ok_or("missing accepted retry")?;
     assert!(step.retries > 0 && step.dt < 1.0);
     let dt = step.dt;
     let mut direct = create(dt)?;
@@ -353,9 +361,9 @@ fn boundary_source_retries_reproduce_direct_accepted_transport() -> TestResult {
         direct.advance_to(dt, 1)?.status,
         AdvanceStatus::ReachedTarget
     );
-    assert_eq!(retried.state(), direct.state());
+    assert_eq!(retried.state()?, direct.state()?);
     assert_eq!(retried.ledger(), direct.ledger());
-    let direct_step = direct.last_step().ok_or("missing direct step")?;
+    let direct_step = direct.last_step()?.ok_or("missing direct step")?;
     assert_eq!(step.faces, direct_step.faces);
     assert_eq!(step.boundary_traces, direct_step.boundary_traces);
     Ok(())
@@ -365,14 +373,14 @@ fn boundary_source_retries_reproduce_direct_accepted_transport() -> TestResult {
 fn physical_boundary_restart_and_trace_import_remain_complete() -> TestResult {
     let mut source = uniform(true, 0.5, -0.2)?;
     source.advance_to(0.04, 10_000)?;
-    let checkpoint = source.snapshot().data();
+    let checkpoint = source.snapshot().data()?;
     let mut restored = uniform(true, 0.5, -0.2)?;
     restored.restore_data(&checkpoint)?;
     source.advance_to(0.08, 10_000)?;
     restored.advance_to(0.08, 10_000)?;
-    assert_eq!(source.snapshot(), restored.snapshot());
+    assert_eq!(source.snapshot().data()?, restored.snapshot().data()?);
     let accepted = restored.snapshot();
-    let valid = accepted.data();
+    let valid = accepted.data()?;
     let mut wrong_rate = valid.clone();
     wrong_rate
         .last_step
@@ -395,7 +403,7 @@ fn physical_boundary_restart_and_trace_import_remain_complete() -> TestResult {
         .err()
         .ok_or("contradictory boundary CFL was admitted")?;
     assert!(error.to_string().contains("boundary CFL"));
-    assert_eq!(restored.snapshot(), accepted);
+    assert_eq!(restored.snapshot().data()?, accepted.data()?);
     let mut wrong_config = valid.clone();
     wrong_config.setup.config.boundary.discharge_absolute = f64::from_bits(
         wrong_config
@@ -408,14 +416,18 @@ fn physical_boundary_restart_and_trace_import_remain_complete() -> TestResult {
     );
     for altered in [wrong_rate, duplicate, wrong_config] {
         assert!(restored.restore_data(&altered).is_err());
-        assert_eq!(restored.snapshot(), accepted);
+        assert_eq!(restored.snapshot().data()?, accepted.data()?);
     }
     let source = uniform(false, 0.0, 0.0)?;
     let mut signed_zero = uniform(false, 0.0, -0.0)?;
     let before = signed_zero.snapshot();
     assert!(signed_zero.restore(&source.snapshot()).is_err());
-    assert!(signed_zero.restore_data(&source.snapshot().data()).is_err());
-    assert_eq!(signed_zero.snapshot(), before);
+    assert!(
+        signed_zero
+            .restore_data(&source.snapshot().data()?)
+            .is_err()
+    );
+    assert_eq!(signed_zero.snapshot().data()?, before.data()?);
     Ok(())
 }
 
@@ -426,7 +438,7 @@ fn positive_film_inflow_preserves_primitive_tangent_in_checkpoint_diagnostics() 
         column: 0,
         row: 0,
     };
-    let create = || -> Result<Solver, Box<dyn std::error::Error>> {
+    let create = || -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
         solver(
             domain(1, 1, vec![0.0])?,
             vec![CellState {
@@ -451,8 +463,8 @@ fn positive_film_inflow_preserves_primitive_tangent_in_checkpoint_diagnostics() 
         source.advance_to(0.01, 100)?.status,
         AdvanceStatus::ReachedTarget
     );
-    assert!(source.state().cells()[0].h > 0.0);
-    let step = source.last_step().ok_or("missing accepted film step")?;
+    assert!(source.state()?.cells()[0].h > 0.0);
+    let step = source.last_step()?.ok_or("missing accepted film step")?;
     let trace = &step.boundary_traces[0];
     assert!(trace.outward_water_rate < 0.0);
     assert_eq!(trace.tangential_velocity.to_bits(), 1e-200_f64.to_bits());
@@ -466,9 +478,9 @@ fn positive_film_inflow_preserves_primitive_tangent_in_checkpoint_diagnostics() 
     let checkpoint = source.snapshot();
     let mut trusted = create()?;
     trusted.restore(&checkpoint)?;
-    assert_eq!(trusted.snapshot(), checkpoint);
+    assert_eq!(trusted.snapshot().data()?, checkpoint.data()?);
     let mut packaged = create()?;
-    packaged.restore_data(&checkpoint.data())?;
-    assert_eq!(packaged.snapshot(), checkpoint);
+    packaged.restore_data(&checkpoint.data()?)?;
+    assert_eq!(packaged.snapshot().data()?, checkpoint.data()?);
     Ok(())
 }

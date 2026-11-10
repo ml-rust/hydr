@@ -1,44 +1,59 @@
 //! Checked authoritative storage budget with caller-owned source timing.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use super::algebra;
-use crate::cpu::CpuTensor;
-use crate::cpu::reservoir_storage::CpuReservoirContext;
 use crate::runoff::ReservoirError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps};
+use crate::tensor::reservoir_storage::TensorReservoirContext;
 
 /// Construction binds checked masks and storage to one immutable numerical context.
 /// The budget borrows its context, preventing mutation or destruction before its last use.
 /// Callers can read receipt inputs but cannot replace budget invariants.
 #[derive(Debug, Clone)]
-pub(crate) struct DrainageBudget<'ctx> {
-    context: &'ctx CpuReservoirContext,
-    available: CpuTensor,
-    active: CpuTensor,
-    duration: CpuTensor,
-    excess: CpuTensor,
+pub(crate) struct DrainageBudget<'ctx, R: Runtime<DType = DType>> {
+    context: &'ctx TensorReservoirContext<R>,
+    available: Tensor<R>,
+    active: Tensor<R>,
+    duration: Tensor<R>,
+    excess: Tensor<R>,
     interval: f64,
 }
 
-impl DrainageBudget<'_> {
+impl<R> DrainageBudget<'_, R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     /// Authoritative represented storage budget, unchanged by drainage.
-    pub(crate) fn available_depth(&self) -> &CpuTensor {
+    pub(crate) fn available_depth(&self) -> &Tensor<R> {
         &self.available
     }
 
     /// Checked drainage duration, zero for inactive lanes.
-    pub(crate) fn active_duration(&self) -> &CpuTensor {
+    pub(crate) fn active_duration(&self) -> &Tensor<R> {
         &self.duration
     }
 
-    pub(super) fn context(&self) -> &CpuReservoirContext {
+    pub(super) fn context(&self) -> &TensorReservoirContext<R> {
         self.context
     }
 
-    pub(super) fn active(&self) -> &CpuTensor {
+    pub(super) fn active(&self) -> &Tensor<R> {
         &self.active
     }
 
-    pub(super) fn excess(&self) -> &CpuTensor {
+    pub(super) fn excess(&self) -> &Tensor<R> {
         &self.excess
     }
 
@@ -49,14 +64,22 @@ impl DrainageBudget<'_> {
 
 /// Use the supplied budget directly, including budgets below interval-start storage.
 /// The callback supplies active drainage time, without encoding sources as a rate.
-pub(crate) fn prepare_budget<'ctx, F>(
-    context: &'ctx CpuReservoirContext,
-    available: CpuTensor,
+pub(crate) fn prepare_budget<'ctx, R, F>(
+    context: &'ctx TensorReservoirContext<R>,
+    available: Tensor<R>,
     dt: f64,
     duration_fn: F,
-) -> Result<DrainageBudget<'ctx>, ReservoirError>
+) -> Result<DrainageBudget<'ctx, R>, ReservoirError>
 where
-    F: FnOnce(&CpuTensor) -> Result<CpuTensor, ReservoirError>,
+    F: FnOnce(&Tensor<R>) -> Result<Tensor<R>, ReservoirError>,
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
 {
     if !dt.is_finite() || dt <= 0.0 {
         return Err(ReservoirError::input(format!(

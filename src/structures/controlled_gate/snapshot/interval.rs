@@ -4,9 +4,11 @@ use super::super::ControlledGateBatch;
 use super::ControlledGateSnapshotData;
 use super::check::{bits, lane, require};
 use crate::structures::{StructureError, StructureInputErrorKind};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
-pub(super) fn check(
-    batch: &ControlledGateBatch,
+pub(super) fn check<R: Runtime<DType = DType>>(
+    batch: &ControlledGateBatch<R>,
     data: &ControlledGateSnapshotData,
 ) -> Result<(), StructureError> {
     match (&data.controls.last_step, &data.actuators.last_step) {

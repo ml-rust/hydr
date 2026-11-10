@@ -1,5 +1,9 @@
 //! Immutable contributing-support ownership and concrete forcing consumers.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "contributing_support/batches.rs"]
 mod batches;
 #[path = "contributing_support/consumers.rs"]

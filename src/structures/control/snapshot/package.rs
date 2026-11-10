@@ -5,6 +5,8 @@ use super::super::{
     OperatingControlBatch, OperatingControlDefinition, SampledControlTiming,
 };
 use crate::structures::{StructureElement, StructureError};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
 /// Complete caller-owned control continuation. Preserve every original F64 bit when encoding.
 #[derive(Clone, Debug, PartialEq)]
@@ -32,10 +34,10 @@ pub struct OperatingControlSnapshotData {
 }
 /// Trusted complete tensor clone without explicit projection or history chains.
 #[derive(Clone, Debug)]
-pub struct OperatingControlSnapshot {
-    pub(super) batch: OperatingControlBatch,
+pub struct OperatingControlSnapshot<R: Runtime<DType = DType>> {
+    pub(super) batch: OperatingControlBatch<R>,
 }
-impl OperatingControlSnapshot {
+impl<R: Runtime<DType = DType>> OperatingControlSnapshot<R> {
     /// Accepted snapshot time in seconds.
     pub fn time(&self) -> f64 {
         self.batch.time()
@@ -45,9 +47,9 @@ impl OperatingControlSnapshot {
         self.batch.snapshot_data()
     }
 }
-impl OperatingControlBatch {
+impl<R: Runtime<DType = DType>> OperatingControlBatch<R> {
     /// Clone complete trusted continuation without state projection.
-    pub fn snapshot(&self) -> OperatingControlSnapshot {
+    pub fn snapshot(&self) -> OperatingControlSnapshot<R> {
         OperatingControlSnapshot {
             batch: self.clone(),
         }

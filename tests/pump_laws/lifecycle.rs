@@ -8,7 +8,10 @@ fn immutable_proposals_preserve_original_operations_and_held_products() -> Resul
         .filter(|case| matches!(case.expected, "active" | "shutoff"))
     {
         for reverse in [false, true] {
-            let batch = StructureBatch::new(vec![definition(&case, case.id, reverse)?])?;
+            let batch = StructureBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
+                vec![definition(&case, case.id, reverse)?],
+            )?;
             let packets = [case_heads(&case, case.id, reverse)];
             let operations = [running(case.id, case.speed)];
             let proposal = batch.propose_with_operations(&packets, &operations)?;
@@ -63,7 +66,10 @@ fn held_positive_products_reject_overflow_and_underflow_without_changing_proposa
             .into_iter()
             .find(|case| case.id == id)
             .ok_or("Missing held product fixture")?;
-        let batch = StructureBatch::new(vec![definition(&case, id, false)?])?;
+        let batch = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![definition(&case, id, false)?],
+        )?;
         let proposal = batch
             .propose_with_operations(&[case_heads(&case, id, false)], &[running(id, case.speed)])?;
         let before = proposal.outputs()?;
@@ -155,6 +161,9 @@ fn curve_and_applicability_reject_undefined_physical_models() -> Result {
     );
     let mut wrong = standard("pump")?;
     wrong.direction = DirectionPolicy::Bidirectional;
-    assert!(StructureBatch::new(vec![wrong]).is_err());
+    assert!(
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), vec![wrong])
+            .is_err()
+    );
     Ok(())
 }

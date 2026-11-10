@@ -1,5 +1,9 @@
 //! Explicit gate operations, supported aperture geometry, and immutable proposals.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "gate_laws/admission.rs"]
 mod admission;
 #[path = "../examples/gate_laws_reference/comparison.rs"]

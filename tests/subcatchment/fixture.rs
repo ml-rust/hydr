@@ -45,8 +45,9 @@ pub fn single(
     parameters: SubcatchmentParameters,
     state: SubcatchmentState,
     config: SubcatchmentConfig,
-) -> Result<SubcatchmentBatch> {
-    Ok(SubcatchmentBatch::new(
+) -> Result<SubcatchmentBatch<crate::runtime::Runtime>> {
+    Ok(SubcatchmentBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         vec![SubcatchmentDefinition {
             id: "catchment".into(),
             parameters,

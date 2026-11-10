@@ -4,18 +4,26 @@ use super::{
     OperatingSourceBatch, OperatingSourceEvent, OperatingSourceEventKind,
     OperatingSourceEventOrigin, OperatingSourceFrame,
 };
-use crate::cpu::structures::operating_source::{CpuOperatingSourceKind, frames};
 use crate::structures::StructureError;
+use crate::tensor::structures::operating_source::{TensorOperatingSourceKind, frames};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
-impl OperatingSourceBatch {
+impl<R: Runtime<DType = DType>> OperatingSourceBatch<R> {
     /// Return the next strictly later common-supported event using only scalar actuator event reductions.
     ///
     /// Fresh frames must exist at this query. The result predicts no complete future actuator sequence.
     pub fn next_event_after(
         &self,
         time_s: f64,
-        source_frames: &[OperatingSourceFrame<'_>],
-    ) -> Result<Option<OperatingSourceEvent>, StructureError> {
+        source_frames: &[OperatingSourceFrame<'_, R>],
+    ) -> Result<Option<OperatingSourceEvent>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>,
+    {
         self.check_time(time_s)?;
         let frames = frames(&self.context, time_s, source_frames)?;
         let Some(support) = self.support() else {
@@ -29,8 +37,8 @@ impl OperatingSourceBatch {
         let mut next_frame = frames.into_iter();
         for group in &self.context.groups {
             let candidate = match &group.kind {
-                CpuOperatingSourceKind::Manual => None,
-                CpuOperatingSourceKind::Prescribed(source) => {
+                TensorOperatingSourceKind::Manual => None,
+                TensorOperatingSourceKind::Prescribed(source) => {
                     if time_s >= source.support.end_s {
                         None
                     } else {
@@ -41,7 +49,7 @@ impl OperatingSourceBatch {
                             .map(|&time_s| (time_s, OperatingSourceEventKind::PrescribedKnot))
                     }
                 }
-                CpuOperatingSourceKind::Actuated(_) => {
+                TensorOperatingSourceKind::Actuated(_) => {
                     let Some(OperatingSourceFrame::ActuatedGate { actuator, .. }) =
                         next_frame.next()
                     else {
@@ -61,7 +69,7 @@ impl OperatingSourceBatch {
                         )
                     })
                 }
-                CpuOperatingSourceKind::ControlledPump(_) => {
+                TensorOperatingSourceKind::ControlledPump(_) => {
                     let Some(OperatingSourceFrame::ControlledPump { pump, .. }) = next_frame.next()
                     else {
                         return Err(StructureError::numerical(

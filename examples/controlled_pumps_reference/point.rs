@@ -18,8 +18,8 @@ pub struct Query<'a> {
 pub fn observe(
     writer: &mut impl Write,
     frame: &Frame<'_>,
-    pump: &ControlledPumpBatch,
-    registry: &OperatingSourceBatch,
+    pump: &ControlledPumpBatch<crate::runtime::Runtime>,
+    registry: &OperatingSourceBatch<crate::runtime::Runtime>,
     query: Query<'_>,
 ) -> Result<Vec<String>> {
     let mut errors = Vec::new();
@@ -118,9 +118,13 @@ pub fn observe(
 pub fn restart(
     case: &Case,
     width: usize,
-    pump: ControlledPumpBatch,
+    pump: ControlledPumpBatch<crate::runtime::Runtime>,
     index: usize,
-) -> Result<(ControlledPumpBatch, &'static str, bool)> {
+) -> Result<(
+    ControlledPumpBatch<crate::runtime::Runtime>,
+    &'static str,
+    bool,
+)> {
     if index.is_multiple_of(3) {
         return Ok((pump, "Direct", true));
     }

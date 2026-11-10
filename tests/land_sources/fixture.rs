@@ -58,7 +58,7 @@ impl SourceCase {
         Self::new(domain, land, flow)
     }
 
-    pub fn build(self) -> Result<Solver> {
+    pub fn build(self) -> Result<Solver<crate::runtime::Runtime>> {
         let boundaries = BoundaryConditions::impermeable_walls();
         let forcing = ForcingSchedule::new(
             &self.domain,
@@ -72,7 +72,8 @@ impl SourceCase {
                 boundaries: vec![],
             }],
         )?;
-        Ok(Solver::new(
+        Ok(Solver::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
             SolverSetup {
                 domain: self.domain,
                 land: self.land,

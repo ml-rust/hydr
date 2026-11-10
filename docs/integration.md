@@ -19,23 +19,37 @@ Native workers call the library directly. No separate solver service is required
 
 | API | Required behaviour |
 | --- | --- |
-| `capabilities()` | Declare implemented equations, method, execution, sources, boundaries, and exclusions |
+| `capabilities()` | Declare the implemented method, selected-runtime arithmetic requirements, sources, boundaries, and numerical qualification exclusions |
 | `Domain::new` | Check geometry, array support, active terrain, roughness, and reference metadata |
 | `FlowState::new` | Check finite nonnegative depth, momentum, volume, and dry/inactive consistency |
 | `ForcingSchedule::new` | Check bounded contiguous intervals, explicit spatial rates, and complete open-face assignments |
 | `LandModel::new`, `SoilState::new` | Check explicit physical land and complete antecedent support |
-| `Solver::new(setup, initial)` | Check aggregate physical setup and complete flow/soil state, then cache numr CPU tensors |
+| `Solver::<R>::new(client, setup, initial)` | Check physical setup and initial state, then allocate `Tensor<R>` through the configured client |
 | `advance_to` | Report accepted time and completion, cancellation, or step-budget status |
 | `advance_controlled` | Check cancellation between steps and expose every accepted field to an observer |
-| `snapshot`, `restore` | Capture and restore every continuation-relevant value under an identical definition |
-| `Snapshot::data`, `restore_data` | Export/import a checked owned package for application-managed persistence |
-| `cell`, `cell_at` | Return supported containing-cell output without interpolation |
-| `ledger`, `last_step` | Expose cumulative budgets, interval diagnostics, and oriented face fluxes |
-| `soil_state` | Expose complete accepted native soil memory |
+| `snapshot`, `restore` | Retain tensor continuation without projection and reject incompatible definitions or device contexts |
+| `Snapshot::data`, `restore_data` | Fallibly export/import a checked owned package for application-managed persistence |
+| `state`, `cell`, `cell_at` | Fallibly project accepted fields or containing-cell output without interpolation |
+| `ledger`, `last_step` | Read scalar budgets or fallibly project detailed interval and face receipts |
+| `soil_state` | Fallibly project complete accepted native soil memory |
 
 Numerical errors preserve the last accepted step. Earlier accepted steps within an advancement call remain committed.
 Invalid targets reject before advancement. Cancellation and step-budget exhaustion return an incomplete horizon at accepted time.
 The caller checks `AdvanceStatus` before treating its requested horizon as complete.
+
+## Runtime selection and admission
+
+Tensor-bearing components use `R: Runtime<DType = DType>` and Numr `Tensor<R>` directly. Constructors receive the configured `R::Client`. Allocation derives from `client.device()`. Nested components reuse that client. Cross-context operations and trusted restoration check `Device::is_same`.
+
+- `cuda` and `wgpu` features expose the corresponding Numr and Solvr backend implementations.
+- Backend availability does not establish F64 precision, arithmetic contracts, or hydraulic qualification.
+- Construction checks `R::computes_float_dtype(DType::F64)` and the declared basic arithmetic contract before uploading F64 fields.
+- Arithmetic probes run on the selected client. Callers preserve nearest-even rounding and gradual underflow throughout continuation.
+- Gate actuators additionally require `FusedMulAddContract::Ieee754Fused`. Basic F64 support alone does not admit fused actuator calculations.
+- Unsupported precision or contracts return errors. No CPU fallback, host recomputation, or F32 substitution applies.
+- CPU F64 remains the checked numerical reference. These documents claim no GPU numerical qualification.
+
+Ordinary `advance_to` retains accepted flow, soil memory, and bounded detailed receipts as tensors. Scalar control and accounting reductions remain host-visible. `advance_controlled` explicitly requests accepted field and diagnostic projections. State, soil, cell, diagnostic, and owned-checkpoint projections return `Result` and report transfer errors.
 
 ## Boundary and source admission
 
@@ -93,13 +107,13 @@ The stored bound must agree within 64 epsilon relative rounding, without an abso
 Transmissive witnesses must satisfy their regime and physical flux checks. Exterior fluxes remain numerical Riemann fluxes.
 
 Immutable checkpoint identity includes floating-point bits, including signed zero.
-Exact restart requires the same build, dependency source, CPU execution envelope, and accepted-step partition.
+Exact restart requires the same build, dependency source, selected-runtime arithmetic envelope, and accepted-step partition.
 Different requested intermediate target times can change the step partition and numerical result.
 Cross-platform bitwise equality remains unsupported.
 
 The application workspace must supply its own Cargo patches for the checked numr and solvr sources.
 Cargo does not inherit dependency-local `.cargo/config.toml` files.
-Numerical calls use the configured CPU client even when another dependency enables numr's Rayon feature.
+Numerical calls use the caller's configured client. The CPU reference configures one thread explicitly, including under dependency feature unification.
 
 ## First supported integration milestone
 

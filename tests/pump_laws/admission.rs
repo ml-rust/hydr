@@ -3,7 +3,10 @@ use hydr::structures::*;
 
 #[test]
 fn operation_identity_and_law_are_explicit_before_physical_shortcuts() -> Result {
-    let batch = StructureBatch::new(vec![standard("first")?, standard("second")?])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![standard("first")?, standard("second")?],
+    )?;
     let packets = [heads("first", 0.0, 4.0), heads("second", 0.0, 4.0)];
     let operations = [running("first", 1.0), running("second", 1.0)];
     let error = rejection(batch.propose(&packets))?;
@@ -45,7 +48,8 @@ fn operation_identity_and_law_are_explicit_before_physical_shortcuts() -> Result
         )?),
         DirectionPolicy::Bidirectional,
     );
-    let passive = StructureBatch::new(vec![passive])?;
+    let passive =
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), vec![passive])?;
     kind(
         &passive,
         &[heads("passive", 0.0, 0.0)],
@@ -66,7 +70,10 @@ fn operation_identity_and_law_are_explicit_before_physical_shortcuts() -> Result
 
 #[test]
 fn running_shutoff_still_requires_known_wet_suction_and_receiver() -> Result {
-    let batch = StructureBatch::new(vec![standard("pump")?])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![standard("pump")?],
+    )?;
     for operation in [running("pump", 1.0), running("pump", 0.5)] {
         for (a, b, expected) in [
             (
@@ -112,7 +119,10 @@ fn running_shutoff_still_requires_known_wet_suction_and_receiver() -> Result {
 
 #[test]
 fn stopped_isolation_admits_uninfluential_support_but_checks_every_supplied_value() -> Result {
-    let batch = StructureBatch::new(vec![standard("pump")?])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![standard("pump")?],
+    )?;
     let stopped = operation("pump", StructureOperatingPoint::PumpStoppedIsolated);
     for packet in [
         packet("pump", HeadSupport::Unknown, HeadSupport::Unknown),
@@ -196,7 +206,8 @@ fn speed_policy_has_no_implicit_affinity_or_stopped_state() -> Result {
         )?),
         DirectionPolicy::AtoBOnly,
     );
-    let batch = StructureBatch::new(vec![reference])?;
+    let batch =
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), vec![reference])?;
     for speed in [0.0, -1.0, 0.5, 1.0_f64.next_up(), f64::INFINITY, f64::NAN] {
         kind(
             &batch,
@@ -220,7 +231,8 @@ fn speed_policy_has_no_implicit_affinity_or_stopped_state() -> Result {
         )?),
         DirectionPolicy::AtoBOnly,
     );
-    let batch = StructureBatch::new(vec![limited])?;
+    let batch =
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), vec![limited])?;
     for speed in [0.25, 4.0] {
         kind(
             &batch,

@@ -1,21 +1,31 @@
 //! Running wet support, strict suction, and declared speed admission before curve queries.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::{
-    CpuTensor,
-    structures::{
-        CpuStructureContext, CpuStructureInput,
-        pump::{CpuPumpContext, CpuPumpInput},
-    },
-};
 use crate::structures::{StructureError, StructureInputErrorKind};
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
+use crate::tensor::structures::{
+    TensorStructureContext, TensorStructureInput,
+    pump::{TensorPumpContext, TensorPumpInput},
+};
+use numr::tensor::Tensor;
 
-pub(super) fn heads(
-    context: &CpuStructureContext,
-    pump: &CpuPumpContext,
-    input: &CpuStructureInput,
-    operation: &CpuPumpInput,
-) -> Result<(CpuTensor, CpuTensor), StructureError> {
+pub(super) fn heads<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    pump: &TensorPumpContext<R>,
+    input: &TensorStructureInput<R>,
+    operation: &TensorPumpInput<R>,
+) -> Result<(Tensor<R>, Tensor<R>), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     let forward = c.gt(&pump.orientation, &context.zero)?;
     let donor = c.where_cond(&forward, &input.stage_a, &input.stage_b)?;

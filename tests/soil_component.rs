@@ -1,5 +1,9 @@
 //! Public soil lifecycle, native branch, unit bridge, and batch parity checks.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 use hydr::soil::{
     ModifiedGreenAmptBatch, ModifiedGreenAmptParameters, NativeSoilInput, NativeSoilState,
     SoilInput, SoilOutput,
@@ -28,10 +32,13 @@ fn input(rate: f64, depth: f64) -> NativeSoilInput {
 }
 
 fn run(
-    batch: &ModifiedGreenAmptBatch,
+    batch: &ModifiedGreenAmptBatch<crate::runtime::Runtime>,
     dt: f64,
     inputs: &[NativeSoilInput],
-) -> Result<(ModifiedGreenAmptBatch, Vec<SoilOutput>)> {
+) -> Result<(
+    ModifiedGreenAmptBatch<crate::runtime::Runtime>,
+    Vec<SoilOutput>,
+)> {
     let trial = batch.trial_native(dt, inputs)?;
     let outputs = trial.outputs()?;
     Ok((trial.into_next(), outputs))
@@ -49,7 +56,10 @@ fn checked_parameters_retain_source_order_and_explicit_initialization() -> Resul
     let p = parameters()?;
     let expected = 4.0 * (1e-5_f64 * 12.0 * 3600.0).sqrt() / 12.0;
     assert_eq!(p.upper_zone_depth_ft().to_bits(), expected.to_bits());
-    let batch = ModifiedGreenAmptBatch::initialized(&[p])?;
+    let batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::initialized(
+        crate::runtime::client(),
+        &[p],
+    )?;
     assert_eq!(
         batch.native_states()?,
         vec![NativeSoilState {
@@ -74,7 +84,13 @@ fn checked_parameters_retain_source_order_and_explicit_initialization() -> Resul
     ] {
         assert!(ModifiedGreenAmptParameters::from_native(s, k, d).is_err());
     }
-    assert!(ModifiedGreenAmptBatch::initialized(&[]).is_err());
+    assert!(
+        ModifiedGreenAmptBatch::<crate::runtime::Runtime>::initialized(
+            crate::runtime::client(),
+            &[]
+        )
+        .is_err()
+    );
     Ok(())
 }
 
@@ -92,14 +108,26 @@ fn exact_recovery_ceiling_admits_endpoint_and_rejects_next_float() -> Result {
         saturated: true,
         t_s: -20.0,
     };
-    ModifiedGreenAmptBatch::from_native_states(&[p], &[endpoint])?;
+    ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[p],
+        &[endpoint],
+    )?;
     let beyond = NativeSoilState {
         imd: ceiling.next_up(),
         ..endpoint
     };
-    assert!(ModifiedGreenAmptBatch::from_native_states(&[p], &[beyond]).is_err());
     assert!(
-        ModifiedGreenAmptBatch::from_native_states(
+        ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+            crate::runtime::client(),
+            &[p],
+            &[beyond]
+        )
+        .is_err()
+    );
+    assert!(
+        ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+            crate::runtime::client(),
             &[p],
             &[NativeSoilState {
                 fu_ft: p.capacity_ft().next_up(),
@@ -117,7 +145,11 @@ fn exact_recovery_ceiling_admits_endpoint_and_rejects_next_float() -> Result {
         saturated: false,
         t_s: 0.0,
     };
-    let batch = ModifiedGreenAmptBatch::from_native_states(&[tiny], &[initial])?;
+    let batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[tiny],
+        &[initial],
+    )?;
     let (next, _) = run(&batch, 1.0, &[input(0.0, 0.0)])?;
     assert!(next.native_states()?[0].imd <= tiny.recovered_deficit_ceiling());
     Ok(())
@@ -127,7 +159,11 @@ fn exact_recovery_ceiling_admits_endpoint_and_rejects_next_float() -> Result {
 fn saturated_dry_intervals_preserve_independent_memory() -> Result {
     let p = parameters()?;
     let initial = state(true);
-    let batch = ModifiedGreenAmptBatch::from_native_states(&[p], &[initial])?;
+    let batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[p],
+        &[initial],
+    )?;
     let (next, outputs) = run(&batch, 60.0, &[input(0.0, 0.0)])?;
     assert_eq!(outputs[0].native_rate_ft_per_s, 0.0);
     assert_eq!(
@@ -143,7 +179,10 @@ fn saturated_dry_intervals_preserve_independent_memory() -> Result {
 
 #[test]
 fn initialized_sequence_reaches_negative_event_memory() -> Result {
-    let mut batch = ModifiedGreenAmptBatch::initialized(&[parameters()?])?;
+    let mut batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::initialized(
+        crate::runtime::client(),
+        &[parameters()?],
+    )?;
     for (dt, rate) in [(60.0, 5e-6), (1.0, 0.0), (0.001, 1e-3), (60.0, 0.0)] {
         batch = run(&batch, dt, &[input(rate, 0.0)])?.0;
     }
@@ -159,7 +198,11 @@ fn legal_signed_event_logarithm_uses_native_minimum_fallback() -> Result {
         f_ft: -0.01,
         ..state(true)
     };
-    let batch = ModifiedGreenAmptBatch::from_native_states(&[p], &[initial])?;
+    let batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[p],
+        &[initial],
+    )?;
     let (next, outputs) = run(&batch, 60.0, &[input(0.001, 0.0)])?;
     let minimum = initial.f_ft + 1e-5 * 60.0;
     let df = minimum - initial.f_ft;
@@ -186,7 +229,11 @@ fn strict_saturation_supply_and_recovery_timer_boundaries() -> Result {
         saturated: true,
         t_s: 0.0,
     };
-    let batch = ModifiedGreenAmptBatch::from_native_states(&[p], &[initial])?;
+    let batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[p],
+        &[initial],
+    )?;
     let rate = 2.0_f64 / 1024.0;
     for (rain, saturated) in [
         (rate.next_down(), false),
@@ -198,7 +245,8 @@ fn strict_saturation_supply_and_recovery_timer_boundaries() -> Result {
     }
     let p = parameters()?;
     for timer in [60.0_f64.next_down(), 60.0, 60.0_f64.next_up()] {
-        let batch = ModifiedGreenAmptBatch::from_native_states(
+        let batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+            crate::runtime::client(),
             &[p],
             &[NativeSoilState {
                 t_s: timer,
@@ -218,7 +266,11 @@ fn availability_conductivity_and_positive_ponding_thresholds_preserve_branches()
         t_s: 1000.0,
         ..state(false)
     };
-    let batch = ModifiedGreenAmptBatch::from_native_states(&[p], &[initial])?;
+    let batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[p],
+        &[initial],
+    )?;
     let zero = 1e-10_f64;
     for (rain, dry) in [
         (zero.next_down(), true),
@@ -248,14 +300,21 @@ fn availability_conductivity_and_positive_ponding_thresholds_preserve_branches()
 #[test]
 fn immutable_trials_restart_and_si_bridge_preserve_complete_state() -> Result {
     let p = parameters()?;
-    let original = ModifiedGreenAmptBatch::initialized(&[p])?;
+    let original = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::initialized(
+        crate::runtime::client(),
+        &[p],
+    )?;
     let before = original.native_states()?;
     let (first, out) = run(&original, 60.0, &[input(1e-3, 0.0)])?;
     let (repeat, repeat_out) = run(&original, 60.0, &[input(1e-3, 0.0)])?;
     assert_eq!(out, repeat_out);
     assert_eq!(first.native_states()?, repeat.native_states()?);
     assert_eq!(original.native_states()?, before);
-    let restored = ModifiedGreenAmptBatch::from_native_states(&[p], &first.native_states()?)?;
+    let restored = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[p],
+        &first.native_states()?,
+    )?;
     let mut continued = first;
     let mut restarted = restored;
     for (dt, rate, depth) in [(600.0, 2e-4, 0.1), (3600.0, 0.0, 0.0), (60.0, 5e-6, 0.0)] {
@@ -312,11 +371,19 @@ fn mixed_simd_and_tail_batches_match_independent_components() -> Result {
             let params: Vec<_> = lanes.iter().map(|x| x.0).collect();
             let states: Vec<_> = lanes.iter().map(|x| x.1).collect();
             let inputs: Vec<_> = lanes.iter().map(|x| x.2).collect();
-            let batch = ModifiedGreenAmptBatch::from_native_states(&params, &states)?;
+            let batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+                crate::runtime::client(),
+                &params,
+                &states,
+            )?;
             let (next, outputs) = run(&batch, 60.0, &inputs)?;
             let next_states = next.native_states()?;
             for (i, (p, state, input)) in lanes.into_iter().enumerate() {
-                let one = ModifiedGreenAmptBatch::from_native_states(&[p], &[state])?;
+                let one = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+                    crate::runtime::client(),
+                    &[p],
+                    &[state],
+                )?;
                 let (single, out) = run(&one, 60.0, &[input])?;
                 let expected = single.native_states()?[0];
                 let actual = next_states[i];
@@ -340,7 +407,11 @@ fn mixed_simd_and_tail_batches_match_independent_components() -> Result {
 fn rejected_trial_preserves_all_state_fields_and_all_lanes() -> Result {
     let p = parameters()?;
     let states = [state(false), state(true)];
-    let batch = ModifiedGreenAmptBatch::from_native_states(&[p, p], &states)?;
+    let batch = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[p, p],
+        &states,
+    )?;
     for inputs in [
         vec![input(1e-3, 0.0)],
         vec![input(1e-3, 0.0), input(f64::NAN, 0.0)],
@@ -405,7 +476,11 @@ fn native_restart_preserves_signed_zero_memory_bits() -> Result {
             s.t_s.to_bits(),
         ]
     };
-    let original = ModifiedGreenAmptBatch::from_native_states(&[p], &[initial])?;
+    let original = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[p],
+        &[initial],
+    )?;
     assert_eq!(bits(original.native_states()?[0]), bits(initial));
     let next = run(&original, 1.0, &[input(-0.0, -0.0)])?.0;
     let expected = NativeSoilState {
@@ -414,7 +489,11 @@ fn native_restart_preserves_signed_zero_memory_bits() -> Result {
     };
     assert_eq!(bits(next.native_states()?[0]), bits(expected));
     assert!(!next.native_states()?[0].saturated);
-    let restarted = ModifiedGreenAmptBatch::from_native_states(&[p], &next.native_states()?)?;
+    let restarted = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[p],
+        &next.native_states()?,
+    )?;
     let continued = run(&next, 1.0, &[input(0.0, 0.0)])?;
     let restored = run(&restarted, 1.0, &[input(0.0, 0.0)])?;
     assert_eq!(

@@ -1,17 +1,21 @@
 use super::types::TensorBoundaryRequest;
-use crate::numerics::tensor_types::{
-    CpuTensor, TensorFaceState, any, check_finite, check_state, constant,
-};
+use crate::numerics::tensor_types::{TensorFaceState, any, check_finite, check_state, constant};
 use crate::solver::{BoundaryFace, EngineError};
 use numr::dtype::DType;
-use numr::prelude::{BinaryOps, CompareOps, CpuClient, ScalarOps};
+use numr::ops::{BinaryOps, CompareOps, ReduceOps, ScalarOps, UnaryOps};
+use numr::runtime::{Device, Runtime, RuntimeClient};
+use numr::tensor::Tensor;
 
-pub(super) fn check_inputs(
-    client: &CpuClient,
-    interior: &TensorFaceState,
-    request: &TensorBoundaryRequest,
+pub(super) fn check_inputs<R, C>(
+    client: &C,
+    interior: &TensorFaceState<R>,
+    request: &TensorBoundaryRequest<R>,
     faces: &[BoundaryFace],
-) -> Result<(), EngineError> {
+) -> Result<(), EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R> + BinaryOps<R> + CompareOps<R> + ReduceOps<R> + ScalarOps<R> + UnaryOps<R>,
+{
     if faces.is_empty() {
         return Err(EngineError::rejected(
             "boundary trace inputs",
@@ -26,6 +30,14 @@ pub(super) fn check_inputs(
         ("incoming tangent", &request.inflow_tangent),
         ("incoming tangent mask", &request.has_inflow_tangent),
     ] {
+        if !tensor.device().is_same(client.device()) {
+            return Err(EngineError::rejected(
+                "boundary trace inputs",
+                format!(
+                    "{name}: tensor belongs to another device context. Rebuild the request with the selected client"
+                ),
+            ));
+        }
         if tensor.shape() != [faces.len()] || tensor.dtype() != DType::F64 {
             return Err(EngineError::rejected(
                 "boundary trace inputs",
@@ -72,13 +84,17 @@ pub(super) fn check_inputs(
     Ok(())
 }
 
-pub(super) fn reject_mask(
-    client: &CpuClient,
-    mask: &CpuTensor,
+pub(super) fn reject_mask<R, C>(
+    client: &C,
+    mask: &Tensor<R>,
     faces: &[BoundaryFace],
     message: &str,
-    details: &[(&str, &CpuTensor)],
-) -> Result<(), EngineError> {
+    details: &[(&str, &Tensor<R>)],
+) -> Result<(), EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R> + ReduceOps<R>,
+{
     if !any(client, mask)? {
         return Ok(());
     }
@@ -90,7 +106,7 @@ pub(super) fn reject_mask(
         .ok_or_else(|| {
             EngineError::rejected(
                 "boundary trace",
-                "inconsistent reduction: inspect numr CPU comparisons",
+                "inconsistent reduction: inspect numr comparisons",
             )
         })?;
     let face = faces.get(lane).copied().ok_or_else(|| {

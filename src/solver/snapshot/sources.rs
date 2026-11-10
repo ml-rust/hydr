@@ -2,18 +2,33 @@
 
 use super::SnapshotData;
 use super::check::{nonnegative, rejected, require};
-use crate::cpu::CpuTensor;
 use crate::soil::LandCell;
 use crate::soil::admission::adjustment_volume_totals;
 use crate::solver::{EngineError, Solver, SourceReceipt, StepDiagnostics};
-use numr::runtime::cpu::CpuDevice;
+use numr::dtype::DType;
+use numr::runtime::{Runtime, RuntimeClient};
+use numr::tensor::Tensor;
 
-pub(super) fn check(
-    solver: &Solver,
+pub(super) fn check<R: Runtime<DType = DType>>(
+    solver: &Solver<R>,
     data: &SnapshotData,
     step: &StepDiagnostics,
     interval_index: usize,
-) -> Result<(), EngineError> {
+) -> Result<(), EngineError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::IndexingOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::UnaryOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::HypotOps<R>
+        + numr::ops::ShapeOps<R>
+        + solvr::optimize::roots::BatchedBisectionAlgorithms<R>
+        + solvr::optimize::roots::BatchedNewtonAlgorithms<R>,
+{
     let domain = &data.setup.domain;
     let count = domain.grid().cell_count();
     require(
@@ -46,9 +61,11 @@ pub(super) fn check(
         }
     }
     let area = domain.grid().cell_area();
-    let ponded = tensor(&step.sources, |r| r.ponded_depth_m)?;
+    let ponded = tensor::<R>(solver.context.client.device(), &step.sources, |r| {
+        r.ponded_depth_m
+    })?;
     let storage_before =
-        crate::cpu::land_sources::checked_volume(&solver.cpu.client, &ponded, area)?;
+        crate::tensor::land_sources::checked_volume(&solver.context.client, &ponded, area)?;
     require(
         step.storage_before == storage_before,
         "source starting storage",
@@ -80,16 +97,19 @@ pub(super) fn check(
             |r: &SourceReceipt| r.withdrawal_depth_m,
         ),
     ] {
-        let depth = tensor(&step.sources, select)?;
-        let expected = crate::cpu::land_sources::checked_volume(&solver.cpu.client, &depth, area)?;
+        let depth = tensor::<R>(solver.context.client.device(), &step.sources, select)?;
+        let expected =
+            crate::tensor::land_sources::checked_volume(&solver.context.client, &depth, area)?;
         require(
             expected.is_finite() && last == expected && cumulative >= last,
             "source volume",
             format!("{name}: last={last}, expected={expected}, cumulative={cumulative}"),
         )?;
     }
-    let adjustments = tensor(&step.sources, |r| r.water_adjustment_depth_m)?;
-    let (reported, charge) = adjustment_volume_totals(&solver.cpu.client, &adjustments, area)
+    let adjustments = tensor::<R>(solver.context.client.device(), &step.sources, |r| {
+        r.water_adjustment_depth_m
+    })?;
+    let (reported, charge) = adjustment_volume_totals(&solver.context.client, &adjustments, area)
         .map_err(|error| rejected("source adjustment", error.to_string()))?;
     require(
         step.soil_water_adjustment_volume == reported
@@ -255,14 +275,11 @@ fn check_local_depths(
     Ok(())
 }
 
-fn tensor(
+fn tensor<R: Runtime<DType = DType>>(
+    device: &R::Device,
     receipts: &[SourceReceipt],
     select: fn(&SourceReceipt) -> f64,
-) -> Result<CpuTensor, EngineError> {
+) -> Result<Tensor<R>, EngineError> {
     let values: Vec<_> = receipts.iter().map(select).collect();
-    Ok(CpuTensor::from_slice(
-        &values,
-        &[values.len()],
-        &CpuDevice::new(),
-    )?)
+    Ok(Tensor::<R>::from_slice(&values, &[values.len()], device)?)
 }

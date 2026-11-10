@@ -1,16 +1,35 @@
 //! Outward uncertainty and downward physical-throughput accounting.
 
-use crate::cpu::CpuTensor;
-use crate::cpu::reservoir_storage::CpuReservoirContext;
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use crate::runoff::ReservoirError;
 use crate::soil::admission;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
+use crate::tensor::reservoir_storage::TensorReservoirContext;
 
-pub(crate) fn check_nonnegative(
-    ctx: &CpuReservoirContext,
-    value: &CpuTensor,
+pub(crate) fn check_nonnegative<R>(
+    ctx: &TensorReservoirContext<R>,
+    value: &Tensor<R>,
     name: &str,
-) -> Result<(), ReservoirError> {
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     crate::numerics::reservoir::drainage::check_metadata(ctx, value, name)?;
     ctx.finite(value, name)?;
     ctx.reject_mask(
@@ -22,31 +41,61 @@ pub(crate) fn check_nonnegative(
     )
 }
 
-pub(crate) fn rounding(
-    ctx: &CpuReservoirContext,
-    value: &CpuTensor,
-) -> Result<CpuTensor, ReservoirError> {
+pub(crate) fn rounding<R>(
+    ctx: &TensorReservoirContext<R>,
+    value: &Tensor<R>,
+) -> Result<Tensor<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let bound = rounding_with_client(&ctx.client, value)?;
     ctx.finite(&bound, "arithmetic rounding bound")?;
     Ok(bound)
 }
 
 /// Reuse the rounding expression with a caller-specific shape and diagnostic context.
-pub(crate) fn rounding_with_client(
-    client: &numr::runtime::cpu::CpuClient,
-    value: &CpuTensor,
-) -> numr::error::Result<CpuTensor> {
+pub(crate) fn rounding_with_client<R>(
+    client: &R::Client,
+    value: &Tensor<R>,
+) -> numr::error::Result<Tensor<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: ScalarOps<R> + UnaryOps<R>,
+{
     client.add_scalar(
         &client.mul_scalar(&client.abs(value)?, f64::EPSILON)?,
         f64::from_bits(1),
     )
 }
 
-pub(crate) fn upward_add(
-    ctx: &CpuReservoirContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-) -> Result<CpuTensor, ReservoirError> {
+pub(crate) fn upward_add<R>(
+    ctx: &TensorReservoirContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+) -> Result<Tensor<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     check_nonnegative(ctx, a, "outward addition first operand")?;
     check_nonnegative(ctx, b, "outward addition second operand")?;
     let sum = ctx.client.add(a, b)?;
@@ -56,11 +105,24 @@ pub(crate) fn upward_add(
     Ok(result)
 }
 
-pub(crate) fn upward_mul(
-    ctx: &CpuReservoirContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-) -> Result<CpuTensor, ReservoirError> {
+pub(crate) fn upward_mul<R>(
+    ctx: &TensorReservoirContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+) -> Result<Tensor<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     check_nonnegative(ctx, a, "outward product first operand")?;
     check_nonnegative(ctx, b, "outward product second operand")?;
     let product = ctx.client.mul(a, b)?;
@@ -130,10 +192,23 @@ pub(crate) fn permitted_budget(
 }
 
 /// A flat configured CPU reduction with the existing N+7 addition bound.
-pub(crate) fn sum_lower(
-    ctx: &CpuReservoirContext,
-    values: &CpuTensor,
-) -> Result<f64, ReservoirError> {
+pub(crate) fn sum_lower<R>(
+    ctx: &TensorReservoirContext<R>,
+    values: &Tensor<R>,
+) -> Result<f64, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     check_nonnegative(ctx, values, "physical scale volumes")?;
     let count = values.numel();
     let sum = nonnegative(
@@ -167,10 +242,23 @@ pub(crate) fn sum_lower(
 }
 
 /// Positive lane charges always consume the cumulative bound after reduction.
-pub(crate) fn sum_upper(
-    ctx: &CpuReservoirContext,
-    values: &CpuTensor,
-) -> Result<f64, ReservoirError> {
+pub(crate) fn sum_upper<R>(
+    ctx: &TensorReservoirContext<R>,
+    values: &Tensor<R>,
+) -> Result<f64, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     check_nonnegative(ctx, values, "uncertainty charges")?;
     // Unit areas reuse the proved flat-reduction envelope without another algorithm.
     let (_, charge) = admission::AdjustmentReduction::new(values.numel())
@@ -180,20 +268,46 @@ pub(crate) fn sum_upper(
 }
 
 /// Avoid charging zeros while retaining an outward result for positive lanes.
-pub(crate) fn positive_charge(
-    ctx: &CpuReservoirContext,
-    active: &CpuTensor,
-    bound: &CpuTensor,
-) -> Result<CpuTensor, ReservoirError> {
+pub(crate) fn positive_charge<R>(
+    ctx: &TensorReservoirContext<R>,
+    active: &Tensor<R>,
+    bound: &Tensor<R>,
+) -> Result<Tensor<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     Ok(ctx.client.where_cond(active, bound, &ctx.zero)?)
 }
 
 /// Bound represented rainfall volume against the exact derived support area.
-pub(crate) fn rain_area_bound(
-    ctx: &CpuReservoirContext,
-    rain_depth: &CpuTensor,
-    area_error: &CpuTensor,
-) -> Result<CpuTensor, ReservoirError> {
+pub(crate) fn rain_area_bound<R>(
+    ctx: &TensorReservoirContext<R>,
+    rain_depth: &Tensor<R>,
+    area_error: &Tensor<R>,
+) -> Result<Tensor<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     check_nonnegative(ctx, rain_depth, "rain depth")?;
     check_nonnegative(ctx, area_error, "area rounding bound")?;
     let volume = ctx.client.mul(&ctx.area, rain_depth)?;

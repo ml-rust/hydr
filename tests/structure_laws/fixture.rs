@@ -67,7 +67,7 @@ pub fn heads(id: &str, a: f64, b: f64) -> StructureHeads {
     )
 }
 
-pub fn first(proposal: &StructureProposal) -> Result<StructureOutput> {
+pub fn first(proposal: &StructureProposal<crate::runtime::Runtime>) -> Result<StructureOutput> {
     proposal
         .outputs()?
         .into_iter()

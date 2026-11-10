@@ -122,7 +122,7 @@ pub fn opening(id: &str, opening_m: f64) -> StructureOperation {
     operation(id, StructureOperatingPoint::GateOpening { opening_m })
 }
 
-pub fn first(proposal: &StructureProposal) -> Result<StructureOutput> {
+pub fn first(proposal: &StructureProposal<crate::runtime::Runtime>) -> Result<StructureOutput> {
     proposal
         .outputs()?
         .into_iter()
@@ -138,7 +138,7 @@ pub fn rejection<T>(value: std::result::Result<T, StructureError>) -> Result<Str
 }
 
 pub fn kind(
-    batch: &StructureBatch,
+    batch: &StructureBatch<crate::runtime::Runtime>,
     packets: &[StructureHeads],
     operations: &[StructureOperation],
     expected: StructureInputErrorKind,

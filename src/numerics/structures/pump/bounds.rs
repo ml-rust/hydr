@@ -1,13 +1,26 @@
 //! Source-specific outward head-normalization bounds with exact zero identities.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::{CpuTensor, structures::CpuStructureContext};
 use crate::structures::StructureError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
+use crate::tensor::structures::TensorStructureContext;
+use numr::tensor::Tensor;
 
-pub(super) fn rounding(
-    context: &CpuStructureContext,
-    value: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(super) fn rounding<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    value: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     super::super::bounds::rounding(
         context,
         value,
@@ -15,11 +28,20 @@ pub(super) fn rounding(
     )
 }
 
-pub(super) fn add(
-    context: &CpuStructureContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(super) fn add<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     super::super::bounds::add(
         context,
         a,
@@ -28,11 +50,20 @@ pub(super) fn add(
     )
 }
 
-pub(super) fn divide(
-    context: &CpuStructureContext,
-    numerator: &CpuTensor,
-    denominator: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(super) fn divide<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    numerator: &Tensor<R>,
+    denominator: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     super::super::bounds::divide(
         context,
         numerator,
@@ -41,11 +72,20 @@ pub(super) fn divide(
     )
 }
 
-pub(super) fn interval(
-    context: &CpuStructureContext,
-    query: &CpuTensor,
-    bound: &CpuTensor,
-) -> Result<(CpuTensor, CpuTensor), StructureError> {
+pub(super) fn interval<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    query: &Tensor<R>,
+    bound: &Tensor<R>,
+) -> Result<(Tensor<R>, Tensor<R>), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     let has_bound = c.gt(bound, &context.zero)?;
     let center = c.where_cond(&has_bound, query, &context.zero)?;

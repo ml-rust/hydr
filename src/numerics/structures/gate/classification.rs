@@ -1,42 +1,55 @@
 //! Exact supported-head topology and crown-expansion comparisons before flow arithmetic.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::ops::ScalarOps;
+use numr::ops::TwoSumOps;
+use numr::ops::TypeConversionOps;
+use numr::ops::UnaryOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::{
-    CpuTensor,
-    structures::{
-        CpuStructureContext, CpuStructureInput, codes,
-        gate::{CpuGateContext, CpuGateInput},
-    },
-};
 use crate::structures::StructureError;
-use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, ScalarOps, TwoSumOps, TypeConversionOps, UnaryOps,
+use crate::tensor::structures::{
+    TensorStructureContext, TensorStructureInput, codes,
+    gate::{TensorGateContext, TensorGateInput},
 };
+use numr::tensor::Tensor;
 
-pub(super) struct Classification {
-    pub active: CpuTensor,
-    pub free: CpuTensor,
-    pub submerged: CpuTensor,
-    pub fully_submerged: CpuTensor,
-    pub donor_full: CpuTensor,
-    pub receiver_above: CpuTensor,
-    pub upper_positive: CpuTensor,
-    pub donor: CpuTensor,
-    pub receiver: CpuTensor,
-    pub crown_high: CpuTensor,
-    pub crown_low: CpuTensor,
-    pub crown_overflow: CpuTensor,
-    pub regime: CpuTensor,
-    pub status: CpuTensor,
-    pub direction: CpuTensor,
+pub(super) struct Classification<R: Runtime<DType = DType>> {
+    pub active: Tensor<R>,
+    pub free: Tensor<R>,
+    pub submerged: Tensor<R>,
+    pub fully_submerged: Tensor<R>,
+    pub donor_full: Tensor<R>,
+    pub receiver_above: Tensor<R>,
+    pub upper_positive: Tensor<R>,
+    pub donor: Tensor<R>,
+    pub receiver: Tensor<R>,
+    pub crown_high: Tensor<R>,
+    pub crown_low: Tensor<R>,
+    pub crown_overflow: Tensor<R>,
+    pub regime: Tensor<R>,
+    pub status: Tensor<R>,
+    pub direction: Tensor<R>,
 }
 
-fn at_or_above(
-    context: &CpuStructureContext,
-    stage: &CpuTensor,
-    high: &CpuTensor,
-    low: &CpuTensor,
-    overflow: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+fn at_or_above<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    stage: &Tensor<R>,
+    high: &Tensor<R>,
+    low: &Tensor<R>,
+    overflow: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     Ok(c.mul(
         &c.sub(&context.one, overflow)?,
@@ -47,12 +60,22 @@ fn at_or_above(
     )?)
 }
 
-pub(super) fn classify(
-    context: &CpuStructureContext,
-    gate: &CpuGateContext,
-    input: &CpuStructureInput,
-    operation: &CpuGateInput,
-) -> Result<Classification, StructureError> {
+pub(super) fn classify<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    gate: &TensorGateContext<R>,
+    input: &TensorStructureInput<R>,
+    operation: &TensorGateInput<R>,
+) -> Result<Classification<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     let open = c.mul(&gate.mask, &c.gt(&operation.opening, &context.zero)?)?;
     let invalid_dry = c.maximum(

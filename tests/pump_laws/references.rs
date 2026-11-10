@@ -98,7 +98,10 @@ fn exact_rational_corpus_preserves_discharge_domain_and_subtraction_witnesses() 
     for case in rows {
         for reverse in [false, true] {
             let definition = definition(&case, case.id, reverse)?;
-            let batch = StructureBatch::new(vec![definition])?;
+            let batch = StructureBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
+                vec![definition],
+            )?;
             let isolated = batch.propose_with_operations(
                 &[packet(case.id, HeadSupport::Unknown, HeadSupport::Unknown)],
                 &[operation(

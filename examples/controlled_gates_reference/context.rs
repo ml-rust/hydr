@@ -35,7 +35,7 @@ pub fn samples(case: &Case, width: usize, time: f64) -> Vec<ControlSample> {
 pub fn build(
     case: &Case,
     width: usize,
-) -> std::result::Result<ControlledGateBatch, StructureError> {
+) -> std::result::Result<ControlledGateBatch<crate::runtime::Runtime>, StructureError> {
     let elements = (0..width)
         .map(|lane| {
             Ok(StructureElement {
@@ -61,7 +61,8 @@ pub fn build(
             })
         })
         .collect::<std::result::Result<Vec<_>, StructureError>>()?;
-    let structures = StructureBatch::new(elements)?;
+    let structures =
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?;
     let times = case.decisions.iter().map(|d| d.time).collect::<Vec<_>>();
     let controls = structures.with_operating_controls(
         (0..width)
@@ -133,7 +134,7 @@ pub fn build(
             end_s: case.end,
         },
     )?;
-    ControlledGateBatch::new(controls, actuators)
+    ControlledGateBatch::<crate::runtime::Runtime>::new(controls, actuators)
 }
 pub fn category(error: &StructureError) -> String {
     match error {

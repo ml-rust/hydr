@@ -4,29 +4,32 @@ use super::{
     arithmetic::{not, used, width},
     forward::forward,
 };
-use crate::cpu::{
-    CpuTensor,
-    structures::actuator::{
-        CpuActuatorArrival, CpuActuatorCompletion, CpuActuatorContext, CpuActuatorForward,
-        CpuActuatorPosition, CpuActuatorState, record::TensorRecord,
-    },
-};
 use crate::structures::StructureError;
+use crate::tensor::structures::actuator::{
+    TensorActuatorArrival, TensorActuatorCompletion, TensorActuatorContext, TensorActuatorForward,
+    TensorActuatorPosition, TensorActuatorState, record::TensorRecord,
+};
+use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
-pub(crate) struct CpuActuatorEvaluation {
-    pub position: CpuActuatorPosition,
-    pub forward: CpuActuatorForward,
-    pub completion: Arc<CpuActuatorCompletion>,
-    pub completed: CpuTensor,
-    pub phase: CpuTensor,
+pub(crate) struct TensorActuatorEvaluation<R: Runtime<DType = DType>> {
+    pub position: TensorActuatorPosition<R>,
+    pub forward: TensorActuatorForward<R>,
+    pub completion: Arc<TensorActuatorCompletion<R>>,
+    pub completed: Tensor<R>,
+    pub phase: Tensor<R>,
 }
-pub(crate) fn current_completion(
-    ctx: &CpuActuatorContext,
-    state: &CpuActuatorState,
-) -> Result<CpuTensor, StructureError> {
+pub(crate) fn current_completion<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    state: &TensorActuatorState<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R> + numr::ops::CompareOps<R>,
+{
     let c = &ctx.structures.client;
     Ok(c.mul(
         &state.active_valid,
@@ -39,18 +42,24 @@ pub(crate) fn current_completion(
         )?,
     )?)
 }
-pub(crate) fn phase(
-    ctx: &CpuActuatorContext,
-    arrival: &CpuActuatorArrival,
+pub(crate) fn phase<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    arrival: &TensorActuatorArrival<R>,
     time: f64,
-) -> Result<CpuTensor, StructureError> {
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::CompareOps<R> + numr::ops::ConditionalOps<R>,
+{
     phase_at(ctx, arrival, &ctx.constant(time)?)
 }
-pub(crate) fn phase_at(
-    ctx: &CpuActuatorContext,
-    arrival: &CpuActuatorArrival,
-    t: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(crate) fn phase_at<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    arrival: &TensorActuatorArrival<R>,
+    t: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::CompareOps<R> + numr::ops::ConditionalOps<R>,
+{
     let c = &ctx.structures.client;
     let finite = c.eq(&arrival.kind, &ctx.one)?;
     let hold = c.eq(&arrival.kind, &ctx.zero)?;
@@ -74,18 +83,38 @@ pub(crate) fn phase_at(
         &c.where_cond(&hold, &ctx.constant(2.0)?, &absent)?,
     )?)
 }
-pub(crate) fn evaluate(
-    ctx: &CpuActuatorContext,
-    state: &CpuActuatorState,
+pub(crate) fn evaluate<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    state: &TensorActuatorState<R>,
     query: f64,
-) -> Result<CpuActuatorEvaluation, StructureError> {
+) -> Result<TensorActuatorEvaluation<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     evaluate_at(ctx, state, &ctx.constant(query)?)
 }
-pub(crate) fn evaluate_at(
-    ctx: &CpuActuatorContext,
-    state: &CpuActuatorState,
-    t: &CpuTensor,
-) -> Result<CpuActuatorEvaluation, StructureError> {
+pub(crate) fn evaluate_at<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    state: &TensorActuatorState<R>,
+    t: &Tensor<R>,
+) -> Result<TensorActuatorEvaluation<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let authority = current_completion(ctx, state)?;
     let finite = c.eq(&state.arrival.kind, &ctx.one)?;
@@ -121,7 +150,7 @@ pub(crate) fn evaluate_at(
     let effective_upper = c.minimum(&state.arrival.upper, t)?;
     let (wh, wl) = width(ctx, &state.arrival.lower, &effective_upper, &completed)?;
     let receipt_forward = c.mul(&completed, &c.mul(&singleton, &not(ctx, &analytic)?)?)?;
-    let candidate = CpuActuatorCompletion {
+    let candidate = TensorActuatorCompletion {
         valid: completed.clone(),
         episode: state.active_index.clone(),
         generation: state.generation.clone(),
@@ -132,28 +161,28 @@ pub(crate) fn evaluate_at(
         effective_upper,
         width_high: wh,
         width_low: wl,
-        forward: Arc::new(CpuActuatorForward::select(
+        forward: Arc::new(TensorActuatorForward::select(
             ctx,
             &receipt_forward,
             &forward,
-            &CpuActuatorForward::zero(ctx),
+            &TensorActuatorForward::zero(ctx),
         )?),
     };
-    let completion = Arc::new(CpuActuatorCompletion::select(
+    let completion = Arc::new(TensorActuatorCompletion::select(
         ctx,
         &completed,
         &candidate,
         &state.last_completion,
     )?);
     let complete = c.maximum(&known, &singleton)?;
-    let canonical = CpuActuatorPosition {
+    let canonical = TensorActuatorPosition {
         center: state.target.clone(),
         lower: state.target.clone(),
         upper: state.target.clone(),
         error: ctx.zero.clone(),
     };
-    let position = CpuActuatorPosition::select(ctx, &complete, &canonical, &forward.position)?;
-    Ok(CpuActuatorEvaluation {
+    let position = TensorActuatorPosition::select(ctx, &complete, &canonical, &forward.position)?;
+    Ok(TensorActuatorEvaluation {
         position,
         forward,
         completion,

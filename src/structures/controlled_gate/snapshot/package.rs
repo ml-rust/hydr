@@ -2,6 +2,8 @@
 
 use super::super::ControlledGateBatch;
 use crate::structures::{GateActuatorSnapshotData, OperatingControlSnapshotData, StructureError};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
 /// Complete caller-owned sampled controls and actual gate response continuation.
 ///
@@ -15,10 +17,10 @@ pub struct ControlledGateSnapshotData {
 }
 /// Trusted complete composite clone without numerical projection or recursive prior composites.
 #[derive(Clone, Debug)]
-pub struct ControlledGateSnapshot {
-    pub(super) batch: ControlledGateBatch,
+pub struct ControlledGateSnapshot<R: Runtime<DType = DType>> {
+    pub(super) batch: ControlledGateBatch<R>,
 }
-impl ControlledGateSnapshot {
+impl<R: Runtime<DType = DType>> ControlledGateSnapshot<R> {
     /// Common accepted snapshot time in seconds.
     pub fn time(&self) -> f64 {
         self.batch.time()
@@ -28,9 +30,9 @@ impl ControlledGateSnapshot {
         self.batch.snapshot_data()
     }
 }
-impl ControlledGateBatch {
+impl<R: Runtime<DType = DType>> ControlledGateBatch<R> {
     /// Clone both complete accepted children without derived-state array readback.
-    pub fn snapshot(&self) -> ControlledGateSnapshot {
+    pub fn snapshot(&self) -> ControlledGateSnapshot<R> {
         ControlledGateSnapshot {
             batch: self.clone(),
         }

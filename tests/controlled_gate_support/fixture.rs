@@ -45,13 +45,17 @@ impl Config {
         }
     }
 
-    pub fn context(&self) -> Result<StructureBatch> {
-        Ok(StructureBatch::new(
+    pub fn context(&self) -> Result<StructureBatch<crate::runtime::Runtime>> {
+        Ok(StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
             (0..self.width).map(gate).collect::<Result<Vec<_>>>()?,
         )?)
     }
 
-    pub fn controls(&self, context: &StructureBatch) -> Result<OperatingControlBatch> {
+    pub fn controls(
+        &self,
+        context: &StructureBatch<crate::runtime::Runtime>,
+    ) -> Result<OperatingControlBatch<crate::runtime::Runtime>> {
         Ok(context.with_operating_controls(
             (0..self.width)
                 .map(|lane| OperatingControlDefinition {
@@ -97,7 +101,10 @@ impl Config {
         )?)
     }
 
-    pub fn actuators(&self, context: &StructureBatch) -> Result<GateActuatorBatch> {
+    pub fn actuators(
+        &self,
+        context: &StructureBatch<crate::runtime::Runtime>,
+    ) -> Result<GateActuatorBatch<crate::runtime::Runtime>> {
         Ok(context.with_gate_actuators(
             (0..self.width)
                 .map(|lane| GateActuatorDefinition {
@@ -126,9 +133,9 @@ impl Config {
         )?)
     }
 
-    pub fn build(&self) -> Result<ControlledGateBatch> {
+    pub fn build(&self) -> Result<ControlledGateBatch<crate::runtime::Runtime>> {
         let context = self.context()?;
-        Ok(ControlledGateBatch::new(
+        Ok(ControlledGateBatch::<crate::runtime::Runtime>::new(
             self.controls(&context)?,
             self.actuators(&context)?,
         )?)
@@ -196,10 +203,10 @@ pub fn updates(width: usize, time: f64, target: f64) -> Vec<GateTargetUpdate> {
 }
 
 pub fn accept(
-    mut batch: ControlledGateBatch,
+    mut batch: ControlledGateBatch<crate::runtime::Runtime>,
     end: f64,
     stage: Option<f64>,
-) -> Result<ControlledGateBatch> {
+) -> Result<ControlledGateBatch<crate::runtime::Runtime>> {
     while let Some(event) = batch.next_event()? {
         if event.time_s >= end {
             break;
@@ -217,7 +224,7 @@ pub fn accept(
     Ok(batch.trial_to(end, &packets)?.into_next())
 }
 
-pub fn position(batch: &ControlledGateBatch, exact: f64) -> Result {
+pub fn position(batch: &ControlledGateBatch<crate::runtime::Runtime>, exact: f64) -> Result {
     for output in batch.actuators().outputs()? {
         assert!(output.position.lower_opening_m <= exact, "{output:?}");
         assert!(exact <= output.position.upper_opening_m, "{output:?}");
@@ -234,7 +241,7 @@ pub fn rejected<T>(result: std::result::Result<T, StructureError>) -> Result<Str
 }
 
 pub fn malformed_restore(
-    destination: &mut ControlledGateBatch,
+    destination: &mut ControlledGateBatch<crate::runtime::Runtime>,
     data: &ControlledGateSnapshotData,
 ) -> Result {
     let before = destination.snapshot_data()?;

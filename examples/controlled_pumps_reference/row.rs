@@ -74,7 +74,7 @@ fn csv(s: &str) -> String {
 pub fn rows(
     writer: &mut impl Write,
     frame: &Frame<'_>,
-    batch: &ControlledPumpBatch,
+    batch: &ControlledPumpBatch<crate::runtime::Runtime>,
     o: Observation<'_>,
 ) -> Result {
     let commands = batch.controls().commands()?;

@@ -90,13 +90,17 @@ Read [land sources](land-sources.md) for source order, native-state retention, r
 
 ## Execution and limitations
 
-State, geometry, forcing, indexing, flux evaluation, transport, source updates, and reductions execute through numr CPU tensors.
-numr owns scaled Euclidean magnitude. solvr owns generic bracket expansion and bisection.
+State, geometry, forcing, indexing, flux evaluation, transport, source updates, and reductions execute through Numr `Tensor<R>` fields.
+Constructors receive the configured `R::Client`. Allocation uses `client.device()`.
+Numr owns scaled Euclidean magnitude. Solvr owns generic bracket expansion and bisection.
 Hydr retains the physical residual, compression estimate, wet/dry branches, and wave-speed conversion.
-The cached CPU client requests one thread.
+The checked CPU F64 reference requests one thread at the caller boundary.
 Explicit client dispatch preserves that policy under downstream dependency feature unification.
-Accepted arrays project tensors for result access and checks. Numerical continuation uses the retained tensors.
-Snapshots share immutable storage. No solver operation mutates accepted tensors in place.
+Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission). Backend availability establishes no hydraulic qualification.
+Ordinary advancement retains flow, native soil memory, and bounded detailed receipts as tensors.
+Explicit state, soil, cell, observer, diagnostic, and owned-checkpoint requests perform fallible projections.
+Rejected-candidate diagnostics can project fields. Scalar control and accounting reductions remain permitted.
+Trusted snapshots share immutable tensor storage without projection. No solver operation mutates accepted tensors in place.
 
 Hydrostatic reconstruction has documented steep/shallow/coarse-grid artifacts.
 Two-wave HLL diffuses transverse transport. The complete application accuracy envelope remains unestablished.

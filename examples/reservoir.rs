@@ -1,5 +1,9 @@
 //! Advances explicit instantaneous overflow and reports conservative interval volumes.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 use hydr::runoff::{
     ReservoirBatch, ReservoirConfig, ReservoirElement, ReservoirInput, ReservoirParameters,
     ReservoirState,
@@ -8,7 +12,8 @@ use hydr::runoff::{
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let parameters =
         ReservoirParameters::from_native(1024.0, 1024.0, 32.0, 1.0 / 64.0, 0.0, 0.125)?;
-    let accepted = ReservoirBatch::new(
+    let accepted = ReservoirBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         vec![ReservoirElement {
             id: "storage-a".into(),
             parameters,

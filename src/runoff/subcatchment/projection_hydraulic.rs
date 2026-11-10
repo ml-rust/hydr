@@ -1,14 +1,38 @@
 //! One-time projections of nested receiver, drainage, and partition tensors.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::{
     SubcatchmentBridgeReceipt, SubcatchmentDrainageReceipt, SubcatchmentError,
     SubcatchmentPartitionReceipt,
 };
-use crate::cpu::CpuTensor;
-use crate::cpu::subcatchment::CpuSubareaGroup;
-use crate::numerics::subcatchment::CpuSubareaStep;
+use crate::numerics::subcatchment::TensorSubareaStep;
+use crate::tensor::subcatchment::TensorSubareaGroup;
 
-pub(super) fn read(tensor: &CpuTensor, count: usize) -> Result<Vec<f64>, SubcatchmentError> {
+pub(super) fn read<R>(tensor: &Tensor<R>, count: usize) -> Result<Vec<f64>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let values = tensor.try_to_vec::<f64>()?;
     if values.len() != count {
         return Err(SubcatchmentError::numerical(
@@ -18,10 +42,25 @@ pub(super) fn read(tensor: &CpuTensor, count: usize) -> Result<Vec<f64>, Subcatc
     Ok(values)
 }
 
-pub(super) fn bridges(
-    step: &CpuSubareaStep,
+pub(super) fn bridges<R>(
+    step: &TensorSubareaStep<R>,
     n: usize,
-) -> Result<Vec<SubcatchmentBridgeReceipt>, SubcatchmentError> {
+) -> Result<Vec<SubcatchmentBridgeReceipt>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let b = &step.bridge;
     let fields = [
         &step.merged.volume,
@@ -63,10 +102,25 @@ pub(super) fn bridges(
         .collect())
 }
 
-pub(super) fn drainage(
-    group: &CpuSubareaGroup,
-    step: &CpuSubareaStep,
-) -> Result<Vec<SubcatchmentDrainageReceipt>, SubcatchmentError> {
+pub(super) fn drainage<R>(
+    group: &TensorSubareaGroup<R>,
+    step: &TensorSubareaStep<R>,
+) -> Result<Vec<SubcatchmentDrainageReceipt>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let d = &step.drainage;
     let n = group.slots.len();
     let fields = [
@@ -112,10 +166,25 @@ pub(super) fn drainage(
         .collect())
 }
 
-pub(super) fn partitions(
-    group: &CpuSubareaGroup,
-    step: &CpuSubareaStep,
-) -> Result<Vec<SubcatchmentPartitionReceipt>, SubcatchmentError> {
+pub(super) fn partitions<R>(
+    group: &TensorSubareaGroup<R>,
+    step: &TensorSubareaStep<R>,
+) -> Result<Vec<SubcatchmentPartitionReceipt>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let n = group.slots.len();
     let p = &step.partition;
     let fields = [

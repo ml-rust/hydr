@@ -1,5 +1,9 @@
 //! Advances a synthetic impermeable basin with explicitly supplied rainfall.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::soil::{LandModel, SoilState};
@@ -39,7 +43,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let land = LandModel::impervious(&domain);
     let soil = SoilState::initialized(&land)?;
-    let mut solver = Solver::new(
+    let mut solver = Solver::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         SolverSetup {
             domain,
             land,

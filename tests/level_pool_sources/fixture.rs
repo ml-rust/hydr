@@ -39,8 +39,12 @@ pub fn policy() -> LevelPoolSourcePolicy {
     }
 }
 
-pub fn enabled(curve: LevelPoolCurve, volume_m3: f64) -> Result<LevelPoolBatch> {
-    Ok(LevelPoolBatch::new_with_sources(
+pub fn enabled(
+    curve: LevelPoolCurve,
+    volume_m3: f64,
+) -> Result<LevelPoolBatch<crate::runtime::Runtime>> {
+    Ok(LevelPoolBatch::<crate::runtime::Runtime>::new_with_sources(
+        crate::runtime::client(),
         vec![element("pool", curve)],
         vec![LevelPoolState { volume_m3 }],
         0.0,

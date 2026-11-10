@@ -129,7 +129,9 @@ fn mixed_law_motion_and_accuracy_errors_keep_original_element_indices() -> Resul
                     });
                 }
             }
-            let result = StructureBatch::new(elements)?.with_gate_trajectories(assigned);
+            let result =
+                StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?
+                    .with_gate_trajectories(assigned);
             if offset == 0 {
                 fixture::expect_error(result, "Numerical", Some(slot))?;
             } else {
@@ -178,7 +180,9 @@ fn later_runtime_error_groups_report_their_first_original_element() -> Result {
                 });
             }
         }
-        let batch = StructureBatch::new(elements)?.with_gate_trajectories(assigned)?;
+        let batch =
+            StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?
+                .with_gate_trajectories(assigned)?;
         fixture::expect_error(
             batch.evaluate(reference.queries[0].time),
             "Runtime",

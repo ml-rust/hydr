@@ -1,4 +1,4 @@
-//! Explicit typed structure-law evaluation on configured Numr CPU tensors.
+//! Explicit typed structure-law evaluation on configured Numr runtime tensors.
 
 mod admission;
 mod bounds;

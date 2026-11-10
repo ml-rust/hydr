@@ -1,24 +1,39 @@
 //! Primitive nonnegative-source preparation and its unchanged filling event.
 
-use super::drainage::{self, DrainageBudget};
-use crate::cpu::CpuTensor;
-use crate::cpu::reservoir_storage::CpuReservoirContext;
-use crate::runoff::ReservoirError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(super) struct Prepared<'ctx> {
-    pub incoming_depth: CpuTensor,
-    pub hydraulic: DrainageBudget<'ctx>,
-    pub storage_before: CpuTensor,
-    pub incoming_volume: CpuTensor,
+use super::drainage::{self, DrainageBudget};
+use crate::runoff::ReservoirError;
+use crate::tensor::reservoir_storage::TensorReservoirContext;
+
+pub(super) struct Prepared<'ctx, R: Runtime<DType = DType>> {
+    pub incoming_depth: Tensor<R>,
+    pub hydraulic: DrainageBudget<'ctx, R>,
+    pub storage_before: Tensor<R>,
+    pub incoming_volume: Tensor<R>,
 }
 
-pub(super) fn prepare<'ctx>(
-    context: &'ctx CpuReservoirContext,
-    old: &CpuTensor,
-    incoming: &CpuTensor,
+pub(super) fn prepare<'ctx, R>(
+    context: &'ctx TensorReservoirContext<R>,
+    old: &Tensor<R>,
+    incoming: &Tensor<R>,
     dt: f64,
-) -> Result<Prepared<'ctx>, ReservoirError> {
+) -> Result<Prepared<'ctx, R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     if !dt.is_finite() || dt <= 0.0 {
         return Err(ReservoirError::input(format!(
             "dt={dt}: require positive finite reservoir duration"

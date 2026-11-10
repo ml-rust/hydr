@@ -1,24 +1,42 @@
 //! Complete represented receipt admission without soil-history or root replay.
 
-use super::step::{CpuSubareaStep, CpuSubcatchmentStep, CpuSubcatchmentTotals};
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
+use super::step::{TensorSubareaStep, TensorSubcatchmentStep, TensorSubcatchmentTotals};
 use super::{accounting, bridge, phase, transfer, trial};
-use crate::cpu::CpuTensor;
-use crate::cpu::subcatchment::{CpuSubareaGroup, CpuSubcatchmentContext};
 use crate::numerics::reservoir::drainage::DrainageResult;
 use crate::runoff::SubcatchmentError;
+use crate::tensor::subcatchment::{TensorSubareaGroup, TensorSubcatchmentContext};
 use numr::dtype::DType;
-use numr::ops::{CompareOps, IndexingOps};
 use numr::runtime::Device;
 
 /// Owned import also checks each native/SI receipt through the shared soil boundary checker.
-pub(crate) fn check_step(
-    ctx: &CpuSubcatchmentContext,
-    step: &CpuSubcatchmentStep,
+pub(crate) fn check_step<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    step: &TensorSubcatchmentStep<R>,
     dt: f64,
-) -> Result<(), SubcatchmentError> {
+) -> Result<(), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     trial::check_inputs(ctx, &step.old_depth, &step.input, dt)?;
     let mut depth = step.old_depth.clone();
-    let mut received: [CpuTensor; 3] = std::array::from_fn(|_| ctx.zero.clone());
+    let mut received: [Tensor<R>; 3] = std::array::from_fn(|_| ctx.zero.clone());
     let first = admit_phase(
         ctx,
         ctx.phase1.as_ref(),
@@ -83,15 +101,28 @@ pub(crate) fn check_step(
     Ok(())
 }
 
-fn admit_phase(
-    ctx: &CpuSubcatchmentContext,
-    group: Option<&CpuSubareaGroup>,
-    actual: Option<&CpuSubareaStep>,
-    complete: &CpuSubcatchmentStep,
-    received: &mut [CpuTensor; 3],
-    depth: &mut CpuTensor,
+fn admit_phase<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    group: Option<&TensorSubareaGroup<R>>,
+    actual: Option<&TensorSubareaStep<R>>,
+    complete: &TensorSubcatchmentStep<R>,
+    received: &mut [Tensor<R>; 3],
+    depth: &mut Tensor<R>,
     dt: f64,
-) -> Result<Option<CpuSubareaStep>, SubcatchmentError> {
+) -> Result<Option<TensorSubareaStep<R>>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     match (group, actual) {
         (None, None) => Ok(None),
         (Some(group), Some(actual)) => {
@@ -117,12 +148,25 @@ fn admit_phase(
     }
 }
 
-fn check_phase(
-    group: &CpuSubareaGroup,
-    actual: &CpuSubareaStep,
-    expected: &CpuSubareaStep,
+fn check_phase<R>(
+    group: &TensorSubareaGroup<R>,
+    actual: &TensorSubareaStep<R>,
+    expected: &TensorSubareaStep<R>,
     dt: f64,
-) -> Result<(), SubcatchmentError> {
+) -> Result<(), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let ctx = &group.reservoir;
     transfer::check_merge(
         ctx,
@@ -197,12 +241,25 @@ fn check_phase(
     Ok(())
 }
 
-fn equal(
-    ctx: &CpuSubcatchmentContext,
-    actual: &CpuTensor,
-    expected: &CpuTensor,
+fn equal<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    actual: &Tensor<R>,
+    expected: &Tensor<R>,
     quantity: &str,
-) -> Result<(), SubcatchmentError> {
+) -> Result<(), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     if actual.shape() != expected.shape()
         || actual.dtype() != DType::F64
         || !actual.device().is_same(ctx.zero.device())
@@ -231,7 +288,20 @@ fn scalar_equal(actual: f64, expected: f64, quantity: &str) -> Result<(), Subcat
     }
 }
 
-fn phase_fields(step: &CpuSubareaStep) -> [(&str, &CpuTensor); 21] {
+fn phase_fields<R>(step: &TensorSubareaStep<R>) -> [(&str, &Tensor<R>); 21]
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     [
         ("phase initial depth", &step.old_depth),
         ("phase rain", &step.rain_rate),
@@ -257,7 +327,20 @@ fn phase_fields(step: &CpuSubareaStep) -> [(&str, &CpuTensor); 21] {
     ]
 }
 
-fn drainage_fields(step: &DrainageResult) -> [(&str, &CpuTensor); 12] {
+fn drainage_fields<R>(step: &DrainageResult<R>) -> [(&str, &Tensor<R>); 12]
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     [
         ("root lower", &step.lower),
         ("root upper", &step.upper),
@@ -274,7 +357,20 @@ fn drainage_fields(step: &DrainageResult) -> [(&str, &CpuTensor); 12] {
     ]
 }
 
-fn totals_fields(step: &CpuSubcatchmentTotals) -> [(&str, &CpuTensor); 16] {
+fn totals_fields<R>(step: &TensorSubcatchmentTotals<R>) -> [(&str, &Tensor<R>); 16]
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     [
         ("complete initial storage", &step.storage_before),
         ("complete accepted storage", &step.storage_after),

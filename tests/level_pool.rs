@@ -1,5 +1,9 @@
 //! Closed volume-authoritative storage, arithmetic admission, and complete continuation.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "level_pool/accounting.rs"]
 mod accounting;
 #[path = "level_pool/curves.rs"]

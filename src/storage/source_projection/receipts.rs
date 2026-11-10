@@ -1,14 +1,37 @@
 //! Lazy complete source receipts without host numerical continuation.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::interpolate::Interp1dAlgorithms;
+
 use super::demands::{CapVectors, CounterVectors};
-use crate::cpu::level_pool::{CpuPoolContext, CpuPoolSourceStep};
 use crate::storage::accounting::read;
 use crate::storage::{LevelPoolError, LevelPoolSourceCounterReceipt, LevelPoolSourceReceipt};
+use crate::tensor::level_pool::{TensorPoolContext, TensorPoolSourceStep};
 
-pub(crate) fn receipts(
-    context: &CpuPoolContext,
-    source: Option<&CpuPoolSourceStep>,
-) -> Result<Vec<Option<LevelPoolSourceReceipt>>, LevelPoolError> {
+pub(crate) fn receipts<R>(
+    context: &TensorPoolContext<R>,
+    source: Option<&TensorPoolSourceStep<R>>,
+) -> Result<Vec<Option<LevelPoolSourceReceipt>>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let n = context.elements.len();
     let Some(s) = source else {
         return Ok(vec![None; n]);

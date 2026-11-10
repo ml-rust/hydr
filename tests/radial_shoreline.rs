@@ -3,6 +3,10 @@
 //! Initial and reference fields use cell-centre point samples, rather than exact cell averages.
 //! The endpoint at 0.5 s checks contraction. Expansion, reversal, and full cycles remain unchecked.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "support/impervious.rs"]
 mod impervious;
 
@@ -95,7 +99,7 @@ fn radial_moving_shoreline_error_decreases_under_refinement()
         let mut depth_error = 0.0;
         let mut exact_depth = 0.0;
         let mut discharge_error = 0.0;
-        for (cell, &(x, y)) in solver.state().cells().iter().zip(&centres) {
+        for (cell, &(x, y)) in solver.state()?.cells().iter().zip(&centres) {
             let expected = exact(x, y, 0.5);
             assert!(cell.h >= 0.0);
             depth_error += (cell.h - expected.h).abs();

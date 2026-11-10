@@ -3,7 +3,10 @@ use hydr::structures::*;
 
 #[test]
 fn prescribed_subset_leaves_positive_manual_gate_complement_explicit_and_ordered() -> Result {
-    let context = StructureBatch::new(vec![gate("manual-a")?, gate("path")?, gate("manual-b")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("manual-a")?, gate("path")?, gate("manual-b")?],
+    )?;
     let prescribed = trajectory(&context, "path", &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.5)])?;
     let operations = [opening("manual-a", 0.25), opening("manual-b", 0.75)];
     let heads = heads(&context);
@@ -50,7 +53,10 @@ fn prescribed_subset_leaves_positive_manual_gate_complement_explicit_and_ordered
 
 #[test]
 fn source_accuracy_rejection_keeps_original_element_category_and_numerical_context() -> Result {
-    let context = StructureBatch::new(vec![gate("manual")?, gate("path")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("manual")?, gate("path")?],
+    )?;
     let path = GateOpeningTrajectory::new(
         vec![
             GateOpeningKnot {
@@ -98,7 +104,10 @@ fn source_accuracy_rejection_keeps_original_element_category_and_numerical_conte
 #[test]
 fn subset_admits_closed_point_intersection_while_exhaustive_legacy_retains_positive_duration()
 -> Result {
-    let context = StructureBatch::new(vec![gate("a")?, gate("b")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("a")?, gate("b")?],
+    )?;
     let a = trajectory(&context, "a", &[(0.0, 0.25), (1.0, 0.5)])?;
     let b = trajectory(&context, "b", &[(1.0, 0.75), (2.0, 0.25)])?;
     let assignments = vec![a.assignments()[0].clone(), b.assignments()[0].clone()];

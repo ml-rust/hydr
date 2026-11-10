@@ -1,19 +1,22 @@
 //! Immutable accepted ideal-actuator batches and positive-duration trials.
 
-use crate::cpu::structures::actuator::{
-    CpuActuatorContext, CpuActuatorState, CpuActuatorStep, CpuActuatorUpdate, record::TensorRecord,
+use crate::tensor::structures::actuator::{
+    TensorActuatorContext, TensorActuatorState, TensorActuatorStep, TensorActuatorUpdate,
+    record::TensorRecord,
 };
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Accepted persistent ideal response state bound to the complete actual structure context.
 #[derive(Clone, Debug)]
-pub struct GateActuatorBatch {
-    pub(crate) context: Arc<CpuActuatorContext>,
-    pub(crate) state: CpuActuatorState,
+pub struct GateActuatorBatch<R: Runtime<DType = DType>> {
+    pub(crate) context: Arc<TensorActuatorContext<R>>,
+    pub(crate) state: TensorActuatorState<R>,
     pub(crate) time: f64,
     pub(crate) next_target: usize,
     pub(crate) steps: usize,
-    pub(crate) last: Option<Arc<CpuActuatorStep>>,
+    pub(crate) last: Option<Arc<TensorActuatorStep<R>>>,
 }
 
 use super::{
@@ -24,15 +27,25 @@ use crate::structures::{
     StructureBatch, StructureElement, StructureError, StructureInputErrorKind,
 };
 
-impl StructureBatch {
+impl<R: Runtime<DType = DType>> StructureBatch<R> {
     /// Bind an explicit ideal finite-rate response to an ordered actual-gate subset.
     pub fn with_gate_actuators(
         &self,
         definitions: Vec<GateActuatorDefinition>,
         initial_states: Vec<GateActuatorInitialState>,
         schedule: GateActuatorSchedule,
-    ) -> Result<GateActuatorBatch, StructureError> {
-        let context = Arc::new(CpuActuatorContext::new(
+    ) -> Result<GateActuatorBatch<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
+        let context = Arc::new(TensorActuatorContext::new(
             Arc::clone(&self.context),
             definitions,
             initial_states,
@@ -49,7 +62,7 @@ impl StructureBatch {
         })
     }
 }
-impl GateActuatorBatch {
+impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
     /// Complete bound original structure definitions in their original order.
     pub fn elements(&self) -> &[StructureElement] {
         &self.context.structures.elements
@@ -75,7 +88,13 @@ impl GateActuatorBatch {
         self.steps
     }
     /// Next strictly later target, arrival boundary, or terminal event. Terminal state returns None.
-    pub fn next_event(&self) -> Result<Option<GateActuatorEvent>, StructureError> {
+    pub fn next_event(&self) -> Result<Option<GateActuatorEvent>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>,
+    {
         crate::numerics::structures::actuator::next_event(
             &self.context,
             &self.state,
@@ -88,7 +107,17 @@ impl GateActuatorBatch {
         &self,
         end_s: f64,
         target_updates: &[GateTargetUpdate],
-    ) -> Result<GateActuatorTrial, StructureError> {
+    ) -> Result<GateActuatorTrial<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         self.trial_admitting(end_s, |context, expected| {
             crate::numerics::structures::actuator::admit_update(
                 context,
@@ -102,11 +131,21 @@ impl GateActuatorBatch {
     pub(crate) fn trial_to_with_update(
         &self,
         end_s: f64,
-        update: Option<CpuActuatorUpdate>,
-    ) -> Result<GateActuatorTrial, StructureError> {
+        update: Option<TensorActuatorUpdate<R>>,
+    ) -> Result<GateActuatorTrial<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         self.trial_admitting(end_s, |context, expected| match (expected, update) {
             (true, Some(update)) => Ok(update),
-            (false, None) => Ok(CpuActuatorUpdate::zero(context)),
+            (false, None) => Ok(TensorActuatorUpdate::zero(context)),
             (true, None) => Err(StructureError::input(
                 StructureInputErrorKind::OperatingPoint,
                 "target event requires a complete admitted tensor update",
@@ -120,8 +159,21 @@ impl GateActuatorBatch {
     fn trial_admitting(
         &self,
         end_s: f64,
-        admit: impl FnOnce(&CpuActuatorContext, bool) -> Result<CpuActuatorUpdate, StructureError>,
-    ) -> Result<GateActuatorTrial, StructureError> {
+        admit: impl FnOnce(
+            &TensorActuatorContext<R>,
+            bool,
+        ) -> Result<TensorActuatorUpdate<R>, StructureError>,
+    ) -> Result<GateActuatorTrial<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         let duration = end_s - self.time;
         if !end_s.is_finite() || !duration.is_finite() || duration <= 0.0 {
             return Err(StructureError::input(

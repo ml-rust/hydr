@@ -1,37 +1,56 @@
 //! Declared interval volumes remain authoritative across the soil rate bridge.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use super::{
     bounds,
     transfer::{self, Merged},
 };
-use crate::cpu::CpuTensor;
-use crate::cpu::reservoir_storage::CpuReservoirContext;
 use crate::runoff::ReservoirError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps, UnaryOps};
+use crate::tensor::reservoir_storage::TensorReservoirContext;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Bridge {
-    pub received_depth: CpuTensor,
-    pub received_rate: CpuTensor,
-    pub total_rate: CpuTensor,
-    pub input_depth: CpuTensor,
-    pub available_depth: CpuTensor,
-    pub rain_depth: CpuTensor,
-    pub rain_only_available: CpuTensor,
-    pub depth_increment: CpuTensor,
-    pub represented_received_volume: CpuTensor,
-    pub residual: CpuTensor,
-    pub residual_bound: CpuTensor,
-    pub uncertainty: CpuTensor,
+pub(crate) struct Bridge<R: Runtime<DType = DType>> {
+    pub received_depth: Tensor<R>,
+    pub received_rate: Tensor<R>,
+    pub total_rate: Tensor<R>,
+    pub input_depth: Tensor<R>,
+    pub available_depth: Tensor<R>,
+    pub rain_depth: Tensor<R>,
+    pub rain_only_available: Tensor<R>,
+    pub depth_increment: Tensor<R>,
+    pub represented_received_volume: Tensor<R>,
+    pub residual: Tensor<R>,
+    pub residual_bound: Tensor<R>,
+    pub uncertainty: Tensor<R>,
 }
 
-pub(crate) fn prepare(
-    ctx: &CpuReservoirContext,
-    d0: &CpuTensor,
-    rain: &CpuTensor,
-    received: &Merged,
+pub(crate) fn prepare<R>(
+    ctx: &TensorReservoirContext<R>,
+    d0: &Tensor<R>,
+    rain: &Tensor<R>,
+    received: &Merged<R>,
     dt: f64,
-) -> Result<Bridge, ReservoirError> {
+) -> Result<Bridge<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     if !dt.is_finite() || dt <= 0.0 {
         return Err(ReservoirError::input(format!(
             "dt={dt}: require positive finite transfer interval"
@@ -125,7 +144,7 @@ pub(crate) fn prepare(
     )?;
 
     // Mask inactive terms before outward products. Zero-transfer paths carry no charge.
-    let rb = |value: &CpuTensor| -> Result<CpuTensor, ReservoirError> {
+    let rb = |value: &Tensor<R>| -> Result<Tensor<R>, ReservoirError> {
         bounds::positive_charge(ctx, &active, &bounds::rounding(ctx, value)?)
     };
     let interval = c.mul_scalar(&ctx.one, dt)?;
@@ -185,14 +204,27 @@ pub(crate) fn prepare(
     })
 }
 
-pub(crate) fn check_bridge(
-    ctx: &CpuReservoirContext,
-    d0: &CpuTensor,
-    rain: &CpuTensor,
-    received: &Merged,
+pub(crate) fn check_bridge<R>(
+    ctx: &TensorReservoirContext<R>,
+    d0: &Tensor<R>,
+    rain: &Tensor<R>,
+    received: &Merged<R>,
     dt: f64,
-    receipt: &Bridge,
-) -> Result<(), ReservoirError> {
+    receipt: &Bridge<R>,
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let expected = prepare(ctx, d0, rain, received, dt)?;
     for (name, actual, wanted) in [
         (

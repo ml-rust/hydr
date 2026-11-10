@@ -50,7 +50,7 @@ pub fn create(
     cells: Vec<CellState>,
     intervals: Vec<ForcingInterval>,
     config: SolverConfig,
-) -> Result<Solver, Box<dyn std::error::Error>> {
+) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let domain = Domain::new(
         CartesianGrid::new(nx, ny, 1.0, 1.0)?,
         bed,
@@ -81,7 +81,7 @@ pub fn uniform(
     bed: Vec<f64>,
     eta: f64,
     velocity: [f64; 2],
-) -> Result<Solver, Box<dyn std::error::Error>> {
+) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let mut boundaries = Vec::new();
     for row in 0..ny {
         for column in [0, nx] {
@@ -139,7 +139,10 @@ pub fn uniform(
     )
 }
 
-pub fn through(axis: Axis, direction: f64) -> Result<Solver, Box<dyn std::error::Error>> {
+pub fn through(
+    axis: Axis,
+    direction: f64,
+) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let (upstream, downstream, cell) = match axis {
         Axis::X => (
             BoundaryFace {

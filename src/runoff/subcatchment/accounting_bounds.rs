@@ -1,13 +1,37 @@
 //! Conservative cumulative-scale ceiling independent of imported lower-bound claims.
 
-use super::{SubcatchmentError, SubcatchmentLedger};
-use crate::cpu::subcatchment::CpuSubcatchmentContext;
-use crate::soil::admission::{rounding_bound, upward_add};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
-fn cumulative_count(
-    context: &CpuSubcatchmentContext,
+use super::{SubcatchmentError, SubcatchmentLedger};
+use crate::soil::admission::{rounding_bound, upward_add};
+use crate::tensor::subcatchment::TensorSubcatchmentContext;
+
+fn cumulative_count<R>(
+    context: &TensorSubcatchmentContext<R>,
     steps: usize,
-) -> Result<usize, SubcatchmentError> {
+) -> Result<usize, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     context
         .definitions
         .len()
@@ -18,11 +42,26 @@ fn cumulative_count(
 }
 
 /// Lower bound for the exact nonnegative sum behind rounded lifetime counters.
-pub(super) fn adjustment_lower(
-    context: &CpuSubcatchmentContext,
+pub(super) fn adjustment_lower<R>(
+    context: &TensorSubcatchmentContext<R>,
     value: f64,
     steps: usize,
-) -> Result<f64, SubcatchmentError> {
+) -> Result<f64, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let additions = cumulative_count(context, steps)?;
     counter_lower(value, additions)
 }
@@ -49,11 +88,26 @@ fn counter_lower(value: f64, additions: usize) -> Result<f64, SubcatchmentError>
 }
 
 /// Every positive traffic stream consumes at least EPSILON/2 of its exact volume.
-pub(super) fn transfer_charge_lower(
-    context: &CpuSubcatchmentContext,
+pub(super) fn transfer_charge_lower<R>(
+    context: &TensorSubcatchmentContext<R>,
     ledger: &SubcatchmentLedger,
     steps: usize,
-) -> Result<f64, SubcatchmentError> {
+) -> Result<f64, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let additions = cumulative_count(context, steps)?;
     let internal_additions = additions
         .checked_add(2)
@@ -98,11 +152,26 @@ fn counter_upper(value: f64, additions: usize) -> Result<f64, SubcatchmentError>
     Ok(upper)
 }
 
-pub(super) fn physical_scale_ceiling(
-    context: &CpuSubcatchmentContext,
+pub(super) fn physical_scale_ceiling<R>(
+    context: &TensorSubcatchmentContext<R>,
     ledger: &SubcatchmentLedger,
     steps: usize,
-) -> Result<f64, SubcatchmentError> {
+) -> Result<f64, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let flat = context
         .definitions
         .len()

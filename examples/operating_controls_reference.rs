@@ -1,5 +1,9 @@
 //! Original-bit sampled-control histories and exact timer witness observations.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 #[path = "operating_controls_reference/check.rs"]
 mod check;
 #[path = "operating_controls_reference/history.rs"]

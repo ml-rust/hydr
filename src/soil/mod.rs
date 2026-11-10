@@ -2,6 +2,7 @@
 
 pub(crate) mod admission;
 mod batch;
+mod continuation;
 mod error;
 mod land;
 mod parameters;

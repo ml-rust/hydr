@@ -1,17 +1,36 @@
 //! Source-specific filling time with an authoritative post-loss storage budget.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use super::sources::Sources;
-use crate::cpu::CpuTensor;
-use crate::cpu::reservoir_storage::CpuReservoirContext;
 use crate::numerics::reservoir::drainage::{self, DrainageBudget};
 use crate::runoff::ReservoirError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps};
+use crate::tensor::reservoir_storage::TensorReservoirContext;
 
-pub(super) fn prepare<'ctx>(
-    ctx: &'ctx CpuReservoirContext,
-    sources: &Sources,
+pub(super) fn prepare<'ctx, R>(
+    ctx: &'ctx TensorReservoirContext<R>,
+    sources: &Sources<R>,
     dt: f64,
-) -> Result<(DrainageBudget<'ctx>, CpuTensor), ReservoirError> {
+) -> Result<(DrainageBudget<'ctx, R>, Tensor<R>), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let c = &ctx.client;
     let mut timing_rate = ctx.zero.clone();
     let budget = drainage::prepare_budget(ctx, sources.available_depth.clone(), dt, |active| {

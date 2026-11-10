@@ -2,15 +2,27 @@
 
 use super::super::{ControlLatch, ControlState, OperatingControlBatch};
 use super::compatibility::{option_time, require, sample};
-use crate::cpu::structures::control::{CpuControlState, MAX_EXACT_COUNT};
 use crate::structures::{StructureError, StructureInputErrorKind};
+use crate::tensor::structures::control::{MAX_EXACT_COUNT, TensorControlState};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
-pub(super) fn check(
-    batch: &OperatingControlBatch,
+pub(super) fn check<R: Runtime<DType = DType>>(
+    batch: &OperatingControlBatch<R>,
     states: &[ControlState],
     time: f64,
     processed: usize,
-) -> Result<CpuControlState, StructureError> {
+) -> Result<TensorControlState<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     require(
         states.len() == batch.definitions().len(),
         "imported control state count differs from ordered definitions",
@@ -42,7 +54,7 @@ pub(super) fn check(
                 "imported latch disagrees with initial latch and transition-count parity",
             )?;
             if let Some(sample) = &state.last_sample {
-                crate::cpu::structures::control::input::check_sample(definition, sample)?;
+                crate::tensor::structures::control::input::check_sample(definition, sample)?;
                 require(
                     sample.observed_at_s <= time,
                     "imported control observation follows accepted time",
@@ -160,7 +172,7 @@ pub(super) fn check(
         result
             .map_err(|error: StructureError| as_definition(error).at(batch.context.slots[lane]))?;
     }
-    let state = CpuControlState::from_values(&batch.context, states)?;
+    let state = TensorControlState::from_values(&batch.context, states)?;
     crate::numerics::structures::control::check_initial(&batch.context, &state)
         .map_err(as_definition)?;
     super::transition_check::check(batch, states)?;

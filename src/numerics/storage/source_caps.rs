@@ -1,17 +1,39 @@
 //! Physical demand caps and independent original-potential reconciliation.
 
-use crate::cpu::{
-    CpuTensor,
-    level_pool::{CpuPoolCap, CpuPoolContext, CpuPoolCounter},
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
 };
-use crate::storage::LevelPoolError;
-use numr::ops::{BinaryOps, CompareOps, UnaryOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::interpolate::Interp1dAlgorithms;
 
-pub(super) fn cap(
-    context: &CpuPoolContext,
-    potential: &CpuTensor,
-    available: &CpuTensor,
-) -> Result<(CpuPoolCap, CpuTensor, CpuTensor), LevelPoolError> {
+use crate::storage::LevelPoolError;
+use crate::tensor::level_pool::{TensorPoolCap, TensorPoolContext, TensorPoolCounter};
+
+pub(super) type CappedDemand<R> = (TensorPoolCap<R>, Tensor<R>, Tensor<R>);
+
+pub(super) fn cap<R>(
+    context: &TensorPoolContext<R>,
+    potential: &Tensor<R>,
+    available: &Tensor<R>,
+) -> Result<CappedDemand<R>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let c = &context.client;
     let actual = c.minimum(potential, available)?;
     let (remaining, witness) = super::trial::exact_zero_add(context, available, &c.neg(&actual)?)?;
@@ -39,7 +61,7 @@ pub(super) fn cap(
     context.nonnegative(&remaining, "post-loss algebraic budget")?;
     context.nonnegative(&unmet, "unmet potential demand")?;
     Ok((
-        CpuPoolCap {
+        TensorPoolCap {
             potential_volume_m3: potential.clone(),
             actual_volume_m3: actual,
             unmet_volume_m3: unmet,
@@ -54,15 +76,30 @@ pub(super) fn cap(
     ))
 }
 
-pub(super) fn counter(
-    context: &CpuPoolContext,
-    before: &CpuTensor,
-    bound: &CpuTensor,
-    increment: &CpuTensor,
-) -> Result<CpuPoolCounter, LevelPoolError> {
+pub(super) fn counter<R>(
+    context: &TensorPoolContext<R>,
+    before: &Tensor<R>,
+    bound: &Tensor<R>,
+    increment: &Tensor<R>,
+) -> Result<TensorPoolCounter<R>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let (after, witness) = super::trial::exact_zero_add(context, before, increment)?;
     let next_bound = super::bounds::accumulate(context, bound, &witness)?;
-    Ok(CpuPoolCounter {
+    Ok(TensorPoolCounter {
         before_m3: before.clone(),
         after_m3: after,
         witness_m3: witness,

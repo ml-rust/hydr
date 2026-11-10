@@ -4,11 +4,16 @@ use super::super::OperatingControlBatch;
 use super::compatibility::require;
 use super::{OperatingControlSnapshot, OperatingControlSnapshotData};
 use crate::structures::{StructureError, StructureInputErrorKind};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 use std::sync::Arc;
 
-impl OperatingControlBatch {
+impl<R: Runtime<DType = DType>> OperatingControlBatch<R> {
     /// Restore trusted tensor continuation while retaining this batch's complete original bound context.
-    pub fn restore(&mut self, snapshot: &OperatingControlSnapshot) -> Result<(), StructureError> {
+    pub fn restore(
+        &mut self,
+        snapshot: &OperatingControlSnapshot<R>,
+    ) -> Result<(), StructureError> {
         super::compatibility::check_batch(self, &snapshot.batch)?;
         self.state = snapshot.batch.state.clone();
         self.time = snapshot.batch.time;
@@ -21,7 +26,17 @@ impl OperatingControlBatch {
     pub fn restore_data(
         &mut self,
         data: &OperatingControlSnapshotData,
-    ) -> Result<(), StructureError> {
+    ) -> Result<(), StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         super::compatibility::check(self, data)?;
         require(
             data.time_s.is_finite()
@@ -126,8 +141,9 @@ impl OperatingControlBatch {
             )?;
             candidate.last = trial.into_next().last;
         } else {
-            let expected =
-                crate::cpu::structures::control::CpuControlState::initial(&candidate.context)?;
+            let expected = crate::tensor::structures::control::TensorControlState::initial(
+                &candidate.context,
+            )?;
             require(
                 super::receipt_bits::states(
                     &super::super::projection::states(&candidate.context, &expected)?,

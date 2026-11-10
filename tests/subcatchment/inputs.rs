@@ -140,8 +140,14 @@ fn identities_shapes_and_forcing_reject_before_any_accepted_change() -> Result {
             .collect();
         let states = vec![initialized; ids.len()];
         assert!(
-            SubcatchmentBatch::new(definitions, states, 0.0, SubcatchmentConfig::default())
-                .is_err()
+            SubcatchmentBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
+                definitions,
+                states,
+                0.0,
+                SubcatchmentConfig::default()
+            )
+            .is_err()
         );
     }
     let batch = single(p, initialized, SubcatchmentConfig::default())?;

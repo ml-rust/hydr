@@ -151,11 +151,11 @@ Trials borrow accepted state immutably. Rejection or discarding a candidate pres
 | Batch `totals()` | Independently reduced cumulative batch accounting |
 | Batch `last_step()` or trial `diagnostics()` | Complete original operands, TwoSum witnesses, bounds, stage evidence, and interval accounting |
 
-The runtime uses persistent CPU F64 tensors on an explicitly configured one-thread numr client. Arrays serve construction, explicit output, and error diagnosis. They never advance numerical storage state.
+The batch uses persistent F64 `Tensor<R>` fields on a caller-configured Numr client. The checked CPU reference uses one thread. Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission). Arrays serve construction, explicit output, and error diagnosis. Array output methods return fallible projections. They never advance numerical storage state.
 
 ## Complete restart
 
-`snapshot()` clones complete persistent state without projection. `snapshot_data()` produces caller-owned complete values. Trusted and owned restore paths compare immutable definition/config bits before replacing accepted state. Compatibility includes every curve knot, datum, provenance, physical assertion, and storage-support identity. Source-enabled packages also retain exact policy evidence and all source counters, bounds, and final nested receipts.
+`snapshot()` clones complete persistent state without projection. `snapshot_data()` produces fallible caller-owned complete values. Trusted and owned restore paths compare immutable definition/config bits before replacing accepted state. Compatibility includes every curve knot, datum, provenance, physical assertion, and storage-support identity. Source-enabled packages also retain exact policy evidence and all source counters, bounds, and final nested receipts.
 
 Owned import checks initial/current storage and per-element accounting before aggregate cancellation. It recomputes final-interval TwoSum operations from their original operands. The reconstructed final counters and bounds must continue exactly into accepted element ledgers. Reported stage/inverse evidence and aggregate diagnostics must match complete recomputation. Zero-history packages require exact initial/current identity and zero counters/bounds, with no final receipt.
 

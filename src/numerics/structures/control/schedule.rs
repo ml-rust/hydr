@@ -1,10 +1,24 @@
 //! Exact original schedule and declared initial-observation cadence.
 
-use crate::cpu::structures::control::CpuControlContext;
 use crate::structures::{StructureError, StructureInputErrorKind};
+use crate::tensor::structures::control::TensorControlContext;
+use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ScalarOps, TwoSumOps, UnaryOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(crate) fn check_schedule(context: &CpuControlContext) -> Result<(), StructureError> {
+pub(crate) fn check_schedule<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let schedule = &context.schedule;
     let mut starts = Vec::with_capacity(schedule.decision_times_s.len() + 1);
     let mut ends = Vec::with_capacity(starts.capacity());
@@ -33,19 +47,28 @@ pub(crate) fn check_schedule(context: &CpuControlContext) -> Result<(), Structur
         .collect::<Vec<_>>();
     check(context, &starts, &vec![first; starts.len()], true)
 }
-fn check(
-    context: &CpuControlContext,
+fn check<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
     starts: &[f64],
     ends: &[f64],
     per_controller: bool,
-) -> Result<(), StructureError> {
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.structures.client;
     let starts = context.tensor(starts)?;
     let ends = context.tensor(ends)?;
     let zero = c.mul_scalar(&starts, 0.0)?;
     let maximum = c.add_scalar(&zero, context.timing.maximum_decision_gap_s)?;
     let high = c.sub(&ends, &starts)?;
-    let reject = |mask: &crate::cpu::CpuTensor| -> Result<(), StructureError> {
+    let reject = |mask: &Tensor<R>| -> Result<(), StructureError> {
         if per_controller {
             context.reject(
                 mask,

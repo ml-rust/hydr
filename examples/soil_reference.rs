@@ -1,5 +1,9 @@
 //! Compare the public soil component against pinned native EPA evidence.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 #[path = "soil_reference/comparison.rs"]
 mod comparison;
 #[path = "soil_reference/records.rs"]

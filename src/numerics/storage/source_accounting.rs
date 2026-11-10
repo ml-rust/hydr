@@ -1,17 +1,35 @@
 //! Source physical residuals and independent persistent counter admission.
 
-use crate::cpu::{
-    CpuTensor,
-    level_pool::{CpuPoolContext, CpuPoolSourceState, CpuPoolSourceStep},
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
 };
-use crate::storage::LevelPoolError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(super) fn check_state(
-    context: &CpuPoolContext,
-    state: &CpuPoolSourceState,
+use crate::storage::LevelPoolError;
+use crate::tensor::level_pool::{TensorPoolContext, TensorPoolSourceState, TensorPoolSourceStep};
+
+pub(super) fn check_state<R>(
+    context: &TensorPoolContext<R>,
+    state: &TensorPoolSourceState<R>,
     steps: usize,
-) -> Result<(), LevelPoolError> {
+) -> Result<(), LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>,
+{
     for value in [&state.rain, &state.evaporation, &state.bottom_loss] {
         super::bounds::check_counter(context, value, steps)?;
     }
@@ -51,22 +69,36 @@ pub(super) fn check_state(
     Ok(())
 }
 
-pub(super) struct Interval {
-    pub residual: CpuTensor,
-    pub consistency: CpuTensor,
-    pub bound: CpuTensor,
-    pub scale: CpuTensor,
+pub(super) struct Interval<R: Runtime<DType = DType>> {
+    pub residual: Tensor<R>,
+    pub consistency: Tensor<R>,
+    pub bound: Tensor<R>,
+    pub scale: Tensor<R>,
 }
 
-pub(super) fn interval(
-    context: &CpuPoolContext,
-    source: &CpuPoolSourceStep,
-    a: &CpuTensor,
-    b: &CpuTensor,
-    legacy: &Interval,
-    out_witness: &CpuTensor,
-    in_witness: &CpuTensor,
-) -> Result<Interval, LevelPoolError> {
+pub(super) fn interval<R>(
+    context: &TensorPoolContext<R>,
+    source: &TensorPoolSourceStep<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+    legacy: &Interval<R>,
+    out_witness: &Tensor<R>,
+    in_witness: &Tensor<R>,
+) -> Result<Interval<R>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>,
+{
     let c = &context.client;
     let d = c.sub(&legacy.residual, &source.rain_volume_m3)?;
     let e = c.add(&d, &source.bottom_loss_cap.actual_volume_m3)?;

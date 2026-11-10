@@ -5,12 +5,16 @@ use super::{
     ControlCommandOutput, ControlDecisionReceipt, ControlLatch, ControlPending, ControlState,
     ControlStepDiagnostics, ControlTransitionReceipt,
 };
-use crate::cpu::structures::control::{CpuControlContext, CpuControlState, CpuControlStep};
 use crate::structures::StructureError;
+use crate::tensor::structures::control::{
+    TensorControlContext, TensorControlState, TensorControlStep,
+};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
-pub(crate) fn commands(
-    context: &CpuControlContext,
-    state: &CpuControlState,
+pub(crate) fn commands<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
+    state: &TensorControlState<R>,
     time_s: f64,
 ) -> Result<Vec<ControlCommandOutput>, StructureError> {
     let high = read(context, &state.high)?;
@@ -20,8 +24,8 @@ pub(crate) fn commands(
         .map(|(lane, &high)| command(context, lane, high != 0.0, time_s))
         .collect())
 }
-fn command(
-    context: &CpuControlContext,
+fn command<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
     lane: usize,
     high: bool,
     time_s: f64,
@@ -44,9 +48,9 @@ fn command(
         },
     }
 }
-pub(crate) fn states(
-    context: &CpuControlContext,
-    state: &CpuControlState,
+pub(crate) fn states<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
+    state: &TensorControlState<R>,
 ) -> Result<Vec<ControlState>, StructureError> {
     let high = read(context, &state.high)?;
     let pending = read(context, &state.pending)?;
@@ -123,9 +127,9 @@ pub(crate) fn states(
         })
         .collect()
 }
-pub(crate) fn step(
-    context: &CpuControlContext,
-    step: &CpuControlStep,
+pub(crate) fn step<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
+    step: &TensorControlStep<R>,
 ) -> Result<ControlStepDiagnostics, StructureError> {
     let before = states(context, &step.before)?;
     let after = states(context, &step.after)?;

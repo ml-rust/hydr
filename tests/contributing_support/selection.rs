@@ -158,7 +158,10 @@ fn baseflow_and_release_are_included_once_in_one_unchanged_physical_input() -> R
     let expected = fixture.interval.boundaries[0].value.clone();
     let packet = plan.admit_interval(fixture.interval)?;
     assert_eq!(packet.forcing().boundaries, vec![expected]);
-    assert!(plan.trial_subcatchments(&packet, None)?.is_none());
+    assert!(
+        plan.trial_subcatchments::<crate::runtime::Runtime>(&packet, None)?
+            .is_none()
+    );
     Ok(())
 }
 

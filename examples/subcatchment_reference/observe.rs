@@ -4,7 +4,8 @@ use hydr::runoff::{SubcatchmentBatch, SubcatchmentConfig, SubcatchmentDefinition
 use std::io::Write;
 
 pub fn run(case: &Case, dt: f64, csv: &mut impl Write, soil: &mut impl Write) -> Result {
-    let mut batch = SubcatchmentBatch::new(
+    let mut batch = SubcatchmentBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         vec![SubcatchmentDefinition {
             id: case.name.into(),
             parameters: case.parameters.clone(),

@@ -1,36 +1,53 @@
 //! Immutable surface source trial with separate native and SI arithmetic receipts.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::SoilError;
 use super::batch::ModifiedGreenAmptBatch;
 use super::parameters::METRES_PER_FOOT;
-use crate::cpu::CpuTensor;
 use crate::numerics::soil::roundoff::Bounds;
-use numr::ops::{BinaryOps, CompareOps, ScalarOps};
 
 #[derive(Debug)]
-pub(crate) struct SoilSurfaceTrial {
-    pub next: ModifiedGreenAmptBatch,
-    pub infiltration_depth: CpuTensor,
-    pub adjustment_depth: CpuTensor,
-    pub native_rate: CpuTensor,
-    pub native_available_depth: CpuTensor,
-    pub native_infiltration_depth: CpuTensor,
-    pub native_excess_depth: CpuTensor,
-    pub native_roundoff_bound: CpuTensor,
-    pub bridge_roundoff_bound: CpuTensor,
-    pub total_roundoff_bound: CpuTensor,
+pub(crate) struct SoilSurfaceTrial<R: Runtime<DType = DType>> {
+    pub next: ModifiedGreenAmptBatch<R>,
+    pub infiltration_depth: Tensor<R>,
+    pub adjustment_depth: Tensor<R>,
+    pub native_rate: Tensor<R>,
+    pub native_available_depth: Tensor<R>,
+    pub native_infiltration_depth: Tensor<R>,
+    pub native_excess_depth: Tensor<R>,
+    pub native_roundoff_bound: Tensor<R>,
+    pub bridge_roundoff_bound: Tensor<R>,
+    pub total_roundoff_bound: Tensor<R>,
 }
 
-impl ModifiedGreenAmptBatch {
+impl<R> ModifiedGreenAmptBatch<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedNewtonAlgorithms<R>,
+{
     /// Require round-to-nearest and gradual underflow, checked when the context is created.
     pub(crate) fn trial_surface_tensors(
         &self,
         dt: f64,
-        rain_si: &CpuTensor,
-        ponding_si: &CpuTensor,
-        rain_depth_si: &CpuTensor,
-        available_si: &CpuTensor,
-    ) -> Result<SoilSurfaceTrial, SoilError> {
+        rain_si: &Tensor<R>,
+        ponding_si: &Tensor<R>,
+        rain_depth_si: &Tensor<R>,
+        available_si: &Tensor<R>,
+    ) -> Result<SoilSurfaceTrial<R>, SoilError> {
         self.check_inputs(dt, rain_si.numel())?;
         let context = &self.context;
         let c = &context.client;
@@ -65,7 +82,7 @@ impl ModifiedGreenAmptBatch {
         let native_roundoff_bound =
             bounds.native(&trace, &trial.native_rate, &trial.native_depth, dt)?;
         let positive = c.gt(&trial.native_rate, &context.zero)?;
-        let select = |x: &CpuTensor| bounds.select(&positive, x);
+        let select = |x: &Tensor<R>| bounds.select(&positive, x);
         let input = bounds.sum(&[
             bounds.scale(&bounds.bound(&select(&native_rain)?)?, dt)?,
             bounds.bound(&select(&native_ponding)?)?,

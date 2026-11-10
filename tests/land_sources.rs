@@ -1,5 +1,9 @@
 //! Atomic land-source priorities, momentum, soil memory, and numerical adjustment budgets.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "land_sources/fixture.rs"]
 mod fixture;
 
@@ -110,7 +114,11 @@ fn compact_pervious_lanes_return_to_their_global_cells() -> Result {
         2.0 / 1024.0 * 0.3048,
     ];
     case.rain = rain.to_vec();
-    let raw = ModifiedGreenAmptBatch::initialized(&[p, p])?.trial(
+    let raw = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::initialized(
+        crate::runtime::client(),
+        &[p, p],
+    )?
+    .trial(
         1.0,
         &[
             SoilInput {
@@ -128,17 +136,17 @@ fn compact_pervious_lanes_return_to_their_global_cells() -> Result {
     let mut solver = case.build()?;
     solver.advance_to(1.0, 1)?;
     assert_eq!(
-        solver.soil_state().cells()[0],
+        solver.soil_state()?.cells()[0],
         SoilCellState::ModifiedGreenAmpt(expected[0])
     );
     assert_eq!(
-        solver.soil_state().cells()[4],
+        solver.soil_state()?.cells()[4],
         SoilCellState::ModifiedGreenAmpt(expected[1])
     );
-    assert_eq!(solver.soil_state().cells()[2], SoilCellState::Impervious);
-    assert_eq!(solver.cell(1), CellResult::Unsupported);
-    assert_eq!(solver.cell(3), CellResult::Unsupported);
-    close(solver.state().cells()[2].h, rain[2], 1e-18);
+    assert_eq!(solver.soil_state()?.cells()[2], SoilCellState::Impervious);
+    assert_eq!(solver.cell(1)?, CellResult::Unsupported);
+    assert_eq!(solver.cell(3)?, CellResult::Unsupported);
+    close(solver.state()?.cells()[2].h, rain[2], 1e-18);
     close(
         solver.ledger().infiltration,
         outputs[0].depth_m + outputs[1].depth_m,
@@ -164,7 +172,11 @@ fn soil_uses_original_ponding_and_rain_once_before_evaporation() -> Result {
     )?;
     case.rain[0] = rain;
     case.evaporation[0] = 1.0;
-    let raw = ModifiedGreenAmptBatch::initialized(&[p])?.trial(
+    let raw = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::initialized(
+        crate::runtime::client(),
+        &[p],
+    )?
+    .trial(
         1.0,
         &[SoilInput {
             incoming_rate_m_per_s: rain,
@@ -176,7 +188,7 @@ fn soil_uses_original_ponding_and_rain_once_before_evaporation() -> Result {
     let mut solver = case.build()?;
     solver.advance_to(1.0, 1)?;
     assert_eq!(
-        solver.soil_state().cells()[0],
+        solver.soil_state()?.cells()[0],
         SoilCellState::ModifiedGreenAmpt(expected_soil)
     );
     assert_eq!(
@@ -185,7 +197,7 @@ fn soil_uses_original_ponding_and_rain_once_before_evaporation() -> Result {
     );
     close(solver.ledger().infiltration, h + rain, 1e-18);
     assert_eq!(solver.ledger().evaporation, 0.0);
-    assert_eq!(solver.state().cells()[0], CellState::default());
+    assert_eq!(solver.state()?.cells()[0], CellState::default());
     Ok(())
 }
 
@@ -204,7 +216,7 @@ fn impervious_evaporation_caps_at_available_water() -> Result {
     case.evaporation[0] = 1.0;
     let mut solver = case.build()?;
     solver.advance_to(1.0, 1)?;
-    assert_eq!(solver.state().cells()[0], CellState::default());
+    assert_eq!(solver.state()?.cells()[0], CellState::default());
     assert_eq!(solver.ledger().infiltration, 0.0);
     assert_eq!(solver.ledger().evaporation, 0.05);
     assert_eq!(solver.ledger().water_adjustment_abs_bound, 0.0);
@@ -224,7 +236,11 @@ fn sequential_land_sinks_remove_donor_momentum() -> Result {
     case.evaporation.fill(0.03);
     case.withdrawal.fill(0.04);
     let dt = 0.01;
-    let raw = ModifiedGreenAmptBatch::initialized(&[p])?.trial(
+    let raw = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::initialized(
+        crate::runtime::client(),
+        &[p],
+    )?
+    .trial(
         dt,
         &[SoilInput {
             incoming_rate_m_per_s: 0.1,
@@ -236,13 +252,13 @@ fn sequential_land_sinks_remove_donor_momentum() -> Result {
     let expected_h = available - infiltration - 0.03 * dt - 0.04 * dt;
     let mut solver = case.build()?;
     solver.advance_to(dt, 1)?;
-    let center = solver.state().cells()[12];
+    let center = solver.state()?.cells()[12];
     close(center.h, expected_h, 2e-15);
     close(center.qx, cell.qx * expected_h / available, 2e-15);
     close(center.qy, cell.qy * expected_h / available, 2e-15);
     assert_eq!(
         solver
-            .last_step()
+            .last_step()?
             .ok_or("missing accepted step")?
             .momentum_removed,
         [0.0; 2]
@@ -260,7 +276,7 @@ fn unmet_withdrawal_rejects_surface_soil_and_ledgers_together() -> Result {
     let mut solver = case.build()?;
     let before = solver.snapshot();
     assert!(solver.advance_to(1.0, 1).is_err());
-    assert_eq!(solver.snapshot(), before);
+    assert_eq!(solver.snapshot().data()?, before.data()?);
     Ok(())
 }
 
@@ -301,7 +317,7 @@ fn positive_source_volume_underflow_rejects_without_losing_water() -> Result {
     let mut solver = case.build()?;
     let before = solver.snapshot();
     assert!(solver.advance_to(1.0, 1).is_err());
-    assert_eq!(solver.snapshot(), before);
+    assert_eq!(solver.snapshot().data()?, before.data()?);
     Ok(())
 }
 
@@ -320,18 +336,18 @@ fn hydraulic_shortening_restarts_soil_from_the_accepted_state() -> Result {
         shortened.advance_to(1.0, 1)?.status,
         AdvanceStatus::StepLimit
     );
-    let step = shortened.last_step().ok_or("missing accepted step")?;
+    let step = shortened.last_step()?.ok_or("missing accepted step")?;
     assert!(step.retries > 0);
     assert!(shortened.time() > 0.0 && shortened.time() < 1.0);
     let mut direct = create(64)?;
     direct.advance_to(shortened.time(), 1)?;
-    assert_eq!(shortened.state(), direct.state());
-    assert_eq!(shortened.soil_state(), direct.soil_state());
+    assert_eq!(shortened.state()?, direct.state()?);
+    assert_eq!(shortened.soil_state()?, direct.soil_state()?);
     assert_eq!(shortened.ledger(), direct.ledger());
     let mut rejected = create(0)?;
     let before = rejected.snapshot();
     assert!(rejected.advance_to(1.0, 1).is_err());
-    assert_eq!(rejected.snapshot(), before);
+    assert_eq!(rejected.snapshot().data()?, before.data()?);
     Ok(())
 }
 
@@ -357,7 +373,7 @@ fn proved_native_crossing_excess_has_explicit_water_adjustment() -> Result {
     let dt = 1.02e-12;
     let mut solver = crossing(0.125, 0.25, dt, 1e-9)?.build()?;
     solver.advance_to(dt, 1)?;
-    assert_eq!(solver.state().cells()[0], CellState::default());
+    assert_eq!(solver.state()?.cells()[0], CellState::default());
     assert!(solver.ledger().infiltration > solver.ledger().rain);
     assert!(solver.ledger().water_adjustment > 0.0);
     assert!(solver.ledger().water_adjustment_abs_bound >= solver.ledger().water_adjustment);
@@ -367,7 +383,7 @@ fn proved_native_crossing_excess_has_explicit_water_adjustment() -> Result {
         solver.ledger().rain + solver.ledger().water_adjustment,
         1e-30,
     );
-    let step = solver.last_step().ok_or("missing accepted step")?;
+    let step = solver.last_step()?.ok_or("missing accepted step")?;
     let receipt = step.sources[0]
         .soil
         .as_ref()
@@ -375,7 +391,7 @@ fn proved_native_crossing_excess_has_explicit_water_adjustment() -> Result {
     assert!(receipt.native_excess_depth_ft > 0.0);
     assert!(receipt.native_roundoff_bound_ft >= receipt.native_excess_depth_ft);
     assert!(receipt.total_roundoff_bound_m >= step.sources[0].water_adjustment_depth_m);
-    let SoilCellState::ModifiedGreenAmpt(state) = solver.soil_state().cells()[0] else {
+    let SoilCellState::ModifiedGreenAmpt(state) = solver.soil_state()?.cells()[0] else {
         return Err("missing native soil state".into());
     };
     assert_eq!(state.f_ft.to_bits(), 0.2500000000000015_f64.to_bits());
@@ -392,7 +408,7 @@ fn adjustment_budget_rejects_small_and_material_native_excess_atomically() -> Re
         let before = solver.snapshot();
         let dt = solver.config().max_step;
         assert!(solver.advance_to(dt, 1).is_err());
-        assert_eq!(solver.snapshot(), before);
+        assert_eq!(solver.snapshot().data()?, before.data()?);
     }
     Ok(())
 }
@@ -412,6 +428,6 @@ fn repeated_si_bridge_adjustments_consume_one_cumulative_budget() -> Result {
     assert!(solver.ledger().water_adjustment_abs_bound <= 1.5 * delta);
     let before = solver.snapshot();
     assert!(solver.advance_to(2.0, 1).is_err());
-    assert_eq!(solver.snapshot(), before);
+    assert_eq!(solver.snapshot().data()?, before.data()?);
     Ok(())
 }

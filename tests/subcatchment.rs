@@ -1,5 +1,9 @@
 //! Stateful subcatchment sources, paired transfers, and continuation admission.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "subcatchment/fixture.rs"]
 mod fixture;
 #[path = "subcatchment/inputs.rs"]

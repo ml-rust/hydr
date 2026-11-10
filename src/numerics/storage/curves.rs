@@ -1,20 +1,42 @@
 //! Grouped Solvr Linear interpolation and independent inverse-volume admission.
 
-use crate::cpu::{CpuTensor, level_pool::CpuPoolContext};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use crate::storage::LevelPoolError;
-use numr::ops::{BinaryOps, CompareOps, IndexingOps, ShapeOps};
+use crate::tensor::level_pool::TensorPoolContext;
 use solvr::interpolate::{Interp1dAlgorithms, InterpMethod};
 
-pub(crate) struct PoolStage {
-    pub stage: CpuTensor,
-    pub reconstructed: CpuTensor,
-    pub residual: CpuTensor,
+pub(crate) struct PoolStage<R: Runtime<DType = DType>> {
+    pub stage: Tensor<R>,
+    pub reconstructed: Tensor<R>,
+    pub residual: Tensor<R>,
 }
 
-pub(crate) fn evaluate(
-    context: &CpuPoolContext,
-    volume: &CpuTensor,
-) -> Result<PoolStage, LevelPoolError> {
+pub(crate) fn evaluate<R>(
+    context: &TensorPoolContext<R>,
+    volume: &Tensor<R>,
+) -> Result<PoolStage<R>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     context.range(volume, "storage curve query outside closed volume support")?;
     let c = &context.client;
     let mut stages = Vec::with_capacity(context.groups.len());

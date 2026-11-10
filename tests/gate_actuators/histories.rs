@@ -1,7 +1,10 @@
 use super::{fixture::Result, inputs, reference_context};
 use hydr::structures::*;
 
-fn query(case: &inputs::Case, time: f64) -> std::result::Result<GateActuatorBatch, StructureError> {
+fn query(
+    case: &inputs::Case,
+    time: f64,
+) -> std::result::Result<GateActuatorBatch<crate::runtime::Runtime>, StructureError> {
     let mut batch = reference_context::build(case, 1)?;
     while batch.time() < time {
         let end = batch

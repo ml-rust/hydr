@@ -5,7 +5,8 @@ use hydr::structures::*;
 fn distinct_interleaved_lane_values_survive_compact_gather_scatter_at_vector_and_tail_sizes()
 -> Result {
     for width in [1, 31, 32, 33, 64, 65] {
-        let context = StructureBatch::new(
+        let context = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
             (0..width)
                 .map(|lane| gate(&format!("gate-{lane}")))
                 .collect::<Result<Vec<_>>>()?,

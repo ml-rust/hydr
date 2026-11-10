@@ -1,20 +1,41 @@
 //! Independent full-support ledgers and catchment rainfall-area evidence.
 
-use super::bounds;
-use super::step::{CpuSubareaStep, CpuSubcatchmentTotals};
-use crate::cpu::CpuTensor;
-use crate::cpu::subcatchment::{CpuSubareaGroup, CpuSubcatchmentContext, CpuSubcatchmentInput};
-use crate::runoff::SubcatchmentError;
-use numr::ops::{BinaryOps, CompareOps, IndexingOps, ScalarOps, UnaryOps};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(super) fn totals(
-    ctx: &CpuSubcatchmentContext,
-    input: &CpuSubcatchmentInput,
-    phases: [Option<(&CpuSubareaGroup, &CpuSubareaStep)>; 2],
+use super::bounds;
+use super::step::{TensorSubareaStep, TensorSubcatchmentTotals};
+use crate::runoff::SubcatchmentError;
+use crate::tensor::subcatchment::{
+    TensorSubareaGroup, TensorSubcatchmentContext, TensorSubcatchmentInput,
+};
+
+pub(super) fn totals<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    input: &TensorSubcatchmentInput<R>,
+    phases: [Option<(&TensorSubareaGroup<R>, &TensorSubareaStep<R>)>; 2],
     dt: f64,
-) -> Result<CpuSubcatchmentTotals, SubcatchmentError> {
+) -> Result<TensorSubcatchmentTotals<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let c = &ctx.client;
-    let mut tensors: [CpuTensor; 12] = std::array::from_fn(|_| ctx.zero.clone());
+    let mut tensors: [Tensor<R>; 12] = std::array::from_fn(|_| ctx.zero.clone());
     let mut adjustment_charge = 0.0;
     let mut uncertainty_charge = 0.0;
     let mut physical_scale_lower = 0.0;
@@ -87,7 +108,7 @@ pub(super) fn totals(
     )?;
     let (catchment_rain_area_difference, catchment_rain_area_bound) =
         rain_area(ctx, input, &applied_rain, &rain_area_bound, dt)?;
-    Ok(CpuSubcatchmentTotals {
+    Ok(TensorSubcatchmentTotals {
         storage_before,
         storage_after,
         applied_rain,
@@ -111,10 +132,23 @@ pub(super) fn totals(
     })
 }
 
-pub(super) fn sum_classes(
-    ctx: &CpuSubcatchmentContext,
-    value: &CpuTensor,
-) -> Result<CpuTensor, SubcatchmentError> {
+pub(super) fn sum_classes<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    value: &Tensor<R>,
+) -> Result<Tensor<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let matrix = value.reshape(&[ctx.definitions.len(), 3])?;
     let parts = [
         matrix.narrow(1, 0, 1)?.squeeze(Some(1)),
@@ -128,21 +162,34 @@ pub(super) fn sum_classes(
     Ok(sum)
 }
 
-fn rain_area(
-    ctx: &CpuSubcatchmentContext,
-    input: &CpuSubcatchmentInput,
-    applied: &CpuTensor,
-    bound: &CpuTensor,
+fn rain_area<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    input: &TensorSubcatchmentInput<R>,
+    applied: &Tensor<R>,
+    bound: &Tensor<R>,
     dt: f64,
-) -> Result<(CpuTensor, CpuTensor), SubcatchmentError> {
+) -> Result<(Tensor<R>, Tensor<R>), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let c = &ctx.client;
     let shape = [ctx.definitions.len(), 3];
     let values = applied.reshape(&shape)?;
     let bounds_matrix = bound.reshape(&shape)?;
-    let value = |index| -> Result<CpuTensor, SubcatchmentError> {
+    let value = |index| -> Result<Tensor<R>, SubcatchmentError> {
         Ok(values.narrow(1, index, 1)?.squeeze(Some(1)))
     };
-    let area_bound = |index| -> Result<CpuTensor, SubcatchmentError> {
+    let area_bound = |index| -> Result<Tensor<R>, SubcatchmentError> {
         Ok(bounds_matrix.narrow(1, index, 1)?.squeeze(Some(1)))
     };
     let first_sum = c.add(&value(0)?, &value(1)?)?;
@@ -176,20 +223,46 @@ fn rain_area(
     Ok((difference, envelope))
 }
 
-fn rounding(
-    ctx: &CpuSubcatchmentContext,
-    value: &CpuTensor,
-) -> Result<CpuTensor, SubcatchmentError> {
+fn rounding<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    value: &Tensor<R>,
+) -> Result<Tensor<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let result = bounds::rounding_with_client(&ctx.client, value)?;
     ctx.finite(&result, "catchment arithmetic rounding bound")?;
     Ok(result)
 }
 
-fn upper_add(
-    ctx: &CpuSubcatchmentContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-) -> Result<CpuTensor, SubcatchmentError> {
+fn upper_add<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+) -> Result<Tensor<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let sum = ctx.client.add(a, b)?;
     ctx.finite(&sum, "catchment envelope sum")?;
     let result = ctx.client.add(&sum, &rounding(ctx, &sum)?)?;
@@ -197,12 +270,25 @@ fn upper_add(
     Ok(result)
 }
 
-pub(super) fn check_residual(
-    ctx: &CpuSubcatchmentContext,
-    residual: &CpuTensor,
-    scale: &CpuTensor,
+pub(super) fn check_residual<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    residual: &Tensor<R>,
+    scale: &Tensor<R>,
     quantity: &str,
-) -> Result<(), SubcatchmentError> {
+) -> Result<(), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let c = &ctx.client;
     ctx.finite(residual, quantity)?;
     ctx.finite(scale, "catchment physical scale")?;

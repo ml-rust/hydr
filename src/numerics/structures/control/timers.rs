@@ -1,18 +1,24 @@
 //! Exact original-time TwoSum readiness and finite-or-overflow lateness witnesses.
 
-use crate::cpu::{
-    CpuTensor,
-    structures::control::{CpuControlContext, CpuControlTimer},
-};
 use crate::structures::StructureError;
+use crate::tensor::structures::control::{TensorControlContext, TensorControlTimer};
+use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, ScalarOps, TwoSumOps, TypeConversionOps, UnaryOps,
 };
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(crate) fn finite(
-    context: &CpuControlContext,
-    value: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(crate) fn finite<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
+    value: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.structures.client;
     let bad = c.maximum(
         &c.cast(&c.isnan(value)?, value.dtype())?,
@@ -20,14 +26,24 @@ pub(crate) fn finite(
     )?;
     Ok(c.add_scalar(&c.neg(&bad)?, 1.0)?)
 }
-pub(crate) fn evaluate(
-    context: &CpuControlContext,
-    active: &CpuTensor,
-    since: &CpuTensor,
-    at: &CpuTensor,
-    delay: &CpuTensor,
+pub(crate) fn evaluate<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
+    active: &Tensor<R>,
+    since: &Tensor<R>,
+    at: &Tensor<R>,
+    delay: &Tensor<R>,
     enforce_lateness: bool,
-) -> Result<CpuControlTimer, StructureError> {
+) -> Result<TensorControlTimer<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.structures.client;
     context.reject(
         &c.mul(active, &c.gt(since, at)?)?,
@@ -98,7 +114,7 @@ pub(crate) fn evaluate(
     if enforce_lateness {
         context.reject(&c.mul(&ready,&c.sub(&context.one,&within)?)?,None,"control ready transition exceeds declared timer lateness: refine the decision schedule")?;
     }
-    Ok(CpuControlTimer {
+    Ok(TensorControlTimer {
         active: active.clone(),
         started,
         evaluated,

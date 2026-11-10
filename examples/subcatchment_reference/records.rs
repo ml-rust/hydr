@@ -11,7 +11,7 @@ pub struct Endpoint<'a> {
     pub case: &'a Case,
     pub dt: f64,
     pub step: usize,
-    pub batch: &'a SubcatchmentBatch,
+    pub batch: &'a SubcatchmentBatch<crate::runtime::Runtime>,
     pub gross: [f64; 3],
     pub outlet: [f64; 3],
     pub routed: [f64; 3],

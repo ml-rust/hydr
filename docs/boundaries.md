@@ -47,7 +47,7 @@ The complete outward flux is:
 [q, q*ub + g*H²/2, q*vb]
 ```
 
-The CPU path rotates this flux into global face coordinates.
+The selected-runtime tensor path rotates this flux into global face coordinates.
 The flux includes normal pressure once and receives no additional bed correction on that same-bed boundary.
 It bypasses HLL after trace construction. A ghost state's prescribed discharge does not guarantee HLL's numerical water flux.
 
@@ -85,7 +85,7 @@ Its positive depth equals elevation minus the adjacent cell bed.
 Input checks reject nonfinite depth, overflowing discharge products, and nonzero velocity products that underflow to zero.
 `ExteriorState::Dry` supplies exact zero depth and discharges, without invented elevation or velocity.
 
-The CPU path replaces only the missing exterior side before the existing hydrostatic HLL calculation.
+The selected-runtime tensor path replaces only the missing exterior side before the existing hydrostatic HLL calculation.
 The copied bed matches the adjoining represented bed. Normal pressure and same-bed corrections follow the existing Riemann path.
 The exterior state remains maintained throughout its forcing interval. No finite exterior storage or donor budget exists.
 Finite compartments require an admitted conservative coupling component.

@@ -106,7 +106,16 @@ fn identities_states_and_forcing_require_complete_explicit_support() -> Result {
         vec![element("duplicate"), element("duplicate")],
     ] {
         let states = vec![ReservoirState { depth_m: 0.0 }; elements.len()];
-        assert!(ReservoirBatch::new(elements, states, 0.0, ReservoirConfig::default()).is_err());
+        assert!(
+            ReservoirBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
+                elements,
+                states,
+                0.0,
+                ReservoirConfig::default()
+            )
+            .is_err()
+        );
     }
     for states in [
         vec![],
@@ -114,7 +123,8 @@ fn identities_states_and_forcing_require_complete_explicit_support() -> Result {
         vec![ReservoirState { depth_m: f64::NAN }],
     ] {
         assert!(
-            ReservoirBatch::new(
+            ReservoirBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
                 vec![element("one")],
                 states,
                 0.0,
@@ -125,7 +135,8 @@ fn identities_states_and_forcing_require_complete_explicit_support() -> Result {
     }
     for time in [-1.0, f64::NAN, f64::INFINITY] {
         assert!(
-            ReservoirBatch::new(
+            ReservoirBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
                 vec![element("one")],
                 vec![ReservoirState { depth_m: 0.0 }],
                 time,
@@ -134,7 +145,8 @@ fn identities_states_and_forcing_require_complete_explicit_support() -> Result {
             .is_err()
         );
     }
-    let batch = ReservoirBatch::new(
+    let batch = ReservoirBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         vec![element("one")],
         vec![ReservoirState { depth_m: 0.0 }],
         0.0,

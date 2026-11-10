@@ -4,15 +4,17 @@ use super::{
     ControlCommand, ControlDecisionSchedule, ControlInitialState, ControlSample,
     OperatingControlDefinition, SampledControlTiming,
 };
-use crate::cpu::structures::control::CpuControlContext;
 use crate::structures::{
     StructureElement,
     identity::{bits, same_elements},
 };
+use crate::tensor::structures::control::TensorControlContext;
+use numr::dtype::DType;
+use numr::runtime::{Device, Runtime};
 use std::sync::Arc;
 
-pub(crate) fn same_original(
-    context: &CpuControlContext,
+pub(crate) fn same_original<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
     elements: &[StructureElement],
     definitions: &[OperatingControlDefinition],
     initial: &[ControlInitialState],
@@ -22,8 +24,8 @@ pub(crate) fn same_original(
     same_elements(&context.structures.elements, elements)
         && same_inputs(context, definitions, initial, schedule, timing)
 }
-fn same_inputs(
-    context: &CpuControlContext,
+fn same_inputs<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
     definitions: &[OperatingControlDefinition],
     initial_states: &[ControlInitialState],
     schedule: &ControlDecisionSchedule,
@@ -62,11 +64,15 @@ fn same_inputs(
             ],
         )
 }
-pub(crate) fn same_context(a: &Arc<CpuControlContext>, b: &Arc<CpuControlContext>) -> bool {
-    Arc::ptr_eq(a, b)
-        || ((Arc::ptr_eq(&a.structures, &b.structures)
-            || same_elements(&a.structures.elements, &b.structures.elements))
-            && same_inputs(a, &b.definitions, &b.initial_states, &b.schedule, &b.timing))
+pub(crate) fn same_context<R: Runtime<DType = DType>>(
+    a: &Arc<TensorControlContext<R>>,
+    b: &Arc<TensorControlContext<R>>,
+) -> bool {
+    a.structures.device.is_same(&b.structures.device)
+        && (Arc::ptr_eq(a, b)
+            || ((Arc::ptr_eq(&a.structures, &b.structures)
+                || same_elements(&a.structures.elements, &b.structures.elements))
+                && same_inputs(a, &b.definitions, &b.initial_states, &b.schedule, &b.timing)))
 }
 fn definition(a: &OperatingControlDefinition, b: &OperatingControlDefinition) -> bool {
     a == b

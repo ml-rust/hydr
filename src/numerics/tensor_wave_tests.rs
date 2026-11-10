@@ -1,5 +1,5 @@
 use super::*;
-use numr::runtime::cpu::{CpuDevice, ParallelismConfig};
+use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -11,10 +11,18 @@ const DEPTHS: [(f64, f64); 4] = [
     (1e-120, 1.0),
 ];
 
-fn setup() -> Result<(CpuClient, TensorFaceState, TensorFaceState), EngineError> {
+fn setup() -> Result<
+    (
+        CpuClient,
+        TensorFaceState<CpuRuntime>,
+        TensorFaceState<CpuRuntime>,
+    ),
+    EngineError,
+> {
     let device = CpuDevice::new();
     let tensor = |values: &[f64]| {
-        CpuTensor::from_slice(values, &[DEPTHS.len()], &device).map_err(EngineError::from)
+        Tensor::<CpuRuntime>::from_slice(values, &[DEPTHS.len()], &device)
+            .map_err(EngineError::from)
     };
     let left = TensorFaceState {
         h: tensor(&DEPTHS.map(|(left, _)| left))?,
@@ -139,9 +147,9 @@ fn compressed_states_skip_a_nonfinite_one_sided_candidate() -> TestResult {
     let device = CpuDevice::new();
     let client =
         CpuClient::new(device.clone()).with_parallelism(ParallelismConfig::new(Some(1), None));
-    let hl = CpuTensor::from_slice(&[hl_value], &[1], &device)?;
-    let hr = CpuTensor::from_slice(&[hr_value], &[1], &device)?;
-    let jump = CpuTensor::from_slice(&[jump_value], &[1], &device)?;
+    let hl = Tensor::<CpuRuntime>::from_slice(&[hl_value], &[1], &device)?;
+    let hr = Tensor::<CpuRuntime>::from_slice(&[hr_value], &[1], &device)?;
+    let jump = Tensor::<CpuRuntime>::from_slice(&[jump_value], &[1], &device)?;
     let solve = constant(&hl, 1.0)?;
     let upper = root_upper(
         &client,

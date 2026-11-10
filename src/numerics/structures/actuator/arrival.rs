@@ -3,18 +3,30 @@
 use super::arithmetic::{not, sum, width};
 use super::arrival_clock::clock;
 use super::arrival_duration::{distance, duration};
-use crate::cpu::{
-    CpuTensor,
-    structures::actuator::{CpuActuatorAnchor, CpuActuatorArrival, CpuActuatorContext},
-};
 use crate::structures::StructureError;
+use crate::tensor::structures::actuator::{
+    TensorActuatorAnchor, TensorActuatorArrival, TensorActuatorContext,
+};
+use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, UnaryOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(crate) fn arrival(
-    ctx: &CpuActuatorContext,
-    anchor: &CpuActuatorAnchor,
-    target: &CpuTensor,
-) -> Result<CpuActuatorArrival, StructureError> {
+pub(crate) fn arrival<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    anchor: &TensorActuatorAnchor<R>,
+    target: &Tensor<R>,
+) -> Result<TensorActuatorArrival<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let opening = c.lt(&anchor.position.lower, target)?;
     let closing = c.gt(&anchor.position.upper, target)?;
@@ -88,7 +100,7 @@ pub(crate) fn arrival(
         &c.where_cond(&stalled, &ctx.constant(3.0)?, &ctx.constant(4.0)?)?,
         &c.where_cond(&beyond, &ctx.constant(2.0)?, &localized)?,
     )?;
-    Ok(CpuActuatorArrival {
+    Ok(TensorActuatorArrival {
         kind,
         lower: lower_value,
         upper: upper_value,
@@ -97,14 +109,24 @@ pub(crate) fn arrival(
     })
 }
 
-fn earliest_duration(
-    ctx: &CpuActuatorContext,
-    anchor: &CpuActuatorAnchor,
-    target: &CpuTensor,
-    entirely_opening: &CpuTensor,
-    entirely_closing: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<super::arrival_duration::DurationBound, StructureError> {
+fn earliest_duration<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    anchor: &TensorActuatorAnchor<R>,
+    target: &Tensor<R>,
+    entirely_opening: &Tensor<R>,
+    entirely_closing: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<super::arrival_duration::DurationBound<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let same_side = c.mul(active, &c.maximum(entirely_opening, entirely_closing)?)?;
     let greater = c.where_cond(entirely_opening, target, &anchor.position.lower)?;
@@ -115,14 +137,24 @@ fn earliest_duration(
     duration(ctx, &lower_distance, &rate, &power, &same_side, false)
 }
 
-fn latest_duration(
-    ctx: &CpuActuatorContext,
-    anchor: &CpuActuatorAnchor,
-    target: &CpuTensor,
-    opening: &CpuTensor,
-    closing: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<super::arrival_duration::DurationBound, StructureError> {
+fn latest_duration<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    anchor: &TensorActuatorAnchor<R>,
+    target: &Tensor<R>,
+    opening: &Tensor<R>,
+    closing: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<super::arrival_duration::DurationBound<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let opening_active = c.mul(active, opening)?;
     let closing_active = c.mul(active, closing)?;

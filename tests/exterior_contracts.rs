@@ -1,5 +1,9 @@
 //! Exterior admission, transmissive witnesses, retry, and checkpoint contracts.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "support/exterior_fixture.rs"]
 mod fixture;
 
@@ -37,7 +41,7 @@ fn dry_transmissive_states_preserve_zero_flux_and_unrestricted_checkpoint_cfl() 
     };
     let mut source = make()?;
     source.advance_to(0.1, 100)?;
-    let step = source.last_step().ok_or("missing accepted dry step")?;
+    let step = source.last_step()?.ok_or("missing accepted dry step")?;
     assert_eq!(step.cfl_limit, f64::INFINITY);
     assert!(
         step.faces
@@ -48,8 +52,8 @@ fn dry_transmissive_states_preserve_zero_flux_and_unrestricted_checkpoint_cfl() 
     assert_eq!(step.transmissive_states[0].depth, 0.0);
     let checkpoint = source.snapshot();
     let mut restored = make()?;
-    restored.restore_data(&checkpoint.data())?;
-    assert_eq!(restored.snapshot(), checkpoint);
+    restored.restore_data(&checkpoint.data()?)?;
+    assert_eq!(restored.snapshot().data()?, checkpoint.data()?);
     Ok(())
 }
 
@@ -83,7 +87,7 @@ fn transmissive_incoming_or_critical_characteristics_reject_without_reflection()
         )?;
         let before = engine.snapshot();
         assert!(engine.advance_to(0.01, 100).is_err());
-        assert_eq!(engine.snapshot(), before);
+        assert_eq!(engine.snapshot().data()?, before.data()?);
     }
     Ok(())
 }
@@ -116,12 +120,12 @@ fn post_source_transmissive_retries_match_direct_accepted_execution() -> TestRes
     };
     let mut retried = make(0.1)?;
     assert_eq!(retried.advance_to(0.1, 1)?.status, AdvanceStatus::StepLimit);
-    let step = retried.last_step().ok_or("missing accepted retry")?;
+    let step = retried.last_step()?.ok_or("missing accepted retry")?;
     assert!(step.retries >= 2 && step.dt <= 0.025);
     let mut direct = make(step.dt)?;
     direct.advance_to(step.dt, 1)?;
-    let direct_step = direct.last_step().ok_or("missing direct step")?;
-    assert_eq!(retried.state(), direct.state());
+    let direct_step = direct.last_step()?.ok_or("missing direct step")?;
+    assert_eq!(retried.state()?, direct.state()?);
     assert_eq!(retried.ledger(), direct.ledger());
     assert_eq!(step.faces, direct_step.faces);
     assert_eq!(step.transmissive_states, direct_step.transmissive_states);
@@ -136,14 +140,14 @@ fn exterior_and_transmissive_restart_reject_contradictory_speed_or_state_witness
     let mut restored = through(Axis::X, 1.0)?;
     restored.restore(&checkpoint)?;
     let mut packaged = through(Axis::X, 1.0)?;
-    packaged.restore_data(&checkpoint.data())?;
+    packaged.restore_data(&checkpoint.data()?)?;
     for engine in [&mut source, &mut restored, &mut packaged] {
         engine.advance_to(0.08, 1000)?;
     }
-    assert_eq!(source.snapshot(), restored.snapshot());
-    assert_eq!(source.snapshot(), packaged.snapshot());
+    assert_eq!(source.snapshot().data()?, restored.snapshot().data()?);
+    assert_eq!(source.snapshot().data()?, packaged.snapshot().data()?);
     let accepted = packaged.snapshot();
-    let valid = accepted.data();
+    let valid = accepted.data()?;
     let mut speed = valid.clone();
     speed.last_step.as_mut().ok_or("missing last step")?.faces[0].signal_speed *= 2.0;
     let mut cfl = valid.clone();
@@ -157,14 +161,14 @@ fn exterior_and_transmissive_restart_reject_contradictory_speed_or_state_witness
         .outward_discharge_per_width += 0.25;
     for altered in [speed, cfl, witness] {
         assert!(packaged.restore_data(&altered).is_err());
-        assert_eq!(packaged.snapshot(), accepted);
+        assert_eq!(packaged.snapshot().data()?, accepted.data()?);
     }
     let source = uniform(1, 1, vec![0.0], 1.0, [0.0, 0.0])?;
     let mut signed = uniform(1, 1, vec![0.0], 1.0, [0.0, -0.0])?;
     let before = signed.snapshot();
     assert!(signed.restore(&source.snapshot()).is_err());
-    assert!(signed.restore_data(&source.snapshot().data()).is_err());
-    assert_eq!(signed.snapshot(), before);
+    assert!(signed.restore_data(&source.snapshot().data()?).is_err());
+    assert_eq!(signed.snapshot().data()?, before.data()?);
     Ok(())
 }
 
@@ -287,7 +291,7 @@ fn all_five_boundary_policies_coexist_with_independent_trace_and_witness_sets() 
         },
     )?;
     engine.advance_to(0.02, 1000)?;
-    for cell in engine.state().cells() {
+    for cell in engine.state()?.cells() {
         assert!(
             (cell.h - 1.0).abs() <= 1e-11
                 && (cell.qx - 5.0).abs() <= 1e-11
@@ -298,7 +302,7 @@ fn all_five_boundary_policies_coexist_with_independent_trace_and_witness_sets() 
         (engine.ledger().boundary_in - 0.2).abs() <= 1e-12
             && (engine.ledger().boundary_out - 0.2).abs() <= 1e-12
     );
-    let step = engine.last_step().ok_or("missing mixed-boundary step")?;
+    let step = engine.last_step()?.ok_or("missing mixed-boundary step")?;
     assert_eq!(step.boundary_traces.len(), 4);
     assert_eq!(step.transmissive_states.len(), 2);
     assert_eq!(
@@ -309,7 +313,7 @@ fn all_five_boundary_policies_coexist_with_independent_trace_and_witness_sets() 
         1
     );
     let accepted = engine.snapshot();
-    engine.restore_data(&accepted.data())?;
-    assert_eq!(engine.snapshot(), accepted);
+    engine.restore_data(&accepted.data()?)?;
+    assert_eq!(engine.snapshot().data()?, accepted.data()?);
     Ok(())
 }

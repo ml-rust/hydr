@@ -1,9 +1,11 @@
 use super::*;
 use crate::runoff::{ReservoirConfig, ReservoirElement, ReservoirParameters};
+use numr::runtime::cpu::CpuRuntime;
 
-fn context(count: usize) -> Result<CpuReservoirContext, ReservoirError> {
+fn context(count: usize) -> Result<TensorReservoirContext<CpuRuntime>, ReservoirError> {
     let parameters = ReservoirParameters::from_si(1.0, 1.0, 0.0, 0.0, 1.0, 0.0)?;
-    CpuReservoirContext::new(
+    TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         (0..count)
             .map(|i| ReservoirElement {
                 id: format!("bound-{i}"),
@@ -86,4 +88,9 @@ fn positive_uncertainty_survives_a_zero_scale_increment() -> Result<(), Reservoi
     assert!(charge > 0.0);
     assert!(add_charge(0.0, charge)? > permitted_budget(0.0, 1.0, 0.0)?);
     Ok(())
+}
+
+fn cpu_client() -> numr::runtime::cpu::CpuClient {
+    numr::runtime::cpu::CpuClient::new(numr::runtime::cpu::CpuDevice::new())
+        .with_parallelism(numr::runtime::cpu::ParallelismConfig::new(Some(1), None))
 }

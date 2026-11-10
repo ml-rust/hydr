@@ -101,7 +101,10 @@ fn binding_requires_the_complete_ordered_gate_subsequence() -> Result {
     let bound = batch.with_gate_trajectories(correct.clone())?;
     assert_eq!(bound.assignments(), correct);
     assert_eq!(bound.elements(), batch.elements());
-    let passive_only = StructureBatch::new(vec![passive("passive")?])?;
+    let passive_only = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![passive("passive")?],
+    )?;
     expect_error(
         passive_only.with_gate_trajectories(vec![]),
         "Definition",
@@ -113,8 +116,14 @@ fn binding_requires_the_complete_ordered_gate_subsequence() -> Result {
 #[test]
 fn binding_uses_complete_gate_geometry_and_requires_common_duration() -> Result {
     let definition = stationary(1.5, 0.0, 2.0)?;
-    let small = StructureBatch::new(vec![reference_case::gate("same-id", 1.0)?])?;
-    let large = StructureBatch::new(vec![reference_case::gate("same-id", 2.0)?])?;
+    let small = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![reference_case::gate("same-id", 1.0)?],
+    )?;
+    let large = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![reference_case::gate("same-id", 2.0)?],
+    )?;
     let assignment = GateTrajectoryAssignment {
         structure_id: "same-id".into(),
         trajectory: definition,

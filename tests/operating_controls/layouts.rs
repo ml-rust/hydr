@@ -23,7 +23,7 @@ fn mixed(
     width: usize,
     required: usize,
     alternate_initial: bool,
-) -> Result<(OperatingControlBatch, Vec<usize>)> {
+) -> Result<(OperatingControlBatch<crate::runtime::Runtime>, Vec<usize>)> {
     let reference = case(id)?;
     let mut elements = Vec::new();
     let mut definitions = Vec::new();
@@ -55,12 +55,13 @@ fn mixed(
         lanes.push(lane);
     }
     Ok((
-        StructureBatch::new(elements)?.with_operating_controls(
-            definitions,
-            initial,
-            reference_case::schedule(reference),
-            reference_case::timing(reference),
-        )?,
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?
+            .with_operating_controls(
+                definitions,
+                initial,
+                reference_case::schedule(reference),
+                reference_case::timing(reference),
+            )?,
         lanes,
     ))
 }
@@ -160,7 +161,11 @@ fn isolated_timer_lateness_maps_to_its_original_mixed_element() -> Result {
                 definition.high_qualification_delay_s = 10.0;
             }
         }
-        let batch = StructureBatch::new(base.elements().to_vec())?.with_operating_controls(
+        let batch = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            base.elements().to_vec(),
+        )?
+        .with_operating_controls(
             definitions,
             base.initial_states().to_vec(),
             base.schedule().clone(),

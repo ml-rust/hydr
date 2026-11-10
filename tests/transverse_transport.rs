@@ -14,6 +14,10 @@
 //! The maximum rotated state-component discrepancy must remain <=1e-11.
 //! Printed peaks describe measured amplitude only. These gates establish no general attenuation bound.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "support/impervious.rs"]
 mod impervious;
 
@@ -54,7 +58,7 @@ fn run(
     nx: usize,
     ny: usize,
     orientation: Orientation,
-) -> Result<Solver, Box<dyn std::error::Error>> {
+) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let dx = LENGTH / nx as f64;
     let dy = LENGTH / ny as f64;
     let count = nx * ny;
@@ -160,7 +164,8 @@ fn transverse_shear_error_decreases_under_spatial_refinement() -> TestResult {
     let mut errors = Vec::new();
     for nx in [100, 200, 400] {
         let solver = run(nx, ny, Orientation::X)?;
-        let cells = &solver.state().cells()[centre_row * nx..(centre_row + 1) * nx];
+        let flow = solver.state()?;
+        let cells = &flow.cells()[centre_row * nx..(centre_row + 1) * nx];
         let dx = LENGTH / nx as f64;
         let mut error = 0.0;
         let mut exact_norm = 0.0;
@@ -205,8 +210,8 @@ fn quarter_turn_rotates_state_and_complete_boundary_fluxes() -> TestResult {
     let mut discrepancy: f64 = 0.0;
     for row in 0..n {
         for column in 0..n {
-            let before = original.state().cells()[row * n + column];
-            let after = rotated.state().cells()[column * n + (n - 1 - row)];
+            let before = original.state()?.cells()[row * n + column];
+            let after = rotated.state()?.cells()[column * n + (n - 1 - row)];
             discrepancy = discrepancy
                 .max((after.h - before.h).abs())
                 .max((after.qx + before.qy).abs())

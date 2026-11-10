@@ -3,6 +3,8 @@
 use super::super::OperatingControlBatch;
 pub(super) use super::super::compatibility::{command, option_time, sample};
 use crate::structures::{StructureError, StructureInputErrorKind};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
 pub(super) fn require(condition: bool, message: &str) -> Result<(), StructureError> {
     if condition {
@@ -14,8 +16,8 @@ pub(super) fn require(condition: bool, message: &str) -> Result<(), StructureErr
         ))
     }
 }
-pub(super) fn check(
-    batch: &OperatingControlBatch,
+pub(super) fn check<R: Runtime<DType = DType>>(
+    batch: &OperatingControlBatch<R>,
     data: &super::OperatingControlSnapshotData,
 ) -> Result<(), StructureError> {
     require(
@@ -37,9 +39,9 @@ pub(super) fn contains_original_time(times: &[f64], time: f64) -> bool {
         .is_ok()
 }
 
-pub(super) fn check_batch(
-    a: &OperatingControlBatch,
-    b: &OperatingControlBatch,
+pub(super) fn check_batch<R: Runtime<DType = DType>>(
+    a: &OperatingControlBatch<R>,
+    b: &OperatingControlBatch<R>,
 ) -> Result<(), StructureError> {
     require(
         super::super::compatibility::same_context(&a.context, &b.context),

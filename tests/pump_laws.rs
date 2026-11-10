@@ -1,5 +1,9 @@
 //! Explicit pump operation, rational reference curves, and immutable held proposals.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "pump_laws/admission.rs"]
 mod admission;
 #[path = "pump_laws/fixture.rs"]

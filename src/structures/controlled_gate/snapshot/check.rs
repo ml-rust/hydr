@@ -5,6 +5,8 @@ use super::ControlledGateSnapshotData;
 use crate::structures::{
     GateActuatorBatch, OperatingControlBatch, StructureError, StructureInputErrorKind,
 };
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
 pub(super) fn bits(a: f64, b: f64) -> bool {
     a.to_bits() == b.to_bits()
@@ -19,8 +21,8 @@ pub(super) fn require(condition: bool, message: &str) -> Result<(), StructureErr
         ))
     }
 }
-pub(super) fn lane(
-    batch: &ControlledGateBatch,
+pub(super) fn lane<R: Runtime<DType = DType>>(
+    batch: &ControlledGateBatch<R>,
     index: usize,
     condition: bool,
     message: &str,
@@ -30,9 +32,9 @@ pub(super) fn lane(
         None => error,
     })
 }
-pub(super) fn metadata(
-    controls: &OperatingControlBatch,
-    actuators: &GateActuatorBatch,
+pub(super) fn metadata<R: Runtime<DType = DType>>(
+    controls: &OperatingControlBatch<R>,
+    actuators: &GateActuatorBatch<R>,
 ) -> Result<(), StructureError> {
     require(
         bits(controls.time(), actuators.time())
@@ -41,8 +43,8 @@ pub(super) fn metadata(
         "controlled gate snapshot child clocks, interval counts, or processed calendars differ",
     )
 }
-pub(super) fn data(
-    batch: &ControlledGateBatch,
+pub(super) fn data<R: Runtime<DType = DType>>(
+    batch: &ControlledGateBatch<R>,
     data: &ControlledGateSnapshotData,
 ) -> Result<(), StructureError> {
     let controls = &data.controls;

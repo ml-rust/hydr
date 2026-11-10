@@ -1,5 +1,9 @@
 //! Standalone explicit three-subarea rainfall, soil, and same-interval routing.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 use hydr::runoff::{
     SubcatchmentBatch, SubcatchmentConfig, SubcatchmentDefinition, SubcatchmentGeometry,
     SubcatchmentInput, SubcatchmentParameters, SubcatchmentRouting, SubcatchmentState,
@@ -23,7 +27,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         SubcatchmentRouting::ImperviousToPervious { fraction: 0.5 },
     )?;
     let state = SubcatchmentState::initialized(&parameters)?;
-    let batch = SubcatchmentBatch::new(
+    let batch = SubcatchmentBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         vec![SubcatchmentDefinition {
             id: "roof-and-soil".into(),
             parameters,

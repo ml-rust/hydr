@@ -1,13 +1,36 @@
 //! Explicit cumulative source projections and outward aggregate diagnostic bounds.
 
-use crate::cpu::level_pool::{CpuPoolContext, CpuPoolSourceState, CpuPoolSourceStep};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::interpolate::Interp1dAlgorithms;
+
 use crate::storage::accounting::{read, sum_bound};
 use crate::storage::{LevelPoolError, LevelPoolSourceLedger};
+use crate::tensor::level_pool::{TensorPoolContext, TensorPoolSourceState, TensorPoolSourceStep};
 
-pub(crate) fn ledgers(
-    context: &CpuPoolContext,
-    state: Option<&CpuPoolSourceState>,
-) -> Result<Option<Vec<LevelPoolSourceLedger>>, LevelPoolError> {
+pub(crate) fn ledgers<R>(
+    context: &TensorPoolContext<R>,
+    state: Option<&TensorPoolSourceState<R>>,
+) -> Result<Option<Vec<LevelPoolSourceLedger>>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let Some(state) = state else { return Ok(None) };
     let n = context.elements.len();
     let rain = read(&state.rain, n)?;
@@ -33,10 +56,25 @@ pub(crate) fn ledgers(
             .collect(),
     ))
 }
-pub(crate) fn totals(
-    context: &CpuPoolContext,
-    state: Option<&CpuPoolSourceState>,
-) -> Result<Option<LevelPoolSourceLedger>, LevelPoolError> {
+pub(crate) fn totals<R>(
+    context: &TensorPoolContext<R>,
+    state: Option<&TensorPoolSourceState<R>>,
+) -> Result<Option<LevelPoolSourceLedger>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let Some(state) = state else { return Ok(None) };
     Ok(Some(LevelPoolSourceLedger {
         cumulative_rain_volume_m3: context.sum(&state.rain, "aggregate source rain")?,
@@ -76,10 +114,25 @@ pub(crate) struct SourceTotals {
     pub potential_evaporation_volume_m3: f64,
     pub unmet_evaporation_volume_m3: f64,
 }
-pub(crate) fn step_totals(
-    context: &CpuPoolContext,
-    source: Option<&CpuPoolSourceStep>,
-) -> Result<SourceTotals, LevelPoolError> {
+pub(crate) fn step_totals<R>(
+    context: &TensorPoolContext<R>,
+    source: Option<&TensorPoolSourceStep<R>>,
+) -> Result<SourceTotals, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let Some(s) = source else {
         return Ok(SourceTotals::default());
     };

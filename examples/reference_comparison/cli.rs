@@ -57,11 +57,11 @@ fn evaluate(
     let reference = fields::read(reference_path, case, count)?;
     let solver = simulate(case, count)?;
     if let Some(path) = output {
-        fields::write(path, case, solver.state().cells())?;
+        fields::write(path, case, solver.state()?.cells())?;
     }
     metrics::compare(
         case,
-        solver.state().cells(),
+        solver.state()?.cells(),
         &reference,
         solver.ledger().residual,
     )

@@ -79,7 +79,10 @@ fn rejected_and_discarded_trials_leave_complete_accepted_memory_unchanged() -> R
 #[test]
 fn explicit_terminal_support_preserves_memory_without_creating_a_decision() -> Result {
     let source = batch("inclusive_thresholds_and_band_hold", 1)?;
-    let context = StructureBatch::new(source.elements().to_vec())?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        source.elements().to_vec(),
+    )?;
     let schedule = ControlDecisionSchedule {
         initial_time_s: 0.0,
         decision_times_s: vec![],

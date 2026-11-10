@@ -1,7 +1,7 @@
 # Conservative standalone subcatchment
 
 `hydr::runoff::SubcatchmentBatch` advances explicit three-subarea storage, native soil memory, losses, and paired internal transfers.
-The component uses persistent F64 tensors on an explicitly configured one-thread numr CPU client.
+The component uses persistent `Tensor<R>` fields on a caller-configured Numr client. The checked CPU F64 reference uses one thread. Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission).
 It supplies no hydraulic attachment or GIS ownership inference.
 
 Run the [standalone example](../examples/subcatchment.rs):
@@ -99,11 +99,11 @@ Discarding a successful trial preserves accepted storage, both phase-role soil b
 | Trial `diagnostics()` | Original interval, phase work, budgets, source receipts, and transfer identities |
 | Batch `ledger()` | Complete cumulative physical and uncertainty counters |
 
-Numerical continuation consumes persistent tensors. It never advances projected arrays.
+Numerical continuation consumes persistent tensors. It never advances projected arrays. Array output methods return fallible projections.
 
 ## Restart and scope
 
-`snapshot()` clones complete persistent continuation state. `snapshot_data()` projects caller-owned values on request.
+`snapshot()` clones complete persistent tensor continuation without projection. `snapshot_data()` fallibly projects caller-owned values on request.
 Both restore paths check exact definition/config bits before atomic replacement.
 Owned import checks complete source algebra and numerical receipts without replaying soil history or roots.
 It also checks accepted depths, final diagnostics, cumulative counters, and independent budgets.

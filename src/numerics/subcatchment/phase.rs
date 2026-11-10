@@ -1,21 +1,44 @@
 //! One phase advances its disjoint physical lanes and accepted soil memory once.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::sources::{Sources, Supply};
-use super::step::CpuSubareaStep;
+use super::step::TensorSubareaStep;
 use super::{bounds, sources, timing, transfer};
-use crate::cpu::CpuTensor;
-use crate::cpu::subcatchment::CpuSubareaGroup;
 use crate::numerics::reservoir::drainage::{self, DrainageResult, DrainageRoot};
 use crate::runoff::{ReservoirError, SubcatchmentError};
 use crate::soil::ModifiedGreenAmptBatch;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
+use crate::tensor::subcatchment::TensorSubareaGroup;
 
-pub(super) fn advance(
-    group: &CpuSubareaGroup,
-    supply: Supply,
-    accepted_soil: Option<&ModifiedGreenAmptBatch>,
+pub(super) fn advance<R>(
+    group: &TensorSubareaGroup<R>,
+    supply: Supply<R>,
+    accepted_soil: Option<&ModifiedGreenAmptBatch<R>>,
     dt: f64,
-) -> Result<(CpuSubareaStep, Option<ModifiedGreenAmptBatch>), SubcatchmentError> {
+) -> Result<(TensorSubareaStep<R>, Option<ModifiedGreenAmptBatch<R>>), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let (soil, next_soil) = super::soil::trial(group, &supply, accepted_soil, dt)
         .map_err(|error| group.map_soil_error(error))?;
     let sources = sources::finish(group, supply, soil, dt)
@@ -30,12 +53,25 @@ pub(super) fn advance(
 }
 
 /// Check represented source and root witnesses without soil transition or root replay.
-pub(super) fn admit(
-    group: &CpuSubareaGroup,
-    supply: Supply,
-    step: &CpuSubareaStep,
+pub(super) fn admit<R>(
+    group: &TensorSubareaGroup<R>,
+    supply: Supply<R>,
+    step: &TensorSubareaStep<R>,
     dt: f64,
-) -> Result<CpuSubareaStep, SubcatchmentError> {
+) -> Result<TensorSubareaStep<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let sources = sources::finish(group, supply, step.soil.clone(), dt)
         .map_err(|error| group.map_reservoir_error(error))?;
     let (budget, timing_rate) = timing::prepare(&group.reservoir, &sources, dt)
@@ -55,13 +91,26 @@ pub(super) fn admit(
         .map_err(|error| group.map_reservoir_error(error))
 }
 
-fn finish(
-    group: &CpuSubareaGroup,
-    sources: Sources,
-    timing_rate: CpuTensor,
-    active_duration: CpuTensor,
-    drainage: DrainageResult,
-) -> Result<CpuSubareaStep, ReservoirError> {
+fn finish<R>(
+    group: &TensorSubareaGroup<R>,
+    sources: Sources<R>,
+    timing_rate: Tensor<R>,
+    active_duration: Tensor<R>,
+    drainage: DrainageResult<R>,
+) -> Result<TensorSubareaStep<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let ctx = &group.reservoir;
     let c = &ctx.client;
     let partition = transfer::partition(ctx, &drainage.export_volume, &group.route_fraction)?;
@@ -98,7 +147,7 @@ fn finish(
         &ctx.zero,
     )?;
     let uncertainty_charge = bounds::sum_upper(ctx, &uncertainty)?;
-    Ok(CpuSubareaStep {
+    Ok(TensorSubareaStep {
         old_depth: sources.supply.old_depth,
         rain_rate: sources.supply.rain_rate,
         potential_evaporation: sources.supply.potential_evaporation,

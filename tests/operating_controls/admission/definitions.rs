@@ -7,7 +7,8 @@ fn controlled_subsets_preserve_actual_order_and_reject_conflicting_bindings() ->
     let elements = (0..5)
         .map(|lane| reference_case::pump(&reference_case::device(lane)))
         .collect::<std::result::Result<Vec<_>, _>>()?;
-    let structures = StructureBatch::new(elements)?;
+    let structures =
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?;
     let definitions = vec![
         reference_case::definition(case, 0, &reference_case::device(1)),
         reference_case::definition(case, 1, &reference_case::device(3)),
@@ -94,7 +95,10 @@ fn controlled_subsets_preserve_actual_order_and_reject_conflicting_bindings() ->
 #[test]
 fn thresholds_delays_and_timing_require_explicit_finite_domains() -> fixture::Result {
     let case = fixture::case("inclusive_thresholds_and_band_hold")?;
-    let structures = StructureBatch::new(vec![reference_case::pump(&reference_case::device(0))?])?;
+    let structures = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![reference_case::pump(&reference_case::device(0))?],
+    )?;
     let changes: [fn(&mut OperatingControlDefinition); 7] = [
         |definition| definition.lower_stage_m = definition.upper_stage_m,
         |definition| definition.lower_stage_m = 3.0,
@@ -149,7 +153,10 @@ fn thresholds_delays_and_timing_require_explicit_finite_domains() -> fixture::Re
 #[test]
 fn commands_respect_actual_pump_policy_gate_range_and_passive_laws() -> fixture::Result {
     let case = fixture::case("inclusive_thresholds_and_band_hold")?;
-    let pump = StructureBatch::new(vec![reference_case::pump(&reference_case::device(0))?])?;
+    let pump = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![reference_case::pump(&reference_case::device(0))?],
+    )?;
     for command in [
         ControlCommand::GateTarget { opening_m: 0.25 },
         ControlCommand::PumpRunning { speed_ratio: 0.5 },
@@ -172,7 +179,10 @@ fn commands_respect_actual_pump_policy_gate_range_and_passive_laws() -> fixture:
         )?;
     }
 
-    let gate = StructureBatch::new(vec![reference_case::gate(&reference_case::device(0))?])?;
+    let gate = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![reference_case::gate(&reference_case::device(0))?],
+    )?;
     let mut definition = reference_case::definition(case, 0, &reference_case::device(0));
     definition.low_command = ControlCommand::GateTarget { opening_m: 0.0 };
     definition.high_command = ControlCommand::GateTarget { opening_m: 1.0 };
@@ -221,7 +231,8 @@ fn commands_respect_actual_pump_policy_gate_range_and_passive_laws() -> fixture:
             symmetric_reversal: true,
         },
     )?);
-    let passive = StructureBatch::new(vec![passive])?;
+    let passive =
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), vec![passive])?;
     rejects(
         passive.with_operating_controls(
             vec![reference_case::definition(
@@ -241,7 +252,10 @@ fn commands_respect_actual_pump_policy_gate_range_and_passive_laws() -> fixture:
 #[test]
 fn schedules_check_original_order_support_and_terminal_cadence() -> fixture::Result {
     let case = fixture::case("inclusive_thresholds_and_band_hold")?;
-    let structures = StructureBatch::new(vec![reference_case::pump(&reference_case::device(0))?])?;
+    let structures = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![reference_case::pump(&reference_case::device(0))?],
+    )?;
     let changes: [fn(&mut ControlDecisionSchedule); 7] = [
         |schedule| schedule.initial_time_s = -1.0,
         |schedule| schedule.end_s = schedule.initial_time_s,

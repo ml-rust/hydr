@@ -4,12 +4,24 @@ use super::super::{ControlLatch, ControlState, OperatingControlBatch};
 use super::compatibility::require;
 use super::state_check::as_definition;
 use crate::structures::StructureError;
+use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
+use numr::runtime::Runtime;
 
-pub(super) fn check(
-    batch: &OperatingControlBatch,
+pub(super) fn check<R: Runtime<DType = DType>>(
+    batch: &OperatingControlBatch<R>,
     states: &[ControlState],
-) -> Result<(), StructureError> {
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let context = &batch.context;
     let mut active = Vec::with_capacity(states.len());
     let mut starts = Vec::with_capacity(states.len());
@@ -20,7 +32,10 @@ pub(super) fn check(
     for (lane, (state, definition)) in states.iter().zip(batch.definitions()).enumerate() {
         if let Some(receipt) = &state.last_transition {
             let result = (|| {
-                crate::cpu::structures::control::input::check_sample(definition, &receipt.sample)?;
+                crate::tensor::structures::control::input::check_sample(
+                    definition,
+                    &receipt.sample,
+                )?;
                 require(
                     receipt.sample.observed_at_s.to_bits() == receipt.time_s.to_bits()
                         && receipt.timer.evaluated_at_s.to_bits() == receipt.time_s.to_bits(),

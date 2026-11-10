@@ -1,5 +1,9 @@
 //! Explicit instantaneous pump response and fresh source authority.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "controlled_pump_support/admission.rs"]
 mod admission;
 #[path = "controlled_pump_support/fixture.rs"]

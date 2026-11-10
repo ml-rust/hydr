@@ -1,8 +1,9 @@
 use super::{advance, check_step};
-use crate::cpu::reservoir_storage::{CpuReservoirContext, CpuReservoirState};
 use crate::runoff::{
     ReservoirConfig, ReservoirElement, ReservoirError, ReservoirParameters, ReservoirState,
 };
+use crate::tensor::reservoir_storage::{TensorReservoirContext, TensorReservoirState};
+use numr::runtime::cpu::CpuRuntime;
 
 fn element(id: &str, n: f64, width: f64) -> Result<ReservoirElement, ReservoirError> {
     Ok(ReservoirElement {
@@ -13,7 +14,8 @@ fn element(id: &str, n: f64, width: f64) -> Result<ReservoirElement, ReservoirEr
 
 #[test]
 fn mixed_branches_retain_independent_tensor_receipts() -> Result<(), ReservoirError> {
-    let context = CpuReservoirContext::new(
+    let context = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![
             element("finite", 1.0 / 32.0, 32.0)?,
             element("closed", 1.0 / 32.0, 0.0)?,
@@ -21,7 +23,7 @@ fn mixed_branches_retain_independent_tensor_receipts() -> Result<(), ReservoirEr
         ],
         ReservoirConfig::default(),
     )?;
-    let state = CpuReservoirState::new(
+    let state = TensorReservoirState::<CpuRuntime>::new(
         &context,
         &[ReservoirState {
             depth_m: 0.25 * 0.3048,
@@ -49,8 +51,12 @@ fn imported_receipt_rechecks_export_and_law_on_its_element() -> Result<(), Reser
     let elements = (0..33)
         .map(|index| element(&format!("element-{index}"), 1.0 / 32.0, 32.0))
         .collect::<Result<Vec<_>, _>>()?;
-    let context = CpuReservoirContext::new(elements, ReservoirConfig::default())?;
-    let state = CpuReservoirState::new(
+    let context = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
+        elements,
+        ReservoirConfig::default(),
+    )?;
+    let state = TensorReservoirState::<CpuRuntime>::new(
         &context,
         &vec![
             ReservoirState {
@@ -84,14 +90,15 @@ fn imported_receipt_rechecks_export_and_law_on_its_element() -> Result<(), Reser
 
 #[test]
 fn exhausted_batched_root_work_keeps_antecedent_tensor() -> Result<(), ReservoirError> {
-    let context = CpuReservoirContext::new(
+    let context = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![element("finite", 1.0 / 32.0, 32.0)?],
         ReservoirConfig {
             root_iterations: 1,
             ..ReservoirConfig::default()
         },
     )?;
-    let state = CpuReservoirState::new(
+    let state = TensorReservoirState::<CpuRuntime>::new(
         &context,
         &[ReservoirState {
             depth_m: 0.25 * 0.3048,
@@ -115,14 +122,15 @@ fn exhausted_batched_root_work_keeps_antecedent_tensor() -> Result<(), Reservoir
 fn positive_implicit_excess_cannot_collapse_into_depression() -> Result<(), ReservoirError> {
     let depression = 1e6f64;
     let parameters = ReservoirParameters::from_si(1.0, 1.0, 1.0, 1.0, 1e-8, depression)?;
-    let context = CpuReservoirContext::new(
+    let context = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![ReservoirElement {
             id: "stiff".into(),
             parameters,
         }],
         ReservoirConfig::default(),
     )?;
-    let state = CpuReservoirState::new(
+    let state = TensorReservoirState::<CpuRuntime>::new(
         &context,
         &[ReservoirState {
             depth_m: f64::from_bits(depression.to_bits() + 1),
@@ -140,7 +148,8 @@ fn positive_implicit_excess_cannot_collapse_into_depression() -> Result<(), Rese
 
 #[test]
 fn closed_and_instantaneous_lanes_skip_event_and_root_work() -> Result<(), ReservoirError> {
-    let context = CpuReservoirContext::new(
+    let context = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![
             element("closed", 1.0 / 32.0, 0.0)?,
             element("instant", 0.0, 32.0)?,
@@ -150,7 +159,8 @@ fn closed_and_instantaneous_lanes_skip_event_and_root_work() -> Result<(), Reser
             ..ReservoirConfig::default()
         },
     )?;
-    let state = CpuReservoirState::new(&context, &[ReservoirState { depth_m: 0.0 }; 2])?;
+    let state =
+        TensorReservoirState::<CpuRuntime>::new(&context, &[ReservoirState { depth_m: 0.0 }; 2])?;
     let step = advance(
         &context,
         &state,
@@ -166,11 +176,13 @@ fn closed_and_instantaneous_lanes_skip_event_and_root_work() -> Result<(), Reser
 
 #[test]
 fn positive_supply_absorbed_by_storage_rounding_rejects() -> Result<(), ReservoirError> {
-    let context = CpuReservoirContext::new(
+    let context = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![element("closed", 1.0 / 32.0, 0.0)?],
         ReservoirConfig::default(),
     )?;
-    let state = CpuReservoirState::new(&context, &[ReservoirState { depth_m: 1e16 }])?;
+    let state =
+        TensorReservoirState::<CpuRuntime>::new(&context, &[ReservoirState { depth_m: 1e16 }])?;
     let error = advance(&context, &state, 1.0, &context.tensor(&[1e-20])?)
         .err()
         .ok_or_else(|| {
@@ -184,7 +196,8 @@ fn positive_supply_absorbed_by_storage_rounding_rejects() -> Result<(), Reservoi
 #[test]
 fn provided_budget_below_initial_storage_uses_no_synthetic_source() -> Result<(), ReservoirError> {
     use super::drainage::{DrainageRoot, admit_drainage, drain, prepare_budget};
-    let context = CpuReservoirContext::new(
+    let context = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![element("loss-budget", 1.0 / 32.0, 32.0)?],
         ReservoirConfig::default(),
     )?;
@@ -220,7 +233,8 @@ fn provided_budget_below_initial_storage_uses_no_synthetic_source() -> Result<()
 #[test]
 fn provided_inactive_budgets_need_no_event_rate_or_root_work() -> Result<(), ReservoirError> {
     use super::drainage::{drain, prepare_budget};
-    let context = CpuReservoirContext::new(
+    let context = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![
             element("closed", 1.0 / 32.0, 0.0)?,
             element("instant", 0.0, 32.0)?,
@@ -248,7 +262,8 @@ fn provided_inactive_budgets_need_no_event_rate_or_root_work() -> Result<(), Res
 #[test]
 fn provided_budget_rejects_invalid_storage_and_active_duration() -> Result<(), ReservoirError> {
     use super::drainage::prepare_budget;
-    let context = CpuReservoirContext::new(
+    let context = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![element("finite", 1.0 / 32.0, 32.0)?],
         ReservoirConfig::default(),
     )?;
@@ -283,7 +298,8 @@ fn provided_budget_rejects_invalid_storage_and_active_duration() -> Result<(), R
 fn provided_budget_retains_strict_reconstructed_excess_admission() -> Result<(), ReservoirError> {
     use super::drainage::{drain, prepare_budget};
     let depression = 1e6f64;
-    let context = CpuReservoirContext::new(
+    let context = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![ReservoirElement {
             id: "stiff-budget".into(),
             parameters: ReservoirParameters::from_si(1.0, 1.0, 1.0, 1.0, 1e-8, depression)?,
@@ -305,11 +321,13 @@ fn provided_budget_retains_strict_reconstructed_excess_admission() -> Result<(),
 #[test]
 fn foreign_root_witness_uses_the_budget_construction_context() -> Result<(), ReservoirError> {
     use super::drainage::{DrainageRoot, admit_drainage, drain, prepare_budget};
-    let context_a = CpuReservoirContext::new(
+    let context_a = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![element("same-identity", 1.0 / 32.0, 32.0)?],
         ReservoirConfig::default(),
     )?;
-    let context_b = CpuReservoirContext::new(
+    let context_b = TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![element("same-identity", 1.0 / 32.0, 64.0)?],
         ReservoirConfig::default(),
     )?;
@@ -341,4 +359,9 @@ fn foreign_root_witness_uses_the_budget_construction_context() -> Result<(), Res
     let from_b = drain(&budget_b)?;
     assert!(from_b.export_volume.item::<f64>()? > 0.0);
     Ok(())
+}
+
+fn cpu_client() -> numr::runtime::cpu::CpuClient {
+    numr::runtime::cpu::CpuClient::new(numr::runtime::cpu::CpuDevice::new())
+        .with_parallelism(numr::runtime::cpu::ParallelismConfig::new(Some(1), None))
 }

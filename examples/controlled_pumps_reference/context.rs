@@ -33,7 +33,13 @@ pub fn samples(case: &Case, width: usize, time: f64) -> Vec<ControlSample> {
 pub fn build(
     case: &Case,
     width: usize,
-) -> std::result::Result<(StructureBatch, ControlledPumpBatch), StructureError> {
+) -> std::result::Result<
+    (
+        StructureBatch<crate::runtime::Runtime>,
+        ControlledPumpBatch<crate::runtime::Runtime>,
+    ),
+    StructureError,
+> {
     let elements = (0..width)
         .map(|lane| {
             Ok(StructureElement {
@@ -84,7 +90,8 @@ pub fn build(
             })
         })
         .collect::<std::result::Result<Vec<_>, StructureError>>()?;
-    let structures = StructureBatch::new(elements)?;
+    let structures =
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?;
     let mut controls = structures.with_operating_controls(
         (0..width)
             .map(|lane| OperatingControlDefinition {
@@ -131,7 +138,7 @@ pub fn build(
             .trial_to(decision.time, &samples(case, width, decision.time))?
             .into_next();
     }
-    let pump = ControlledPumpBatch::new(
+    let pump = ControlledPumpBatch::<crate::runtime::Runtime>::new(
         controls,
         (0..width)
             .map(|lane| PumpResponseDefinition {

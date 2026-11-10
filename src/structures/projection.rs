@@ -1,13 +1,18 @@
 //! Explicit proposal projection without numerical host-state advancement.
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::proposal::ProposalData;
 use super::{
     FlowDirection, StructureError, StructureHydraulicOperands, StructureLaw, StructureLawKind,
     StructureOutput, StructureRegime, StructureStatus,
 };
-use crate::cpu::{CpuTensor, structures::codes};
+use crate::tensor::structures::codes;
+use numr::tensor::Tensor;
 
-pub(super) fn read(tensor: &CpuTensor, n: usize) -> Result<Vec<f64>, StructureError> {
+pub(super) fn read<R: Runtime<DType = DType>>(
+    tensor: &Tensor<R>,
+    n: usize,
+) -> Result<Vec<f64>, StructureError> {
     if tensor.shape() != [n] {
         return Err(StructureError::numerical(format!(
             "projection shape={:?}: require {n} ordered structure values",
@@ -17,7 +22,9 @@ pub(super) fn read(tensor: &CpuTensor, n: usize) -> Result<Vec<f64>, StructureEr
     Ok(tensor.try_to_vec::<f64>()?)
 }
 
-pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, StructureError> {
+pub(super) fn outputs<R: Runtime<DType = DType>>(
+    data: &ProposalData<R>,
+) -> Result<Vec<StructureOutput>, StructureError> {
     let operations = super::operation_projection::project(&data.operations)?;
     let n = data.context.elements.len();
     let r = &data.result;

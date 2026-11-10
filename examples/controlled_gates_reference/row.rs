@@ -79,7 +79,7 @@ fn csv(value: &str) -> String {
 pub fn rows(
     writer: &mut impl Write,
     frame: &Frame<'_>,
-    batch: Option<&ControlledGateBatch>,
+    batch: Option<&ControlledGateBatch<crate::runtime::Runtime>>,
     o: Observation<'_>,
 ) -> Result {
     let commands = batch.map(|b| b.controls().commands()).transpose()?;

@@ -1,8 +1,15 @@
 //! Complete receipts and independent interval/cumulative volume admission.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+
 use super::ReservoirError;
-use crate::cpu::reservoir_storage::CpuReservoirContext;
-use crate::numerics::reservoir::CpuReservoirStep;
+use crate::numerics::reservoir::TensorReservoirStep;
+use crate::tensor::reservoir_storage::TensorReservoirContext;
 
 /// Lifetime represented reservoir water accounting, without numerical adjustments.
 #[derive(Clone, Debug, PartialEq)]
@@ -110,10 +117,21 @@ pub(super) struct StepTotals {
     pub water_scale: f64,
 }
 
-pub(super) fn aggregate_step(
-    context: &CpuReservoirContext,
-    step: &CpuReservoirStep,
-) -> Result<StepTotals, ReservoirError> {
+pub(super) fn aggregate_step<R>(
+    context: &TensorReservoirContext<R>,
+    step: &TensorReservoirStep<R>,
+) -> Result<StepTotals, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let before = context.total(&step.storage_before, "aggregate original storage")?;
     let after = context.total(&step.storage_after, "aggregate accepted storage")?;
     let incoming = context.total(&step.incoming_volume, "aggregate incoming volume")?;
@@ -155,11 +173,22 @@ impl ReservoirLedger {
             residual_m3: 0.0,
         }
     }
-    pub(super) fn advance(
+    pub(super) fn advance<R>(
         &self,
-        context: &CpuReservoirContext,
+        context: &TensorReservoirContext<R>,
         step: &StepTotals,
-    ) -> Result<Self, ReservoirError> {
+    ) -> Result<Self, ReservoirError>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: BinaryOps<R>
+            + CompareOps<R>
+            + ConditionalOps<R>
+            + ReduceOps<R>
+            + ScalarOps<R>
+            + TypeConversionOps<R>
+            + UnaryOps<R>
+            + BatchedBisectionAlgorithms<R>,
+    {
         let mut next = Self {
             initial_storage_m3: self.initial_storage_m3,
             storage_m3: step.after,
@@ -174,10 +203,21 @@ impl ReservoirLedger {
     }
 }
 
-pub(super) fn check_ledger(
-    context: &CpuReservoirContext,
+pub(super) fn check_ledger<R>(
+    context: &TensorReservoirContext<R>,
     ledger: &ReservoirLedger,
-) -> Result<(), ReservoirError> {
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let values = [
         ledger.initial_storage_m3,
         ledger.storage_m3,
@@ -204,12 +244,23 @@ pub(super) fn check_ledger(
     )
 }
 
-fn residual(
-    context: &CpuReservoirContext,
+fn residual<R>(
+    context: &TensorReservoirContext<R>,
     quantity: &str,
     value: f64,
     scale: f64,
-) -> Result<(), ReservoirError> {
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let tolerance = context.config.volume_absolute + context.config.volume_relative * scale;
     if !value.is_finite()
         || !scale.is_finite()

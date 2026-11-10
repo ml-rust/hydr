@@ -53,7 +53,7 @@ Direction and regime use original supported heads. Rounded depth differences nev
 
 ## Stable numerical evaluation
 
-The laws use persistent F64 tensors on an explicitly configured one-thread numr CPU client. Coefficient/geometry sums of logarithms remain cached. Passive laws and gates use Numr operations directly. Pumps reuse Solvr interpolation.
+`StructureBatch::<R>::new(client, elements)` receives the configured Numr client. The laws retain F64 `Tensor<R>` fields. The checked CPU reference uses one thread. Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission). Coefficient/geometry sums of logarithms remain cached. Passive laws and gates use Numr operations directly. Pumps reuse Solvr interpolation.
 
 For an active fully submerged orifice:
 
@@ -148,7 +148,7 @@ Running positive output records `PumpCurve/PumpRunning`. A supported declared ze
 
 ## Checked pump affinity normalization
 
-Pump reference/affinity queries reuse grouped Solvr Linear interpolation on configured Numr CPU tensors. No interpolation or search algorithm is copied into hydr.
+Pump reference/affinity queries reuse grouped Solvr Linear interpolation on the selected Numr runtime tensors. No interpolation or search algorithm is copied into hydr.
 
 Numr TwoSum forms the original oriented stage difference as `headHigh+headLow`. The normalized query uses two ordered divisions:
 

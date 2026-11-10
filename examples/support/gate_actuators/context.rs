@@ -11,7 +11,10 @@ pub fn device(lane: usize) -> String {
     format!("device-{lane}")
 }
 
-pub fn build(case: &Case, width: usize) -> std::result::Result<GateActuatorBatch, StructureError> {
+pub fn build(
+    case: &Case,
+    width: usize,
+) -> std::result::Result<GateActuatorBatch<crate::runtime::Runtime>, StructureError> {
     let elements = (0..width)
         .map(|lane| {
             Ok(StructureElement {
@@ -39,33 +42,34 @@ pub fn build(case: &Case, width: usize) -> std::result::Result<GateActuatorBatch
             })
         })
         .collect::<std::result::Result<Vec<_>, StructureError>>()?;
-    StructureBatch::new(elements)?.with_gate_actuators(
-        (0..width)
-            .map(|lane| GateActuatorDefinition {
-                actuator_id: actuator(lane),
-                structure_id: device(lane),
-                opening_rate_m_per_s: case.opening_rate,
-                closing_rate_m_per_s: case.closing_rate,
-                accuracy: case.accuracy,
-                rate_provenance: format!("Original-bit physical reference {}", case.id),
-                ideal_response_applicability:
-                    "Declared ideal capped constant-rate response. No motor or hydraulic claim"
-                        .into(),
-            })
-            .collect(),
-        (0..width)
-            .map(|lane| GateActuatorInitialState {
-                actuator_id: actuator(lane),
-                opening_m: case.initial,
-                target_opening_m: case.target,
-            })
-            .collect(),
-        GateActuatorSchedule {
-            initial_time_s: case.start,
-            target_times_s: case.updates.iter().map(|u| u.time).collect(),
-            end_s: case.end,
-        },
-    )
+    StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?
+        .with_gate_actuators(
+            (0..width)
+                .map(|lane| GateActuatorDefinition {
+                    actuator_id: actuator(lane),
+                    structure_id: device(lane),
+                    opening_rate_m_per_s: case.opening_rate,
+                    closing_rate_m_per_s: case.closing_rate,
+                    accuracy: case.accuracy,
+                    rate_provenance: format!("Original-bit physical reference {}", case.id),
+                    ideal_response_applicability:
+                        "Declared ideal capped constant-rate response. No motor or hydraulic claim"
+                            .into(),
+                })
+                .collect(),
+            (0..width)
+                .map(|lane| GateActuatorInitialState {
+                    actuator_id: actuator(lane),
+                    opening_m: case.initial,
+                    target_opening_m: case.target,
+                })
+                .collect(),
+            GateActuatorSchedule {
+                initial_time_s: case.start,
+                target_times_s: case.updates.iter().map(|u| u.time).collect(),
+                end_s: case.end,
+            },
+        )
 }
 
 pub fn updates(case: &Case, width: usize, time: f64) -> Vec<GateTargetUpdate> {

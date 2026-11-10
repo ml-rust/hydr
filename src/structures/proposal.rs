@@ -1,28 +1,30 @@
 //! Opaque immutable proposal tensors with explicit output projection.
+use numr::tensor::Tensor;
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::{StructureError, StructureHeads, StructureOutput};
-use crate::cpu::structures::{CpuStructureContext, CpuStructureResult};
+use crate::tensor::structures::{TensorStructureContext, TensorStructureResult};
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub(super) struct ProposalData {
-    pub context: Arc<CpuStructureContext>,
+pub(super) struct ProposalData<R: Runtime<DType = DType>> {
+    pub context: Arc<TensorStructureContext<R>>,
     pub heads: Vec<StructureHeads>,
-    pub result: CpuStructureResult,
-    pub operations: super::operation_projection::ProposalOperations,
+    pub result: TensorStructureResult<R>,
+    pub operations: super::operation_projection::ProposalOperations<R>,
 }
 
 /// Immutable constitutive proposals. No donor availability or paired exchange acceptance follows.
 #[derive(Clone, Debug)]
-pub struct StructureProposal {
-    pub(super) inner: Arc<ProposalData>,
+pub struct StructureProposal<R: Runtime<DType = DType>> {
+    pub(super) inner: Arc<ProposalData<R>>,
 }
-impl StructureProposal {
+impl<R: Runtime<DType = DType>> StructureProposal<R> {
     pub(super) fn new(
-        context: Arc<CpuStructureContext>,
+        context: Arc<TensorStructureContext<R>>,
         heads: Vec<StructureHeads>,
         operations: Vec<super::StructureOperation>,
-        result: CpuStructureResult,
+        result: TensorStructureResult<R>,
     ) -> Self {
         Self {
             inner: Arc::new(ProposalData {
@@ -34,11 +36,11 @@ impl StructureProposal {
         }
     }
     pub(crate) fn from_trajectory(
-        context: Arc<CpuStructureContext>,
+        context: Arc<TensorStructureContext<R>>,
         heads: Vec<StructureHeads>,
-        evaluation: Arc<super::GateTrajectoryEvaluationData>,
+        evaluation: Arc<super::GateTrajectoryEvaluationData<R>>,
         other: Vec<super::StructureOperation>,
-        result: CpuStructureResult,
+        result: TensorStructureResult<R>,
     ) -> Self {
         Self {
             inner: Arc::new(ProposalData {
@@ -53,13 +55,13 @@ impl StructureProposal {
         }
     }
     pub(crate) fn from_derived(
-        context: Arc<CpuStructureContext>,
+        context: Arc<TensorStructureContext<R>>,
         heads: Vec<StructureHeads>,
         manual: Vec<super::StructureOperation>,
         derived_slots: Vec<usize>,
-        opening: crate::cpu::CpuTensor,
-        pumps: Option<crate::cpu::structures::DerivedPumpOperationData>,
-        result: CpuStructureResult,
+        opening: Tensor<R>,
+        pumps: Option<crate::tensor::structures::DerivedPumpOperationData<R>>,
+        result: TensorStructureResult<R>,
     ) -> Self {
         Self {
             inner: Arc::new(ProposalData {

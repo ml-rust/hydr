@@ -1,20 +1,40 @@
 //! Atomic authoritative-volume exchanges with Numr TwoSum witnesses.
 
-use crate::cpu::{
-    CpuTensor,
-    level_pool::{
-        CpuPoolContext, CpuPoolSourceInput, CpuPoolSourceState, CpuPoolSourceStep, CpuPoolState,
-        CpuPoolStep,
-    },
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
 };
-use crate::storage::LevelPoolError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, TwoSumOps, UnaryOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::interpolate::Interp1dAlgorithms;
 
-pub(crate) fn exact_zero_add(
-    context: &CpuPoolContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-) -> Result<(CpuTensor, CpuTensor), LevelPoolError> {
+use crate::storage::LevelPoolError;
+use crate::tensor::level_pool::{
+    TensorPoolContext, TensorPoolSourceInput, TensorPoolSourceState, TensorPoolSourceStep,
+    TensorPoolState, TensorPoolStep,
+};
+
+pub(crate) fn exact_zero_add<R>(
+    context: &TensorPoolContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+) -> Result<(Tensor<R>, Tensor<R>), LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let c = &context.client;
     let (high, low) = c.two_sum(a, b)?;
     let zero = c.eq(b, &context.zero)?;
@@ -29,37 +49,82 @@ pub(crate) fn exact_zero_add(
     Ok((high, low))
 }
 
-pub(crate) fn advance(
-    context: &CpuPoolContext,
-    state: &CpuPoolState,
-    incoming: &CpuTensor,
-    outgoing: &CpuTensor,
+pub(crate) fn advance<R>(
+    context: &TensorPoolContext<R>,
+    state: &TensorPoolState<R>,
+    incoming: &Tensor<R>,
+    outgoing: &Tensor<R>,
     steps: usize,
-) -> Result<(CpuPoolState, CpuPoolStep), LevelPoolError> {
+) -> Result<(TensorPoolState<R>, TensorPoolStep<R>), LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     advance_prepared(context, state, incoming, outgoing, steps, None)
 }
 
-pub(crate) fn advance_with_sources(
-    context: &CpuPoolContext,
-    state: &CpuPoolState,
-    incoming: &CpuTensor,
-    outgoing: &CpuTensor,
+pub(crate) fn advance_with_sources<R>(
+    context: &TensorPoolContext<R>,
+    state: &TensorPoolState<R>,
+    incoming: &Tensor<R>,
+    outgoing: &Tensor<R>,
     steps: usize,
     dt: f64,
-    input: &CpuPoolSourceInput,
-) -> Result<(CpuPoolState, CpuPoolStep), LevelPoolError> {
+    input: &TensorPoolSourceInput<R>,
+) -> Result<(TensorPoolState<R>, TensorPoolStep<R>), LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let prepared = super::sources::prepare(context, state, dt, input)?;
     advance_prepared(context, state, incoming, outgoing, steps, prepared)
 }
 
-fn advance_prepared(
-    context: &CpuPoolContext,
-    state: &CpuPoolState,
-    incoming: &CpuTensor,
-    outgoing: &CpuTensor,
+fn advance_prepared<R>(
+    context: &TensorPoolContext<R>,
+    state: &TensorPoolState<R>,
+    incoming: &Tensor<R>,
+    outgoing: &Tensor<R>,
     steps: usize,
-    prepared: Option<(CpuPoolSourceStep, CpuPoolSourceState)>,
-) -> Result<(CpuPoolState, CpuPoolStep), LevelPoolError> {
+    prepared: Option<(TensorPoolSourceStep<R>, TensorPoolSourceState<R>)>,
+) -> Result<(TensorPoolState<R>, TensorPoolStep<R>), LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let c = &context.client;
     let base = prepared
         .as_ref()
@@ -142,7 +207,7 @@ fn advance_prepared(
         &c.gt(&c.abs(&consistency)?, &bound)?,
         "storage witness consistency residual",
     )?;
-    let next = CpuPoolState {
+    let next = TensorPoolState {
         sources: prepared
             .as_ref()
             .map(|(_, state)| state.clone())
@@ -155,7 +220,7 @@ fn advance_prepared(
         outgoing_roundoff_bound_m3: out_bound.clone(),
     };
     super::accounting::check_state(context, &next, steps)?;
-    let step = CpuPoolStep {
+    let step = TensorPoolStep {
         source: prepared.map(|(step, _)| step),
         old_volume_m3: state.volume_m3.clone(),
         incoming_volume_m3: incoming.clone(),

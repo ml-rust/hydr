@@ -119,7 +119,10 @@ fn repeated_projections_and_queries_preserve_sources_and_earlier_point_proposals
 
 #[test]
 fn nonzero_source_error_receipts_remain_separate_from_center_discharge() -> Result {
-    let context = StructureBatch::new(vec![gate("path")?, gate("actual")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("path")?, gate("actual")?],
+    )?;
     let path = trajectory(&context, "path", &[(0.1, 0.2), (0.9, 0.8)])?;
     let actual = advance(
         actuator(&context, "actual", 0.2, 0.9, (0.3, 0.7), 0.0, 2.0)?,

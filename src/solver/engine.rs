@@ -2,11 +2,18 @@ use super::{
     BoundaryConditions, CONTRACT_VERSION, CellResult, EngineError, ForcingSchedule, InitialState,
     Snapshot, SolverConfig, SolverSetup, StepDiagnostics, WaterLedger,
 };
-use crate::cpu::land::CpuLand;
-use crate::cpu::land_sources::checked_volume;
-use crate::cpu::{CpuDomain, CpuState};
 use crate::model::{CellState, Domain, FlowState};
 use crate::soil::{LandModel, SoilState};
+use crate::tensor::land::TensorLand;
+use crate::tensor::land_sources::checked_volume;
+use crate::tensor::{TensorDomain, TensorState};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, ReduceOps, ScalarOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::{Device, Runtime, RuntimeClient};
+use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedNewtonAlgorithms};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -18,27 +25,14 @@ pub(super) struct Definition {
     pub config: SolverConfig,
 }
 
-#[derive(Clone, Debug)]
-pub(super) struct Accepted {
+#[derive(Clone)]
+pub(super) struct Accepted<R: Runtime<DType = DType>> {
     pub time: f64,
-    pub state: FlowState,
-    pub soil: SoilState,
-    pub land: CpuLand,
+    pub land: TensorLand<R>,
     pub ledger: WaterLedger,
     pub steps: usize,
-    pub last: Option<StepDiagnostics>,
-    pub cpu: CpuState,
-}
-
-impl PartialEq for Accepted {
-    fn eq(&self, other: &Self) -> bool {
-        self.time == other.time
-            && self.state == other.state
-            && self.soil == other.soil
-            && self.ledger == other.ledger
-            && self.steps == other.steps
-            && self.last == other.last
-    }
+    pub last: Option<super::receipts::StepReceipt<R>>,
+    pub flow: TensorState<R>,
 }
 
 /// Why an advancement call returns at its accepted-state boundary.
@@ -63,20 +57,38 @@ pub struct AdvanceReport {
     pub accepted_steps: usize,
 }
 
-/// Sequential numr CPU reference with atomic accepted steps.
-#[derive(Debug)]
-pub struct Solver {
+/// Runtime-selected shallow-water engine with atomic accepted steps.
+pub struct Solver<R: Runtime<DType = DType>> {
     pub(super) definition: Arc<Definition>,
-    pub(super) accepted: Accepted,
-    pub(super) cpu: CpuDomain,
+    pub(super) accepted: Accepted<R>,
+    pub(super) context: Arc<TensorDomain<R>>,
 }
 
-impl Solver {
+impl<R: Runtime<DType = DType>> Solver<R>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + IndexingOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>
+        + TypeConversionOps<R>
+        + HypotOps<R>
+        + numr::ops::CumulativeOps<R>
+        + numr::ops::ShapeOps<R>
+        + BatchedBisectionAlgorithms<R>
+        + BatchedNewtonAlgorithms<R>,
+{
     /// Constructs an engine from explicit physical state and complete bounded forcing.
     ///
     /// # Errors
     /// Rejects incompatible spatial support, initial time, state, boundaries, or numerical controls.
-    pub fn new(setup: SolverSetup, initial: InitialState) -> Result<Self, EngineError> {
+    pub fn new(
+        client: R::Client,
+        setup: SolverSetup,
+        initial: InitialState,
+    ) -> Result<Self, EngineError> {
         let SolverSetup {
             domain,
             land,
@@ -90,6 +102,12 @@ impl Solver {
             soil,
         } = initial;
         config.check()?;
+        if let Some(error) = crate::tensor::probe_f64::<R, _>(&client)? {
+            return Err(EngineError::rejected(
+                "arithmetic environment",
+                error.message("surface"),
+            ));
+        }
         let state = FlowState::new(&domain, state.cells().to_vec())?;
         let boundaries =
             BoundaryConditions::with_open_faces(&domain, boundaries.open_faces().to_vec())?;
@@ -101,13 +119,13 @@ impl Solver {
             ));
         }
         let land = LandModel::new(&domain, land.cells().to_vec())
-            .map_err(crate::cpu::land::static_error)?;
-        let soil =
-            SoilState::new(&land, soil.cells().to_vec()).map_err(crate::cpu::land::static_error)?;
-        let cpu_land = CpuLand::new(&land, &soil)?;
-        let cpu = CpuDomain::new(&domain, &forcing)?;
-        let cpu_state = CpuState::from_flow(&state)?;
-        let volume = checked_volume(&cpu.client, &cpu_state.h, domain.grid().cell_area())?;
+            .map_err(crate::tensor::land::static_error)?;
+        let soil = SoilState::new(&land, soil.cells().to_vec())
+            .map_err(crate::tensor::land::static_error)?;
+        let land_state = TensorLand::new(client.clone(), &land, &soil)?;
+        let context = TensorDomain::<R>::new(client, &domain, &forcing)?;
+        let flow_state = TensorState::from_flow(context.client.device(), &state)?;
+        let volume = checked_volume(&context.client, &flow_state.h, domain.grid().cell_area())?;
         Ok(Self {
             definition: Arc::new(Definition {
                 domain,
@@ -118,15 +136,13 @@ impl Solver {
             }),
             accepted: Accepted {
                 time: initial_time,
-                state,
-                soil,
-                land: cpu_land,
+                land: land_state,
                 ledger: WaterLedger::new(volume),
                 steps: 0,
                 last: None,
-                cpu: cpu_state,
+                flow: flow_state,
             },
-            cpu,
+            context: Arc::new(context),
         })
     }
 
@@ -140,9 +156,12 @@ impl Solver {
         &self.definition.land
     }
 
-    /// Returns complete accepted native soil memory without advancing or reinitializing it.
-    pub fn soil_state(&self) -> &SoilState {
-        &self.accepted.soil
+    /// Projects complete accepted native soil memory.
+    ///
+    /// # Errors
+    /// Returns runtime transfer or physical state errors.
+    pub fn soil_state(&self) -> Result<SoilState, EngineError> {
+        self.accepted.land.soil_state()
     }
 
     /// Returns the immutable numerical controls.
@@ -155,9 +174,12 @@ impl Solver {
         self.accepted.time
     }
 
-    /// Returns the complete accepted depth and discharge fields.
-    pub fn state(&self) -> &FlowState {
-        &self.accepted.state
+    /// Projects complete accepted depth and discharge fields.
+    ///
+    /// # Errors
+    /// Returns runtime transfer or physical state errors.
+    pub fn state(&self) -> Result<FlowState, EngineError> {
+        self.accepted.flow.to_flow(self.domain())
     }
 
     /// Returns the component's cumulative water ledger.
@@ -165,14 +187,22 @@ impl Solver {
         &self.accepted.ledger
     }
 
-    /// Returns the last accepted numerical interval and supported face fluxes.
-    pub fn last_step(&self) -> Option<&StepDiagnostics> {
-        self.accepted.last.as_ref()
+    /// Projects the last accepted interval and detailed tensor receipts.
+    ///
+    /// # Errors
+    /// Returns runtime transfer or receipt shape errors.
+    pub fn last_step(&self) -> Result<Option<StepDiagnostics>, EngineError> {
+        self.accepted
+            .last
+            .as_ref()
+            .map(|receipt| receipt.project(&self.context, &self.accepted.land))
+            .transpose()
     }
 
     /// Captures every continuation-relevant value without exposing mutable aliases.
-    pub fn snapshot(&self) -> Snapshot {
+    pub fn snapshot(&self) -> Snapshot<R> {
         Snapshot {
+            context: Arc::clone(&self.context),
             contract: CONTRACT_VERSION,
             definition: Arc::clone(&self.definition),
             accepted: self.accepted.clone(),
@@ -182,9 +212,14 @@ impl Solver {
     /// Restores complete accepted state after checking the immutable numerical definition.
     ///
     /// # Errors
-    /// Rejects different geometry, parameters, boundaries, forcing, or numerical contract before mutation.
-    pub fn restore(&mut self, snapshot: &Snapshot) -> Result<(), EngineError> {
-        if snapshot.contract != CONTRACT_VERSION
+    /// Rejects different devices, geometry, parameters, boundaries, forcing, or contracts before mutation.
+    pub fn restore(&mut self, snapshot: &Snapshot<R>) -> Result<(), EngineError> {
+        if !self
+            .context
+            .client
+            .device()
+            .is_same(snapshot.context.client.device())
+            || snapshot.contract != CONTRACT_VERSION
             || !self.definition.matches(
                 &snapshot.definition.domain,
                 &snapshot.definition.land,
@@ -198,7 +233,14 @@ impl Solver {
                 "definition or contract mismatch: restore into an identically constructed engine",
             ));
         }
-        self.accepted = snapshot.accepted.clone();
+        let mut land = self.accepted.land.clone();
+        land.restore_trusted(&snapshot.accepted.land)?;
+        let mut accepted = snapshot.accepted.clone();
+        accepted.land = land;
+        if let Some(super::receipts::StepReceipt::Device(receipt)) = &mut accepted.last {
+            receipt.sources.soil.next = accepted.land.clone();
+        }
+        self.accepted = accepted;
         Ok(())
     }
 
@@ -211,7 +253,12 @@ impl Solver {
         target: f64,
         max_steps: usize,
     ) -> Result<AdvanceReport, EngineError> {
-        self.advance_controlled(target, max_steps, || false, |_, _| {})
+        self.advance_inner(
+            target,
+            max_steps,
+            || false,
+            None::<fn(&StepDiagnostics, &[CellState])>,
+        )
     }
 
     /// Advances with cancellation and observations only at safe accepted-state boundaries.
@@ -226,6 +273,16 @@ impl Solver {
         max_steps: usize,
         mut cancelled: impl FnMut() -> bool,
         mut on_accepted: impl FnMut(&StepDiagnostics, &[CellState]),
+    ) -> Result<AdvanceReport, EngineError> {
+        self.advance_inner(target, max_steps, &mut cancelled, Some(&mut on_accepted))
+    }
+
+    fn advance_inner(
+        &mut self,
+        target: f64,
+        max_steps: usize,
+        mut cancelled: impl FnMut() -> bool,
+        mut observer: Option<impl FnMut(&StepDiagnostics, &[CellState])>,
     ) -> Result<AdvanceReport, EngineError> {
         let end = self
             .definition
@@ -254,10 +311,20 @@ impl Solver {
                 break AdvanceStatus::StepLimit;
             }
             let next = self.next_accepted(target)?;
+            let projected = if observer.is_some() {
+                let step = next
+                    .last
+                    .as_ref()
+                    .map(|receipt| receipt.project(&self.context, &next.land))
+                    .transpose()?;
+                Some((step, next.flow.to_flow(self.domain())?))
+            } else {
+                None
+            };
             self.accepted = next;
             count += 1;
-            if let Some(step) = self.last_step() {
-                on_accepted(step, self.state().cells());
+            if let (Some(observer), Some((Some(step), state))) = (&mut observer, projected) {
+                observer(&step, state.cells());
             }
         };
         Ok(AdvanceReport {
@@ -267,29 +334,37 @@ impl Solver {
         })
     }
 
-    /// Returns a cell's accepted physical output without crossing masks or barriers.
-    pub fn cell(&self, index: usize) -> CellResult {
-        let Some(cell) = self.state().cells().get(index) else {
-            return CellResult::Unsupported;
+    /// Projects one cell's accepted physical output without crossing masks or barriers.
+    ///
+    /// # Errors
+    /// Returns runtime transfer errors.
+    pub fn cell(&self, index: usize) -> Result<CellResult, EngineError> {
+        if index >= self.domain().grid().cell_count() || !self.domain().active()[index] {
+            return Ok(CellResult::Unsupported);
+        }
+        let cell = CellState {
+            h: self.accepted.flow.h.narrow(0, index, 1)?.item::<f64>()?,
+            qx: self.accepted.flow.qx.narrow(0, index, 1)?.item::<f64>()?,
+            qy: self.accepted.flow.qy.narrow(0, index, 1)?.item::<f64>()?,
         };
-        if !self.domain().active()[index] {
-            return CellResult::Unsupported;
-        }
         if cell.h == 0.0 {
-            return CellResult::Dry;
+            return Ok(CellResult::Dry);
         }
-        CellResult::Wet {
+        Ok(CellResult::Wet {
             depth: cell.h,
             elevation: self.domain().bed()[index] + cell.h,
             velocity: [cell.qx / cell.h, cell.qy / cell.h],
             discharge_per_width: [cell.qx, cell.qy],
-        }
+        })
     }
 
     /// Queries projected metre coordinates using their containing cell, with no interpolation.
     ///
     /// Internal ties select the positive-coordinate cell. Maximum exterior edges are unsupported.
-    pub fn cell_at(&self, x: f64, y: f64) -> CellResult {
+    ///
+    /// # Errors
+    /// Returns runtime transfer errors.
+    pub fn cell_at(&self, x: f64, y: f64) -> Result<CellResult, EngineError> {
         let [ox, oy] = self.domain().reference().origin();
         let (dx, dy) = self.domain().grid().spacing();
         let (nx, ny) = self.domain().grid().dimensions();
@@ -302,8 +377,22 @@ impl Solver {
             || column >= nx as f64
             || row >= ny as f64
         {
-            return CellResult::Unsupported;
+            return Ok(CellResult::Unsupported);
         }
         self.cell(row.floor() as usize * nx + column.floor() as usize)
     }
 }
+
+impl<R: Runtime<DType = DType>> std::fmt::Debug for Solver<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Solver")
+            .field("runtime", &R::name())
+            .field("time", &self.accepted.time)
+            .field("steps", &self.accepted.steps)
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+#[path = "restore_tests.rs"]
+mod tests;

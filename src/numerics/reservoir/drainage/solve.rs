@@ -1,14 +1,32 @@
 //! Shared immutable excess-depth solve through configured solvr bisection.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+
 use super::admission::admit_drainage;
 use super::algebra;
 use super::budget::DrainageBudget;
 use super::receipt::{DrainageResult, DrainageRoot};
 use crate::runoff::ReservoirError;
-use numr::ops::{BinaryOps, CompareOps, ScalarOps};
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedBisectionOptions};
 
-pub(crate) fn drain(prepared: &DrainageBudget<'_>) -> Result<DrainageResult, ReservoirError> {
+pub(crate) fn drain<R>(
+    prepared: &DrainageBudget<'_, R>,
+) -> Result<DrainageResult<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let context = prepared.context();
     let dt = prepared.interval();
     let c = &context.client;

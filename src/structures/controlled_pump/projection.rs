@@ -2,10 +2,15 @@
 
 use super::{ControlledPumpBatch, ControlledPumpOutput};
 use crate::structures::{ControlLatch, StructureError, StructureOperatingPoint};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
-pub(super) fn outputs(
-    batch: &ControlledPumpBatch,
-) -> Result<Vec<ControlledPumpOutput>, StructureError> {
+pub(super) fn outputs<R: Runtime<DType = DType>>(
+    batch: &ControlledPumpBatch<R>,
+) -> Result<Vec<ControlledPumpOutput>, StructureError>
+where
+    R::Client: numr::ops::ConditionalOps<R>,
+{
     let selected = batch.selected()?;
     let n = batch.definitions().len();
     let running = crate::structures::projection::read(&selected.running, n)?;

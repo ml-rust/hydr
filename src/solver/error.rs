@@ -58,8 +58,8 @@ impl From<ModelError> for EngineError {
 impl From<numr::error::Error> for EngineError {
     fn from(value: numr::error::Error) -> Self {
         Self::rejected(
-            "numr CPU execution",
-            format!("{value}: inspect tensor inputs and CPU runtime support"),
+            "numr execution",
+            format!("{value}: inspect tensor inputs and selected runtime support"),
         )
     }
 }

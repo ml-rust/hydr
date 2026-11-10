@@ -1,5 +1,14 @@
 //! Lazy complete interval projection without numerical continuation through host arrays.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::accounting::aggregate_step;
 use super::batch::StoredStep;
 use super::projection_hydraulic::read;
@@ -8,12 +17,27 @@ use super::{
     SubcatchmentError, SubcatchmentInput, SubcatchmentReceipt, SubcatchmentStepDiagnostics,
     SubcatchmentTransfer,
 };
-use crate::cpu::subcatchment::CpuSubcatchmentContext;
+use crate::tensor::subcatchment::TensorSubcatchmentContext;
 
-pub(super) fn project_step(
-    context: &CpuSubcatchmentContext,
-    stored: &StoredStep,
-) -> Result<SubcatchmentStepDiagnostics, SubcatchmentError> {
+pub(super) fn project_step<R>(
+    context: &TensorSubcatchmentContext<R>,
+    stored: &StoredStep<R>,
+) -> Result<SubcatchmentStepDiagnostics, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let step = &stored.step;
     let dt = stored.end - stored.start;
     crate::numerics::subcatchment::check_step(context, step, dt)?;

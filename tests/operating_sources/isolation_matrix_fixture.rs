@@ -67,9 +67,9 @@ pub(super) fn device(id: &str, pump_device: bool) -> Result<StructureElement> {
 }
 
 pub(super) fn prescribed(
-    context: &StructureBatch,
+    context: &StructureBatch<crate::runtime::Runtime>,
     recipe: Recipe,
-) -> Result<Option<GateTrajectoryBatch>> {
+) -> Result<Option<GateTrajectoryBatch<crate::runtime::Runtime>>> {
     let (knots, rate) = match recipe {
         Recipe::PrescribedZero | Recipe::Padding => (vec![(0.0, 0.0), (1.0, 1.0)], 1.0),
         Recipe::PrescribedPlateau => (vec![(0.0, 0.0), (1.0, 0.0), (2.0, 1.0)], 1.0),
@@ -103,9 +103,9 @@ pub(super) fn prescribed(
 }
 
 pub(super) fn actual(
-    context: &StructureBatch,
+    context: &StructureBatch<crate::runtime::Runtime>,
     recipe: Recipe,
-) -> Result<Option<GateActuatorBatch>> {
+) -> Result<Option<GateActuatorBatch<crate::runtime::Runtime>>> {
     let (initial, target, opening, closing, time) = match recipe {
         Recipe::ActualActive => (0.0, 1.0, 0.3, 0.3, 0.0),
         Recipe::ActualStalled => (0.0, 1.0, 0.0, 1.0, 0.5),

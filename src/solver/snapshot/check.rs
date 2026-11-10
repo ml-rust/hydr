@@ -1,13 +1,30 @@
 use super::{SNAPSHOT_SCHEMA, SnapshotData};
-use crate::cpu::CpuState;
-use crate::cpu::land::{CpuLand, static_error};
 use crate::model::FlowState;
 use crate::soil::SoilState;
 use crate::solver::engine::Accepted;
 use crate::solver::{Axis, CONTRACT_VERSION, EngineError, Solver, StepDiagnostics};
+use crate::tensor::TensorState;
+use crate::tensor::land::{TensorLand, static_error};
+use numr::dtype::DType;
+use numr::runtime::{Runtime, RuntimeClient};
 use std::collections::BTreeSet;
 
-impl Solver {
+impl<R: Runtime<DType = DType>> Solver<R>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::IndexingOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::UnaryOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::HypotOps<R>
+        + numr::ops::CumulativeOps<R>
+        + numr::ops::ShapeOps<R>
+        + solvr::optimize::roots::BatchedBisectionAlgorithms<R>
+        + solvr::optimize::roots::BatchedNewtonAlgorithms<R>,
+{
     /// Imports a same-build checkpoint after checking definition and accepted-state consistency.
     ///
     /// Values retain their original bits. These checks establish consistency, not historical authenticity.
@@ -35,7 +52,7 @@ impl Solver {
         FlowState::new(&data.setup.domain, data.accepted.flow.cells().to_vec())?;
         let soil = SoilState::new(&data.setup.land, data.accepted.soil.cells().to_vec())
             .map_err(static_error)?;
-        let land = CpuLand::new(&data.setup.land, &soil)?;
+        let land = TensorLand::new(self.context.client.clone(), &data.setup.land, &soil)?;
         let intervals = data.setup.forcing.intervals();
         let start = intervals.first().map(|interval| interval.start);
         let end = intervals.last().map(|interval| interval.end);
@@ -46,10 +63,10 @@ impl Solver {
             "time",
             format!("time={}", data.accepted.time),
         )?;
-        let cpu = CpuState::from_flow(&data.accepted.flow)?;
-        let storage = crate::cpu::land_sources::checked_volume(
-            &self.cpu.client,
-            &cpu.h,
+        let flow = TensorState::from_flow(self.context.client.device(), &data.accepted.flow)?;
+        let storage = crate::tensor::land_sources::checked_volume(
+            &self.context.client,
+            &flow.h,
             data.setup.domain.grid().cell_area(),
         )?;
         self.check_ledger(data, storage)?;
@@ -84,13 +101,15 @@ impl Solver {
         }
         let accepted = Accepted {
             time: data.accepted.time,
-            state: data.accepted.flow.clone(),
-            soil,
             land,
             ledger: data.ledger.clone(),
             steps: data.accepted_steps,
-            last: data.last_step.clone(),
-            cpu,
+            last: data
+                .last_step
+                .clone()
+                .map(Box::new)
+                .map(crate::solver::receipts::StepReceipt::Imported),
+            flow,
         };
         self.accepted = accepted;
         Ok(())
@@ -303,16 +322,20 @@ impl Solver {
             )?;
         }
         require(
-            step.faces.len() == self.cpu.topology.faces.len(),
+            step.faces.len() == self.context.topology.faces.len(),
             "face count",
             format!(
                 "faces={}, required={}",
                 step.faces.len(),
-                self.cpu.topology.faces.len()
+                self.context.topology.faces.len()
             ),
         )?;
         let (dx, dy) = data.setup.domain.grid().spacing();
-        for (index, (face, support)) in step.faces.iter().zip(&self.cpu.topology.faces).enumerate()
+        for (index, (face, support)) in step
+            .faces
+            .iter()
+            .zip(&self.context.topology.faces)
+            .enumerate()
         {
             require(
                 face.face == support.face

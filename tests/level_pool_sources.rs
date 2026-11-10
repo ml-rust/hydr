@@ -1,5 +1,9 @@
 //! Frozen-area atmospheric sources, physical availability, and complete source continuation.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "level_pool_sources/behavior.rs"]
 mod behavior;
 #[path = "level_pool_sources/fixture.rs"]

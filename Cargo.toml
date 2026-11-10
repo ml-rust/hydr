@@ -3,7 +3,7 @@ name = "hydr"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-description = "Two-dimensional shallow-water simulation on the numr CPU runtime"
+description = "Two-dimensional shallow-water simulation on numr runtimes"
 license = "Apache-2.0"
 repository = "https://github.com/ml-rust/rivr"
 readme = "README.md"
@@ -11,6 +11,10 @@ keywords = ["hydraulics", "shallow-water", "flood", "simulation"]
 categories = ["science", "simulation"]
 publish = false
 exclude = [".agents/", "resource/", ".github/"]
+
+[features]
+cuda = ["numr/cuda", "solvr/cuda"]
+wgpu = ["numr/wgpu", "solvr/wgpu"]
 
 [dependencies]
 numr = { version = "0.15.2", default-features = false }

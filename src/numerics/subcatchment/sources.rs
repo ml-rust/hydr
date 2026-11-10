@@ -1,53 +1,72 @@
 //! One authoritative supply, native infiltration, and availability-limited evaporation.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use super::bridge::Bridge;
-use super::step::CpuSubcatchmentSoilStep;
+use super::step::TensorSubcatchmentSoilStep;
 use super::transfer::Merged;
 use super::{bounds, bridge, transfer};
-use crate::cpu::CpuTensor;
-use crate::cpu::subcatchment::CpuSubareaGroup;
 use crate::numerics::reservoir::drainage;
 use crate::runoff::ReservoirError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps};
+use crate::tensor::subcatchment::TensorSubareaGroup;
 
-pub(super) struct Supply {
-    pub old_depth: CpuTensor,
-    pub rain_rate: CpuTensor,
-    pub potential_evaporation: CpuTensor,
-    pub external_volume: CpuTensor,
-    pub received_by_donor: [CpuTensor; 3],
-    pub merged: Merged,
-    pub bridge: Bridge,
-    pub storage_before: CpuTensor,
-    pub rain_volume: CpuTensor,
+pub(super) struct Supply<R: Runtime<DType = DType>> {
+    pub old_depth: Tensor<R>,
+    pub rain_rate: Tensor<R>,
+    pub potential_evaporation: Tensor<R>,
+    pub external_volume: Tensor<R>,
+    pub received_by_donor: [Tensor<R>; 3],
+    pub merged: Merged<R>,
+    pub bridge: Bridge<R>,
+    pub storage_before: Tensor<R>,
+    pub rain_volume: Tensor<R>,
 }
 
-pub(super) struct Sources {
-    pub supply: Supply,
-    pub soil: Option<CpuSubcatchmentSoilStep>,
-    pub infiltration_depth: CpuTensor,
-    pub adjustment_depth: CpuTensor,
-    pub evaporation_depth: CpuTensor,
-    pub available_depth: CpuTensor,
-    pub direct_timing: CpuTensor,
-    pub infiltration_volume: CpuTensor,
-    pub evaporation_volume: CpuTensor,
-    pub adjustment_volume: CpuTensor,
-    pub internal_received_volume: CpuTensor,
-    pub rain_area_bound: CpuTensor,
+pub(super) struct Sources<R: Runtime<DType = DType>> {
+    pub supply: Supply<R>,
+    pub soil: Option<TensorSubcatchmentSoilStep<R>>,
+    pub infiltration_depth: Tensor<R>,
+    pub adjustment_depth: Tensor<R>,
+    pub evaporation_depth: Tensor<R>,
+    pub available_depth: Tensor<R>,
+    pub direct_timing: Tensor<R>,
+    pub infiltration_volume: Tensor<R>,
+    pub evaporation_volume: Tensor<R>,
+    pub adjustment_volume: Tensor<R>,
+    pub internal_received_volume: Tensor<R>,
+    pub rain_area_bound: Tensor<R>,
     pub adjustment_charge: f64,
     pub physical_scale_lower: f64,
 }
 
-pub(super) fn supply(
-    group: &CpuSubareaGroup,
-    old_depth: CpuTensor,
-    rain_rate: CpuTensor,
-    potential_evaporation: CpuTensor,
-    external_volume: CpuTensor,
-    received_by_donor: [CpuTensor; 3],
+pub(super) fn supply<R>(
+    group: &TensorSubareaGroup<R>,
+    old_depth: Tensor<R>,
+    rain_rate: Tensor<R>,
+    potential_evaporation: Tensor<R>,
+    external_volume: Tensor<R>,
+    received_by_donor: [Tensor<R>; 3],
     dt: f64,
-) -> Result<Supply, ReservoirError> {
+) -> Result<Supply<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let ctx = &group.reservoir;
     bounds::check_nonnegative(ctx, &potential_evaporation, "potential evaporation rate")?;
     let merged = transfer::merge(
@@ -77,12 +96,25 @@ pub(super) fn supply(
     })
 }
 
-pub(super) fn finish(
-    group: &CpuSubareaGroup,
-    supply: Supply,
-    soil: Option<CpuSubcatchmentSoilStep>,
+pub(super) fn finish<R>(
+    group: &TensorSubareaGroup<R>,
+    supply: Supply<R>,
+    soil: Option<TensorSubcatchmentSoilStep<R>>,
     dt: f64,
-) -> Result<Sources, ReservoirError> {
+) -> Result<Sources<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let ctx = &group.reservoir;
     let c = &ctx.client;
     super::soil::check_evidence(group, soil.as_ref())?;

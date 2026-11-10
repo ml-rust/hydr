@@ -1,13 +1,26 @@
 //! Complete supported proposal composition without physical source aggregation.
+use numr::ops::BinaryOps;
+use numr::ops::ConditionalOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::structures::{CpuStructureContext, CpuStructureInput, CpuStructureResult};
 use crate::structures::StructureError;
-use numr::ops::{BinaryOps, ConditionalOps};
+use crate::tensor::structures::{
+    TensorStructureContext, TensorStructureInput, TensorStructureResult,
+};
 
-pub(crate) fn evaluate(
-    context: &CpuStructureContext,
-    input: &CpuStructureInput,
-) -> Result<CpuStructureResult, StructureError> {
+pub(crate) fn evaluate<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    input: &TensorStructureInput<R>,
+) -> Result<TensorStructureResult<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     super::admission::check(context, input)?;
     let class = super::direction::classify(context, input)?;
     let orifice = super::orifice::evaluate(context, &class)?;
@@ -25,7 +38,7 @@ pub(crate) fn evaluate(
         &context.zero,
     )?;
     context.finite(&discharge, "final signed structure proposal")?;
-    Ok(CpuStructureResult {
+    Ok(TensorStructureResult {
         gate: None,
         pump: None,
         discharge,

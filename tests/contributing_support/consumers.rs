@@ -29,7 +29,8 @@ fn observed_upstream_rain_is_suppressed_without_creating_a_hydraulic_wall() -> R
     let land = LandModel::impervious(&fixture.domain);
     let soil = SoilState::initialized(&land)?;
     let flow = FlowState::new(&fixture.domain, vec![CellState::default(); 2])?;
-    let mut solver = Solver::new(
+    let mut solver = Solver::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         SolverSetup {
             domain: fixture.domain.clone(),
             land,
@@ -45,7 +46,7 @@ fn observed_upstream_rain_is_suppressed_without_creating_a_hydraulic_wall() -> R
     )?;
     solver.advance_to(1.0, 10)?;
     assert_eq!(solver.domain().active(), mask.as_slice());
-    assert!(solver.state().cells()[0].h > 0.0);
+    assert!(solver.state()?.cells()[0].h > 0.0);
     Ok(())
 }
 
@@ -83,7 +84,10 @@ fn whole_measured_replacement_uses_one_unchanged_boundary_and_no_model_batch() -
     assert_eq!(packet.forcing().rain, vec![0.0; 2]);
     assert_eq!(packet.suppression_receipts().len(), 2);
     assert!(packet.subcatchment_inputs().is_empty());
-    assert!(plan.trial_subcatchments(&packet, None)?.is_none());
+    assert!(
+        plan.trial_subcatchments::<crate::runtime::Runtime>(&packet, None)?
+            .is_none()
+    );
     let schedule = plan.surface_schedule(&[packet])?;
     assert_eq!(schedule.intervals()[0].boundaries, vec![original]);
     Ok(())
@@ -112,7 +116,10 @@ fn direct_rain_evaporation_and_withdrawal_keep_the_supplied_values() -> Result {
         packet.forcing().withdrawal,
         fixture.interval.surface.withdrawal
     );
-    assert!(plan.trial_subcatchments(&packet, None)?.is_none());
+    assert!(
+        plan.trial_subcatchments::<crate::runtime::Runtime>(&packet, None)?
+            .is_none()
+    );
     Ok(())
 }
 

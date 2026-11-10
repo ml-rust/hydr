@@ -12,7 +12,7 @@ pub fn case(id: &str) -> Result<&'static Case> {
         .ok_or_else(|| format!("Missing control fixture {id}").into())
 }
 
-pub fn batch(id: &str, width: usize) -> Result<OperatingControlBatch> {
+pub fn batch(id: &str, width: usize) -> Result<OperatingControlBatch<crate::runtime::Runtime>> {
     Ok(reference_case::build(case(id)?, width)?)
 }
 
@@ -28,10 +28,10 @@ pub fn observe(time: f64, stage: f64, lane: usize) -> ControlSample {
 }
 
 pub fn accept(
-    batch: OperatingControlBatch,
+    batch: OperatingControlBatch<crate::runtime::Runtime>,
     time: f64,
     stage: f64,
-) -> Result<OperatingControlBatch> {
+) -> Result<OperatingControlBatch<crate::runtime::Runtime>> {
     Ok(batch
         .trial_to(time, &[observe(time, stage, 0)])?
         .into_next())
@@ -44,7 +44,7 @@ pub fn rejected<T>(result: std::result::Result<T, StructureError>) -> Result<Str
 }
 
 pub fn malformed_restore(
-    destination: &mut OperatingControlBatch,
+    destination: &mut OperatingControlBatch<crate::runtime::Runtime>,
     data: &OperatingControlSnapshotData,
 ) -> Result {
     let before = destination.snapshot_data()?;

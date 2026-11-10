@@ -3,10 +3,13 @@ use hydr::structures::*;
 
 #[test]
 fn ordered_gate_operations_precede_unknown_head_isolation() -> Result {
-    let batch = StructureBatch::new(vec![
-        standard("first", DirectionPolicy::Bidirectional)?,
-        standard("second", DirectionPolicy::Bidirectional)?,
-    ])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![
+            standard("first", DirectionPolicy::Bidirectional)?,
+            standard("second", DirectionPolicy::Bidirectional)?,
+        ],
+    )?;
     let packets = [
         packet("first", HeadSupport::Unknown, HeadSupport::Unknown),
         packet("second", HeadSupport::Unknown, HeadSupport::Unknown),
@@ -61,7 +64,10 @@ fn ordered_gate_operations_precede_unknown_head_isolation() -> Result {
 
 #[test]
 fn opening_requires_finite_declared_range_before_closed_support_waiver() -> Result {
-    let batch = StructureBatch::new(vec![standard("gate", DirectionPolicy::Bidirectional)?])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![standard("gate", DirectionPolicy::Bidirectional)?],
+    )?;
     let packets = [packet("gate", HeadSupport::Unknown, HeadSupport::Unknown)];
     for value in [
         -1.0,
@@ -86,7 +92,10 @@ fn passive_and_pump_laws_cannot_borrow_closed_gate_isolation() -> Result {
         (passive_law()?, DirectionPolicy::Bidirectional),
         (pump_law()?, DirectionPolicy::AtoBOnly),
     ] {
-        let batch = StructureBatch::new(vec![element("other", law, direction)])?;
+        let batch = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![element("other", law, direction)],
+        )?;
         kind(
             &batch,
             &[packet("other", HeadSupport::Unknown, HeadSupport::Unknown)],

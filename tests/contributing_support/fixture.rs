@@ -249,13 +249,14 @@ pub fn nonhydrological() -> Result<Fixture> {
     Ok(fixture)
 }
 
-pub fn batch(plan: &SupportPlan, time: f64) -> Result<SubcatchmentBatch> {
+pub fn batch(plan: &SupportPlan, time: f64) -> Result<SubcatchmentBatch<crate::runtime::Runtime>> {
     let definitions = plan.active_definitions().to_vec();
     let states = definitions
         .iter()
         .map(|definition| SubcatchmentState::initialized(&definition.parameters))
         .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(SubcatchmentBatch::new(
+    Ok(SubcatchmentBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         definitions,
         states,
         time,

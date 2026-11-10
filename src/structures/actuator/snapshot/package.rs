@@ -2,13 +2,15 @@
 
 use super::super::*;
 use crate::structures::StructureError;
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
 /// Complete trusted continuation without state projection or recursive history.
 #[derive(Clone, Debug)]
-pub struct GateActuatorSnapshot {
-    pub(super) batch: GateActuatorBatch,
+pub struct GateActuatorSnapshot<R: Runtime<DType = DType>> {
+    pub(super) batch: GateActuatorBatch<R>,
 }
-impl GateActuatorSnapshot {
+impl<R: Runtime<DType = DType>> GateActuatorSnapshot<R> {
     /// Accepted snapshot time in seconds.
     pub fn time(&self) -> f64 {
         self.batch.time()
@@ -18,9 +20,9 @@ impl GateActuatorSnapshot {
         self.batch.snapshot_data()
     }
 }
-impl GateActuatorBatch {
+impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
     /// Clone complete trusted continuation without derived array readback.
-    pub fn snapshot(&self) -> GateActuatorSnapshot {
+    pub fn snapshot(&self) -> GateActuatorSnapshot<R> {
         GateActuatorSnapshot {
             batch: self.clone(),
         }

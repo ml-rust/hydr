@@ -1,7 +1,7 @@
 use super::fixture::*;
 use hydr::structures::*;
 
-fn manual(source: &str, ids: &[&str]) -> OperatingSourceBinding<'static> {
+fn manual(source: &str, ids: &[&str]) -> OperatingSourceBinding<'static, crate::runtime::Runtime> {
     OperatingSourceBinding::Manual {
         source_id: source.into(),
         structure_ids: ids.iter().map(|id| (*id).into()).collect(),
@@ -10,7 +10,10 @@ fn manual(source: &str, ids: &[&str]) -> OperatingSourceBinding<'static> {
 
 #[test]
 fn every_original_element_requires_one_explicit_ordered_writer() -> Result {
-    let context = StructureBatch::new(vec![gate("a")?, passive("weir")?, gate("b")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("a")?, passive("weir")?, gate("b")?],
+    )?;
     for sources in [
         vec![],
         vec![manual("one", &["a", "weir"])],
@@ -52,7 +55,10 @@ fn every_original_element_requires_one_explicit_ordered_writer() -> Result {
 
 #[test]
 fn complete_foreign_context_rejects_even_when_bound_gate_ids_match() -> Result {
-    let context = StructureBatch::new(vec![gate("a")?, gate("b")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("a")?, gate("b")?],
+    )?;
     for variant in 0..4 {
         let mut elements = context.elements().to_vec();
         match variant {
@@ -62,7 +68,8 @@ fn complete_foreign_context_rejects_even_when_bound_gate_ids_match() -> Result {
             3 => elements.reverse(),
             _ => return Err("Unknown immutable-context mutation".into()),
         }
-        let foreign = StructureBatch::new(elements)?;
+        let foreign =
+            StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?;
         let prescribed = trajectory(&foreign, "a", &[(0.0, 0.25), (2.0, 0.5)])?;
         kind(
             context.with_operating_sources(vec![
@@ -129,7 +136,10 @@ fn manual_operations_cover_the_original_complement_order_without_overrides() -> 
 
 #[test]
 fn all_manual_points_accept_signed_finite_times_without_inventing_future_support() -> Result {
-    let context = StructureBatch::new(vec![gate("a")?, passive("weir")?, pump("pump")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("a")?, passive("weir")?, pump("pump")?],
+    )?;
     let registry =
         context.with_operating_sources(vec![manual("inputs", &["a", "weir", "pump"])])?;
     assert!(registry.support().is_none());

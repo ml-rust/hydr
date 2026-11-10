@@ -1,7 +1,7 @@
 use super::fixture::*;
 use hydr::structures::*;
 
-fn interrupted_history() -> Result<GateActuatorBatch> {
+fn interrupted_history() -> Result<GateActuatorBatch<crate::runtime::Runtime>> {
     let batch = build(0.0, 0.0, (1.0, 1.0), &[1.0, 4.0, 4.125], 10.0)?;
     let batch = walk(batch, 1.0, &[update(1.0, 1.0)])?;
     let batch = walk(batch, 2.0, &[])?;
@@ -66,7 +66,7 @@ fn historical_completion_target_must_remain_inside_actual_gate_range() -> Result
     malformed_restore(&mut destination, &data)
 }
 
-fn later_interrupted_history() -> Result<GateActuatorBatch> {
+fn later_interrupted_history() -> Result<GateActuatorBatch<crate::runtime::Runtime>> {
     walk(interrupted_history()?, 4.375, &[])
 }
 

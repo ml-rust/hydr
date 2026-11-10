@@ -1,5 +1,9 @@
 //! Checks numerical rejections retain accepted state and actionable face context.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "support/impervious.rs"]
 mod impervious;
 
@@ -83,7 +87,7 @@ fn exhausted_face_bracket_identifies_support_and_preserves_state()
     assert!(message.contains("column: 1"), "{message}");
     assert!(message.contains("iteration limit"), "{message}");
     assert!(message.contains("[h,qn,qt,bed]"), "{message}");
-    assert_eq!(solver.snapshot(), before);
+    assert_eq!(solver.snapshot().data()?, before.data()?);
     Ok(())
 }
 
@@ -125,6 +129,6 @@ fn port_bounds_must_include_known_interior_characteristics()
         .err()
         .ok_or("expected inadmissible port bound")?;
     assert!(error.to_string().contains("interior characteristic"));
-    assert_eq!(solver.snapshot(), before);
+    assert_eq!(solver.snapshot().data()?, before.data()?);
     Ok(())
 }

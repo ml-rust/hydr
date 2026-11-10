@@ -63,11 +63,15 @@ fn csv(value: &str) -> String {
 pub fn rows(
     writer: &mut impl Write,
     frame: &Frame<'_>,
-    batch: Option<&GateActuatorBatch>,
+    batch: Option<&GateActuatorBatch<crate::runtime::Runtime>>,
     obs: Observation<'_>,
 ) -> Result {
-    let states = batch.map(GateActuatorBatch::states).transpose()?;
-    let outputs = batch.map(GateActuatorBatch::outputs).transpose()?;
+    let states = batch
+        .map(GateActuatorBatch::<crate::runtime::Runtime>::states)
+        .transpose()?;
+    let outputs = batch
+        .map(GateActuatorBatch::<crate::runtime::Runtime>::outputs)
+        .transpose()?;
     if states.as_ref().is_some_and(|s| s.len() != frame.width)
         || outputs.as_ref().is_some_and(|o| o.len() != frame.width)
         || obs.receipts.is_some_and(|r| r.len() != frame.width)

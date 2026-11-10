@@ -1,13 +1,26 @@
 //! Shape-neutral outward motion arithmetic without global rejection of optional certificates.
+use numr::ops::BinaryOps;
+use numr::ops::ScalarOps;
+use numr::ops::TypeConversionOps;
+use numr::ops::UnaryOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::{CpuTensor, structures::CpuStructureContext};
 use crate::structures::StructureError;
-use numr::ops::{BinaryOps, ScalarOps, TypeConversionOps, UnaryOps};
+use crate::tensor::structures::TensorStructureContext;
+use numr::tensor::Tensor;
 
-pub(super) fn finite(
-    context: &CpuStructureContext,
-    value: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(super) fn finite<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    value: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     let invalid = c.maximum(
         &c.cast(&c.isnan(value)?, value.dtype())?,
@@ -15,18 +28,34 @@ pub(super) fn finite(
     )?;
     Ok(c.add_scalar(&c.neg(&invalid)?, 1.0)?)
 }
-pub(super) fn up(
-    context: &CpuStructureContext,
-    value: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(super) fn up<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    value: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let bound =
         crate::numerics::subcatchment::bounds::rounding_with_client(&context.client, value)?;
     Ok(context.client.add(value, &bound)?)
 }
-pub(super) fn down(
-    context: &CpuStructureContext,
-    value: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(super) fn down<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    value: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let bound =
         crate::numerics::subcatchment::bounds::rounding_with_client(&context.client, value)?;
     Ok(context.client.sub(value, &bound)?)

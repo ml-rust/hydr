@@ -1,7 +1,7 @@
 use super::fixture::*;
 use hydr::structures::*;
 
-fn prior_completion_history() -> Result<GateActuatorBatch> {
+fn prior_completion_history() -> Result<GateActuatorBatch<crate::runtime::Runtime>> {
     let batch = build(0.0, 1.0, (0.25, 0.5), &[5.0], 8.0)?;
     let batch = walk(batch, 4.0, &[])?;
     let batch = walk(batch, 5.0, &[update(5.0, 0.0)])?;
@@ -20,7 +20,10 @@ fn change_rows(
     Ok(())
 }
 
-fn admitted_baseline() -> Result<(GateActuatorSnapshotData, GateActuatorBatch)> {
+fn admitted_baseline() -> Result<(
+    GateActuatorSnapshotData,
+    GateActuatorBatch<crate::runtime::Runtime>,
+)> {
     let data = prior_completion_history()?.snapshot_data()?;
     let state = &data.states[0];
     let change = state

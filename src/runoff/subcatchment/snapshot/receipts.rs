@@ -1,19 +1,43 @@
 //! Complete ordered receipt support and full-grid tensor reconstruction.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::restore::require;
-use crate::cpu::CpuTensor;
-use crate::cpu::subcatchment::{CpuSubcatchmentContext, CpuSubcatchmentInput};
-use crate::numerics::subcatchment::{CpuSubcatchmentStep, CpuSubcatchmentTotals, check_step};
+use crate::numerics::subcatchment::{TensorSubcatchmentStep, TensorSubcatchmentTotals, check_step};
 use crate::runoff::{Subarea, SubareaReceipt, SubcatchmentError, SubcatchmentStepDiagnostics};
 use crate::soil::{SoilReceiptInput, check_source_receipt};
+use crate::tensor::subcatchment::{TensorSubcatchmentContext, TensorSubcatchmentInput};
 
-pub(super) fn import(
-    context: &CpuSubcatchmentContext,
+pub(super) fn import<R>(
+    context: &TensorSubcatchmentContext<R>,
     diagnostics: &SubcatchmentStepDiagnostics,
-) -> Result<CpuSubcatchmentStep, SubcatchmentError> {
+) -> Result<TensorSubcatchmentStep<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let flat = check_support(context, diagnostics)?;
     let tensor = |select| flat_tensor(context, &flat, select);
-    let input = CpuSubcatchmentInput::new(
+    let input = TensorSubcatchmentInput::<R>::new(
         context,
         &diagnostics
             .receipts
@@ -21,7 +45,7 @@ pub(super) fn import(
             .map(|r| r.input)
             .collect::<Vec<_>>(),
     )?;
-    let step = CpuSubcatchmentStep {
+    let step = TensorSubcatchmentStep {
         old_depth: tensor(|r| r.old_depth_m)?,
         input,
         depth: tensor(|r| r.drainage.depth_m)?,
@@ -38,10 +62,25 @@ pub(super) fn import(
     Ok(step)
 }
 
-fn check_support<'a>(
-    context: &CpuSubcatchmentContext,
+fn check_support<'a, R>(
+    context: &TensorSubcatchmentContext<R>,
     diagnostics: &'a SubcatchmentStepDiagnostics,
-) -> Result<Vec<Option<&'a SubareaReceipt>>, SubcatchmentError> {
+) -> Result<Vec<Option<&'a SubareaReceipt>>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     require(
         diagnostics.receipts.len() == context.definitions.len(),
         "catchment receipts require complete ordered definition support",
@@ -126,11 +165,26 @@ fn check_support<'a>(
     Ok(flat)
 }
 
-fn flat_tensor(
-    context: &CpuSubcatchmentContext,
+fn flat_tensor<R>(
+    context: &TensorSubcatchmentContext<R>,
     flat: &[Option<&SubareaReceipt>],
     select: fn(&SubareaReceipt) -> f64,
-) -> Result<CpuTensor, SubcatchmentError> {
+) -> Result<Tensor<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     context.tensor(
         &flat
             .iter()
@@ -139,16 +193,31 @@ fn flat_tensor(
     )
 }
 
-fn totals(
-    context: &CpuSubcatchmentContext,
+fn totals<R>(
+    context: &TensorSubcatchmentContext<R>,
     diagnostics: &SubcatchmentStepDiagnostics,
     flat: &[Option<&SubareaReceipt>],
-) -> Result<CpuSubcatchmentTotals, SubcatchmentError> {
+) -> Result<TensorSubcatchmentTotals<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let tensor = |select| flat_tensor(context, flat, select);
     let catchment = |select: fn(&crate::runoff::SubcatchmentReceipt) -> f64| {
         context.tensor(&diagnostics.receipts.iter().map(select).collect::<Vec<_>>())
     };
-    Ok(CpuSubcatchmentTotals {
+    Ok(TensorSubcatchmentTotals {
         storage_before: tensor(|r| r.storage_before_m3)?,
         storage_after: tensor(|r| r.drainage.storage_after_m3)?,
         applied_rain: tensor(|r| r.rain_volume_m3)?,

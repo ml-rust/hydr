@@ -1,29 +1,31 @@
 //! Persistent tensor receipts for one independently admitted reservoir interval.
 
-use crate::cpu::CpuTensor;
+use numr::dtype::DType;
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
 #[derive(Debug, Clone)]
-pub(crate) struct CpuReservoirStep {
-    pub old_depth: CpuTensor,
-    pub incoming_rate: CpuTensor,
-    pub incoming_depth: CpuTensor,
-    pub available_depth: CpuTensor,
-    pub active_duration: CpuTensor,
-    pub root_lower: CpuTensor,
-    pub root_upper: CpuTensor,
-    pub depth: CpuTensor,
-    pub export_depth: CpuTensor,
-    pub storage_before: CpuTensor,
-    pub storage_after: CpuTensor,
-    pub incoming_volume: CpuTensor,
-    pub export_volume: CpuTensor,
-    pub endpoint_rate: CpuTensor,
-    pub endpoint_discharge: CpuTensor,
-    pub law_depth: CpuTensor,
-    pub law_volume: CpuTensor,
-    pub constitutive_residual: CpuTensor,
-    pub constitutive_scale: CpuTensor,
-    pub water_residual: CpuTensor,
-    pub water_scale: CpuTensor,
+pub(crate) struct TensorReservoirStep<R: Runtime<DType = DType>> {
+    pub old_depth: Tensor<R>,
+    pub incoming_rate: Tensor<R>,
+    pub incoming_depth: Tensor<R>,
+    pub available_depth: Tensor<R>,
+    pub active_duration: Tensor<R>,
+    pub root_lower: Tensor<R>,
+    pub root_upper: Tensor<R>,
+    pub depth: Tensor<R>,
+    pub export_depth: Tensor<R>,
+    pub storage_before: Tensor<R>,
+    pub storage_after: Tensor<R>,
+    pub incoming_volume: Tensor<R>,
+    pub export_volume: Tensor<R>,
+    pub endpoint_rate: Tensor<R>,
+    pub endpoint_discharge: Tensor<R>,
+    pub law_depth: Tensor<R>,
+    pub law_volume: Tensor<R>,
+    pub constitutive_residual: Tensor<R>,
+    pub constitutive_scale: Tensor<R>,
+    pub water_residual: Tensor<R>,
+    pub water_scale: Tensor<R>,
     pub root_iterations: usize,
 }

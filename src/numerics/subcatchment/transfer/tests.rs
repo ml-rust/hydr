@@ -1,9 +1,11 @@
 use super::*;
 use crate::runoff::{ReservoirConfig, ReservoirElement, ReservoirParameters};
+use numr::runtime::cpu::CpuRuntime;
 
-fn context(count: usize) -> Result<CpuReservoirContext, ReservoirError> {
+fn context(count: usize) -> Result<TensorReservoirContext<CpuRuntime>, ReservoirError> {
     let parameters = ReservoirParameters::from_si(1.0, 1.0, 0.0, 0.0, 1.0, 0.0)?;
-    CpuReservoirContext::new(
+    TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         (0..count)
             .map(|i| ReservoirElement {
                 id: format!("transfer-{i}"),
@@ -108,4 +110,9 @@ fn absorbed_positive_merge_and_forged_receipts_reject() -> Result<(), ReservoirE
     divided.outlet = ctx.one.clone();
     assert!(check_partition(&ctx, &ctx.one, &ctx.tensor(&[0.5])?, &divided).is_err());
     Ok(())
+}
+
+fn cpu_client() -> numr::runtime::cpu::CpuClient {
+    numr::runtime::cpu::CpuClient::new(numr::runtime::cpu::CpuDevice::new())
+        .with_parallelism(numr::runtime::cpu::ParallelismConfig::new(Some(1), None))
 }

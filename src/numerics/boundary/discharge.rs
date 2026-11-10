@@ -1,20 +1,34 @@
 use super::admission::reject_mask;
 use super::types::TensorBoundaryRequest;
-use crate::numerics::tensor_types::{CpuTensor, any, check_finite, constant};
+use crate::numerics::tensor_types::{any, check_finite, constant};
 use crate::numerics::tensor_wave::curve;
 use crate::solver::{BoundaryFace, EngineError, SolverConfig};
-use numr::prelude::{BinaryOps, CompareOps, ConditionalOps, CpuClient, ScalarOps, UnaryOps};
+use numr::dtype::DType;
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
+use numr::runtime::{Runtime, RuntimeClient};
+use numr::tensor::Tensor;
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedBisectionOptions};
 
-pub(super) fn depth(
-    client: &CpuClient,
-    hi: &CpuTensor,
-    ui: &CpuTensor,
-    request: &TensorBoundaryRequest,
+pub(super) fn depth<R, C>(
+    client: &C,
+    hi: &Tensor<R>,
+    ui: &Tensor<R>,
+    request: &TensorBoundaryRequest<R>,
     faces: &[BoundaryFace],
     gravity: f64,
     config: &SolverConfig,
-) -> Result<CpuTensor, EngineError> {
+) -> Result<Tensor<R>, EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let mask = &request.discharge_mask;
     if !any(client, mask)? {
         return Ok(hi.clone());
@@ -60,7 +74,7 @@ pub(super) fn depth(
         .map_err(root_error)?;
     // u+c decreases. Its retained lower endpoint remains on the subcritical side.
     let upper = sonic.lower;
-    let discharge = |h: &CpuTensor| -> numr::error::Result<CpuTensor> {
+    let discharge = |h: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
         client.mul(h, &client.sub(&ui, &curve(client, h, &hi, gravity)?)?)
     };
     let maximum = discharge(&lower)?;

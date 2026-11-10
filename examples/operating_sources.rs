@@ -1,5 +1,9 @@
 //! Exclusive manual, prescribed, and accepted actuator inputs for one hydraulic point.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 use hydr::structures::{
     DirectionPolicy, EndpointHead, GateActuatorAccuracy, GateActuatorDefinition,
     GateActuatorInitialState, GateActuatorSchedule, GateApplicability, GateMotionLimits,
@@ -104,13 +108,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         )?),
     );
-    let structures = StructureBatch::new(vec![
-        gate("manual-gate")?,
-        passive,
-        gate("prescribed-gate")?,
-        pump,
-        gate("actuated-gate")?,
-    ])?;
+    let structures = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![
+            gate("manual-gate")?,
+            passive,
+            gate("prescribed-gate")?,
+            pump,
+            gate("actuated-gate")?,
+        ],
+    )?;
     let prescribed = structures.with_gate_trajectory_subset(vec![GateTrajectoryAssignment {
         structure_id: "prescribed-gate".into(),
         trajectory: GateOpeningTrajectory::new(

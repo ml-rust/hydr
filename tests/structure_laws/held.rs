@@ -3,11 +3,14 @@ use hydr::structures::*;
 
 #[test]
 fn held_heads_preserve_signed_single_product_and_original_packet() -> Result {
-    let batch = StructureBatch::new(vec![element(
-        "orifice",
-        orifice(0.6, 2.0, 9.81)?,
-        DirectionPolicy::Bidirectional,
-    )])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![element(
+            "orifice",
+            orifice(0.6, 2.0, 9.81)?,
+            DirectionPolicy::Bidirectional,
+        )],
+    )?;
     for (a, b) in [(3.0, 2.0), (2.0, 3.0)] {
         let proposal = batch.propose(&[heads("orifice", a, b)])?;
         let original = first(&proposal)?;
@@ -35,11 +38,14 @@ fn held_heads_preserve_signed_single_product_and_original_packet() -> Result {
 
 #[test]
 fn held_intervals_and_active_volume_representation_reject_atomically() -> Result {
-    let batch = StructureBatch::new(vec![element(
-        "orifice",
-        orifice(0.6, 2.0, 9.81)?,
-        DirectionPolicy::Bidirectional,
-    )])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![element(
+            "orifice",
+            orifice(0.6, 2.0, 9.81)?,
+            DirectionPolicy::Bidirectional,
+        )],
+    )?;
     let proposal = batch.propose(&[heads("orifice", 3.0, 2.0)])?;
     let before = format!("{:?}", proposal.outputs()?);
     for (start, end) in [
@@ -65,8 +71,10 @@ fn held_intervals_and_active_volume_representation_reject_atomically() -> Result
             .into_iter()
             .find(|row| row.id == id)
             .ok_or("Missing held range fixture")?;
-        let batch =
-            StructureBatch::new(vec![element(id, row.law, DirectionPolicy::Bidirectional)])?;
+        let batch = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![element(id, row.law, DirectionPolicy::Bidirectional)],
+        )?;
         let proposal = batch.propose(&[heads(id, row.high, row.low)])?;
         let before = format!("{:?}", proposal.outputs()?);
         let error = rejection(proposal.held_volumes(HeldHeadInterval { start: 0.0, end }))?;
@@ -79,11 +87,14 @@ fn held_intervals_and_active_volume_representation_reject_atomically() -> Result
 
 #[test]
 fn repeated_and_rejected_proposals_preserve_earlier_projections() -> Result {
-    let batch = StructureBatch::new(vec![element(
-        "orifice",
-        orifice(0.6, 2.0, 9.81)?,
-        DirectionPolicy::Bidirectional,
-    )])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![element(
+            "orifice",
+            orifice(0.6, 2.0, 9.81)?,
+            DirectionPolicy::Bidirectional,
+        )],
+    )?;
     let definitions = format!("{:?}", batch.elements());
     let packets = [heads("orifice", 3.0, 2.0)];
     let proposal = batch.propose(&packets)?;
@@ -116,11 +127,10 @@ fn repeated_and_rejected_proposals_preserve_earlier_projections() -> Result {
 #[test]
 fn active_discharge_rejections_preserve_existing_zero_proposals() -> Result {
     for row in catalog()?.into_iter().filter(|row| row.discharge.is_none()) {
-        let batch = StructureBatch::new(vec![element(
-            row.id,
-            row.law,
-            DirectionPolicy::Bidirectional,
-        )])?;
+        let batch = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![element(row.id, row.law, DirectionPolicy::Bidirectional)],
+        )?;
         let equal_stage = row.high;
         let original = batch.propose(&[heads(row.id, equal_stage, equal_stage)])?;
         let before = original.outputs()?;
@@ -157,7 +167,8 @@ fn zero_and_blocked_lanes_retain_exact_zero_at_large_duration() -> Result {
             ));
             packets.push(heads(&id, if blocked { 1.0 } else { 0.0 }, 0.0));
         }
-        let batch = StructureBatch::new(elements)?;
+        let batch =
+            StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?;
         let proposal = batch.propose(&packets)?;
         let outputs = proposal
             .held_volumes(HeldHeadInterval {

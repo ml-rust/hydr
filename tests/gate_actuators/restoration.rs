@@ -1,7 +1,7 @@
 use super::fixture::*;
 use hydr::structures::*;
 
-fn completed_history() -> Result<GateActuatorBatch> {
+fn completed_history() -> Result<GateActuatorBatch<crate::runtime::Runtime>> {
     let batch = build(0.0, 1.0, (0.25, 0.5), &[5.0, 6.0], 9.0)?;
     let batch = walk(batch, 4.0, &[])?;
     let batch = walk(batch, 5.0, &[update(5.0, 0.0)])?;

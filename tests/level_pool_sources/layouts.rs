@@ -48,7 +48,8 @@ fn mixed_source_and_zero_lanes_preserve_independent_curve_and_source_support() -
             exchanges.push(transfer);
             forcing.push(rates);
         }
-        let batch = LevelPoolBatch::new_with_sources(
+        let batch = LevelPoolBatch::<crate::runtime::Runtime>::new_with_sources(
+            crate::runtime::client(),
             elements.clone(),
             states.clone(),
             0.0,

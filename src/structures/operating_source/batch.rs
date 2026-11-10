@@ -3,33 +3,45 @@
 use super::{
     OperatingSourceBinding, OperatingSourceFrame, OperatingSourceProposal, OperatingSourceSupport,
 };
-use crate::cpu::structures::{
-    CpuStructureInput, DerivedGateOperations, DerivedPumpOperationData, DerivedPumpOperations,
-    operating_source::{CpuOperatingSourceContext, assemble},
-};
 use crate::structures::{
     StructureBatch, StructureElement, StructureError, StructureHeads, StructureInputErrorKind,
     StructureOperation, StructureProposal,
 };
+use crate::tensor::structures::{
+    DerivedGateOperations, DerivedPumpOperationData, DerivedPumpOperations, TensorStructureInput,
+    operating_source::{TensorOperatingSourceContext, assemble},
+};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Immutable exclusive registry requiring original manual packets and fresh dynamic frames.
 #[derive(Clone, Debug)]
-pub struct OperatingSourceBatch {
-    pub(crate) context: Arc<CpuOperatingSourceContext>,
+pub struct OperatingSourceBatch<R: Runtime<DType = DType>> {
+    pub(crate) context: Arc<TensorOperatingSourceContext<R>>,
 }
-impl StructureBatch {
+impl<R: Runtime<DType = DType>> StructureBatch<R> {
     /// Bind one explicit writer per original element without capturing dynamic continuation.
     pub fn with_operating_sources(
         &self,
-        sources: Vec<OperatingSourceBinding<'_>>,
-    ) -> Result<OperatingSourceBatch, StructureError> {
+        sources: Vec<OperatingSourceBinding<'_, R>>,
+    ) -> Result<OperatingSourceBatch<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         Ok(OperatingSourceBatch {
             context: Arc::new(super::binding::build(Arc::clone(&self.context), sources)?),
         })
     }
 }
-impl OperatingSourceBatch {
+impl<R: Runtime<DType = DType>> OperatingSourceBatch<R> {
     /// Complete immutable actual structure definitions in original order.
     pub fn elements(&self) -> &[StructureElement] {
         &self.context.structures.elements
@@ -65,11 +77,26 @@ impl OperatingSourceBatch {
         time_s: f64,
         heads: &[StructureHeads],
         manual_operations: &[StructureOperation],
-        frames: &[OperatingSourceFrame<'_>],
-    ) -> Result<OperatingSourceProposal, StructureError> {
+        frames: &[OperatingSourceFrame<'_, R>],
+    ) -> Result<OperatingSourceProposal<R>, StructureError>
+    where
+        R::Client: numr::ops::CumulativeOps<R>
+            + numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::IndexingOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::ShapeOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>
+            + solvr::interpolate::Interp1dAlgorithms<R>
+            + solvr::interpolate::LinearInterp1dDiagnostics<R>,
+    {
         self.check_time(time_s)?;
         let context = &self.context.structures;
-        let heads_input = CpuStructureInput::heads(context, heads)?;
+        let heads_input = TensorStructureInput::heads(context, heads)?;
         if manual_operations.len() != self.context.manual_slots.len() {
             return Err(StructureError::input(
                 StructureInputErrorKind::OperatingPoint,
@@ -77,7 +104,7 @@ impl OperatingSourceBatch {
             ));
         }
         let point = assemble(&self.context, time_s, frames)?;
-        let input = CpuStructureInput::with_derived_heads(
+        let input = TensorStructureInput::with_derived_heads(
             context,
             heads_input,
             manual_operations,

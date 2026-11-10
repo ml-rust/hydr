@@ -1,6 +1,6 @@
 # Standalone Modified Green–Ampt soil
 
-`hydr::soil::ModifiedGreenAmptBatch` advances complete soil memory on persistent numr CPU F64 tensors. Each batch uses an explicit one-thread `CpuClient`.
+`hydr::soil::ModifiedGreenAmptBatch<R>` advances complete soil memory on persistent Numr `Tensor<R>` fields. Construction receives the configured `R::Client`. The checked CPU reference uses one thread. Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission).
 
 The component follows EPA SWMM v5.2.4 Modified Green–Ampt, pinned at `7952ca837988b1c32f791812eccc9fd64547e093`. The [reference harness](soil-reference.md) records original C results. Generic Newton iteration belongs to solvr. Hydr supplies the soil correction, native branches, and prescribed fallback.
 
@@ -8,9 +8,12 @@ The component follows EPA SWMM v5.2.4 Modified Green–Ampt, pinned at `7952ca83
 
 ```rust
 use hydr::soil::{ModifiedGreenAmptBatch, ModifiedGreenAmptParameters, SoilInput};
+use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 
 let parameters = ModifiedGreenAmptParameters::from_si(0.12, 3e-6, 0.3)?;
-let accepted = ModifiedGreenAmptBatch::initialized(&[parameters])?;
+let client = CpuClient::new(CpuDevice::new())
+    .with_parallelism(ParallelismConfig::new(Some(1), None));
+let accepted = ModifiedGreenAmptBatch::<CpuRuntime>::initialized(client, &[parameters])?;
 let trial = accepted.trial(60.0, &[SoilInput {
     incoming_rate_m_per_s: 1e-5,
     ponded_depth_m: 0.01,
@@ -25,8 +28,8 @@ let restart_state = next.native_states()?;
 | --- | --- |
 | `ModifiedGreenAmptParameters::from_si` | Suction in metres, conductivity in metres/second, dimensionless maximum deficit |
 | `ModifiedGreenAmptParameters::from_native` | Suction in feet, conductivity in feet/second, dimensionless maximum deficit |
-| `ModifiedGreenAmptBatch::initialized` | Explicit EPA antecedent initialization |
-| `ModifiedGreenAmptBatch::from_native_states` | Checked complete antecedent state without inferred history |
+| `ModifiedGreenAmptBatch::<R>::initialized(client, parameters)` | Explicit EPA antecedent initialization on the selected client |
+| `ModifiedGreenAmptBatch::<R>::from_native_states(client, parameters, states)` | Checked complete antecedent state without inferred history |
 | `trial` / `trial_native` | Immutable interval computation with positive finite duration and one input per cell |
 | `outputs` | Native/SI interval rates and depths, projected at the application output boundary |
 | `into_next` | Accept the complete candidate batch |

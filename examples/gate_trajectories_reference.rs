@@ -1,5 +1,9 @@
 //! Original-bit trajectory admissions, receipts, and explicit operation projections.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 #[path = "gate_trajectories_reference/observer.rs"]
 mod observer;
 #[path = "gate_trajectories_reference/receipt.rs"]

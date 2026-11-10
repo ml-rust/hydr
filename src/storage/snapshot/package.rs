@@ -2,6 +2,13 @@ use super::super::{
     LevelPoolBatch, LevelPoolConfig, LevelPoolElement, LevelPoolElementLedger, LevelPoolError,
     LevelPoolState, LevelPoolStepDiagnostics,
 };
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::interpolate::Interp1dAlgorithms;
 
 /// Complete caller-owned values. Preserve every F64 bit when encoding.
 #[derive(Clone, Debug, PartialEq)]
@@ -26,10 +33,25 @@ pub struct LevelPoolSnapshotData {
 
 /// Trusted complete persistent state clone without projection.
 #[derive(Clone, Debug)]
-pub struct LevelPoolSnapshot {
-    pub(super) batch: LevelPoolBatch,
+pub struct LevelPoolSnapshot<R: Runtime<DType = DType>> {
+    pub(super) batch: LevelPoolBatch<R>,
 }
-impl LevelPoolSnapshot {
+impl<R> LevelPoolSnapshot<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     /// Project complete values for caller-owned encoding.
     pub fn data(&self) -> Result<LevelPoolSnapshotData, LevelPoolError> {
         self.batch.snapshot_data()
@@ -39,9 +61,24 @@ impl LevelPoolSnapshot {
         self.batch.time()
     }
 }
-impl LevelPoolBatch {
+impl<R> LevelPoolBatch<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     /// Clone complete persistent continuation state without numerical projection.
-    pub fn snapshot(&self) -> LevelPoolSnapshot {
+    pub fn snapshot(&self) -> LevelPoolSnapshot<R> {
         LevelPoolSnapshot {
             batch: self.clone(),
         }

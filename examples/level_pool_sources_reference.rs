@@ -1,5 +1,9 @@
 //! Production observations for frozen changing-area atmospheric source cases.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 use std::io::{self, Write};
 
 use hydr::storage::{
@@ -80,7 +84,8 @@ fn observe(
         "synthetic vertical datum".into(),
         "frozen piecewise-linear source reference fixture".into(),
     )?;
-    let mut batch = LevelPoolBatch::new_with_sources(
+    let mut batch = LevelPoolBatch::<crate::runtime::Runtime>::new_with_sources(
+        crate::runtime::client(),
         vec![LevelPoolElement {
             id: case.id.into(),
             curve,

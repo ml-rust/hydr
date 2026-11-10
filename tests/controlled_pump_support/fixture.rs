@@ -26,9 +26,9 @@ impl Config {
     }
     pub fn controls(
         &self,
-        context: &StructureBatch,
+        context: &StructureBatch<crate::runtime::Runtime>,
         ids: &[&str],
-    ) -> Result<OperatingControlBatch> {
+    ) -> Result<OperatingControlBatch<crate::runtime::Runtime>> {
         Ok(context.with_operating_controls(
             ids.iter()
                 .map(|id| OperatingControlDefinition {
@@ -70,8 +70,12 @@ impl Config {
             },
         )?)
     }
-    pub fn build(&self, context: &StructureBatch, ids: &[&str]) -> Result<ControlledPumpBatch> {
-        Ok(ControlledPumpBatch::new(
+    pub fn build(
+        &self,
+        context: &StructureBatch<crate::runtime::Runtime>,
+        ids: &[&str],
+    ) -> Result<ControlledPumpBatch<crate::runtime::Runtime>> {
+        Ok(ControlledPumpBatch::<crate::runtime::Runtime>::new(
             self.controls(context, ids)?,
             responses(ids),
         )?)
@@ -176,10 +180,10 @@ pub fn samples(ids: &[&str], time: f64, stage: f64) -> Vec<ControlSample> {
 }
 
 pub fn accept(
-    batch: ControlledPumpBatch,
+    batch: ControlledPumpBatch<crate::runtime::Runtime>,
     end: f64,
     stage: Option<f64>,
-) -> Result<ControlledPumpBatch> {
+) -> Result<ControlledPumpBatch<crate::runtime::Runtime>> {
     let ids = batch
         .controls()
         .definitions()
@@ -215,9 +219,9 @@ pub fn wet(id: &str, receiver: f64) -> StructureHeads {
 }
 
 pub fn registry(
-    context: &StructureBatch,
-    pump: &ControlledPumpBatch,
-) -> Result<OperatingSourceBatch> {
+    context: &StructureBatch<crate::runtime::Runtime>,
+    pump: &ControlledPumpBatch<crate::runtime::Runtime>,
+) -> Result<OperatingSourceBatch<crate::runtime::Runtime>> {
     Ok(
         context.with_operating_sources(vec![OperatingSourceBinding::ControlledPump {
             source_id: "controlled".into(),
@@ -226,7 +230,9 @@ pub fn registry(
     )
 }
 
-pub fn frame(pump: &ControlledPumpBatch) -> OperatingSourceFrame<'_> {
+pub fn frame(
+    pump: &ControlledPumpBatch<crate::runtime::Runtime>,
+) -> OperatingSourceFrame<'_, crate::runtime::Runtime> {
     OperatingSourceFrame::ControlledPump {
         source_id: "controlled",
         pump,
@@ -234,8 +240,8 @@ pub fn frame(pump: &ControlledPumpBatch) -> OperatingSourceFrame<'_> {
 }
 
 pub fn point(
-    registry: &OperatingSourceBatch,
-    pump: &ControlledPumpBatch,
+    registry: &OperatingSourceBatch<crate::runtime::Runtime>,
+    pump: &ControlledPumpBatch<crate::runtime::Runtime>,
     packets: &[StructureHeads],
 ) -> Result<Vec<OperatingSourceOutput>> {
     Ok(registry
@@ -258,7 +264,11 @@ pub fn kind<T>(
     Ok(())
 }
 
-pub fn actual_gate(context: &StructureBatch, id: &str, end: f64) -> Result<GateActuatorBatch> {
+pub fn actual_gate(
+    context: &StructureBatch<crate::runtime::Runtime>,
+    id: &str,
+    end: f64,
+) -> Result<GateActuatorBatch<crate::runtime::Runtime>> {
     Ok(context.with_gate_actuators(
         vec![GateActuatorDefinition {
             actuator_id: format!("actuator-{id}"),

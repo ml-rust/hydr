@@ -1,5 +1,9 @@
 use super::super::engine::{Accepted, Definition};
 use super::super::{InitialState, SolverSetup, StepDiagnostics, WaterLedger};
+use crate::solver::EngineError;
+use crate::tensor::TensorDomain;
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Typed checkpoint schema identity.
@@ -29,20 +33,38 @@ pub struct SnapshotData {
 
 /// Complete immutable in-memory continuation state for one numerical contract.
 ///
-/// Includes accepted fields, time, cumulative ledgers, last-step diagnostics, step history,
-/// immutable geometry, parameters, boundaries, and the complete forcing schedule.
+/// Includes accepted tensors, time, cumulative ledgers, and bounded last-step receipts.
+/// Retains immutable geometry, parameters, boundaries, and the complete forcing schedule.
 /// Caller adapters own file encoding and persistence.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Snapshot {
+#[derive(Clone)]
+pub struct Snapshot<R: Runtime<DType = DType>> {
+    pub(in crate::solver) context: Arc<TensorDomain<R>>,
     pub(in crate::solver) contract: &'static str,
     pub(in crate::solver) definition: Arc<Definition>,
-    pub(in crate::solver) accepted: Accepted,
+    pub(in crate::solver) accepted: Accepted<R>,
 }
 
-impl Snapshot {
-    /// Copies complete checkpoint values for caller-owned encoding and persistence.
-    pub fn data(&self) -> SnapshotData {
-        SnapshotData {
+impl<R: Runtime<DType = DType>> Snapshot<R>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::IndexingOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::UnaryOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::HypotOps<R>
+        + numr::ops::ShapeOps<R>
+        + solvr::optimize::roots::BatchedBisectionAlgorithms<R>
+        + solvr::optimize::roots::BatchedNewtonAlgorithms<R>,
+{
+    /// Projects complete checkpoint values for caller-owned encoding and persistence.
+    ///
+    /// # Errors
+    /// Returns runtime transfer, physical state, or receipt shape errors.
+    pub fn data(&self) -> Result<SnapshotData, EngineError> {
+        Ok(SnapshotData {
             schema: SNAPSHOT_SCHEMA.into(),
             contract: self.contract.into(),
             setup: SolverSetup {
@@ -54,13 +76,18 @@ impl Snapshot {
             },
             accepted: InitialState {
                 time: self.accepted.time,
-                flow: self.accepted.state.clone(),
-                soil: self.accepted.soil.clone(),
+                flow: self.accepted.flow.to_flow(&self.definition.domain)?,
+                soil: self.accepted.land.soil_state()?,
             },
             ledger: self.accepted.ledger.clone(),
             accepted_steps: self.accepted.steps,
-            last_step: self.accepted.last.clone(),
-        }
+            last_step: self
+                .accepted
+                .last
+                .as_ref()
+                .map(|receipt| receipt.project(&self.context, &self.accepted.land))
+                .transpose()?,
+        })
     }
     /// Returns the snapshot's accepted elapsed time in seconds.
     pub fn time(&self) -> f64 {
@@ -70,5 +97,15 @@ impl Snapshot {
     /// Returns the snapshot's numerical contract identity.
     pub fn contract(&self) -> &'static str {
         self.contract
+    }
+}
+
+impl<R: Runtime<DType = DType>> std::fmt::Debug for Snapshot<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Snapshot")
+            .field("runtime", &R::name())
+            .field("time", &self.accepted.time)
+            .field("steps", &self.accepted.steps)
+            .finish_non_exhaustive()
     }
 }

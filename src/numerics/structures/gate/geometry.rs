@@ -1,19 +1,34 @@
 //! Original-opening strip geometry with retained physical-expression TwoSum witnesses.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::ops::TwoSumOps;
+use numr::ops::UnaryOps;
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::{classification::Classification, geometry_bounds as bounds};
-use crate::cpu::structures::{
-    CpuStructureContext,
-    gate::{CpuGateContext, CpuGateGeometry, CpuGateInput},
-};
 use crate::structures::StructureError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, TwoSumOps, UnaryOps};
+use crate::tensor::structures::{
+    TensorStructureContext,
+    gate::{TensorGateContext, TensorGateGeometry, TensorGateInput},
+};
 
-pub(super) fn evaluate(
-    context: &CpuStructureContext,
-    gate: &CpuGateContext,
-    operation: &CpuGateInput,
-    class: &Classification,
-) -> Result<CpuGateGeometry, StructureError> {
+pub(super) fn evaluate<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    gate: &TensorGateContext<R>,
+    operation: &TensorGateInput<R>,
+    class: &Classification<R>,
+) -> Result<TensorGateGeometry<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     let partial_submerged = c.sub(&class.submerged, &class.fully_submerged)?;
     let (depth, depth_low) = c.two_sum(
@@ -164,7 +179,7 @@ pub(super) fn evaluate(
         &c.gt(&c.abs(&closure_residual)?, &closure_envelope)?,
         "gate strip-closure interval is disjoint from independent physical-length allowance",
     )?;
-    Ok(CpuGateGeometry {
+    Ok(TensorGateGeometry {
         opening: c.where_cond(&class.active, &operation.opening, &context.zero)?,
         crown_high: c.where_cond(&class.active, &class.crown_high, &context.zero)?,
         crown_low: c.where_cond(&class.active, &class.crown_low, &context.zero)?,

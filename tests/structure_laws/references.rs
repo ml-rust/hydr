@@ -165,11 +165,10 @@ pub fn catalog() -> Result<Vec<Reference>> {
 #[test]
 fn independent_discharge_references_and_reversal() -> Result {
     for row in catalog()? {
-        let batch = StructureBatch::new(vec![element(
-            row.id,
-            row.law,
-            DirectionPolicy::Bidirectional,
-        )])?;
+        let batch = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![element(row.id, row.law, DirectionPolicy::Bidirectional)],
+        )?;
         for reverse in [false, true] {
             let (a, b) = if reverse {
                 (row.low, row.high)

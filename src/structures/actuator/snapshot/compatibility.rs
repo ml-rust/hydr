@@ -2,6 +2,8 @@
 
 use super::super::*;
 use crate::structures::{StructureError, StructureInputErrorKind};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
 pub(super) fn require(condition: bool, message: &str) -> Result<(), StructureError> {
     if condition {
@@ -26,8 +28,8 @@ pub(super) fn as_definition(error: StructureError) -> StructureError {
         },
     }
 }
-pub(super) fn check(
-    batch: &GateActuatorBatch,
+pub(super) fn check<R: Runtime<DType = DType>>(
+    batch: &GateActuatorBatch<R>,
     data: &GateActuatorSnapshotData,
 ) -> Result<(), StructureError> {
     require(
@@ -42,7 +44,10 @@ pub(super) fn check(
     )
 }
 
-pub(super) fn trusted(a: &GateActuatorBatch, b: &GateActuatorBatch) -> Result<(), StructureError> {
+pub(super) fn trusted<R: Runtime<DType = DType>>(
+    a: &GateActuatorBatch<R>,
+    b: &GateActuatorBatch<R>,
+) -> Result<(), StructureError> {
     require(
         super::super::compatibility::same_context(&a.context, &b.context),
         "trusted actuator snapshot differs from destination original context",

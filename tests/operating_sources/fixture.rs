@@ -87,7 +87,7 @@ pub fn pump(id: &str) -> Result<StructureElement> {
     Ok(element)
 }
 
-pub fn heads(context: &StructureBatch) -> Vec<StructureHeads> {
+pub fn heads(context: &StructureBatch<crate::runtime::Runtime>) -> Vec<StructureHeads> {
     context
         .elements()
         .iter()
@@ -122,10 +122,10 @@ pub fn opening(id: &str, value: f64) -> StructureOperation {
 }
 
 pub fn trajectory(
-    context: &StructureBatch,
+    context: &StructureBatch<crate::runtime::Runtime>,
     id: &str,
     knots: &[(f64, f64)],
-) -> Result<GateTrajectoryBatch> {
+) -> Result<GateTrajectoryBatch<crate::runtime::Runtime>> {
     let trajectory = GateOpeningTrajectory::new(
         knots
             .iter()
@@ -150,14 +150,14 @@ pub fn trajectory(
 }
 
 pub fn actuator(
-    context: &StructureBatch,
+    context: &StructureBatch<crate::runtime::Runtime>,
     id: &str,
     opening: f64,
     target: f64,
     rates: (f64, f64),
     start: f64,
     end: f64,
-) -> Result<GateActuatorBatch> {
+) -> Result<GateActuatorBatch<crate::runtime::Runtime>> {
     Ok(context.with_gate_actuators(
         vec![GateActuatorDefinition {
             actuator_id: format!("actuator-{id}"),
@@ -186,7 +186,10 @@ pub fn actuator(
     )?)
 }
 
-pub fn advance(mut batch: GateActuatorBatch, end: f64) -> Result<GateActuatorBatch> {
+pub fn advance(
+    mut batch: GateActuatorBatch<crate::runtime::Runtime>,
+    end: f64,
+) -> Result<GateActuatorBatch<crate::runtime::Runtime>> {
     while let Some(event) = batch.next_event()? {
         assert!(event.time_s > batch.time());
         if event.time_s >= end {
@@ -214,24 +217,27 @@ pub fn kind<T>(
 }
 
 pub struct Mixed {
-    pub context: StructureBatch,
-    pub prescribed: [GateTrajectoryBatch; 2],
-    pub actuators: [GateActuatorBatch; 2],
-    pub registry: OperatingSourceBatch,
+    pub context: StructureBatch<crate::runtime::Runtime>,
+    pub prescribed: [GateTrajectoryBatch<crate::runtime::Runtime>; 2],
+    pub actuators: [GateActuatorBatch<crate::runtime::Runtime>; 2],
+    pub registry: OperatingSourceBatch<crate::runtime::Runtime>,
 }
 
 impl Mixed {
     pub fn new() -> Result<Self> {
-        let context = StructureBatch::new(vec![
-            gate("manual-a")?,
-            gate("prescribed-a")?,
-            passive("weir")?,
-            gate("actuated-a")?,
-            pump("pump")?,
-            gate("prescribed-b")?,
-            gate("actuated-b")?,
-            gate("manual-b")?,
-        ])?;
+        let context = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![
+                gate("manual-a")?,
+                gate("prescribed-a")?,
+                passive("weir")?,
+                gate("actuated-a")?,
+                pump("pump")?,
+                gate("prescribed-b")?,
+                gate("actuated-b")?,
+                gate("manual-b")?,
+            ],
+        )?;
         let prescribed = [
             trajectory(&context, "prescribed-a", &[(0.0, 0.125), (2.0, 0.375)])?,
             trajectory(&context, "prescribed-b", &[(0.0, 0.75), (2.0, 0.5)])?,
@@ -272,7 +278,7 @@ impl Mixed {
             registry,
         })
     }
-    pub fn frames(&self) -> Vec<OperatingSourceFrame<'_>> {
+    pub fn frames(&self) -> Vec<OperatingSourceFrame<'_, crate::runtime::Runtime>> {
         vec![
             OperatingSourceFrame::ActuatedGate {
                 source_id: "actual-b",
@@ -298,9 +304,9 @@ impl Mixed {
 }
 
 pub fn explicit_match(
-    context: &StructureBatch,
+    context: &StructureBatch<crate::runtime::Runtime>,
     heads: &[StructureHeads],
-    proposal: &OperatingSourceProposal,
+    proposal: &OperatingSourceProposal<crate::runtime::Runtime>,
 ) -> Result {
     let operations = proposal.operations()?;
     let expected = context

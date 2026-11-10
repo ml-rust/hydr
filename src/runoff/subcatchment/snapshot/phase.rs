@@ -1,18 +1,42 @@
 //! Static role-group and complete drainage witness reconstruction.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::restore::require;
-use crate::cpu::CpuTensor;
-use crate::cpu::subcatchment::CpuSubareaGroup;
 use crate::numerics::reservoir::drainage::DrainageResult;
-use crate::numerics::subcatchment::CpuSubareaStep;
+use crate::numerics::subcatchment::TensorSubareaStep;
 use crate::numerics::subcatchment::transfer::{Merged, Partition};
 use crate::runoff::{SubareaReceipt, SubcatchmentError, SubcatchmentPhaseDiagnostics};
+use crate::tensor::subcatchment::TensorSubareaGroup;
 
-pub(super) fn import(
-    group: Option<&CpuSubareaGroup>,
+pub(super) fn import<R>(
+    group: Option<&TensorSubareaGroup<R>>,
     diagnostics: Option<&SubcatchmentPhaseDiagnostics>,
     flat: &[Option<&SubareaReceipt>],
-) -> Result<Option<CpuSubareaStep>, SubcatchmentError> {
+) -> Result<Option<TensorSubareaStep<R>>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let (group, diagnostics) = match (group, diagnostics) {
         (None, None) => return Ok(None),
         (Some(group), Some(diagnostics)) => (group, diagnostics),
@@ -32,7 +56,7 @@ pub(super) fn import(
         })
         .collect::<Result<_, _>>()?;
     let tensor = |select| from_sources(group, &sources, select);
-    let step = CpuSubareaStep {
+    let step = TensorSubareaStep {
         old_depth: tensor(|r| r.old_depth_m)?,
         rain_rate: tensor(|r| r.rain_rate_m_per_s)?,
         potential_evaporation: tensor(|r| r.potential_evaporation_m_per_s)?,
@@ -82,11 +106,26 @@ pub(super) fn import(
     Ok(Some(step))
 }
 
-pub(super) fn from_sources(
-    group: &CpuSubareaGroup,
+pub(super) fn from_sources<R>(
+    group: &TensorSubareaGroup<R>,
     sources: &[&SubareaReceipt],
     select: fn(&SubareaReceipt) -> f64,
-) -> Result<CpuTensor, SubcatchmentError> {
+) -> Result<Tensor<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let values: Vec<_> = sources.iter().map(|&source| select(source)).collect();
     group
         .reservoir
@@ -94,11 +133,26 @@ pub(super) fn from_sources(
         .map_err(|e| group.map_reservoir_error(e))
 }
 
-fn drainage(
-    group: &CpuSubareaGroup,
+fn drainage<R>(
+    group: &TensorSubareaGroup<R>,
     sources: &[&SubareaReceipt],
     iterations: usize,
-) -> Result<DrainageResult, SubcatchmentError> {
+) -> Result<DrainageResult<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let tensor = |select| from_sources(group, sources, select);
     Ok(DrainageResult {
         lower: tensor(|r| r.drainage.root_lower_m)?,

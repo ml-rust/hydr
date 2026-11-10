@@ -1,26 +1,48 @@
 //! Atomic two-phase advancement with persistent topology and paired interface volumes.
 
-use super::sources::Supply;
-use super::step::{CpuSubareaStep, CpuSubcatchmentStep};
-use super::{accounting, bounds, phase, sources};
-use crate::cpu::CpuTensor;
-use crate::cpu::subcatchment::{
-    CpuSubareaGroup, CpuSubcatchmentContext, CpuSubcatchmentInput, CpuSubcatchmentState,
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
 };
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
+use super::sources::Supply;
+use super::step::{TensorSubareaStep, TensorSubcatchmentStep};
+use super::{accounting, bounds, phase, sources};
 use crate::numerics::reservoir::drainage;
 use crate::runoff::SubcatchmentError;
+use crate::tensor::subcatchment::{
+    TensorSubareaGroup, TensorSubcatchmentContext, TensorSubcatchmentInput, TensorSubcatchmentState,
+};
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, IndexingOps};
 use numr::runtime::Device;
 
-pub(crate) fn advance(
-    ctx: &CpuSubcatchmentContext,
-    state: &CpuSubcatchmentState,
+pub(crate) fn advance<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    state: &TensorSubcatchmentState<R>,
     dt: f64,
-    input: &CpuSubcatchmentInput,
-) -> Result<(CpuSubcatchmentState, CpuSubcatchmentStep), SubcatchmentError> {
+    input: &TensorSubcatchmentInput<R>,
+) -> Result<(TensorSubcatchmentState<R>, TensorSubcatchmentStep<R>), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     check_inputs(ctx, &state.depth, input, dt)?;
-    let mut received: [CpuTensor; 3] = std::array::from_fn(|_| ctx.zero.clone());
+    let mut received: [Tensor<R>; 3] = std::array::from_fn(|_| ctx.zero.clone());
     let mut depth = state.depth.clone();
     let (first, phase1_soil) = match &ctx.phase1 {
         Some(group) => {
@@ -65,12 +87,12 @@ pub(crate) fn advance(
         ],
         dt,
     )?;
-    let next = CpuSubcatchmentState {
+    let next = TensorSubcatchmentState {
         depth: depth.clone(),
         phase1_soil,
         phase2_soil,
     };
-    let step = CpuSubcatchmentStep {
+    let step = TensorSubcatchmentStep {
         old_depth: state.depth.clone(),
         input: input.clone(),
         depth,
@@ -82,10 +104,23 @@ pub(crate) fn advance(
     Ok((next, step))
 }
 
-pub(crate) fn initial_storage_scale_lower(
-    ctx: &CpuSubcatchmentContext,
-    state: &CpuSubcatchmentState,
-) -> Result<f64, SubcatchmentError> {
+pub(crate) fn initial_storage_scale_lower<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    state: &TensorSubcatchmentState<R>,
+) -> Result<f64, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let mut lower = 0.0;
     for group in [ctx.phase1.as_ref(), ctx.phase2.as_ref()]
         .into_iter()
@@ -105,14 +140,27 @@ pub(crate) fn initial_storage_scale_lower(
     Ok(lower)
 }
 
-pub(super) fn gather_supply(
-    ctx: &CpuSubcatchmentContext,
-    group: &CpuSubareaGroup,
-    old: &CpuTensor,
-    input: &CpuSubcatchmentInput,
-    received: &[CpuTensor; 3],
+pub(super) fn gather_supply<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    group: &TensorSubareaGroup<R>,
+    old: &Tensor<R>,
+    input: &TensorSubcatchmentInput<R>,
+    received: &[Tensor<R>; 3],
     dt: f64,
-) -> Result<Supply, SubcatchmentError> {
+) -> Result<Supply<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let gather = |value| ctx.client.gather(value, 0, &group.indices);
     sources::supply(
         group,
@@ -130,12 +178,25 @@ pub(super) fn gather_supply(
     .map_err(|error| group.map_reservoir_error(error))
 }
 
-pub(super) fn route(
-    ctx: &CpuSubcatchmentContext,
-    group: &CpuSubareaGroup,
-    step: &CpuSubareaStep,
-    received: &mut [CpuTensor; 3],
-) -> Result<(), SubcatchmentError> {
+pub(super) fn route<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    group: &TensorSubareaGroup<R>,
+    step: &TensorSubareaStep<R>,
+    received: &mut [Tensor<R>; 3],
+) -> Result<(), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     for (destination, map) in received.iter_mut().zip(&group.routes) {
         if let Some(map) = map {
             let shared_volume =
@@ -149,12 +210,25 @@ pub(super) fn route(
     Ok(())
 }
 
-pub(super) fn check_inputs(
-    ctx: &CpuSubcatchmentContext,
-    old: &CpuTensor,
-    input: &CpuSubcatchmentInput,
+pub(super) fn check_inputs<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    old: &Tensor<R>,
+    input: &TensorSubcatchmentInput<R>,
     dt: f64,
-) -> Result<(), SubcatchmentError> {
+) -> Result<(), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     if !dt.is_finite() || dt <= 0.0 {
         return Err(SubcatchmentError::input(format!(
             "dt={dt}: require a positive finite complete interval"
@@ -207,11 +281,24 @@ pub(super) fn check_inputs(
     Ok(())
 }
 
-pub(super) fn metadata(
-    ctx: &CpuSubcatchmentContext,
-    value: &CpuTensor,
+pub(super) fn metadata<R>(
+    ctx: &TensorSubcatchmentContext<R>,
+    value: &Tensor<R>,
     quantity: &str,
-) -> Result<(), SubcatchmentError> {
+) -> Result<(), SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     if value.shape() != ctx.zero.shape()
         || value.dtype() != DType::F64
         || !value.device().is_same(ctx.zero.device())

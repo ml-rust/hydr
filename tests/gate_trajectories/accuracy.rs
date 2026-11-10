@@ -30,7 +30,10 @@ fn explicit_accuracy_policies_preserve_the_unmodified_solvr_receipt() -> Result 
 
 #[test]
 fn exact_only_policy_admits_original_holds_and_knots_without_claiming_exact_interiors() -> Result {
-    let base = StructureBatch::new(vec![super::reference_case::gate("gate-0", 1.0)?])?;
+    let base = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![super::reference_case::gate("gate-0", 1.0)?],
+    )?;
     let hold = base.with_gate_trajectories(vec![GateTrajectoryAssignment {
         structure_id: "gate-0".into(),
         trajectory: stationary(0.5, 0.0, 1.0)?,

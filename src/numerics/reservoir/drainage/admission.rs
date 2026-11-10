@@ -1,17 +1,32 @@
 //! Root, represented-state, and constitutive admission independent of source ledgers.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use super::algebra;
 use super::budget::DrainageBudget;
 use super::receipt::{DrainageResult, DrainageRoot};
-use crate::cpu::CpuTensor;
-use crate::cpu::reservoir_storage::CpuReservoirContext;
 use crate::runoff::ReservoirError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps, UnaryOps};
+use crate::tensor::reservoir_storage::TensorReservoirContext;
 
-pub(crate) fn admit_drainage(
-    prepared: &DrainageBudget<'_>,
-    root: DrainageRoot,
-) -> Result<DrainageResult, ReservoirError> {
+pub(crate) fn admit_drainage<R>(
+    prepared: &DrainageBudget<'_, R>,
+    root: DrainageRoot<R>,
+) -> Result<DrainageResult<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     let context = prepared.context();
     for (name, value) in [
         ("root lower", &root.lower),
@@ -123,13 +138,23 @@ pub(crate) fn admit_drainage(
     })
 }
 
-fn check_roots(
-    context: &CpuReservoirContext,
-    prepared: &DrainageBudget<'_>,
-    lower: &CpuTensor,
-    upper: &CpuTensor,
+fn check_roots<R>(
+    context: &TensorReservoirContext<R>,
+    prepared: &DrainageBudget<'_, R>,
+    lower: &Tensor<R>,
+    upper: &Tensor<R>,
     iterations: usize,
-) -> Result<(), ReservoirError> {
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     let c = &context.client;
     if iterations > context.config.root_iterations
         || (iterations != 0 && !context.any(prepared.active())?)
@@ -193,13 +218,23 @@ fn check_roots(
     Ok(())
 }
 
-pub(crate) fn check_residual(
-    context: &CpuReservoirContext,
-    residual: &CpuTensor,
-    scale: &CpuTensor,
-    active: &CpuTensor,
+pub(crate) fn check_residual<R>(
+    context: &TensorReservoirContext<R>,
+    residual: &Tensor<R>,
+    scale: &Tensor<R>,
+    active: &Tensor<R>,
     quantity: &str,
-) -> Result<(), ReservoirError> {
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     let c = &context.client;
     context.finite(residual, quantity)?;
     context.finite(scale, "physical volume tolerance scale")?;
@@ -211,12 +246,22 @@ pub(crate) fn check_residual(
     context.reject_mask(&c.mul(active, &c.gt(&c.abs(residual)?, &tolerance)?)?, quantity, &[("residual", residual), ("scale", scale), ("tolerance", &tolerance)], &[], "Physical volume admission rejects the interval. Shorten the interval, tighten the root, or rescale the reservoir")
 }
 
-pub(in crate::numerics::reservoir) fn equal(
-    context: &CpuReservoirContext,
-    actual: &CpuTensor,
-    expected: &CpuTensor,
+pub(in crate::numerics::reservoir) fn equal<R>(
+    context: &TensorReservoirContext<R>,
+    actual: &Tensor<R>,
+    expected: &Tensor<R>,
     quantity: &str,
-) -> Result<(), ReservoirError> {
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     context.reject_mask(
         &context.client.ne(actual, expected)?,
         quantity,

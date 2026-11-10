@@ -2,6 +2,7 @@
 
 use super::arithmetic::count;
 use crate::structures::*;
+use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 
 #[test]
 fn exact_counter_capacity_preserves_last_increment_and_rejects_absorption()
@@ -28,7 +29,11 @@ fn exact_counter_capacity_preserves_last_increment_and_rejects_absorption()
             },
         )?),
     };
-    let batch = StructureBatch::new(vec![element])?.with_gate_actuators(
+    let batch = StructureBatch::<CpuRuntime>::new(
+        CpuClient::new(CpuDevice::new()).with_parallelism(ParallelismConfig::new(Some(1), None)),
+        vec![element],
+    )?
+    .with_gate_actuators(
         vec![GateActuatorDefinition {
             actuator_id: "actuator".into(),
             structure_id: "gate".into(),

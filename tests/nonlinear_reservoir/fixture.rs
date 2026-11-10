@@ -19,8 +19,9 @@ pub fn single(
     parameters: ReservoirParameters,
     depth_m: f64,
     config: ReservoirConfig,
-) -> Result<ReservoirBatch> {
-    Ok(ReservoirBatch::new(
+) -> Result<ReservoirBatch<crate::runtime::Runtime>> {
+    Ok(ReservoirBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         vec![ReservoirElement {
             id: "storage".into(),
             parameters,

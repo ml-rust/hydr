@@ -1,25 +1,47 @@
 //! Independent gate-expression uncertainty and resolved-positive operand admission.
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::ops::ScalarOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::{CpuTensor, structures::CpuStructureContext};
 use crate::structures::StructureError;
-use numr::ops::{CompareOps, ConditionalOps, ScalarOps};
+use crate::tensor::structures::TensorStructureContext;
+use numr::tensor::Tensor;
 
 const QUANTITY: &str = "gate geometry uncertainty bound overflows";
 
-pub(super) fn add(
-    context: &CpuStructureContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(super) fn add<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     super::super::bounds::add(context, a, b, QUANTITY)
 }
 
-pub(super) fn resolved_positive(
-    context: &CpuStructureContext,
-    mask: &CpuTensor,
-    value: &CpuTensor,
-    error: &CpuTensor,
-) -> Result<(), StructureError> {
+pub(super) fn resolved_positive<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    mask: &Tensor<R>,
+    value: &Tensor<R>,
+    error: &Tensor<R>,
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     let center = c.where_cond(mask, value, &context.one)?;
     let bound = c.where_cond(mask, error, &context.zero)?;

@@ -2,23 +2,25 @@
 
 use super::projection_values as values;
 use super::*;
-use crate::cpu::structures::actuator::{
-    CpuActuatorContext, CpuActuatorState, CpuActuatorStep, record::TensorRecord,
-};
 use crate::structures::StructureError;
+use crate::tensor::structures::actuator::{
+    TensorActuatorContext, TensorActuatorState, TensorActuatorStep, record::TensorRecord,
+};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
-pub(crate) fn states(
-    context: &CpuActuatorContext,
-    state: &CpuActuatorState,
+pub(crate) fn states<R: Runtime<DType = DType>>(
+    context: &TensorActuatorContext<R>,
+    state: &TensorActuatorState<R>,
 ) -> Result<Vec<GateActuatorState>, StructureError> {
     let projected = state.project()?;
     (0..context.definitions.len())
         .map(|i| values::state(context, &projected, i))
         .collect()
 }
-pub(crate) fn outputs(
-    context: &CpuActuatorContext,
-    state: &CpuActuatorState,
+pub(crate) fn outputs<R: Runtime<DType = DType>>(
+    context: &TensorActuatorContext<R>,
+    state: &TensorActuatorState<R>,
     time_s: f64,
 ) -> Result<Vec<GateActuatorOutput>, StructureError> {
     let position = state.position.project()?;
@@ -83,9 +85,9 @@ pub(crate) fn outputs(
         .collect()
 }
 
-pub(crate) fn step(
-    context: &CpuActuatorContext,
-    step: &CpuActuatorStep,
+pub(crate) fn step<R: Runtime<DType = DType>>(
+    context: &TensorActuatorContext<R>,
+    step: &TensorActuatorStep<R>,
 ) -> Result<GateActuatorStepDiagnostics, StructureError> {
     let before = states(context, &step.before)?;
     let after = states(context, &step.after)?;
@@ -125,7 +127,7 @@ pub(crate) fn step(
         receipts,
     })
 }
-impl GateActuatorBatch {
+impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
     /// Explicitly project current actual opening and certified support.
     pub fn outputs(&self) -> Result<Vec<GateActuatorOutput>, StructureError> {
         outputs(&self.context, &self.state, self.time)

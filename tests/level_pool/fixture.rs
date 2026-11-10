@@ -35,8 +35,12 @@ pub fn element(id: &str, curve: LevelPoolCurve) -> LevelPoolElement {
     }
 }
 
-pub fn single(curve: LevelPoolCurve, volume_m3: f64) -> Result<LevelPoolBatch> {
-    Ok(LevelPoolBatch::new(
+pub fn single(
+    curve: LevelPoolCurve,
+    volume_m3: f64,
+) -> Result<LevelPoolBatch<crate::runtime::Runtime>> {
+    Ok(LevelPoolBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         vec![element("pool", curve)],
         vec![LevelPoolState { volume_m3 }],
         0.0,

@@ -1,18 +1,36 @@
 //! Primitive source preparation followed by the shared conservative drainage core.
 
-use super::check::finish;
-use super::receipt::CpuReservoirStep;
-use super::{algebra, drainage};
-use crate::cpu::CpuTensor;
-use crate::cpu::reservoir_storage::{CpuReservoirContext, CpuReservoirState};
-use crate::runoff::ReservoirError;
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
-pub(crate) fn advance(
-    context: &CpuReservoirContext,
-    state: &CpuReservoirState,
+use super::check::finish;
+use super::receipt::TensorReservoirStep;
+use super::{algebra, drainage};
+use crate::runoff::ReservoirError;
+use crate::tensor::reservoir_storage::{TensorReservoirContext, TensorReservoirState};
+
+pub(crate) fn advance<R>(
+    context: &TensorReservoirContext<R>,
+    state: &TensorReservoirState<R>,
     dt: f64,
-    incoming: &CpuTensor,
-) -> Result<CpuReservoirStep, ReservoirError> {
+    incoming: &Tensor<R>,
+) -> Result<TensorReservoirStep<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let prepared = algebra::prepare(context, &state.depth, incoming, dt)?;
     let drained = drainage::drain(&prepared.hydraulic)?;
     finish(context, prepared, &state.depth, incoming, drained)

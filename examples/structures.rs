@@ -1,5 +1,9 @@
 //! Typed instantaneous laws and held-head volume proposals without storage advancement.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 use hydr::structures::{
     DirectionPolicy, EndpointHead, HeadConvention, HeadSupport, HeldHeadInterval,
     OrificeApplicability, StructureBatch, StructureElement, StructureHeads, StructureLaw,
@@ -7,7 +11,10 @@ use hydr::structures::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let batch = StructureBatch::new(vec![
+    let batch =
+        StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![
         StructureElement {
             id: "opening".into(),
             endpoint_a: "upstream".into(),
@@ -48,7 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
             )?),
         },
-    ])?;
+    ],
+        )?;
     let proposal = batch.propose(&[heads("opening", 3.0, 2.0), heads("crest", 11.0, 10.5)])?;
     for output in proposal.outputs()? {
         println!(
@@ -66,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output.proposal.input.structure_id, output.volume_m3
         );
     }
-    let pump=StructureBatch::new(vec![StructureElement{
+    let pump=StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), vec![StructureElement{
         id:"pump".into(),endpoint_a:"upstream".into(),endpoint_b:"downstream".into(),
         datum:"synthetic datum".into(),direction:DirectionPolicy::AtoBOnly,
         law:StructureLaw::Pump(hydr::structures::PumpParameters::new(

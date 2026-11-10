@@ -41,13 +41,18 @@ fn gate_definitions_require_positive_geometry_and_complete_applicability() -> Re
         1.0, 0.0, 1.0, 1.0, 0.5, evidence,
     )?);
     assert!(
-        StructureBatch::new(vec![element(
-            "gate",
-            law.clone(),
-            DirectionPolicy::Bidirectional
-        )])
+        StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![element("gate", law.clone(), DirectionPolicy::Bidirectional)]
+        )
         .is_err()
     );
-    assert!(StructureBatch::new(vec![element("gate", law, DirectionPolicy::AtoBOnly)]).is_ok());
+    assert!(
+        StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![element("gate", law, DirectionPolicy::AtoBOnly)]
+        )
+        .is_ok()
+    );
     Ok(())
 }

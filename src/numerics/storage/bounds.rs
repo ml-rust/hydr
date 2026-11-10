@@ -1,13 +1,34 @@
 //! Outward arithmetic diagnostics and capacity-derived counter ceilings.
 
-use crate::cpu::{CpuTensor, level_pool::CpuPoolContext};
-use crate::storage::LevelPoolError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps, UnaryOps};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(crate) fn rounding(
-    context: &CpuPoolContext,
-    value: &CpuTensor,
-) -> Result<CpuTensor, LevelPoolError> {
+use crate::storage::LevelPoolError;
+use crate::tensor::level_pool::TensorPoolContext;
+
+pub(crate) fn rounding<R>(
+    context: &TensorPoolContext<R>,
+    value: &Tensor<R>,
+) -> Result<Tensor<R>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>,
+{
     let c = &context.client;
     let bound = c.add_scalar(
         &c.mul_scalar(&c.abs(value)?, f64::EPSILON)?,
@@ -16,11 +37,25 @@ pub(crate) fn rounding(
     context.finite(&bound, "arithmetic rounding bound")?;
     Ok(bound)
 }
-pub(crate) fn add(
-    context: &CpuPoolContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-) -> Result<CpuTensor, LevelPoolError> {
+pub(crate) fn add<R>(
+    context: &TensorPoolContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+) -> Result<Tensor<R>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>,
+{
     let c = &context.client;
     let sum = c.add(a, b)?;
     context.finite(&sum, "absolute bound sum")?;
@@ -28,11 +63,25 @@ pub(crate) fn add(
     context.finite(&result, "outward absolute bound")?;
     Ok(result)
 }
-pub(crate) fn accumulate(
-    context: &CpuPoolContext,
-    previous: &CpuTensor,
-    witness: &CpuTensor,
-) -> Result<CpuTensor, LevelPoolError> {
+pub(crate) fn accumulate<R>(
+    context: &TensorPoolContext<R>,
+    previous: &Tensor<R>,
+    witness: &Tensor<R>,
+) -> Result<Tensor<R>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>,
+{
     let c = &context.client;
     let inactive = c.eq(witness, &context.zero)?;
     let magnitude = c.abs(witness)?;
@@ -42,11 +91,25 @@ pub(crate) fn accumulate(
 }
 
 /// Theoretical overflow selects an unrestricted finite-counter check, never a physical infinity.
-pub(crate) fn check_counter(
-    context: &CpuPoolContext,
-    counter: &CpuTensor,
+pub(crate) fn check_counter<R>(
+    context: &TensorPoolContext<R>,
+    counter: &Tensor<R>,
     steps: usize,
-) -> Result<(), LevelPoolError> {
+) -> Result<(), LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>,
+{
     context.nonnegative(counter, "cumulative transfer counter")?;
     let c = &context.client;
     if steps == 0 {

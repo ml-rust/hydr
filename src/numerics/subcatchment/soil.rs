@@ -1,29 +1,46 @@
 //! Each persistent phase-role soil batch advances once from accepted memory.
 
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::sources::Supply;
-use super::step::CpuSubcatchmentSoilStep;
-use crate::cpu::CpuTensor;
-use crate::cpu::subcatchment::CpuSubareaGroup;
+use super::step::TensorSubcatchmentSoilStep;
 use crate::runoff::ReservoirError;
 use crate::soil::{ModifiedGreenAmptBatch, SoilError};
+use crate::tensor::subcatchment::TensorSubareaGroup;
 use numr::dtype::DType;
-use numr::ops::{
-    BinaryOps, CompareOps, IndexingOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
-};
 use numr::runtime::Device;
 
-pub(super) fn trial(
-    group: &CpuSubareaGroup,
-    supply: &Supply,
-    accepted: Option<&ModifiedGreenAmptBatch>,
+pub(super) type SoilTrial<R> = (
+    Option<TensorSubcatchmentSoilStep<R>>,
+    Option<ModifiedGreenAmptBatch<R>>,
+);
+
+pub(super) fn trial<R>(
+    group: &TensorSubareaGroup<R>,
+    supply: &Supply<R>,
+    accepted: Option<&ModifiedGreenAmptBatch<R>>,
     dt: f64,
-) -> Result<
-    (
-        Option<CpuSubcatchmentSoilStep>,
-        Option<ModifiedGreenAmptBatch>,
-    ),
-    SoilError,
-> {
+) -> Result<SoilTrial<R>, SoilError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>,
+{
     if group.soil_slots.is_empty() {
         if accepted.is_some() {
             return Err(SoilError::input(
@@ -44,7 +61,7 @@ pub(super) fn trial(
         &gather(&supply.bridge.input_depth)?,
         &gather(&supply.bridge.available_depth)?,
     )?;
-    let evidence = CpuSubcatchmentSoilStep {
+    let evidence = TensorSubcatchmentSoilStep {
         infiltration_depth: trial.infiltration_depth,
         adjustment_depth: trial.adjustment_depth,
         native_rate: trial.native_rate,
@@ -60,10 +77,23 @@ pub(super) fn trial(
 
 /// Native/SI envelope algebra is checked by the shared soil import-boundary checker.
 /// This tensor-only stage checks compact support and all physical evidence ranges.
-pub(super) fn check_evidence(
-    group: &CpuSubareaGroup,
-    evidence: Option<&CpuSubcatchmentSoilStep>,
-) -> Result<(), ReservoirError> {
+pub(super) fn check_evidence<R>(
+    group: &TensorSubareaGroup<R>,
+    evidence: Option<&TensorSubcatchmentSoilStep<R>>,
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     if group.soil_slots.is_empty() {
         return if evidence.is_none() {
             Ok(())
@@ -112,7 +142,20 @@ pub(super) fn check_evidence(
     Ok(())
 }
 
-pub(super) fn fields(soil: &CpuSubcatchmentSoilStep) -> [(&str, &CpuTensor); 9] {
+pub(super) fn fields<R>(soil: &TensorSubcatchmentSoilStep<R>) -> [(&str, &Tensor<R>); 9]
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     [
         ("infiltration depth", &soil.infiltration_depth),
         ("water adjustment depth", &soil.adjustment_depth),

@@ -1,7 +1,7 @@
 use super::fixture::*;
 use hydr::structures::*;
 
-fn unknown(context: &StructureBatch) -> Vec<StructureHeads> {
+fn unknown(context: &StructureBatch<crate::runtime::Runtime>) -> Vec<StructureHeads> {
     let mut heads = heads(context);
     for packet in &mut heads {
         packet.endpoint_a.support = HeadSupport::Unknown;
@@ -12,7 +12,10 @@ fn unknown(context: &StructureBatch) -> Vec<StructureHeads> {
 
 #[test]
 fn canonical_closed_sources_waive_only_unknown_support_and_keep_original_packets() -> Result {
-    let context = StructureBatch::new(vec![gate("gate")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("gate")?],
+    )?;
     let path = trajectory(&context, "gate", &[(0.0, 0.0), (1.0, 1.0)])?;
     let actual = actuator(&context, "gate", 0.0, 1.0, (0.3, 0.3), 0.0, 1.0)?;
     let heads = unknown(&context);
@@ -82,7 +85,10 @@ fn canonical_closed_sources_waive_only_unknown_support_and_keep_original_packets
 
 #[test]
 fn malformed_known_heads_reject_before_every_closed_source_waiver() -> Result {
-    let context = StructureBatch::new(vec![gate("gate")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("gate")?],
+    )?;
     let path = trajectory(&context, "gate", &[(0.0, 0.0), (1.0, 1.0)])?;
     let actual = actuator(&context, "gate", 0.0, 1.0, (0.3, 0.3), 0.0, 1.0)?;
     for source in 0..3 {
@@ -153,7 +159,10 @@ fn malformed_known_heads_reject_before_every_closed_source_waiver() -> Result {
 
 #[test]
 fn positive_openings_and_zero_targets_never_isolate_unknown_heads() -> Result {
-    let context = StructureBatch::new(vec![gate("gate")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("gate")?],
+    )?;
     let heads = unknown(&context);
     let manual = context.with_operating_sources(vec![OperatingSourceBinding::Manual {
         source_id: "manual".into(),
@@ -202,7 +211,10 @@ fn positive_openings_and_zero_targets_never_isolate_unknown_heads() -> Result {
 
 #[test]
 fn unresolved_actual_closure_keeps_positive_center_and_unknown_heads_influential() -> Result {
-    let context = StructureBatch::new(vec![gate("gate")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("gate")?],
+    )?;
     let original = actuator(&context, "gate", 0.0, 1.0, (0.3, 0.3), 0.0, 1.0)?;
     let mut definitions = original.definitions().to_vec();
     definitions[0].accuracy.maximum_absolute_opening_error_m = f64::from_bits(2);
@@ -239,7 +251,10 @@ fn unresolved_actual_closure_keeps_positive_center_and_unknown_heads_influential
 
 #[test]
 fn prescribed_padding_cannot_isolate_an_unassigned_positive_manual_gate() -> Result {
-    let context = StructureBatch::new(vec![gate("path")?, gate("manual")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate("path")?, gate("manual")?],
+    )?;
     let path = trajectory(&context, "path", &[(0.0, 0.0), (1.0, 1.0)])?;
     let registry = context.with_operating_sources(vec![
         OperatingSourceBinding::Prescribed {
@@ -267,7 +282,10 @@ fn prescribed_padding_cannot_isolate_an_unassigned_positive_manual_gate() -> Res
 
 #[test]
 fn explicit_stopped_pump_isolation_preserves_unknown_support_while_running_rejects() -> Result {
-    let context = StructureBatch::new(vec![pump("pump")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![pump("pump")?],
+    )?;
     let registry = context.with_operating_sources(vec![OperatingSourceBinding::Manual {
         source_id: "manual".into(),
         structure_ids: vec!["pump".into()],

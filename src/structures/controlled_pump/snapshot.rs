@@ -2,6 +2,8 @@
 
 use super::{ControlledPumpBatch, PumpResponseDefinition};
 use crate::structures::{OperatingControlSnapshotData, StructureError, StructureInputErrorKind};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
 /// Complete caller-owned response assumptions and the existing controller continuation.
 ///
@@ -15,10 +17,10 @@ pub struct ControlledPumpSnapshotData {
 }
 /// Trusted complete owner clone without numerical projection or prior-owner links.
 #[derive(Clone, Debug)]
-pub struct ControlledPumpSnapshot {
-    batch: ControlledPumpBatch,
+pub struct ControlledPumpSnapshot<R: Runtime<DType = DType>> {
+    batch: ControlledPumpBatch<R>,
 }
-impl ControlledPumpSnapshot {
+impl<R: Runtime<DType = DType>> ControlledPumpSnapshot<R> {
     /// Accepted original snapshot time in seconds.
     pub fn time(&self) -> f64 {
         self.batch.time()
@@ -38,9 +40,9 @@ fn require(condition: bool, message: &str) -> Result<(), StructureError> {
         ))
     }
 }
-impl ControlledPumpBatch {
+impl<R: Runtime<DType = DType>> ControlledPumpBatch<R> {
     /// Clone complete accepted continuation without derived-state array readback.
-    pub fn snapshot(&self) -> ControlledPumpSnapshot {
+    pub fn snapshot(&self) -> ControlledPumpSnapshot<R> {
         ControlledPumpSnapshot {
             batch: self.clone(),
         }
@@ -53,7 +55,7 @@ impl ControlledPumpBatch {
         })
     }
     /// Restore trusted control continuation while retaining the complete destination response context.
-    pub fn restore(&mut self, snapshot: &ControlledPumpSnapshot) -> Result<(), StructureError> {
+    pub fn restore(&mut self, snapshot: &ControlledPumpSnapshot<R>) -> Result<(), StructureError> {
         require(
             super::compatibility::same_context(&self.context, &snapshot.batch.context),
             "controlled pump snapshot response assumptions or immutable controller model differ",
@@ -66,10 +68,17 @@ impl ControlledPumpBatch {
     /// Check response assumptions and complete caller-owned child continuation before atomic replacement.
     ///
     /// Child bounded consistency checks establish no complete historical authenticity.
-    pub fn restore_data(
-        &mut self,
-        data: &ControlledPumpSnapshotData,
-    ) -> Result<(), StructureError> {
+    pub fn restore_data(&mut self, data: &ControlledPumpSnapshotData) -> Result<(), StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         require(
             self.definitions() == data.definitions.as_slice(),
             "controlled pump snapshot original response assumptions differ",

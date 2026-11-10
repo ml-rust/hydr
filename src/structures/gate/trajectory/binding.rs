@@ -1,8 +1,11 @@
 //! Original gate-subsequence assignments and immutable context ownership.
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::{GateOpeningTrajectory, GateTrajectoryEvent, GateTrajectorySupport};
-use crate::cpu::structures::{CpuStructureContext, gate::trajectory::CpuTrajectoryContext};
 use crate::structures::{StructureError, StructureInputErrorKind, StructureLaw};
+use crate::tensor::structures::{
+    TensorStructureContext, gate::trajectory::TensorTrajectoryContext,
+};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -15,19 +18,29 @@ pub struct GateTrajectoryAssignment {
     pub trajectory: GateOpeningTrajectory,
 }
 #[derive(Debug)]
-pub(crate) struct GateTrajectoryData {
-    pub context: Arc<CpuStructureContext>,
+pub(crate) struct GateTrajectoryData<R: Runtime<DType = DType>> {
+    pub context: Arc<TensorStructureContext<R>>,
     pub assignments: Vec<GateTrajectoryAssignment>,
     pub slots: Vec<usize>,
     pub support: GateTrajectorySupport,
     pub events: Vec<GateTrajectoryEvent>,
-    pub tensors: CpuTrajectoryContext,
+    pub tensors: TensorTrajectoryContext<R>,
 }
-impl GateTrajectoryData {
+impl<R: Runtime<DType = DType>> GateTrajectoryData<R> {
     pub(super) fn new(
-        context: Arc<CpuStructureContext>,
+        context: Arc<TensorStructureContext<R>>,
         assignments: Vec<GateTrajectoryAssignment>,
-    ) -> Result<Self, StructureError> {
+    ) -> Result<Self, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         let slots: Vec<_> = context
             .elements
             .iter()
@@ -69,9 +82,19 @@ impl GateTrajectoryData {
         Self::build(context, assignments, slots, false)
     }
     pub(super) fn subset(
-        context: Arc<CpuStructureContext>,
+        context: Arc<TensorStructureContext<R>>,
         assignments: Vec<GateTrajectoryAssignment>,
-    ) -> Result<Self, StructureError> {
+    ) -> Result<Self, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         if assignments.is_empty() {
             return Err(StructureError::input(
                 StructureInputErrorKind::Identity,
@@ -118,13 +141,23 @@ impl GateTrajectoryData {
         Self::build(context, assignments, slots, true)
     }
     fn build(
-        context: Arc<CpuStructureContext>,
+        context: Arc<TensorStructureContext<R>>,
         assignments: Vec<GateTrajectoryAssignment>,
         slots: Vec<usize>,
         allow_point: bool,
-    ) -> Result<Self, StructureError> {
+    ) -> Result<Self, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         let (support, events) = super::events::build(&assignments, allow_point)?;
-        let tensors = CpuTrajectoryContext::new(&context, &assignments, &slots)?;
+        let tensors = TensorTrajectoryContext::new(&context, &assignments, &slots)?;
         Ok(Self {
             context,
             assignments,
@@ -136,8 +169,8 @@ impl GateTrajectoryData {
     }
 }
 
-fn check_range(
-    context: &CpuStructureContext,
+fn check_range<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
     assignment: &GateTrajectoryAssignment,
     slot: usize,
 ) -> Result<(), StructureError> {

@@ -6,9 +6,11 @@ use crate::structures::{
     ControlCommand, ControlLatch, ControlState, GateActuatorState, GateTargetUpdate,
     StructureError, StructureInputErrorKind,
 };
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
-pub(super) fn selected(
-    batch: &ControlledGateBatch,
+pub(super) fn selected<R: Runtime<DType = DType>>(
+    batch: &ControlledGateBatch<R>,
     index: usize,
     latch: ControlLatch,
 ) -> Result<f64, StructureError> {
@@ -30,8 +32,8 @@ pub(super) fn selected(
         )),
     }
 }
-pub(super) fn packet(
-    batch: &ControlledGateBatch,
+pub(super) fn packet<R: Runtime<DType = DType>>(
+    batch: &ControlledGateBatch<R>,
     index: usize,
     update: &GateTargetUpdate,
     target: f64,
@@ -54,8 +56,8 @@ pub(super) fn packet(
         "controlled gate snapshot target packet differs from the selected original literal or endpoint timestamps",
     )
 }
-pub(super) fn pair(
-    batch: &ControlledGateBatch,
+pub(super) fn pair<R: Runtime<DType = DType>>(
+    batch: &ControlledGateBatch<R>,
     index: usize,
     control: &ControlState,
     actuator: &GateActuatorState,

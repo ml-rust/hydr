@@ -2,6 +2,12 @@ use super::super::{
     ReservoirBatch, ReservoirConfig, ReservoirElement, ReservoirError, ReservoirLedger,
     ReservoirState, ReservoirStepDiagnostics,
 };
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
 /// Caller-owned complete reservoir continuation values.
 ///
@@ -27,11 +33,22 @@ pub struct ReservoirSnapshotData {
 
 /// Trusted immutable clone of complete reservoir continuation state.
 #[derive(Clone, Debug)]
-pub struct ReservoirSnapshot {
-    pub(super) batch: ReservoirBatch,
+pub struct ReservoirSnapshot<R: Runtime<DType = DType>> {
+    pub(super) batch: ReservoirBatch<R>,
 }
 
-impl ReservoirSnapshot {
+impl<R> ReservoirSnapshot<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     /// Project complete values for caller-owned encoding.
     pub fn data(&self) -> Result<ReservoirSnapshotData, ReservoirError> {
         self.batch.snapshot_data()
@@ -43,9 +60,20 @@ impl ReservoirSnapshot {
     }
 }
 
-impl ReservoirBatch {
+impl<R> ReservoirBatch<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     /// Clone complete numerical state without projecting tensors.
-    pub fn snapshot(&self) -> ReservoirSnapshot {
+    pub fn snapshot(&self) -> ReservoirSnapshot<R> {
         ReservoirSnapshot {
             batch: self.clone(),
         }

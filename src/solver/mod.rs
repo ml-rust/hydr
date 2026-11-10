@@ -1,6 +1,7 @@
-//! Sequential CPU shallow-water reference and accepted-state execution contract.
+//! Runtime-selected shallow-water execution and accepted-state contract.
 
 mod accounting;
+mod admission;
 mod boundary;
 mod capabilities;
 mod compatibility;
@@ -9,6 +10,7 @@ mod engine;
 mod error;
 mod forcing;
 mod output;
+mod receipts;
 mod setup;
 mod snapshot;
 mod stepping;

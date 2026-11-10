@@ -1,22 +1,24 @@
 //! Opaque immutable point tensors with explicit gate-only projections.
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::binding::GateTrajectoryData;
-use crate::cpu::{CpuTensor, structures::gate::trajectory::TrajectoryPointMetadata};
 use crate::structures::{StructureError, StructureOperatingPoint, StructureOperation};
+use crate::tensor::structures::gate::trajectory::TrajectoryPointMetadata;
+use numr::tensor::Tensor;
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub(crate) struct GateTrajectoryEvaluationData {
-    pub binding: Arc<GateTrajectoryData>,
+pub(crate) struct GateTrajectoryEvaluationData<R: Runtime<DType = DType>> {
+    pub binding: Arc<GateTrajectoryData<R>>,
     pub time_s: f64,
-    pub opening: CpuTensor,
-    pub absolute_error: CpuTensor,
+    pub opening: Tensor<R>,
+    pub absolute_error: Tensor<R>,
     pub metadata: Vec<TrajectoryPointMetadata>,
 }
 /// Immutable tensor-backed prescribed point. Projection never repeats interpolation.
 #[derive(Clone, Debug)]
-pub struct GateTrajectoryEvaluation {
-    pub(crate) inner: Arc<GateTrajectoryEvaluationData>,
+pub struct GateTrajectoryEvaluation<R: Runtime<DType = DType>> {
+    pub(crate) inner: Arc<GateTrajectoryEvaluationData<R>>,
 }
 /// One explicitly projected gate point and original-time support metadata.
 #[derive(Clone, Debug, PartialEq)]
@@ -38,7 +40,7 @@ pub struct GateTrajectoryOutput {
     /// Original zero knot or zero plateau contains the query.
     pub closed_by_definition: bool,
 }
-impl GateTrajectoryEvaluation {
+impl<R: Runtime<DType = DType>> GateTrajectoryEvaluation<R> {
     /// Original supported query time.
     pub fn time_s(&self) -> f64 {
         self.inner.time_s

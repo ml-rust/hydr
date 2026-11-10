@@ -1,18 +1,35 @@
 //! Positive pressure-strip logarithms combined through Numr logsumexp.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::ops::CumulativeOps;
+use numr::ops::ScalarOps;
+use numr::ops::ShapeOps;
+use numr::ops::UnaryOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::structures::{
-    CpuStructureContext, CpuStructureInput, CpuStructureResult, gate::CpuGateResult,
-};
 use crate::structures::StructureError;
-use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, CumulativeOps, ScalarOps, ShapeOps, UnaryOps,
+use crate::tensor::structures::{
+    TensorStructureContext, TensorStructureInput, TensorStructureResult, gate::TensorGateResult,
 };
 
-pub(crate) fn evaluate(
-    context: &CpuStructureContext,
-    input: &CpuStructureInput,
-    mut result: CpuStructureResult,
-) -> Result<CpuStructureResult, StructureError> {
+pub(crate) fn evaluate<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    input: &TensorStructureInput<R>,
+    mut result: TensorStructureResult<R>,
+) -> Result<TensorStructureResult<R>, StructureError>
+where
+    R::Client: numr::ops::CumulativeOps<R>
+        + numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::ShapeOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let Some(gate) = &context.gate else {
         return Ok(result);
     };
@@ -66,7 +83,7 @@ pub(crate) fn evaluate(
     result.status = c.where_cond(&gate.mask, &class.status, &result.status)?;
     result.regime = c.where_cond(&gate.mask, &class.regime, &result.regime)?;
     result.direction = c.where_cond(&gate.mask, &class.direction, &result.direction)?;
-    result.gate = Some(CpuGateResult {
+    result.gate = Some(TensorGateResult {
         geometry,
         ratio: c.where_cond(&class.free, &ratio, &context.zero)?,
         k: c.where_cond(&class.free, &k, &context.zero)?,

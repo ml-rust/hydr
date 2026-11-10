@@ -1,31 +1,30 @@
 //! Deferred original operation sources and explicit complete packet projection.
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::{
     GateTrajectoryEvaluationData, StructureError, StructureOperatingPoint, StructureOperation,
 };
-use crate::cpu::{
-    CpuTensor,
-    structures::{CpuStructureContext, DerivedPumpOperationData},
-};
+use crate::tensor::structures::{DerivedPumpOperationData, TensorStructureContext};
+use numr::tensor::Tensor;
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub(super) enum ProposalOperations {
+pub(super) enum ProposalOperations<R: Runtime<DType = DType>> {
     Supplied(Vec<StructureOperation>),
     Trajectory {
-        evaluation: Arc<GateTrajectoryEvaluationData>,
+        evaluation: Arc<GateTrajectoryEvaluationData<R>>,
         other: Vec<StructureOperation>,
     },
     Derived {
-        context: Arc<CpuStructureContext>,
+        context: Arc<TensorStructureContext<R>>,
         slots: Vec<usize>,
-        opening: CpuTensor,
-        pumps: Option<Box<DerivedPumpOperationData>>,
+        opening: Tensor<R>,
+        pumps: Option<Box<DerivedPumpOperationData<R>>>,
         manual: Vec<StructureOperation>,
     },
 }
-pub(super) fn project(
-    source: &ProposalOperations,
+pub(super) fn project<R: Runtime<DType = DType>>(
+    source: &ProposalOperations<R>,
 ) -> Result<Vec<StructureOperation>, StructureError> {
     match source {
         ProposalOperations::Supplied(operations) => Ok(operations.clone()),
@@ -45,12 +44,12 @@ pub(super) fn project(
         } => project_derived(context, slots, opening, manual, pumps.as_deref()),
     }
 }
-fn project_derived(
-    context: &CpuStructureContext,
+fn project_derived<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
     slots: &[usize],
-    opening: &CpuTensor,
+    opening: &Tensor<R>,
     manual: &[StructureOperation],
-    pumps: Option<&DerivedPumpOperationData>,
+    pumps: Option<&DerivedPumpOperationData<R>>,
 ) -> Result<Vec<StructureOperation>, StructureError> {
     let opening = super::projection::read(opening, context.elements.len())?;
     let pump_values = pumps

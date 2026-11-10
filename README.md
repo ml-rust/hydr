@@ -1,10 +1,10 @@
 # hydr
 
-hydr advances two-dimensional shallow-water flow on numr's CPU runtime for hydraulic application developers.
+hydr provides hydraulic numerical components on numr runtimes for hydraulic application developers.
 
 ## Status
 
-The first-order CPU `f64` reference implements checked domains and conservative time advancement.
+The first-order `f64` reference implements checked domains and conservative time advancement.
 Inputs include terrain, roughness, initial depth/momentum, explicit land/soil memory, rain, potential evaporation, and prescribed withdrawal.
 Boundaries include walls, complete flux ports, wet-subcritical stage/discharge traces, complete wet/dry exterior reservoir states, and admitted transmissive outflow.
 Snapshots preserve complete numerical continuation state. Diagnostics expose accepted steps and component water budgets.
@@ -26,7 +26,7 @@ fn main() -> Result<(), hydr::error::GridError> {
 ```sh
 cargo run --example grid
 cargo run --example rain_basin
-cargo test --all-features
+cargo test --all-targets
 ```
 
 Grid spacing uses metres. Construction checks geometry without allocating cell storage.
@@ -35,10 +35,17 @@ Grid spacing uses metres. Construction checks geometry without allocating cell s
 
 - Physics: Full two-dimensional shallow-water equations for river and floodplain flow.
 - Numerics: First-order finite volumes, hydrostatic side corrections, bracketed-bound HLL, and split Manning resistance.
-- Foundation: numr 0.15.2 CPU tensors and solvr 0.3.1 batched root algorithms.
+- Foundation: numr 0.15.2 runtime tensors and solvr 0.3.1 batched root algorithms.
 - Acceptance: CFL and all-outgoing depletion bounds trigger full trial recalculation. Negative water rejects without clipping.
-- Extensions: Higher-order methods, GPU execution, and calibration require separate numerical evidence.
+- Extensions: Higher-order methods, backend qualification, and calibration require separate numerical evidence.
 - Interface: A Rust library without a GUI or HEC-RAS runtime dependency.
+
+Tensor-bearing components take an explicit numr runtime type and a configured client. Constructors allocate on that client's device. Component factories retain their parent's runtime and client.
+
+- CPU: Existing tests and reference executables select `CpuRuntime` with one worker thread at their execution boundary.
+- CUDA: Enable the `cuda` feature and supply a `CudaRuntime` client. Arithmetic admission and algorithm-specific contracts still apply.
+- WGPU: The `f64` numerical profile rejects runtimes without `f64` computation support.
+- Projection: Surface state, soil state, step diagnostics, and snapshot data return fallible owned values through explicit readback.
 
 Scalar stage/discharge traces require wet-subcritical states. Other regimes require complete exterior data or an admitted transmissive policy.
 Atomic land sources integrate pinned Modified Green–Ampt soil, rain, capped evaporation, and prescribed withdrawal.

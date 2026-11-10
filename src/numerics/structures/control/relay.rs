@@ -1,20 +1,23 @@
 //! Simultaneous sampled threshold decisions with anchored qualification timers.
 
-use crate::cpu::{
-    CpuTensor,
-    structures::control::{
-        CpuControlContext, CpuControlSample, CpuControlState, CpuControlStep, CpuControlTransition,
-        MAX_EXACT_COUNT,
-    },
-};
 use crate::structures::{ControlSample, StructureError};
+use crate::tensor::structures::control::{
+    MAX_EXACT_COUNT, TensorControlContext, TensorControlSample, TensorControlState,
+    TensorControlStep, TensorControlTransition,
+};
+use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(crate) fn qualifies(
-    context: &CpuControlContext,
-    high: &CpuTensor,
-    stage: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+pub(crate) fn qualifies<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
+    high: &Tensor<R>,
+    stage: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::CompareOps<R> + numr::ops::ConditionalOps<R>,
+{
     let c = &context.structures.client;
     Ok(c.where_cond(
         high,
@@ -22,15 +25,25 @@ pub(crate) fn qualifies(
         &c.ge(stage, &context.upper)?,
     )?)
 }
-pub(crate) fn decide(
-    context: &CpuControlContext,
-    before: &CpuControlState,
+pub(crate) fn decide<R: Runtime<DType = DType>>(
+    context: &TensorControlContext<R>,
+    before: &TensorControlState<R>,
     start: f64,
     end: f64,
     index: usize,
     samples: &[ControlSample],
-    input: CpuControlSample,
-) -> Result<CpuControlStep, StructureError> {
+    input: TensorControlSample<R>,
+) -> Result<TensorControlStep<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.structures.client;
     let qualifies = qualifies(context, &before.high, &input.stage)?;
     let since = c.where_cond(&before.pending, &before.since, &input.observed)?;
@@ -62,7 +75,7 @@ pub(crate) fn decide(
         None,
         "control transition counter exceeds exact integer capacity",
     )?;
-    let last_transition = CpuControlTransition {
+    let last_transition = TensorControlTransition {
         valid: c.maximum(&before.last_transition.valid, &transitioned)?,
         decision: c.where_cond(
             &transitioned,
@@ -83,7 +96,7 @@ pub(crate) fn decide(
             &before.last_transition.timer,
         )?,
     };
-    let after = CpuControlState {
+    let after = TensorControlState {
         high,
         pending,
         since,
@@ -93,7 +106,7 @@ pub(crate) fn decide(
         count,
         last_transition,
     };
-    Ok(CpuControlStep {
+    Ok(TensorControlStep {
         start,
         end,
         decision_index: Some(index),

@@ -1,5 +1,9 @@
 //! Sampled command histories, exact timers, and complete transactional restoration.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "operating_controls/admission.rs"]
 mod admission;
 #[path = "../examples/operating_controls_reference/check.rs"]

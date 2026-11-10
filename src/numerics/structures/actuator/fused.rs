@@ -1,21 +1,31 @@
 //! Strict fused stages with local arithmetic exactness certificates.
 
 use super::arithmetic::{bound, finite, not, used};
-use crate::cpu::{
-    CpuTensor,
-    structures::actuator::{CpuActuatorContext, CpuActuatorFma},
-};
 use crate::structures::StructureError;
+use crate::tensor::structures::actuator::{TensorActuatorContext, TensorActuatorFma};
+use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, TwoSumOps, UnaryOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(super) fn stage(
-    ctx: &CpuActuatorContext,
-    rate: &CpuTensor,
-    time: &CpuTensor,
-    addend: &CpuTensor,
-    power: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<CpuActuatorFma, StructureError> {
+pub(super) fn stage<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    rate: &Tensor<R>,
+    time: &Tensor<R>,
+    addend: &Tensor<R>,
+    power: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<TensorActuatorFma<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let k = c.where_cond(active, rate, &ctx.zero)?;
     let t = c.where_cond(active, time, &ctx.zero)?;
@@ -85,7 +95,7 @@ pub(super) fn stage(
         &ctx.zero,
         &c.where_cond(&witness, &c.abs(&low)?, &bound(ctx, &result)?)?,
     )?;
-    Ok(CpuActuatorFma {
+    Ok(TensorActuatorFma {
         valid: active.clone(),
         rate: k,
         time: t,

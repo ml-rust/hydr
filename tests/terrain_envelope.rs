@@ -1,5 +1,9 @@
 //! Frozen terrain invariants and film sensitivity. Overtopping and film differences have no accuracy gate.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "support/impervious.rs"]
 mod impervious;
 
@@ -22,7 +26,7 @@ fn create(
     cells: Vec<CellState>,
     max_step: f64,
     film_depth: f64,
-) -> Result<Solver, Box<dyn std::error::Error>> {
+) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let count = grid.cell_count();
     let domain = Domain::new(
         grid,
@@ -80,7 +84,7 @@ fn check_step(step: &StepDiagnostics) {
     assert_eq!(step.boundary_out, 0.0);
 }
 
-fn advance(solver: &mut Solver, target: f64) -> TestResult {
+fn advance(solver: &mut Solver<crate::runtime::Runtime>, target: f64) -> TestResult {
     let report = solver.advance_controlled(
         target,
         100_000,
@@ -133,7 +137,7 @@ fn stepped_shallow_lakes_preserve_rest_at_both_resolutions() -> TestResult {
         advance(&mut solver, 0.2)?;
         let mut depth_drift = 0.0_f64;
         let mut momentum_drift = 0.0_f64;
-        for (cell, initial) in solver.state().cells().iter().zip(initial) {
+        for (cell, initial) in solver.state()?.cells().iter().zip(initial) {
             depth_drift = depth_drift.max((cell.h - initial.h).abs());
             momentum_drift = momentum_drift.max(cell.qx.abs()).max(cell.qy.abs());
         }
@@ -169,7 +173,7 @@ fn raised_crests_block_or_pass_water_by_free_surface_height() -> TestResult {
             .collect();
         let mut solver = create(CartesianGrid::new(nx, 1, dx, 1.0)?, bed, initial, 0.01, 0.0)?;
         advance(&mut solver, 1.5)?;
-        let downstream_storage = solver.state().cells()[20..]
+        let downstream_storage = solver.state()?.cells()[20..]
             .iter()
             .map(|cell| cell.h * dx)
             .sum::<f64>();
@@ -178,7 +182,7 @@ fn raised_crests_block_or_pass_water_by_free_surface_height() -> TestResult {
         );
         if crest > 1.0 {
             assert!(
-                solver.state().cells()[16..]
+                solver.state()?.cells()[16..]
                     .iter()
                     .all(|cell| cell.h == 0.0)
             );
@@ -217,7 +221,7 @@ fn shallow_wetting_reports_film_depth_sensitivity_without_accuracy_gate() -> Tes
             film_depth,
         )?;
         advance(&mut solver, 0.5)?;
-        let depth: Vec<_> = solver.state().cells().iter().map(|cell| cell.h).collect();
+        let depth: Vec<_> = solver.state()?.cells().iter().map(|cell| cell.h).collect();
         let mean_depth_l1 = baseline.as_ref().map_or(0.0, |baseline| {
             depth
                 .iter()
@@ -229,7 +233,11 @@ fn shallow_wetting_reports_film_depth_sensitivity_without_accuracy_gate() -> Tes
         let integrated_depth_l1 = mean_depth_l1 * nx as f64 * dx * width;
         assert!(mean_depth_l1.is_finite());
         assert!(solver.ledger().storage > 0.0);
-        assert!(solver.state().cells()[32..].iter().any(|cell| cell.h > 0.0));
+        assert!(
+            solver.state()?.cells()[32..]
+                .iter()
+                .any(|cell| cell.h > 0.0)
+        );
         println!(
             "Shallow wetting sensitivity: film_m={film_depth:.12e}, t=0.5, mean_depth_l1_m={mean_depth_l1:.12e}, integrated_depth_l1_m3={integrated_depth_l1:.12e}, storage_m3={:.12e}, water_residual_m3={:.12e}, signed_momentum_removed_m4_per_s={:?}",
             solver.ledger().storage,
@@ -259,8 +267,8 @@ fn film_resets_report_signed_momentum_and_retain_positive_water() -> TestResult 
             film_depth,
         )?;
         advance(&mut solver, 1e-4)?;
-        let cell = solver.state().cells()[0];
-        let step = solver.last_step().ok_or("missing accepted film step")?;
+        let cell = solver.state()?.cells()[0];
+        let step = solver.last_step()?.ok_or("missing accepted film step")?;
         assert!(cell.h > 0.0 && cell.h < 1e-8);
         if film_depth == 0.0 {
             assert!(cell.qx > 0.0 && cell.qy < 0.0);

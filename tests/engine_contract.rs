@@ -1,5 +1,9 @@
 //! Checks numerical execution, conservation, and complete accepted-state restoration.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "support/impervious.rs"]
 mod impervious;
 
@@ -43,7 +47,7 @@ fn walls_solver(
     domain: Domain,
     cells: Vec<CellState>,
     intervals: Vec<ForcingInterval>,
-) -> Result<Solver, Box<dyn std::error::Error>> {
+) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let state = FlowState::new(&domain, cells)?;
     let boundaries = BoundaryConditions::impermeable_walls();
     let forcing = ForcingSchedule::new(&domain, &boundaries, intervals)?;
@@ -89,7 +93,7 @@ fn irregular_lake_preserves_rest_and_partial_dry_cells() -> TestResult {
         solver.advance_to(10.0, 10_000)?.status,
         AdvanceStatus::ReachedTarget
     );
-    for (actual, initial) in solver.state().cells().iter().zip(&cells) {
+    for (actual, initial) in solver.state()?.cells().iter().zip(&cells) {
         assert!(
             (actual.h - initial.h).abs() <= 1e-11,
             "{actual:?} versus {initial:?}"
@@ -133,7 +137,7 @@ fn rainfall_steps_stop_at_interval_edges_and_account_for_storage() -> TestResult
 
 #[test]
 fn repeated_runs_and_restart_preserve_exact_accepted_state() -> TestResult {
-    fn create() -> Result<Solver, Box<dyn std::error::Error>> {
+    fn create() -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
         walls_solver(
             domain(3, 2, vec![0.0; 6], vec![true; 6])?,
             vec![resting(0.2); 6],
@@ -144,16 +148,16 @@ fn repeated_runs_and_restart_preserve_exact_accepted_state() -> TestResult {
     let mut repeated = create()?;
     first.advance_to(0.5, 100)?;
     repeated.advance_to(0.5, 100)?;
-    assert_eq!(first.snapshot(), repeated.snapshot());
+    assert_eq!(first.snapshot().data()?, repeated.snapshot().data()?);
     let midpoint = first.snapshot();
     let mut restarted = create()?;
     restarted.restore(&midpoint)?;
     first.advance_to(1.0, 100)?;
     repeated.advance_to(1.0, 100)?;
     restarted.advance_to(1.0, 100)?;
-    assert_eq!(first.snapshot(), repeated.snapshot());
-    assert_eq!(first.snapshot(), restarted.snapshot());
-    assert_eq!(first.last_step(), restarted.last_step());
+    assert_eq!(first.snapshot().data()?, repeated.snapshot().data()?);
+    assert_eq!(first.snapshot().data()?, restarted.snapshot().data()?);
+    assert_eq!(first.last_step()?, restarted.last_step()?);
     assert_eq!(first.ledger(), restarted.ledger());
     Ok(())
 }
@@ -167,11 +171,11 @@ fn rejected_withdrawal_and_invalid_target_preserve_snapshot() -> TestResult {
     )?;
     let before = solver.snapshot();
     assert!(solver.advance_to(0.1, 100).is_err());
-    assert_eq!(solver.snapshot(), before);
+    assert_eq!(solver.snapshot().data()?, before.data()?);
     assert!(solver.advance_to(f64::NAN, 100).is_err());
-    assert_eq!(solver.snapshot(), before);
+    assert_eq!(solver.snapshot().data()?, before.data()?);
     assert!(solver.advance_to(-1.0, 100).is_err());
-    assert_eq!(solver.snapshot(), before);
+    assert_eq!(solver.snapshot().data()?, before.data()?);
     Ok(())
 }
 
@@ -190,7 +194,7 @@ fn incompatible_restore_preserves_destination_snapshot() -> TestResult {
     )?;
     let before = destination.snapshot();
     assert!(destination.restore(&source.snapshot()).is_err());
-    assert_eq!(destination.snapshot(), before);
+    assert_eq!(destination.snapshot().data()?, before.data()?);
     Ok(())
 }
 
@@ -207,7 +211,7 @@ fn cancellation_and_step_limits_return_accepted_progress() -> TestResult {
     assert_eq!(report.status, AdvanceStatus::Cancelled);
     assert_eq!(report.accepted_steps, 0);
     assert_eq!(callbacks, 0);
-    assert_eq!(solver.snapshot(), before);
+    assert_eq!(solver.snapshot().data()?, before.data()?);
     let report = solver.advance_controlled(
         1.0,
         1,
@@ -254,9 +258,9 @@ fn mask_barriers_isolate_storage_and_rainfall() -> TestResult {
         )],
     )?;
     solver.advance_to(1.0, 100)?;
-    assert_eq!(&solver.state().cells()[2..], &[resting(0.0); 3]);
-    assert_eq!(solver.cell(2), CellResult::Unsupported);
-    assert_eq!(solver.cell(3), CellResult::Dry);
+    assert_eq!(&solver.state()?.cells()[2..], &[resting(0.0); 3]);
+    assert_eq!(solver.cell(2)?, CellResult::Unsupported);
+    assert_eq!(solver.cell(3)?, CellResult::Dry);
     assert!((solver.ledger().rain - 0.02).abs() <= 1e-12);
     assert!((solver.ledger().storage - 1.02).abs() <= 1e-12);
     Ok(())
@@ -278,7 +282,7 @@ fn outputs_distinguish_wet_dry_and_unsupported_locations() -> TestResult {
         vec![interval(0.0, 1.0, vec![0.0; 3], vec![0.0; 3])],
     )?;
     assert_eq!(
-        solver.cell(0),
+        solver.cell(0)?,
         CellResult::Wet {
             depth: 1.0,
             elevation: 3.0,
@@ -286,14 +290,14 @@ fn outputs_distinguish_wet_dry_and_unsupported_locations() -> TestResult {
             discharge_per_width: [2.0, -3.0],
         }
     );
-    assert_eq!(solver.cell(1), CellResult::Dry);
-    assert_eq!(solver.cell(2), CellResult::Unsupported);
-    assert_eq!(solver.cell(3), CellResult::Unsupported);
-    assert_eq!(solver.cell_at(0.5, 0.5), solver.cell(0));
-    assert_eq!(solver.cell_at(2.5, 0.5), CellResult::Unsupported);
-    assert_eq!(solver.cell_at(-0.1, 0.5), CellResult::Unsupported);
-    assert_eq!(solver.cell_at(3.0, 0.5), CellResult::Unsupported);
-    assert_eq!(solver.cell_at(f64::NAN, 0.5), CellResult::Unsupported);
+    assert_eq!(solver.cell(1)?, CellResult::Dry);
+    assert_eq!(solver.cell(2)?, CellResult::Unsupported);
+    assert_eq!(solver.cell(3)?, CellResult::Unsupported);
+    assert_eq!(solver.cell_at(0.5, 0.5)?, solver.cell(0)?);
+    assert_eq!(solver.cell_at(2.5, 0.5)?, CellResult::Unsupported);
+    assert_eq!(solver.cell_at(-0.1, 0.5)?, CellResult::Unsupported);
+    assert_eq!(solver.cell_at(3.0, 0.5)?, CellResult::Unsupported);
+    assert_eq!(solver.cell_at(f64::NAN, 0.5)?, CellResult::Unsupported);
     Ok(())
 }
 

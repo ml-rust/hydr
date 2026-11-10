@@ -1,9 +1,9 @@
 use super::{TensorBoundaryRequest, TensorBoundaryTrace, characteristic_trace};
-use crate::cpu::CpuTensor;
 use crate::numerics::TensorFaceState;
 use crate::solver::{Axis, BoundaryFace, EngineError, SolverConfig};
 use numr::ops::BinaryOps;
-use numr::runtime::cpu::{CpuClient, CpuDevice, ParallelismConfig};
+use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+use numr::tensor::Tensor;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 const G: f64 = 9.81;
@@ -18,11 +18,12 @@ struct Lane {
     incoming: Option<f64>,
 }
 
-fn run(lanes: &[Lane]) -> Result<TensorBoundaryTrace, EngineError> {
+fn run(lanes: &[Lane]) -> Result<TensorBoundaryTrace<CpuRuntime>, EngineError> {
     let device = CpuDevice::new();
     let client =
         CpuClient::new(device.clone()).with_parallelism(ParallelismConfig::new(Some(1), None));
-    let make = |values: Vec<f64>| CpuTensor::from_slice(&values, &[lanes.len()], &device);
+    let make =
+        |values: Vec<f64>| Tensor::<CpuRuntime>::from_slice(&values, &[lanes.len()], &device);
     let interior = TensorFaceState {
         h: make(lanes.iter().map(|lane| lane.h).collect())?,
         q_normal: make(lanes.iter().map(|lane| lane.h * lane.u).collect())?,

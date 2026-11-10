@@ -51,7 +51,8 @@ fn actual_cumulative_overflow_rejects_while_the_last_finite_state_remains_accept
 fn opposite_element_drift_rejects_even_when_aggregate_water_residual_is_zero() -> Result {
     let elements = vec![element("left", unit(4.0)?), element("right", unit(4.0)?)];
     let states = vec![LevelPoolState { volume_m3: 1.0 }; 2];
-    let mut source = LevelPoolBatch::new(
+    let mut source = LevelPoolBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         elements.clone(),
         states.clone(),
         0.0,
@@ -73,7 +74,13 @@ fn opposite_element_drift_rejects_even_when_aggregate_water_residual_is_zero() -
             .sum::<f64>(),
         0.0
     );
-    let mut destination = LevelPoolBatch::new(elements, states, 0.0, LevelPoolConfig::default())?;
+    let mut destination = LevelPoolBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        elements,
+        states,
+        0.0,
+        LevelPoolConfig::default(),
+    )?;
     let before = destination.snapshot_data()?;
     let error = rejection(destination.restore_data(&package))?;
     assert_eq!(error.element(), Some(0));
@@ -141,7 +148,13 @@ fn aggregate_addition_error_bounds_cover_the_exact_sum_of_element_bounds() -> Re
                 .map(|index| element(&format!("pool-{index}"), curve.clone()))
                 .collect();
             let states = vec![LevelPoolState { volume_m3: 1.0 }; count];
-            let mut batch = LevelPoolBatch::new(elements, states, 0.0, LevelPoolConfig::default())?;
+            let mut batch = LevelPoolBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
+                elements,
+                states,
+                0.0,
+                LevelPoolConfig::default(),
+            )?;
             for end in [1.0, 2.0, 3.0] {
                 batch = batch
                     .trial_to(end, &vec![input(amount, amount); count])?

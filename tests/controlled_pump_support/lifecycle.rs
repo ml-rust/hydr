@@ -4,7 +4,10 @@ use hydr::structures::*;
 #[test]
 fn ideal_response_applies_selected_stopped_and_running_operations_on_the_decision_right() -> Result
 {
-    let context = StructureBatch::new(vec![pump("pump")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![pump("pump")?],
+    )?;
     let config = Config::switching();
     let batch = config.build(&context, &["pump"])?;
     let registry = registry(&context, &batch)?;
@@ -48,8 +51,10 @@ fn running_speed_selection_preserves_original_binary_and_nonbinary_literals_acro
     for width in [1, 31, 32, 33, 64, 65] {
         let names = (0..width).map(|i| format!("pump-{i}")).collect::<Vec<_>>();
         let ids = names.iter().map(String::as_str).collect::<Vec<_>>();
-        let context =
-            StructureBatch::new(ids.iter().map(|id| pump(id)).collect::<Result<Vec<_>>>()?)?;
+        let context = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            ids.iter().map(|id| pump(id)).collect::<Result<Vec<_>>>()?,
+        )?;
         let mut config = Config::switching();
         config.commands = [
             ControlCommand::PumpRunning { speed_ratio: 0.5 },
@@ -103,7 +108,10 @@ fn running_speed_selection_preserves_original_binary_and_nonbinary_literals_acro
 
 #[test]
 fn qualification_and_band_hold_change_no_operation_before_the_qualified_endpoint() -> Result {
-    let context = StructureBatch::new(vec![pump("pump")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![pump("pump")?],
+    )?;
     let mut config = Config::switching();
     config.times = vec![1.0, 2.0, 3.0, 4.0, 5.0];
     config.end = 6.0;
@@ -143,7 +151,10 @@ fn qualification_and_band_hold_change_no_operation_before_the_qualified_endpoint
 
 #[test]
 fn empty_calendar_response_has_only_original_terminal_support() -> Result {
-    let context = StructureBatch::new(vec![pump("pump")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![pump("pump")?],
+    )?;
     let mut config = Config::switching();
     config.times.clear();
     let batch = config.build(&context, &["pump"])?;
@@ -163,7 +174,10 @@ fn empty_calendar_response_has_only_original_terminal_support() -> Result {
 
 #[test]
 fn trusted_and_cold_continuation_retain_pending_memory_and_explicit_response_identity() -> Result {
-    let context = StructureBatch::new(vec![pump("pump")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![pump("pump")?],
+    )?;
     let mut config = Config::switching();
     config.delays = (1.0, 0.0);
     let source = accept(config.build(&context, &["pump"])?, 1.0, Some(2.0))?;
@@ -186,8 +200,10 @@ fn trusted_and_cold_continuation_retain_pending_memory_and_explicit_response_ide
     definitions[0]
         .ideal_response_applicability
         .push_str(" distinct");
-    let mut incompatible =
-        ControlledPumpBatch::new(config.controls(&context, &["pump"])?, definitions)?;
+    let mut incompatible = ControlledPumpBatch::<crate::runtime::Runtime>::new(
+        config.controls(&context, &["pump"])?,
+        definitions,
+    )?;
     let before = incompatible.snapshot_data()?;
     kind(
         incompatible.restore(&trusted),

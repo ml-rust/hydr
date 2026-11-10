@@ -8,7 +8,10 @@ fn missing_extra_or_foreign_numerical_batches_reject_without_advancement() -> Re
     let fixture = ordered()?;
     let plan = fixture.plan()?;
     let packet = plan.admit_interval(fixture.interval.clone())?;
-    assert!(plan.trial_subcatchments(&packet, None).is_err());
+    assert!(
+        plan.trial_subcatchments::<crate::runtime::Runtime>(&packet, None)
+            .is_err()
+    );
     for mode in 0..5 {
         let mut definitions = plan.active_definitions().to_vec();
         match mode {
@@ -31,7 +34,8 @@ fn missing_extra_or_foreign_numerical_batches_reject_without_advancement() -> Re
             .iter()
             .map(|definition| SubcatchmentState::initialized(&definition.parameters))
             .collect::<std::result::Result<Vec<_>, _>>()?;
-        let accepted = SubcatchmentBatch::new(
+        let accepted = SubcatchmentBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
             definitions,
             states,
             if mode == 3 { 1.0 } else { 0.0 },
@@ -100,7 +104,13 @@ fn numerical_config_remains_batch_owned_and_original_trial_errors_remain_typed()
         .collect::<std::result::Result<Vec<_>, _>>()?;
     let mut config = SubcatchmentConfig::default();
     config.reservoir.volume_absolute = 1e-8;
-    let accepted = SubcatchmentBatch::new(definitions, states, 0.0, config)?;
+    let accepted = SubcatchmentBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        definitions,
+        states,
+        0.0,
+        config,
+    )?;
     let packet = plan.admit_interval(fixture.interval.clone())?;
     plan.trial_subcatchments(&packet, Some(&accepted))?
         .ok_or("missing config-independent trial")?;

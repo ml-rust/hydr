@@ -1,18 +1,52 @@
+use numr::runtime::Device;
+use solvr::interpolate::Interp1dAlgorithms;
+
 use super::{LevelPoolSnapshot, LevelPoolSnapshotData};
-use crate::cpu::level_pool::{CpuPoolContext, CpuPoolState};
 use crate::storage::batch::StoredStep;
 use crate::storage::{LevelPoolBatch, LevelPoolError};
+use crate::tensor::level_pool::{TensorPoolContext, TensorPoolState};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::{Runtime, RuntimeClient};
 use std::sync::Arc;
 
-impl LevelPoolBatch {
+impl<R> LevelPoolBatch<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     /// Restore trusted complete state after exact immutable definition checks.
-    pub fn restore(&mut self, snapshot: &LevelPoolSnapshot) -> Result<(), LevelPoolError> {
+    pub fn restore(&mut self, snapshot: &LevelPoolSnapshot<R>) -> Result<(), LevelPoolError> {
         self.compatible(
             snapshot.batch.elements(),
             snapshot.batch.config(),
             snapshot.batch.source_policies(),
         )?;
-        *self = snapshot.batch.clone();
+        require(
+            self.context
+                .client
+                .device()
+                .is_same(snapshot.batch.context.client.device()),
+            "trusted snapshot device differs from the target runtime client",
+        )?;
+        self.state = snapshot.batch.state.clone();
+        self.time = snapshot.batch.time;
+        self.steps = snapshot.batch.steps;
+        self.last = snapshot.batch.last.clone();
         Ok(())
     }
     /// Check complete caller-owned state before atomic replacement, without replaying historical intervals.
@@ -24,6 +58,7 @@ impl LevelPoolBatch {
         )?;
         let mut candidate = if let Some(policies) = &data.source_policies {
             Self::new_with_sources(
+                self.context.client.clone(),
                 data.elements.clone(),
                 data.states.clone(),
                 data.time,
@@ -32,6 +67,7 @@ impl LevelPoolBatch {
             )?
         } else {
             Self::new(
+                self.context.client.clone(),
                 data.elements.clone(),
                 data.states.clone(),
                 data.time,
@@ -101,7 +137,7 @@ impl LevelPoolBatch {
             let tensor = |f: fn(&crate::storage::LevelPoolReceipt) -> f64| {
                 context.tensor(&receipt.receipts.iter().map(f).collect::<Vec<_>>())
             };
-            let before = CpuPoolState {
+            let before = TensorPoolState {
                 sources: super::sources::before(context, data, receipt)?,
                 volume_m3: tensor(|r| r.old_volume_m3)?,
                 initial_volume_m3: state.initial_volume_m3.clone(),
@@ -184,10 +220,25 @@ impl LevelPoolBatch {
     }
 }
 
-fn import_state(
-    context: &CpuPoolContext,
+fn import_state<R>(
+    context: &TensorPoolContext<R>,
     data: &LevelPoolSnapshotData,
-) -> Result<CpuPoolState, LevelPoolError> {
+) -> Result<TensorPoolState<R>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     for (index, (ledger, state)) in data.element_ledgers.iter().zip(&data.states).enumerate() {
         require(
             ledger.element == index && ledger.volume_m3.to_bits() == state.volume_m3.to_bits(),
@@ -211,7 +262,7 @@ fn import_state(
     let tensor = |f: fn(&crate::storage::LevelPoolElementLedger) -> f64| {
         context.tensor(&data.element_ledgers.iter().map(f).collect::<Vec<_>>())
     };
-    Ok(CpuPoolState {
+    Ok(TensorPoolState {
         sources: super::sources::state(context, data)?,
         volume_m3: tensor(|l| l.volume_m3)?,
         initial_volume_m3: tensor(|l| l.initial_volume_m3)?,
@@ -228,5 +279,58 @@ fn require(condition: bool, message: &str) -> Result<(), LevelPoolError> {
         Err(LevelPoolError::input(format!(
             "level-pool checkpoint: {message}. Supply an unchanged complete same-build package"
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::{
+        LevelPoolConfig, LevelPoolCurve, LevelPoolElement, LevelPoolKnot, LevelPoolState,
+    };
+    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+
+    #[test]
+    fn trusted_restore_preserves_destination_client() -> Result<(), LevelPoolError> {
+        let client = CpuClient::new(CpuDevice::new());
+        let elements = vec![LevelPoolElement {
+            id: "pool".into(),
+            curve: LevelPoolCurve::new(
+                vec![
+                    LevelPoolKnot {
+                        volume_m3: 0.0,
+                        stage_m: 0.0,
+                    },
+                    LevelPoolKnot {
+                        volume_m3: 1.0,
+                        stage_m: 1.0,
+                    },
+                ],
+                "datum".into(),
+                "measured".into(),
+            )?,
+            connected_pool_assertion: "connected".into(),
+            storage_support_identity: "support".into(),
+        }];
+        let mut target = LevelPoolBatch::<CpuRuntime>::new(
+            client.with_parallelism(ParallelismConfig::new(Some(1), Some(64))),
+            elements.clone(),
+            vec![LevelPoolState { volume_m3: 0.0 }],
+            0.0,
+            LevelPoolConfig::default(),
+        )?;
+        let source = LevelPoolBatch::<CpuRuntime>::new(
+            client.with_parallelism(ParallelismConfig::new(Some(1), Some(128))),
+            elements,
+            vec![LevelPoolState { volume_m3: 0.5 }],
+            2.0,
+            LevelPoolConfig::default(),
+        )?;
+        let context = Arc::clone(&target.context);
+        target.restore(&source.snapshot())?;
+        assert!(Arc::ptr_eq(&target.context, &context));
+        assert_eq!(target.context.client.parallelism().chunk_size, Some(64));
+        assert_eq!(target.snapshot_data()?, source.snapshot_data()?);
+        Ok(())
     }
 }

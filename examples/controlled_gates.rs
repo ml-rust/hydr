@@ -1,5 +1,9 @@
 //! Sampled targets and actual finite-rate response accepted as one immutable pair.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 use hydr::structures::{
     ControlCommand, ControlDecisionSchedule, ControlInitialState, ControlLatch, ControlSample,
     ControlStageSignal, ControlledGateBatch, DirectionPolicy, GateActuatorAccuracy,
@@ -10,31 +14,35 @@ use hydr::structures::{
 
 const DATUM: &str = "synthetic common datum";
 
-fn model() -> Result<ControlledGateBatch, Box<dyn std::error::Error>> {
-    let structures = StructureBatch::new(vec![StructureElement {
-        id: "gate".into(),
-        endpoint_a: "upstream".into(),
-        endpoint_b: "downstream".into(),
-        datum: DATUM.into(),
-        direction: DirectionPolicy::Bidirectional,
-        law: StructureLaw::HydrostaticRectangularGate(GateParameters::new(
-            1.0,
-            0.0,
-            1.0,
-            0.6,
-            9.81,
-            GateApplicability {
-                coefficient_provenance: "explicit synthetic Cd=0.6 without field calibration"
-                    .into(),
-                hydrostatic_quiescent_pool_assertion: "synthetic quiescent endpoint pools".into(),
-                free_submerged_aperture_applicability:
-                    "one synthetic coefficient covers the declared aperture envelope".into(),
-                unobstructed_aperture_assertion:
-                    "both synthetic connections expose the complete aperture".into(),
-                symmetric_reversal: true,
-            },
-        )?),
-    }])?;
+fn model() -> Result<ControlledGateBatch<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
+    let structures = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![StructureElement {
+            id: "gate".into(),
+            endpoint_a: "upstream".into(),
+            endpoint_b: "downstream".into(),
+            datum: DATUM.into(),
+            direction: DirectionPolicy::Bidirectional,
+            law: StructureLaw::HydrostaticRectangularGate(GateParameters::new(
+                1.0,
+                0.0,
+                1.0,
+                0.6,
+                9.81,
+                GateApplicability {
+                    coefficient_provenance: "explicit synthetic Cd=0.6 without field calibration"
+                        .into(),
+                    hydrostatic_quiescent_pool_assertion: "synthetic quiescent endpoint pools"
+                        .into(),
+                    free_submerged_aperture_applicability:
+                        "one synthetic coefficient covers the declared aperture envelope".into(),
+                    unobstructed_aperture_assertion:
+                        "both synthetic connections expose the complete aperture".into(),
+                    symmetric_reversal: true,
+                },
+            )?),
+        }],
+    )?;
     let decision_times = vec![1.0, 2.0, 3.0, 4.0];
     let controls = structures.with_operating_controls(
         vec![OperatingControlDefinition {
@@ -98,10 +106,14 @@ fn model() -> Result<ControlledGateBatch, Box<dyn std::error::Error>> {
             end_s: 5.0,
         },
     )?;
-    Ok(ControlledGateBatch::new(controls, actuators)?)
+    Ok(ControlledGateBatch::<crate::runtime::Runtime>::new(
+        controls, actuators,
+    )?)
 }
 
-fn print_state(batch: &ControlledGateBatch) -> Result<(), Box<dyn std::error::Error>> {
+fn print_state(
+    batch: &ControlledGateBatch<crate::runtime::Runtime>,
+) -> Result<(), Box<dyn std::error::Error>> {
     for (command, actual) in batch
         .controls()
         .commands()?

@@ -1,7 +1,9 @@
 //! Variable-area correction products share the scalar path's outward accounting.
 
+use numr::runtime::cpu::CpuRuntime;
+
 use super::*;
-use numr::runtime::cpu::{CpuDevice, ParallelismConfig};
+use numr::runtime::cpu::{CpuClient, CpuDevice, ParallelismConfig};
 
 fn setup() -> (CpuDevice, CpuClient) {
     let device = CpuDevice::new();
@@ -10,8 +12,15 @@ fn setup() -> (CpuDevice, CpuClient) {
     (device, client)
 }
 
-fn tensor(device: &CpuDevice, values: &[f64]) -> Result<CpuTensor, SoilError> {
-    Ok(CpuTensor::from_slice(values, &[values.len()], device)?)
+fn tensor(
+    device: &CpuDevice,
+    values: &[f64],
+) -> Result<numr::tensor::Tensor<CpuRuntime>, SoilError> {
+    Ok(numr::tensor::Tensor::<CpuRuntime>::from_slice(
+        values,
+        &[values.len()],
+        device,
+    )?)
 }
 
 #[test]
@@ -129,8 +138,8 @@ fn mismatched_flat_shape_and_dtype_reject_without_lane_guessing() -> Result<(), 
     let correct = tensor(&device, &[1.0, 1.0])?;
     let wrong_count = tensor(&device, &[1.0])?;
     let matrix = correct.reshape(&[1, 2])?;
-    let f32_areas = CpuTensor::from_slice(&[1.0f32, 1.0], &[2], &device)?;
-    let int_areas = CpuTensor::from_slice(&[1i64, 1], &[2], &device)?;
+    let f32_areas = numr::tensor::Tensor::<CpuRuntime>::from_slice(&[1.0f32, 1.0], &[2], &device)?;
+    let int_areas = numr::tensor::Tensor::<CpuRuntime>::from_slice(&[1i64, 1], &[2], &device)?;
     for areas in [&wrong_count, &matrix, &f32_areas, &int_areas] {
         let error = AdjustmentReduction::new(2)?
             .totals_with_areas(&client, &depths, areas)
@@ -139,7 +148,7 @@ fn mismatched_flat_shape_and_dtype_reject_without_lane_guessing() -> Result<(), 
         assert_eq!(error.cell(), None);
         assert!(!error.is_retryable());
     }
-    let f32_depths = CpuTensor::from_slice(&[1.0f32, 2.0], &[2], &device)?;
+    let f32_depths = numr::tensor::Tensor::<CpuRuntime>::from_slice(&[1.0f32, 2.0], &[2], &device)?;
     assert!(
         AdjustmentReduction::new(2)?
             .totals_with_areas(&client, &f32_depths, &correct)

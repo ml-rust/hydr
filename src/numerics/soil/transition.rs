@@ -1,32 +1,51 @@
 //! Complete pinned native Modified Green–Ampt interval branches.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::integration::{integral, native_min};
-use crate::cpu::CpuTensor;
-use crate::cpu::soil_storage::{CpuSoilContext, CpuSoilState};
 use crate::soil::SoilError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps};
+use crate::tensor::soil_storage::{TensorSoilContext, TensorSoilState};
 
 /// Actual source intermediates retained for surface admission, without recomputation.
-pub(crate) struct NativeTrace {
-    pub raw_availability_rate: CpuTensor,
-    pub crossing: CpuTensor,
-    pub saturated: CpuTensor,
-    pub difference: CpuTensor,
-    pub crossing_time: CpuTensor,
-    pub remaining_time_raw: CpuTensor,
-    pub crossing_product: CpuTensor,
-    pub crossing_limit: CpuTensor,
-    pub crossing_increment: CpuTensor,
-    pub supply_endpoint: CpuTensor,
+pub(crate) struct NativeTrace<R: Runtime<DType = DType>> {
+    pub raw_availability_rate: Tensor<R>,
+    pub crossing: Tensor<R>,
+    pub saturated: Tensor<R>,
+    pub difference: Tensor<R>,
+    pub crossing_time: Tensor<R>,
+    pub remaining_time_raw: Tensor<R>,
+    pub crossing_product: Tensor<R>,
+    pub crossing_limit: Tensor<R>,
+    pub crossing_increment: Tensor<R>,
+    pub supply_endpoint: Tensor<R>,
 }
 
-pub(crate) fn advance(
-    context: &CpuSoilContext,
-    old: &CpuSoilState,
+pub(crate) type SoilAdvance<R> = (TensorSoilState<R>, Tensor<R>, NativeTrace<R>);
+
+pub(crate) fn advance<R>(
+    context: &TensorSoilContext<R>,
+    old: &TensorSoilState<R>,
     dt: f64,
-    rain: &CpuTensor,
-    depth: &CpuTensor,
-) -> Result<(CpuSoilState, CpuTensor, NativeTrace), SoilError> {
+    rain: &Tensor<R>,
+    depth: &Tensor<R>,
+) -> Result<SoilAdvance<R>, SoilError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedNewtonAlgorithms<R>,
+{
     let c = &context.client;
     let zero = &context.zero;
     let one = &context.one;

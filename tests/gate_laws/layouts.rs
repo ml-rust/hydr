@@ -54,7 +54,10 @@ fn every_reference_rotates_through_mixed_laws_across_cpu_layouts() -> Result {
                         lane_cases.push(Some(case));
                     }
                 }
-                let batch = StructureBatch::new(definitions)?;
+                let batch = StructureBatch::<crate::runtime::Runtime>::new(
+                    crate::runtime::client(),
+                    definitions,
+                )?;
                 match batch.propose_with_operations(&packets, &operations) {
                     Ok(proposal) => {
                         assert!(

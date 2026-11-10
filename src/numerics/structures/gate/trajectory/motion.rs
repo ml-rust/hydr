@@ -1,15 +1,31 @@
 //! Original-difference motion certificates and conservative directional-speed admission.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::ops::ScalarOps;
+use numr::ops::TwoSumOps;
+use numr::ops::UnaryOps;
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::motion_bounds::{down, finite, up};
-use crate::cpu::structures::CpuStructureContext;
 use crate::structures::{GateTrajectoryAssignment, StructureError, StructureInputErrorKind};
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps, TwoSumOps, UnaryOps};
+use crate::tensor::structures::TensorStructureContext;
 
-pub(crate) fn check_motion(
-    context: &CpuStructureContext,
+pub(crate) fn check_motion<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
     assignments: &[GateTrajectoryAssignment],
     slots: &[usize],
-) -> Result<(), StructureError> {
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let (mut t0, mut t1, mut a0, mut a1, mut limit, mut witness, mut power, mut origins) = (
         Vec::new(),
         Vec::new(),
@@ -39,7 +55,7 @@ pub(crate) fn check_motion(
             power.push(
                 if span.is_finite()
                     && span > 0.0
-                    && crate::cpu::structures::power_metadata::power_of_two(span)
+                    && crate::tensor::structures::power_metadata::power_of_two(span)
                 {
                     1.0
                 } else {

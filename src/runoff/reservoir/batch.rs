@@ -1,42 +1,61 @@
 //! Immutable tensor continuation and lazy application output boundaries.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+
 use super::accounting::aggregate_step;
 use super::output::project_step;
 use super::{
     ReservoirConfig, ReservoirElement, ReservoirError, ReservoirInput, ReservoirLedger,
     ReservoirOutput, ReservoirState, ReservoirStepDiagnostics,
 };
-use crate::cpu::reservoir_storage::{CpuReservoirContext, CpuReservoirState};
-use crate::numerics::reservoir::CpuReservoirStep;
+use crate::numerics::reservoir::TensorReservoirStep;
+use crate::tensor::reservoir_storage::{TensorReservoirContext, TensorReservoirState};
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub(super) struct StoredStep {
+pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub start: f64,
     pub end: f64,
-    pub step: CpuReservoirStep,
+    pub step: TensorReservoirStep<R>,
 }
 
-/// Persistent standalone SI reservoir batch on an explicit configured numr CPU client.
+/// Persistent standalone SI reservoir batch on an explicit configured numr runtime client.
 #[derive(Clone, Debug)]
-pub struct ReservoirBatch {
-    pub(super) context: Arc<CpuReservoirContext>,
-    pub(super) state: CpuReservoirState,
+pub struct ReservoirBatch<R: Runtime<DType = DType>> {
+    pub(super) context: Arc<TensorReservoirContext<R>>,
+    pub(super) state: TensorReservoirState<R>,
     pub(super) time: f64,
     pub(super) ledger: ReservoirLedger,
     pub(super) steps: usize,
-    pub(super) last: Option<Arc<StoredStep>>,
+    pub(super) last: Option<Arc<StoredStep<R>>>,
 }
 
 /// Complete immutable candidate. Acceptance moves ownership without projecting tensors.
 #[derive(Debug)]
-pub struct ReservoirTrial {
-    next: ReservoirBatch,
+pub struct ReservoirTrial<R: Runtime<DType = DType>> {
+    next: ReservoirBatch<R>,
 }
 
-impl ReservoirBatch {
+impl<R> ReservoirBatch<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     /// Construct explicit storage with checked immutable support and complete antecedent depths.
     pub fn new(
+        client: R::Client,
         elements: Vec<ReservoirElement>,
         states: Vec<ReservoirState>,
         time: f64,
@@ -47,8 +66,8 @@ impl ReservoirBatch {
                 "time={time}: require finite nonnegative accepted time"
             )));
         }
-        let context = Arc::new(CpuReservoirContext::new(elements, config)?);
-        let state = CpuReservoirState::new(&context, &states)?;
+        let context = Arc::new(TensorReservoirContext::<R>::new(client, elements, config)?);
+        let state = TensorReservoirState::<R>::new(&context, &states)?;
         let storage = context.storage_volume(&state.depth)?;
         Ok(Self {
             context,
@@ -95,7 +114,7 @@ impl ReservoirBatch {
         &self,
         end_time: f64,
         inputs: &[ReservoirInput],
-    ) -> Result<ReservoirTrial, ReservoirError> {
+    ) -> Result<ReservoirTrial<R>, ReservoirError> {
         let dt = end_time - self.time;
         if !end_time.is_finite() || !dt.is_finite() || dt <= 0.0 {
             return Err(ReservoirError::input(format!(
@@ -134,7 +153,7 @@ impl ReservoirBatch {
                 "accepted-step counter overflows. Start another component history",
             )
         })?;
-        let state = CpuReservoirState {
+        let state = TensorReservoirState {
             depth: step.depth.clone(),
         };
         Ok(ReservoirTrial {
@@ -154,7 +173,18 @@ impl ReservoirBatch {
     }
 }
 
-impl ReservoirTrial {
+impl<R> ReservoirTrial<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     /// Project candidate per-element physical output, without accepting it.
     pub fn outputs(&self) -> Result<Vec<ReservoirOutput>, ReservoirError> {
         Ok(self
@@ -181,7 +211,7 @@ impl ReservoirTrial {
         project_step(&self.next.context, step)
     }
     /// Accept every tensor, time, and counter by ownership, without output projection.
-    pub fn into_next(self) -> ReservoirBatch {
+    pub fn into_next(self) -> ReservoirBatch<R> {
         self.next
     }
 }

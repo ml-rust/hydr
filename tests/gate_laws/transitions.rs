@@ -26,7 +26,10 @@ fn adjacent_original_stages_select_the_physical_transition_regime() -> Result {
             .find(|case| case.id == id)
             .ok_or("Missing gate transition input")?;
         for reverse in [false, true] {
-            let batch = StructureBatch::new(vec![reference_case::definition(case, id)?])?;
+            let batch = StructureBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
+                vec![reference_case::definition(case, id)?],
+            )?;
             let output = first(&batch.propose_with_operations(
                 &[reference_case::packet(case, id, reverse)],
                 &[reference_case::operation(case, id)],
@@ -39,7 +42,10 @@ fn adjacent_original_stages_select_the_physical_transition_regime() -> Result {
 
 #[test]
 fn opening_sweeps_preserve_monotonicity_and_have_no_traversal_history() -> Result {
-    let batch = StructureBatch::new(vec![standard("gate", DirectionPolicy::Bidirectional)?])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![standard("gate", DirectionPolicy::Bidirectional)?],
+    )?;
     for packets in [
         heads("gate", 2.0, 0.5),
         packet(
@@ -111,7 +117,10 @@ fn submerged_apertures_match_the_existing_orifice_law() -> Result {
             )?),
             DirectionPolicy::Bidirectional,
         );
-        let batch = StructureBatch::new(vec![gate, orifice])?;
+        let batch = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![gate, orifice],
+        )?;
         for (a, b) in [(donor, receiver), (receiver, donor)] {
             let output = batch
                 .propose_with_operations(

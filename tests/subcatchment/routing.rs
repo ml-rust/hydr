@@ -98,7 +98,11 @@ fn routed_receiver_soil_replays_the_exact_constructed_input_sequence() -> Result
     let mut state = SubcatchmentState::initialized(&p)?;
     state.depths_m = [0.125 * 0.3048, 0.25 * 0.3048, 0.0];
     let native = state.soil.ok_or("missing native antecedent")?;
-    let mut independent = ModifiedGreenAmptBatch::from_native_states(&[soil], &[native])?;
+    let mut independent = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[soil],
+        &[native],
+    )?;
     let mut batch = single(p, state, SubcatchmentConfig::default())?;
     for end in [64.0, 128.0, 192.0, 256.0] {
         let trial = batch.trial_to(

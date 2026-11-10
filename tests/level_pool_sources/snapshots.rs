@@ -1,7 +1,7 @@
 use super::fixture::{Result, changing, element, enabled, exchange, policy, rejection, sources};
 use hydr::storage::{LevelPoolBatch, LevelPoolConfig, LevelPoolElementLedger, LevelPoolState};
 
-fn history() -> Result<LevelPoolBatch> {
+fn history() -> Result<LevelPoolBatch<crate::runtime::Runtime>> {
     let source = enabled(changing()?, 5.0)?;
     let source = source
         .trial_with_sources_to(1.0, &[exchange(0.0, 0.0)], &[sources(0.25, 0.1, 0.5)])?
@@ -9,7 +9,7 @@ fn history() -> Result<LevelPoolBatch> {
     Ok(source.trial_to(2.0, &[exchange(0.2, 0.1)])?.into_next())
 }
 
-fn legacy_history() -> Result<LevelPoolBatch> {
+fn legacy_history() -> Result<LevelPoolBatch<crate::runtime::Runtime>> {
     let mut batch = enabled(changing()?, 5.0)?;
     for end in [1.0, 2.0] {
         batch = batch.trial_to(end, &[exchange(0.0, 0.0)])?.into_next();
@@ -237,7 +237,8 @@ fn source_cumulative_opposite_drift_rejects_before_aggregate_cancellation() -> R
         element("evaporation", changing()?),
     ];
     let states = vec![LevelPoolState { volume_m3: 5.0 }; 2];
-    let mut source = LevelPoolBatch::new_with_sources(
+    let mut source = LevelPoolBatch::<crate::runtime::Runtime>::new_with_sources(
+        crate::runtime::client(),
         elements.clone(),
         states.clone(),
         0.0,
@@ -269,7 +270,8 @@ fn source_cumulative_opposite_drift_rejects_before_aggregate_cancellation() -> R
             .sum::<f64>(),
         0.0
     );
-    let mut target = LevelPoolBatch::new_with_sources(
+    let mut target = LevelPoolBatch::<crate::runtime::Runtime>::new_with_sources(
+        crate::runtime::client(),
         elements,
         states,
         0.0,

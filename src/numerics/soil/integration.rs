@@ -1,36 +1,74 @@
 //! Pinned EPA infiltration integral with solvr correction iteration.
 
-use crate::cpu::CpuTensor;
-use crate::cpu::soil_storage::CpuSoilContext;
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use crate::soil::SoilError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps, UnaryOps};
+use crate::tensor::soil_storage::TensorSoilContext;
 use solvr::optimize::roots::{BatchedNewtonAlgorithms, BatchedNewtonOptions};
 
 /// Conditional MAX preserves the source comparison and tie behavior.
-pub(super) fn native_max(
-    context: &CpuSoilContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-) -> Result<CpuTensor, SoilError> {
+pub(super) fn native_max<R>(
+    context: &TensorSoilContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+) -> Result<Tensor<R>, SoilError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedNewtonAlgorithms<R>,
+{
     Ok(context.client.where_cond(&context.client.gt(a, b)?, a, b)?)
 }
 
 /// Conditional MIN preserves the source comparison and tie behavior.
-pub(super) fn native_min(
-    context: &CpuSoilContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
-) -> Result<CpuTensor, SoilError> {
+pub(super) fn native_min<R>(
+    context: &TensorSoilContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
+) -> Result<Tensor<R>, SoilError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedNewtonAlgorithms<R>,
+{
     Ok(context.client.where_cond(&context.client.lt(a, b)?, a, b)?)
 }
 
-pub(super) fn integral(
-    context: &CpuSoilContext,
-    f1: &CpuTensor,
-    c1: &CpuTensor,
-    ts: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<CpuTensor, SoilError> {
+pub(super) fn integral<R>(
+    context: &TensorSoilContext<R>,
+    f1: &Tensor<R>,
+    c1: &Tensor<R>,
+    ts: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<Tensor<R>, SoilError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedNewtonAlgorithms<R>,
+{
     let c = &context.client;
     let f1 = c.where_cond(active, f1, &context.one)?;
     let c1 = c.where_cond(active, c1, &context.zero)?;

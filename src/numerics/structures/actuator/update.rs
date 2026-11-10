@@ -1,16 +1,18 @@
 //! Original packet admission before actuator motion evaluation.
 
-use crate::cpu::structures::actuator::{
-    CpuActuatorContext, CpuActuatorUpdate, record::TensorRecord,
-};
 use crate::structures::{GateTargetUpdate, StructureError, StructureInputErrorKind};
+use crate::tensor::structures::actuator::{
+    TensorActuatorContext, TensorActuatorUpdate, record::TensorRecord,
+};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
-pub(crate) fn admit_update(
-    ctx: &CpuActuatorContext,
+pub(crate) fn admit_update<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
     updates: &[GateTargetUpdate],
     time: f64,
     expected: bool,
-) -> Result<CpuActuatorUpdate, StructureError> {
+) -> Result<TensorActuatorUpdate<R>, StructureError> {
     if !expected {
         if !updates.is_empty() {
             return Err(StructureError::input(
@@ -18,7 +20,7 @@ pub(crate) fn admit_update(
                 "non-target actuator interval requires an empty update slice",
             ));
         }
-        return Ok(CpuActuatorUpdate::zero(ctx));
+        return Ok(TensorActuatorUpdate::zero(ctx));
     }
     if updates.len() != ctx.definitions.len() {
         return Err(StructureError::input(
@@ -77,7 +79,7 @@ pub(crate) fn admit_update(
             .at(slot));
         }
     }
-    Ok(CpuActuatorUpdate {
+    Ok(TensorActuatorUpdate {
         valid: ctx.one.clone(),
         target: ctx.tensor(
             &updates

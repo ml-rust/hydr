@@ -1,19 +1,34 @@
 use super::admission::{check_inputs, reject_mask};
 use super::discharge;
 use super::types::{TensorBoundaryRequest, TensorBoundaryTrace};
-use crate::numerics::tensor_types::{CpuTensor, TensorFaceState, check_finite, constant};
+use crate::numerics::tensor_types::{TensorFaceState, check_finite, constant};
 use crate::numerics::tensor_wave::{bounds, curve, shock_speed};
 use crate::solver::{BoundaryFace, EngineError, SolverConfig};
-use numr::prelude::{BinaryOps, CompareOps, ConditionalOps, CpuClient, ScalarOps, UnaryOps};
+use numr::dtype::DType;
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
+use numr::runtime::{Runtime, RuntimeClient};
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
-pub(crate) fn characteristic_trace(
-    client: &CpuClient,
-    interior: &TensorFaceState,
-    request: &TensorBoundaryRequest,
+pub(crate) fn characteristic_trace<R, C>(
+    client: &C,
+    interior: &TensorFaceState<R>,
+    request: &TensorBoundaryRequest<R>,
     faces: &[BoundaryFace],
     gravity: f64,
     config: &SolverConfig,
-) -> Result<TensorBoundaryTrace, EngineError> {
+) -> Result<TensorBoundaryTrace<R>, EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     if !gravity.is_finite() || gravity <= 0.0 {
         return Err(EngineError::rejected(
             "boundary trace gravity",
@@ -159,15 +174,19 @@ pub(crate) fn characteristic_trace(
     })
 }
 
-fn subcritical(
-    client: &CpuClient,
-    h: &CpuTensor,
-    velocity: &CpuTensor,
+fn subcritical<R, C>(
+    client: &C,
+    h: &Tensor<R>,
+    velocity: &Tensor<R>,
     faces: &[BoundaryFace],
     gravity: f64,
     relative: f64,
     message: &str,
-) -> Result<CpuTensor, EngineError> {
+) -> Result<Tensor<R>, EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R> + BinaryOps<R> + CompareOps<R> + ReduceOps<R> + ScalarOps<R> + UnaryOps<R>,
+{
     let celerity = client.mul_scalar(&client.sqrt(h)?, gravity.sqrt())?;
     check_finite(client, &celerity, "boundary celerity")?;
     let margin = client.mul_scalar(

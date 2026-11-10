@@ -1,28 +1,42 @@
 //! TwoSum stage difference and certified ordered affinity divisions without speed squares.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::ops::ScalarOps;
+use numr::ops::TwoSumOps;
+use numr::ops::UnaryOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::{
-    CpuTensor,
-    structures::{CpuStructureContext, pump::CpuPumpInput},
-};
 use crate::structures::StructureError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps, TwoSumOps, UnaryOps};
+use crate::tensor::structures::{TensorStructureContext, pump::TensorPumpInput};
+use numr::tensor::Tensor;
 
-pub(super) struct Normalized {
-    pub high: CpuTensor,
-    pub low: CpuTensor,
-    pub query: CpuTensor,
-    pub bound: CpuTensor,
-    pub lower: CpuTensor,
-    pub upper: CpuTensor,
-    pub division_exact: CpuTensor,
+pub(super) struct Normalized<R: Runtime<DType = DType>> {
+    pub high: Tensor<R>,
+    pub low: Tensor<R>,
+    pub query: Tensor<R>,
+    pub bound: Tensor<R>,
+    pub lower: Tensor<R>,
+    pub upper: Tensor<R>,
+    pub division_exact: Tensor<R>,
 }
 
-pub(super) fn evaluate(
-    context: &CpuStructureContext,
-    donor: &CpuTensor,
-    receiver: &CpuTensor,
-    operation: &CpuPumpInput,
-) -> Result<Normalized, StructureError> {
+pub(super) fn evaluate<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    donor: &Tensor<R>,
+    receiver: &Tensor<R>,
+    operation: &TensorPumpInput<R>,
+) -> Result<Normalized<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     let (high, low) = c.two_sum(receiver, &c.neg(donor)?)?;
     context.finite(&high, "original pump head difference overflows")?;

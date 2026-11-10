@@ -1,22 +1,32 @@
 //! Hydraulic opening support and explicit absolute-or-relative receipt admission.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::{
-    CpuTensor,
-    structures::{
-        CpuStructureContext,
-        gate::trajectory::{CpuTrajectoryContext, CpuTrajectoryInput},
-    },
-};
 use crate::structures::StructureError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
+use crate::tensor::structures::{
+    TensorStructureContext,
+    gate::trajectory::{TensorTrajectoryContext, TensorTrajectoryInput},
+};
+use numr::tensor::Tensor;
 
-pub(super) fn check(
-    context: &CpuStructureContext,
-    trajectory: &CpuTrajectoryContext,
-    input: &CpuTrajectoryInput,
-    opening: &CpuTensor,
-    error: &CpuTensor,
-) -> Result<(), StructureError> {
+pub(super) fn check<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    trajectory: &TensorTrajectoryContext<R>,
+    input: &TensorTrajectoryInput<R>,
+    opening: &Tensor<R>,
+    error: &Tensor<R>,
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &context.client;
     if context.gate.is_none() {
         return Err(StructureError::numerical(

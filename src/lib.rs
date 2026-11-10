@@ -1,6 +1,7 @@
 //! Foundations for hydraulic simulation in Rust.
 //!
-//! The CPU reference advances full 2D shallow-water flow through atomic accepted steps.
+//! Configured Numr runtimes advance full 2D shallow-water flow through atomic accepted steps.
+//! CPU F64 is the checked reference profile. Other runtimes must satisfy each algorithm's arithmetic requirements.
 //! Read [`solver::capabilities`] before selecting application boundaries and physical regimes.
 //!
 //! ```
@@ -11,7 +12,6 @@
 //! # Ok::<(), hydr::error::GridError>(())
 //! ```
 
-mod cpu;
 pub mod error;
 pub mod grid;
 pub mod model;
@@ -21,3 +21,4 @@ pub mod soil;
 pub mod solver;
 pub mod storage;
 pub mod structures;
+mod tensor;

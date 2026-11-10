@@ -1,5 +1,9 @@
 //! Ideal finite-rate response, causal targets, and complete transactional restoration.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "gate_actuators/admission.rs"]
 mod admission;
 #[path = "gate_actuators/fixture.rs"]

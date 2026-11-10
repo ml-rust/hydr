@@ -1,5 +1,9 @@
 //! Checks bit-sensitive immutable identities before checkpoint restoration.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "support/impervious.rs"]
 mod impervious;
 
@@ -8,7 +12,10 @@ use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{BoundaryConditions, ForcingInterval, ForcingSchedule, Solver, SolverConfig};
 use impervious::impervious_solver;
 
-fn create(film: f64, rain: f64) -> Result<Solver, Box<dyn std::error::Error>> {
+fn create(
+    film: f64,
+    rain: f64,
+) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let domain = Domain::new(
         CartesianGrid::new(1, 1, 1.0, 1.0)?,
         vec![0.0],
@@ -56,9 +63,9 @@ fn signed_zero_definition_changes_reject_both_restore_paths()
         let mut destination = create(film, rain)?;
         let before = destination.snapshot();
         assert!(destination.restore(&snapshot).is_err());
-        assert_eq!(destination.snapshot(), before);
-        assert!(destination.restore_data(&snapshot.data()).is_err());
-        assert_eq!(destination.snapshot(), before);
+        assert_eq!(destination.snapshot().data()?, before.data()?);
+        assert!(destination.restore_data(&snapshot.data()?).is_err());
+        assert_eq!(destination.snapshot().data()?, before.data()?);
     }
     Ok(())
 }

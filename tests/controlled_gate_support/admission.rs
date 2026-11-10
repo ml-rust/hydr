@@ -15,7 +15,7 @@ fn binding_requires_original_model_calendars_and_initial_target_agreement() -> R
             4 => changed.times.clear(),
             _ => return Err("Unknown binding variant".into()),
         }
-        let error = rejected(ControlledGateBatch::new(
+        let error = rejected(ControlledGateBatch::<crate::runtime::Runtime>::new(
             config.controls(&context)?,
             changed.actuators(&context)?,
         ))?;
@@ -27,8 +27,9 @@ fn binding_requires_original_model_calendars_and_initial_target_agreement() -> R
     }
     let mut elements = context.elements().to_vec();
     elements[0].endpoint_a.push_str(" different");
-    let foreign = StructureBatch::new(elements)?;
-    let error = rejected(ControlledGateBatch::new(
+    let foreign =
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?;
+    let error = rejected(ControlledGateBatch::<crate::runtime::Runtime>::new(
         config.controls(&context)?,
         config.actuators(&foreign)?,
     ))?;
@@ -50,7 +51,10 @@ fn binding_consumes_only_fresh_complete_gate_pairs() -> Result {
         (advanced_control, advanced_actor),
     ] {
         assert_eq!(
-            rejected(ControlledGateBatch::new(control, actor))?.input_kind(),
+            rejected(ControlledGateBatch::<crate::runtime::Runtime>::new(
+                control, actor
+            ))?
+            .input_kind(),
             Some(StructureInputErrorKind::Definition)
         );
     }
@@ -58,7 +62,7 @@ fn binding_consumes_only_fresh_complete_gate_pairs() -> Result {
     wide.width = 2;
     let context = wide.context()?;
     assert_eq!(
-        rejected(ControlledGateBatch::new(
+        rejected(ControlledGateBatch::<crate::runtime::Runtime>::new(
             wide.controls(&context)?,
             config.actuators(&context)?,
         ))?
@@ -101,7 +105,10 @@ fn pump_controllers_cannot_supply_gate_actuator_targets() -> Result {
             },
         )?),
     };
-    let context = StructureBatch::new(vec![gate(0)?, pump])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![gate(0)?, pump],
+    )?;
     let original = config.controls(&context)?;
     let mut definitions = original.definitions().to_vec();
     definitions[0].structure_id = "pump".into();
@@ -114,7 +121,7 @@ fn pump_controllers_cannot_supply_gate_actuator_targets() -> Result {
         original.timing().clone(),
     )?;
     assert_eq!(
-        rejected(ControlledGateBatch::new(
+        rejected(ControlledGateBatch::<crate::runtime::Runtime>::new(
             controls,
             config.actuators(&context)?
         ))?

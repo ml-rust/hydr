@@ -1,7 +1,9 @@
 use super::fixture::*;
 use hydr::structures::*;
 
-fn prescribed(context: &StructureBatch) -> Result<GateTrajectoryBatch> {
+fn prescribed(
+    context: &StructureBatch<crate::runtime::Runtime>,
+) -> Result<GateTrajectoryBatch<crate::runtime::Runtime>> {
     Ok(
         context.with_gate_trajectory_subset(vec![GateTrajectoryAssignment {
             structure_id: "prescribed".into(),
@@ -32,13 +34,16 @@ fn prescribed(context: &StructureBatch) -> Result<GateTrajectoryBatch> {
 
 #[test]
 fn mixed_sources_keep_manual_prescribed_actual_gate_and_controlled_pump_ownership() -> Result {
-    let context = StructureBatch::new(vec![
-        pump("manual")?,
-        gate("prescribed")?,
-        gate("actual")?,
-        pump("a")?,
-        pump("b")?,
-    ])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![
+            pump("manual")?,
+            gate("prescribed")?,
+            gate("actual")?,
+            pump("a")?,
+            pump("b")?,
+        ],
+    )?;
     let config = Config::switching();
     let a = config.build(&context, &["a"])?;
     let b = config.build(&context, &["b"])?;
@@ -158,7 +163,10 @@ fn mixed_sources_keep_manual_prescribed_actual_gate_and_controlled_pump_ownershi
 
 #[test]
 fn controlled_pump_registration_rejects_duplicate_or_missing_actual_element_writers() -> Result {
-    let context = StructureBatch::new(vec![pump("pump")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![pump("pump")?],
+    )?;
     let batch = Config::switching().build(&context, &["pump"])?;
     kind(
         context.with_operating_sources(vec![
@@ -188,7 +196,8 @@ fn many_reversed_pump_groups_preserve_original_slots_operations_and_response_pro
     let sources = (0..names.len())
         .map(|index| format!("source-{index}"))
         .collect::<Vec<_>>();
-    let context = StructureBatch::new(
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         names
             .iter()
             .map(|id| pump(id))

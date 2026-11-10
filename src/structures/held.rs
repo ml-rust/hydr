@@ -1,25 +1,34 @@
 //! Exact original held-head intervals and immutable signed-volume proposals.
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::{
     HeldHeadInterval, HeldHeadVolumeOutput, StructureError, StructureInputErrorKind,
     StructureProposal,
 };
-use crate::cpu::CpuTensor;
+use numr::tensor::Tensor;
 
 /// Opaque signed Q*dt proposals with original support and exact held interval.
 #[derive(Clone, Debug)]
-pub struct HeldHeadProposal {
-    proposal: StructureProposal,
+pub struct HeldHeadProposal<R: Runtime<DType = DType>> {
+    proposal: StructureProposal<R>,
     interval: HeldHeadInterval,
-    volumes: CpuTensor,
+    volumes: Tensor<R>,
 }
-impl StructureProposal {
+impl<R: Runtime<DType = DType>> StructureProposal<R> {
     /// Multiply original signed discharge by one exact held duration, without storage advancement.
     /// A trajectory proposal retains its sampled opening and never integrates prescribed motion.
     pub fn held_volumes(
         &self,
         interval: HeldHeadInterval,
-    ) -> Result<HeldHeadProposal, StructureError> {
+    ) -> Result<HeldHeadProposal<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         let dt = interval.end - interval.start;
         if !interval.start.is_finite()
             || interval.start < 0.0
@@ -46,7 +55,7 @@ impl StructureProposal {
         })
     }
 }
-impl HeldHeadProposal {
+impl<R: Runtime<DType = DType>> HeldHeadProposal<R> {
     /// Exact original elapsed interval, without implicit rescaling or trajectory integration.
     pub fn interval(&self) -> HeldHeadInterval {
         self.interval

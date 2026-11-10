@@ -41,7 +41,7 @@ Opening accuracy uses `maximum_absolute_opening_error_m` OR `maximum_relative_op
 
 ## Strict fused execution
 
-The runtime retains state on an explicitly configured one-thread numr CPU F64 client. Construction requires the basic arithmetic contract and `FusedMulAddContract::Ieee754Fused` under nearest-even rounding with gradual underflow. Callers preserve that execution envelope throughout continuation and import. No host or unfused fallback substitutes for the provider contract.
+The actuator retains F64 `Tensor<R>` state on its bound `StructureBatch<R>` client. The checked CPU reference configures one thread. Runtime availability alone establishes no fused arithmetic capability. Construction requires the basic arithmetic contract and `FusedMulAddContract::Ieee754Fused` under nearest-even rounding with gradual underflow. Callers preserve that execution envelope throughout continuation and import. No host or unfused fallback substitutes for the provider contract.
 
 Numr TwoSum retains the exact original elapsed difference as a high component `h` and signed low component `l`. For signed directional rate `k` and anchor operand `x`, the forward path uses:
 
@@ -94,7 +94,7 @@ Every original target event requires one complete ordered `GateTargetUpdate` per
 
 ## Trials, projections, and restoration
 
-Trials borrow accepted state immutably. Dropping or rejecting a trial preserves positions, anchors, targets, counters, certificates, and time. `into_next()` accepts the complete candidate by ownership. This acceptance establishes no hydraulic state or shared-transfer acceptance. `outputs()`, `states()`, `last_step()`, and trial diagnostics explicitly project positions, support, phases, and retained numerical evidence. Successful ordinary advancement retains derived position/state tensors without array readback.
+Trials borrow accepted state immutably. Dropping or rejecting a trial preserves positions, anchors, targets, counters, certificates, and time. `into_next()` accepts the complete candidate by ownership. This acceptance establishes no hydraulic state or shared-transfer acceptance. `outputs()`, `states()`, `last_step()`, and trial diagnostics fallibly project positions, support, phases, and retained numerical evidence. Successful ordinary advancement retains derived position/state tensors without array readback.
 
 Trusted snapshots clone complete persistent state and check the full bound context before restoration. Caller-owned packages retain definitions, original inputs, calendar, policies, accepted state, counters, and bounded final receipts. Preserve every original F64 bit during encoding, including signed zeros and raw repeated-target packets.
 

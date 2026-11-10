@@ -1,34 +1,54 @@
 //! Immutable persistent batch lifecycle and accepted-output projections.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::parameters::METRES_PER_FOOT;
 use super::{
     ModifiedGreenAmptParameters, NativeSoilInput, NativeSoilState, SoilError, SoilInput, SoilOutput,
 };
-use crate::cpu::CpuTensor;
-use crate::cpu::soil_storage::{CpuSoilContext, CpuSoilState};
-use numr::ops::{BinaryOps, CompareOps, ScalarOps};
+use crate::tensor::soil_storage::{TensorSoilContext, TensorSoilState};
 use std::sync::Arc;
 
 /// Persistent native soil memory with an explicitly configured one-thread numr CPU client.
 #[derive(Debug, Clone)]
-pub struct ModifiedGreenAmptBatch {
-    pub(super) context: Arc<CpuSoilContext>,
-    pub(super) state: CpuSoilState,
+pub struct ModifiedGreenAmptBatch<R: Runtime<DType = DType>> {
+    pub(super) context: Arc<TensorSoilContext<R>>,
+    pub(super) state: TensorSoilState<R>,
 }
 
 /// Complete candidate state. Discarding it leaves the borrowed accepted batch unchanged.
 #[derive(Debug)]
-pub struct ModifiedGreenAmptTrial {
-    pub(super) next: ModifiedGreenAmptBatch,
-    pub(super) native_rate: CpuTensor,
-    pub(super) native_depth: CpuTensor,
-    pub(super) si_rate: CpuTensor,
-    pub(super) si_depth: CpuTensor,
+pub struct ModifiedGreenAmptTrial<R: Runtime<DType = DType>> {
+    pub(super) next: ModifiedGreenAmptBatch<R>,
+    pub(super) native_rate: Tensor<R>,
+    pub(super) native_depth: Tensor<R>,
+    pub(super) si_rate: Tensor<R>,
+    pub(super) si_depth: Tensor<R>,
 }
 
-impl ModifiedGreenAmptBatch {
+impl<R> ModifiedGreenAmptBatch<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedNewtonAlgorithms<R>,
+{
     /// Explicitly select the original EPA initialized antecedent state.
-    pub fn initialized(parameters: &[ModifiedGreenAmptParameters]) -> Result<Self, SoilError> {
+    pub fn initialized(
+        client: R::Client,
+        parameters: &[ModifiedGreenAmptParameters],
+    ) -> Result<Self, SoilError> {
         let states: Vec<_> = parameters
             .iter()
             .map(|p| NativeSoilState {
@@ -39,16 +59,17 @@ impl ModifiedGreenAmptBatch {
                 t_s: 0.0,
             })
             .collect();
-        Self::from_native_states(parameters, &states)
+        Self::from_native_states(client, parameters, &states)
     }
 
     /// Import complete checked native memory without inferred history or clamping.
     pub fn from_native_states(
+        client: R::Client,
         parameters: &[ModifiedGreenAmptParameters],
         states: &[NativeSoilState],
     ) -> Result<Self, SoilError> {
-        let context = Arc::new(CpuSoilContext::new(parameters)?);
-        let state = CpuSoilState::from_native(&context, states)?;
+        let context = Arc::new(TensorSoilContext::<R>::new(client, parameters)?);
+        let state = TensorSoilState::<R>::from_native(&context, states)?;
         Ok(Self { context, state })
     }
 
@@ -67,7 +88,7 @@ impl ModifiedGreenAmptBatch {
         &self,
         dt_s: f64,
         inputs: &[SoilInput],
-    ) -> Result<ModifiedGreenAmptTrial, SoilError> {
+    ) -> Result<ModifiedGreenAmptTrial<R>, SoilError> {
         self.check_inputs(dt_s, inputs.len())?;
         for (index, input) in inputs.iter().enumerate() {
             check_input(index, input.incoming_rate_m_per_s, input.ponded_depth_m)?;
@@ -94,7 +115,7 @@ impl ModifiedGreenAmptBatch {
         &self,
         dt_s: f64,
         inputs: &[NativeSoilInput],
-    ) -> Result<ModifiedGreenAmptTrial, SoilError> {
+    ) -> Result<ModifiedGreenAmptTrial<R>, SoilError> {
         self.check_inputs(dt_s, inputs.len())?;
         for (index, input) in inputs.iter().enumerate() {
             check_input(index, input.incoming_rate_ft_per_s, input.ponded_depth_ft)?;
@@ -125,21 +146,21 @@ impl ModifiedGreenAmptBatch {
     fn compute(
         &self,
         dt: f64,
-        rain: CpuTensor,
-        depth: CpuTensor,
-    ) -> Result<ModifiedGreenAmptTrial, SoilError> {
+        rain: Tensor<R>,
+        depth: Tensor<R>,
+    ) -> Result<ModifiedGreenAmptTrial<R>, SoilError> {
         self.compute_traced(dt, rain, depth).map(|(trial, _)| trial)
     }
 
     pub(super) fn compute_traced(
         &self,
         dt: f64,
-        rain: CpuTensor,
-        depth: CpuTensor,
+        rain: Tensor<R>,
+        depth: Tensor<R>,
     ) -> Result<
         (
-            ModifiedGreenAmptTrial,
-            crate::numerics::soil::transition::NativeTrace,
+            ModifiedGreenAmptTrial<R>,
+            crate::numerics::soil::transition::NativeTrace<R>,
         ),
         SoilError,
     > {
@@ -182,7 +203,18 @@ impl ModifiedGreenAmptBatch {
     }
 }
 
-impl ModifiedGreenAmptTrial {
+impl<R> ModifiedGreenAmptTrial<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedNewtonAlgorithms<R>,
+{
     /// Project raw empirical interval rates and depths in both unit systems.
     pub fn outputs(&self) -> Result<Vec<SoilOutput>, SoilError> {
         let native_rate = self.native_rate.try_to_vec::<f64>()?;
@@ -212,7 +244,7 @@ impl ModifiedGreenAmptTrial {
     }
 
     /// Accept the complete candidate state. This never modifies the original batch.
-    pub fn into_next(self) -> ModifiedGreenAmptBatch {
+    pub fn into_next(self) -> ModifiedGreenAmptBatch<R> {
         self.next
     }
 }

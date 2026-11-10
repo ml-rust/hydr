@@ -1,8 +1,9 @@
 //! Explicit gate geometry projection without host-side hydraulic advancement.
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::GateHydraulicOperands;
-use crate::cpu::structures::gate::CpuGateResult;
 use crate::structures::{StructureError, StructureOperatingPoint, projection::read};
+use crate::tensor::structures::gate::TensorGateResult;
 
 pub(crate) struct GateOperandProjection {
     opening: Vec<f64>,
@@ -27,7 +28,10 @@ pub(crate) struct GateOperandProjection {
     logarithm: Vec<f64>,
 }
 impl GateOperandProjection {
-    pub(crate) fn new(result: &CpuGateResult, n: usize) -> Result<Self, StructureError> {
+    pub(crate) fn new<R: Runtime<DType = DType>>(
+        result: &TensorGateResult<R>,
+        n: usize,
+    ) -> Result<Self, StructureError> {
         let g = &result.geometry;
         Ok(Self {
             opening: read(&g.opening, n)?,

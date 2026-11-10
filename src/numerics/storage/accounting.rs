@@ -1,18 +1,36 @@
 //! Independent per-element physical drift gates, separate from witnesses.
 
-use crate::cpu::{
-    CpuTensor,
-    level_pool::{CpuPoolContext, CpuPoolState},
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
 };
-use crate::storage::LevelPoolError;
-use numr::ops::{BinaryOps, CompareOps, ScalarOps, UnaryOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(crate) fn check_residual(
-    context: &CpuPoolContext,
-    residual: &CpuTensor,
-    scale: &CpuTensor,
+use crate::storage::LevelPoolError;
+use crate::tensor::level_pool::{TensorPoolContext, TensorPoolState};
+
+pub(crate) fn check_residual<R>(
+    context: &TensorPoolContext<R>,
+    residual: &Tensor<R>,
+    scale: &Tensor<R>,
     quantity: &str,
-) -> Result<(), LevelPoolError> {
+) -> Result<(), LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>,
+{
     context.finite(residual, quantity)?;
     context.nonnegative(scale, "physical residual scale")?;
     let c = &context.client;
@@ -23,10 +41,24 @@ pub(crate) fn check_residual(
     context.finite(&tolerance, "dimensional physical tolerance")?;
     context.reject(&c.gt(&c.abs(residual)?, &tolerance)?, quantity)
 }
-pub(crate) fn residual(
-    context: &CpuPoolContext,
-    state: &CpuPoolState,
-) -> Result<CpuTensor, LevelPoolError> {
+pub(crate) fn residual<R>(
+    context: &TensorPoolContext<R>,
+    state: &TensorPoolState<R>,
+) -> Result<Tensor<R>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>,
+{
     let c = &context.client;
     let residual = c.add(
         &c.sub(
@@ -43,11 +75,25 @@ pub(crate) fn residual(
     }
     Ok(residual)
 }
-pub(crate) fn check_state(
-    context: &CpuPoolContext,
-    state: &CpuPoolState,
+pub(crate) fn check_state<R>(
+    context: &TensorPoolContext<R>,
+    state: &TensorPoolState<R>,
     steps: usize,
-) -> Result<(), LevelPoolError> {
+) -> Result<(), LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>,
+{
     context.range(&state.volume_m3, "current pool volume")?;
     context.range(&state.initial_volume_m3, "initial pool volume")?;
     super::bounds::check_counter(context, &state.cumulative_incoming_volume_m3, steps)?;

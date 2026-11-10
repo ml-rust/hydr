@@ -1,5 +1,9 @@
 //! Checks lossless checkpoint packages and atomic rejection of inconsistent imports.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "support/impervious.rs"]
 mod impervious;
 
@@ -13,7 +17,7 @@ use impervious::impervious_solver;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-fn create(depth: f64) -> Result<Solver, Box<dyn std::error::Error>> {
+fn create(depth: f64) -> Result<Solver<crate::runtime::Runtime>, Box<dyn std::error::Error>> {
     let domain = Domain::new(
         CartesianGrid::new(2, 1, 1.0, 2.0)?,
         vec![0.0; 2],
@@ -70,24 +74,24 @@ fn package_restart_matches_trusted_continuation_exactly() -> TestResult {
     let mut original = create(1.0)?;
     original.advance_to(0.5, 100)?;
     let snapshot = original.snapshot();
-    let package = snapshot.data();
+    let package = snapshot.data()?;
     assert_eq!(package.schema, SNAPSHOT_SCHEMA);
     let mut trusted = create(0.0)?;
     let mut imported = create(0.0)?;
     trusted.restore(&snapshot)?;
     imported.restore_data(&package)?;
-    assert_eq!(imported.snapshot(), snapshot);
-    assert_eq!(imported.snapshot().data(), package);
+    assert_eq!(imported.snapshot().data()?, snapshot.data()?);
+    assert_eq!(imported.snapshot().data()?, package);
     original.advance_to(1.0, 100)?;
     trusted.advance_to(1.0, 100)?;
     imported.advance_to(1.0, 100)?;
-    assert_eq!(original.snapshot(), trusted.snapshot());
-    assert_eq!(original.snapshot(), imported.snapshot());
+    assert_eq!(original.snapshot().data()?, trusted.snapshot().data()?);
+    assert_eq!(original.snapshot().data()?, imported.snapshot().data()?);
     for (left, right) in original
-        .state()
+        .state()?
         .cells()
         .iter()
-        .zip(imported.state().cells())
+        .zip(imported.state()?.cells())
     {
         assert_eq!(left.h.to_bits(), right.h.to_bits());
         assert_eq!(left.qx.to_bits(), right.qx.to_bits());
@@ -103,15 +107,15 @@ fn package_restart_matches_trusted_continuation_exactly() -> TestResult {
         imported.ledger().residual.to_bits()
     );
     let mut endpoint = create(0.0)?;
-    endpoint.restore_data(&imported.snapshot().data())?;
-    assert_eq!(endpoint.snapshot(), imported.snapshot());
+    endpoint.restore_data(&imported.snapshot().data()?)?;
+    assert_eq!(endpoint.snapshot().data()?, imported.snapshot().data()?);
     Ok(())
 }
 
 #[test]
 fn package_preserves_signed_zero_bits() -> TestResult {
     let original = create(0.0)?;
-    let mut data = original.snapshot().data();
+    let mut data = original.snapshot().data()?;
     data.accepted.flow = FlowState::new(
         &data.setup.domain,
         vec![
@@ -125,11 +129,11 @@ fn package_preserves_signed_zero_bits() -> TestResult {
     )?;
     let mut imported = create(1.0)?;
     imported.restore_data(&data)?;
-    for cell in imported.state().cells() {
+    for cell in imported.state()?.cells() {
         assert_eq!(cell.h.to_bits(), (-0.0_f64).to_bits());
         assert_eq!(cell.qx.to_bits(), (-0.0_f64).to_bits());
     }
-    let roundtrip = imported.snapshot().data();
+    let roundtrip = imported.snapshot().data()?;
     for cell in roundtrip.accepted.flow.cells() {
         assert_eq!(cell.h.to_bits(), (-0.0_f64).to_bits());
         assert_eq!(cell.qx.to_bits(), (-0.0_f64).to_bits());
@@ -141,15 +145,15 @@ fn package_preserves_signed_zero_bits() -> TestResult {
 fn initial_package_preserves_state_and_unbounded_step_limits() -> TestResult {
     let original = create(0.0)?;
     let mut imported = create(1.0)?;
-    imported.restore_data(&original.snapshot().data())?;
-    assert_eq!(imported.snapshot(), original.snapshot());
+    imported.restore_data(&original.snapshot().data()?)?;
+    assert_eq!(imported.snapshot().data()?, original.snapshot().data()?);
     imported.advance_to(0.01, 1)?;
-    let package = imported.snapshot().data();
+    let package = imported.snapshot().data()?;
     let step = package.last_step.as_ref().ok_or("missing accepted step")?;
     assert_eq!(step.depletion_limit, f64::INFINITY);
     let mut resumed = create(1.0)?;
     resumed.restore_data(&package)?;
-    assert_eq!(resumed.snapshot().data(), package);
+    assert_eq!(resumed.snapshot().data()?, package);
     Ok(())
 }
 
@@ -157,7 +161,7 @@ fn initial_package_preserves_state_and_unbounded_step_limits() -> TestResult {
 fn corrupt_packages_preserve_destination_snapshot() -> TestResult {
     let mut source = create(1.0)?;
     source.advance_to(0.5, 100)?;
-    let good = source.snapshot().data();
+    let good = source.snapshot().data()?;
     let mut corrupt = Vec::<SnapshotData>::new();
     let mut add = |modify: fn(&mut SnapshotData)| {
         let mut data = good.clone();
@@ -190,7 +194,11 @@ fn corrupt_packages_preserve_destination_snapshot() -> TestResult {
             destination.restore_data(data).is_err(),
             "corruption {index}"
         );
-        assert_eq!(destination.snapshot(), before, "corruption {index}");
+        assert_eq!(
+            destination.snapshot().data()?,
+            before.data()?,
+            "corruption {index}"
+        );
     }
     Ok(())
 }
@@ -199,7 +207,7 @@ fn corrupt_packages_preserve_destination_snapshot() -> TestResult {
 fn corrupt_diagnostics_preserve_destination_snapshot() -> TestResult {
     let mut source = create(1.0)?;
     source.advance_to(0.5, 100)?;
-    let good = source.snapshot().data();
+    let good = source.snapshot().data()?;
     let mut destination = create(0.2)?;
     let before = destination.snapshot();
     let changes: &[fn(&mut hydr::solver::StepDiagnostics)] = &[
@@ -228,7 +236,11 @@ fn corrupt_diagnostics_preserve_destination_snapshot() -> TestResult {
             destination.restore_data(&data).is_err(),
             "corruption {index}"
         );
-        assert_eq!(destination.snapshot(), before, "corruption {index}");
+        assert_eq!(
+            destination.snapshot().data()?,
+            before.data()?,
+            "corruption {index}"
+        );
     }
     Ok(())
 }

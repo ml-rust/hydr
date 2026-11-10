@@ -1,21 +1,34 @@
 //! Outward travel durations from exact represented distance bounds.
 
 use super::arithmetic::{down, finite, not, sum, up};
-use crate::cpu::{CpuTensor, structures::actuator::CpuActuatorContext};
 use crate::structures::StructureError;
+use crate::tensor::structures::actuator::TensorActuatorContext;
+use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, UnaryOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
 
-pub(super) struct DurationBound {
-    pub value: CpuTensor,
-    pub overflow: CpuTensor,
+pub(super) struct DurationBound<R: Runtime<DType = DType>> {
+    pub value: Tensor<R>,
+    pub overflow: Tensor<R>,
 }
 
-pub(super) fn distance(
-    ctx: &CpuActuatorContext,
-    greater: &CpuTensor,
-    lesser: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<(CpuTensor, CpuTensor), StructureError> {
+pub(super) fn distance<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    greater: &Tensor<R>,
+    lesser: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<(Tensor<R>, Tensor<R>), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let (high, low) = sum(ctx, greater, &c.neg(lesser)?, active)?;
     let lower = c.where_cond(
@@ -32,14 +45,22 @@ pub(super) fn distance(
     Ok((lower, upper))
 }
 
-pub(super) fn duration(
-    ctx: &CpuActuatorContext,
-    distance: &CpuTensor,
-    rate: &CpuTensor,
-    power: &CpuTensor,
-    active: &CpuTensor,
+pub(super) fn duration<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    distance: &Tensor<R>,
+    rate: &Tensor<R>,
+    power: &Tensor<R>,
+    active: &Tensor<R>,
     upper: bool,
-) -> Result<DurationBound, StructureError> {
+) -> Result<DurationBound<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let positive = c.mul(active, &c.gt(distance, &ctx.zero)?)?;
     let distance = c.where_cond(&positive, distance, &ctx.zero)?;
@@ -67,14 +88,21 @@ pub(super) fn duration(
     })
 }
 
-fn exact_quotient(
-    ctx: &CpuActuatorContext,
-    distance: &CpuTensor,
-    rate: &CpuTensor,
-    power: &CpuTensor,
-    quotient: &CpuTensor,
-    active: &CpuTensor,
-) -> Result<CpuTensor, StructureError> {
+fn exact_quotient<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    distance: &Tensor<R>,
+    rate: &Tensor<R>,
+    power: &Tensor<R>,
+    quotient: &Tensor<R>,
+    active: &Tensor<R>,
+) -> Result<Tensor<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     let c = &ctx.structures.client;
     let candidate = c.mul(&c.mul(active, power)?, &c.gt(quotient, &ctx.zero)?)?;
     let rate_at_most_one = c.le(rate, &ctx.one)?;

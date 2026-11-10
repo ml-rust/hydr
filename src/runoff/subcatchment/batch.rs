@@ -1,44 +1,69 @@
 //! Atomic persistent continuation with lazy complete output projections.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::accounting::{aggregate_step, check_ledger};
 use super::projection::project_step;
 use super::{
     SubcatchmentConfig, SubcatchmentDefinition, SubcatchmentError, SubcatchmentInput,
     SubcatchmentLedger, SubcatchmentOutput, SubcatchmentState, SubcatchmentStepDiagnostics,
 };
-use crate::cpu::subcatchment::{
-    CpuSubcatchmentContext, CpuSubcatchmentInput, CpuSubcatchmentState,
+use crate::numerics::subcatchment::{self, TensorSubcatchmentStep};
+use crate::tensor::subcatchment::{
+    TensorSubcatchmentContext, TensorSubcatchmentInput, TensorSubcatchmentState,
 };
-use crate::numerics::subcatchment::{self, CpuSubcatchmentStep};
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub(super) struct StoredStep {
+pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub start: f64,
     pub end: f64,
-    pub step: CpuSubcatchmentStep,
+    pub step: TensorSubcatchmentStep<R>,
 }
 
-/// Complete immutable three-subarea component state on persistent configured CPU tensors.
+/// Complete immutable three-subarea component state on persistent configured runtime tensors.
 #[derive(Clone, Debug)]
-pub struct SubcatchmentBatch {
-    pub(super) context: Arc<CpuSubcatchmentContext>,
-    pub(super) state: CpuSubcatchmentState,
+pub struct SubcatchmentBatch<R: Runtime<DType = DType>> {
+    pub(super) context: Arc<TensorSubcatchmentContext<R>>,
+    pub(super) state: TensorSubcatchmentState<R>,
     pub(super) time: f64,
     pub(super) ledger: SubcatchmentLedger,
     pub(super) steps: usize,
-    pub(super) last: Option<Arc<StoredStep>>,
+    pub(super) last: Option<Arc<StoredStep<R>>>,
 }
 
 /// Complete candidate storage and both native-soil roles. Discarding it leaves accepted state unchanged.
 #[derive(Debug)]
-pub struct SubcatchmentTrial {
-    next: SubcatchmentBatch,
+pub struct SubcatchmentTrial<R: Runtime<DType = DType>> {
+    next: SubcatchmentBatch<R>,
 }
 
-impl SubcatchmentBatch {
+impl<R> SubcatchmentBatch<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     /// Construct explicit checked geometry, antecedent state, time, and numerical controls.
     pub fn new(
+        client: R::Client,
         definitions: Vec<SubcatchmentDefinition>,
         states: Vec<SubcatchmentState>,
         time: f64,
@@ -49,8 +74,12 @@ impl SubcatchmentBatch {
                 "accepted time must be finite and nonnegative",
             ));
         }
-        let context = Arc::new(CpuSubcatchmentContext::new(definitions, config)?);
-        let state = CpuSubcatchmentState::new(&context, &states)?;
+        let context = Arc::new(TensorSubcatchmentContext::<R>::new(
+            client,
+            definitions,
+            config,
+        )?);
+        let state = TensorSubcatchmentState::<R>::new(&context, &states)?;
         let storage = context.storage_volume(&state.depth)?;
         let lower = subcatchment::initial_storage_scale_lower(&context, &state)?;
         let ledger = SubcatchmentLedger::new(storage, lower);
@@ -100,7 +129,7 @@ impl SubcatchmentBatch {
         &self,
         end_time: f64,
         inputs: &[SubcatchmentInput],
-    ) -> Result<SubcatchmentTrial, SubcatchmentError> {
+    ) -> Result<SubcatchmentTrial<R>, SubcatchmentError> {
         let dt = end_time - self.time;
         if !end_time.is_finite() || !dt.is_finite() || dt <= 0.0 {
             return Err(SubcatchmentError::input(format!(
@@ -108,7 +137,7 @@ impl SubcatchmentBatch {
                 self.time
             )));
         }
-        let input = CpuSubcatchmentInput::new(&self.context, inputs)?;
+        let input = TensorSubcatchmentInput::<R>::new(&self.context, inputs)?;
         let (state, step) = subcatchment::advance(&self.context, &self.state, dt, &input)?;
         subcatchment::check_step(&self.context, &step, dt)?;
         let totals = aggregate_step(&self.context, &step)?;
@@ -135,7 +164,22 @@ impl SubcatchmentBatch {
     }
 }
 
-impl SubcatchmentTrial {
+impl<R> SubcatchmentTrial<R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     /// Explicitly project supported-class interval output without accepting the candidate.
     pub fn outputs(&self) -> Result<Vec<SubcatchmentOutput>, SubcatchmentError> {
         super::output::outputs(self.diagnostics()?.receipts)
@@ -148,7 +192,7 @@ impl SubcatchmentTrial {
         project_step(&self.next.context, stored)
     }
     /// Accept complete storage, both native-soil roles, counters, and receipts by ownership without projection.
-    pub fn into_next(self) -> SubcatchmentBatch {
+    pub fn into_next(self) -> SubcatchmentBatch<R> {
         self.next
     }
 }

@@ -167,7 +167,8 @@ fn balanced_capacity_uses_algebraic_intermediates_but_actual_processes_obey_reso
 #[test]
 fn source_enabling_is_explicit_and_zero_sources_preserve_the_complete_legacy_path() -> Result {
     let pool_curve = changing()?;
-    let plain = LevelPoolBatch::new(
+    let plain = LevelPoolBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         vec![element("pool", pool_curve.clone())],
         vec![LevelPoolState { volume_m3: 5.0 }],
         0.0,
@@ -195,7 +196,8 @@ fn source_enabling_is_explicit_and_zero_sources_preserve_the_complete_legacy_pat
     let mut invalid = policy();
     invalid.dry_basal_footprint_assertion.clear();
     assert!(
-        LevelPoolBatch::new_with_sources(
+        LevelPoolBatch::<crate::runtime::Runtime>::new_with_sources(
+            crate::runtime::client(),
             vec![element("pool", changing()?)],
             vec![LevelPoolState { volume_m3: 0.0 }],
             0.0,

@@ -1,13 +1,36 @@
 //! Complete source counter import and original final source-input reconstruction.
 
-use super::LevelPoolSnapshotData;
-use crate::cpu::level_pool::{CpuPoolContext, CpuPoolSourceInput, CpuPoolSourceState};
-use crate::storage::{LevelPoolError, LevelPoolSourceLedger, LevelPoolStepDiagnostics};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::interpolate::Interp1dAlgorithms;
 
-fn rows<'a>(
-    context: &CpuPoolContext,
+use super::LevelPoolSnapshotData;
+use crate::storage::{LevelPoolError, LevelPoolSourceLedger, LevelPoolStepDiagnostics};
+use crate::tensor::level_pool::{TensorPoolContext, TensorPoolSourceInput, TensorPoolSourceState};
+
+fn rows<'a, R>(
+    context: &TensorPoolContext<R>,
     data: &'a LevelPoolSnapshotData,
-) -> Result<Option<Vec<&'a LevelPoolSourceLedger>>, LevelPoolError> {
+) -> Result<Option<Vec<&'a LevelPoolSourceLedger>>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     if context.source_policies.is_none() {
         if data.element_ledgers.iter().any(|l| l.sources.is_some()) {
             return Err(LevelPoolError::input(
@@ -27,10 +50,25 @@ fn rows<'a>(
         .map(Some)
 }
 
-pub(super) fn state(
-    context: &CpuPoolContext,
+pub(super) fn state<R>(
+    context: &TensorPoolContext<R>,
     data: &LevelPoolSnapshotData,
-) -> Result<Option<CpuPoolSourceState>, LevelPoolError> {
+) -> Result<Option<TensorPoolSourceState<R>>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let Some(rows) = rows(context, data)? else {
         return Ok(None);
     };
@@ -55,7 +93,7 @@ pub(super) fn state(
             }
         }
     }
-    Ok(Some(CpuPoolSourceState {
+    Ok(Some(TensorPoolSourceState {
         rain: context.tensor(
             &rows
                 .iter()
@@ -106,11 +144,26 @@ pub(super) fn state(
         )?,
     }))
 }
-pub(super) fn before(
-    context: &CpuPoolContext,
+pub(super) fn before<R>(
+    context: &TensorPoolContext<R>,
     data: &LevelPoolSnapshotData,
     last: &LevelPoolStepDiagnostics,
-) -> Result<Option<CpuPoolSourceState>, LevelPoolError> {
+) -> Result<Option<TensorPoolSourceState<R>>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let Some(rows) = rows(context, data)? else {
         if last.receipts.iter().any(|r| r.source.is_some()) {
             return Err(LevelPoolError::input(
@@ -218,7 +271,7 @@ pub(super) fn before(
             }
         }
     }
-    Ok(Some(CpuPoolSourceState {
+    Ok(Some(TensorPoolSourceState {
         rain: context.tensor(&rain)?,
         rain_bound: context.tensor(&rain_bound)?,
         evaporation: context.tensor(&evaporation)?,
@@ -229,10 +282,25 @@ pub(super) fn before(
         bottom_loss_demand_bound: context.tensor(&bottom_loss_demand_bound)?,
     }))
 }
-pub(super) fn inputs(
-    context: &CpuPoolContext,
+pub(super) fn inputs<R>(
+    context: &TensorPoolContext<R>,
     last: &LevelPoolStepDiagnostics,
-) -> Result<Option<CpuPoolSourceInput>, LevelPoolError> {
+) -> Result<Option<TensorPoolSourceInput<R>>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     if last.receipts.iter().all(|r| r.source.is_none()) {
         return Ok(None);
     }
@@ -256,5 +324,5 @@ pub(super) fn inputs(
                 .map_or(0.0, |s| s.bottom_loss_rate_m3_per_s),
         })
         .collect::<Vec<_>>();
-    Ok(Some(CpuPoolSourceInput::new(context, &input)?))
+    Ok(Some(TensorPoolSourceInput::<R>::new(context, &input)?))
 }

@@ -1,20 +1,41 @@
 //! Frozen-area rain, capped bottom demand, and capped evaporation before exchanges.
 
-use crate::cpu::{
-    CpuTensor,
-    level_pool::{
-        CpuPoolContext, CpuPoolSourceInput, CpuPoolSourceState, CpuPoolSourceStep, CpuPoolState,
-    },
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
 };
-use crate::storage::LevelPoolError;
-use numr::ops::{BinaryOps, CompareOps, ScalarOps};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::interpolate::Interp1dAlgorithms;
 
-fn product(
-    context: &CpuPoolContext,
-    a: &CpuTensor,
-    b: &CpuTensor,
+use crate::storage::LevelPoolError;
+use crate::tensor::level_pool::{
+    TensorPoolContext, TensorPoolSourceInput, TensorPoolSourceState, TensorPoolSourceStep,
+    TensorPoolState,
+};
+
+fn product<R>(
+    context: &TensorPoolContext<R>,
+    a: &Tensor<R>,
+    b: &Tensor<R>,
     quantity: &str,
-) -> Result<CpuTensor, LevelPoolError> {
+) -> Result<Tensor<R>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let c = &context.client;
     let result = c.mul(a, b)?;
     context.nonnegative(&result, quantity)?;
@@ -25,12 +46,29 @@ fn product(
     Ok(result)
 }
 
-pub(crate) fn prepare(
-    context: &CpuPoolContext,
-    state: &CpuPoolState,
+pub(crate) type PreparedSources<R> = (TensorPoolSourceStep<R>, TensorPoolSourceState<R>);
+
+pub(crate) fn prepare<R>(
+    context: &TensorPoolContext<R>,
+    state: &TensorPoolState<R>,
     dt: f64,
-    input: &CpuPoolSourceInput,
-) -> Result<Option<(CpuPoolSourceStep, CpuPoolSourceState)>, LevelPoolError> {
+    input: &TensorPoolSourceInput<R>,
+) -> Result<Option<PreparedSources<R>>, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let c = &context.client;
     let active = c.maximum(
         &c.gt(&input.rain, &context.zero)?,
@@ -116,7 +154,7 @@ pub(crate) fn prepare(
         &previous.bottom_loss_demand_bound,
         &bottom,
     )?;
-    let next = CpuPoolSourceState {
+    let next = TensorPoolSourceState {
         rain: rain_counter.after_m3.clone(),
         evaporation: evaporation_counter.after_m3.clone(),
         bottom_loss: bottom_loss_counter.after_m3.clone(),
@@ -127,7 +165,7 @@ pub(crate) fn prepare(
         bottom_loss_demand_bound: bottom_loss_demand_counter.bound_after_m3.clone(),
     };
     Ok(Some((
-        CpuPoolSourceStep {
+        TensorPoolSourceStep {
             frozen_area_m2: area,
             segment,
             active,

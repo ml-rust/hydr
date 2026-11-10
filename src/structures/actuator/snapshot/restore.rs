@@ -4,11 +4,13 @@ use super::super::*;
 use super::compatibility::{as_definition, require};
 use super::receipt_bits::ReceiptBits;
 use crate::structures::StructureError;
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 use std::sync::Arc;
 
-impl GateActuatorBatch {
+impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
     /// Restore trusted tensors while retaining the complete destination context.
-    pub fn restore(&mut self, snapshot: &GateActuatorSnapshot) -> Result<(), StructureError> {
+    pub fn restore(&mut self, snapshot: &GateActuatorSnapshot<R>) -> Result<(), StructureError> {
         super::compatibility::trusted(self, &snapshot.batch)?;
         self.state = snapshot.batch.state.clone();
         self.time = snapshot.batch.time;
@@ -18,10 +20,30 @@ impl GateActuatorBatch {
         Ok(())
     }
     /// Check complete caller-owned continuation before atomically replacing accepted values.
-    pub fn restore_data(&mut self, data: &GateActuatorSnapshotData) -> Result<(), StructureError> {
+    pub fn restore_data(&mut self, data: &GateActuatorSnapshotData) -> Result<(), StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         self.restore_checked(data).map_err(as_definition)
     }
-    fn restore_checked(&mut self, data: &GateActuatorSnapshotData) -> Result<(), StructureError> {
+    fn restore_checked(&mut self, data: &GateActuatorSnapshotData) -> Result<(), StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         super::compatibility::check(self, data)?;
         require(
             data.time_s.is_finite()

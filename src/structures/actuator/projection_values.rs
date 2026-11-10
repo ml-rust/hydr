@@ -1,8 +1,10 @@
 //! Explicit scalar receipt projection from complete batched actuator records.
 
 use super::*;
-use crate::cpu::structures::actuator::*;
 use crate::structures::StructureError;
+use crate::tensor::structures::actuator::*;
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
 pub(super) fn value(values: &[f64], lane: usize) -> Result<f64, StructureError> {
     values
@@ -36,7 +38,7 @@ pub(super) fn flag(values: &[f64], lane: usize) -> Result<bool, StructureError> 
     }
 }
 pub(crate) fn position(
-    v: &CpuActuatorPositionValues,
+    v: &TensorActuatorPositionValues,
     i: usize,
 ) -> Result<GateActuatorPosition, StructureError> {
     Ok(GateActuatorPosition {
@@ -47,7 +49,7 @@ pub(crate) fn position(
     })
 }
 pub(super) fn anchor(
-    v: &CpuActuatorAnchorValues,
+    v: &TensorActuatorAnchorValues,
     i: usize,
 ) -> Result<GateActuatorAnchor, StructureError> {
     Ok(GateActuatorAnchor {
@@ -67,7 +69,7 @@ pub(crate) fn phase(value: f64) -> Result<GateActuatorPhase, StructureError> {
     }
 }
 pub(super) fn arrival(
-    v: &CpuActuatorArrivalValues,
+    v: &TensorActuatorArrivalValues,
     a: GateActuatorAnchor,
     target: f64,
     i: usize,
@@ -87,7 +89,7 @@ pub(super) fn arrival(
     }))
 }
 fn fma(
-    v: &CpuActuatorFmaValues,
+    v: &TensorActuatorFmaValues,
     i: usize,
 ) -> Result<Option<GateActuatorFmaStageReceipt>, StructureError> {
     if !flag(&v.valid, i)? {
@@ -112,7 +114,7 @@ fn fma(
     }))
 }
 fn motion(
-    v: &CpuActuatorMotionValues,
+    v: &TensorActuatorMotionValues,
     i: usize,
 ) -> Result<Option<GateActuatorMotionReceipt>, StructureError> {
     if !flag(&v.valid, i)? {
@@ -143,7 +145,7 @@ fn motion(
     }))
 }
 fn endpoint(
-    v: &CpuActuatorEndpointValues,
+    v: &TensorActuatorEndpointValues,
     i: usize,
 ) -> Result<GateActuatorEndpointReceipt, StructureError> {
     Ok(GateActuatorEndpointReceipt {
@@ -154,7 +156,7 @@ fn endpoint(
     })
 }
 pub(super) fn forward(
-    v: &CpuActuatorForwardValues,
+    v: &TensorActuatorForwardValues,
     i: usize,
 ) -> Result<Option<GateActuatorForwardReceipt>, StructureError> {
     if !flag(&v.valid, i)? {
@@ -175,7 +177,7 @@ pub(super) fn forward(
     }))
 }
 pub(super) fn completion(
-    v: &CpuActuatorCompletionValues,
+    v: &TensorActuatorCompletionValues,
     i: usize,
 ) -> Result<Option<GateActuatorCompletionReceipt>, StructureError> {
     if !flag(&v.valid, i)? {
@@ -199,9 +201,9 @@ pub(super) fn completion(
         forward: forward(&v.forward, i)?,
     }))
 }
-pub(super) fn update(
-    c: &CpuActuatorContext,
-    v: &CpuActuatorUpdateValues,
+pub(super) fn update<R: Runtime<DType = DType>>(
+    c: &TensorActuatorContext<R>,
+    v: &TensorActuatorUpdateValues,
     i: usize,
 ) -> Result<Option<GateTargetUpdate>, StructureError> {
     if !flag(&v.valid, i)? {
@@ -219,9 +221,9 @@ pub(super) fn update(
         available_at_s: value(&v.available, i)?,
     }))
 }
-fn change(
-    c: &CpuActuatorContext,
-    v: &CpuActuatorChangeValues,
+fn change<R: Runtime<DType = DType>>(
+    c: &TensorActuatorContext<R>,
+    v: &TensorActuatorChangeValues,
     i: usize,
 ) -> Result<Option<GateActuatorTargetChangeReceipt>, StructureError> {
     if !flag(&v.valid, i)? {
@@ -247,9 +249,9 @@ fn change(
         },
     }))
 }
-pub(super) fn state(
-    c: &CpuActuatorContext,
-    v: &CpuActuatorStateValues,
+pub(super) fn state<R: Runtime<DType = DType>>(
+    c: &TensorActuatorContext<R>,
+    v: &TensorActuatorStateValues,
     i: usize,
 ) -> Result<GateActuatorState, StructureError> {
     let a = anchor(&v.anchor, i)?;

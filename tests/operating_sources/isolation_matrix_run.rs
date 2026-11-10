@@ -10,7 +10,8 @@ pub(super) fn run(recipe: Recipe, mutation: Mutation) -> Result {
     if matches!(recipe, Recipe::Padding) {
         elements.push(device("device-1", false)?);
     }
-    let context = StructureBatch::new(elements)?;
+    let context =
+        StructureBatch::<crate::runtime::Runtime>::new(crate::runtime::client(), elements)?;
     let prescribed = prescribed(&context, recipe)?;
     let actual = actual(&context, recipe)?;
     let mut manual = Vec::new();
@@ -108,7 +109,7 @@ pub(super) fn run(recipe: Recipe, mutation: Mutation) -> Result {
         } else {
             0.0
         },
-        GateActuatorBatch::time,
+        GateActuatorBatch::<crate::runtime::Runtime>::time,
     );
     let result = registry.propose_at(time, &packets, &manual, &frames);
     if let Some(expected) = expected {

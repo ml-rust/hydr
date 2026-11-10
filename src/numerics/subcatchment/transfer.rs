@@ -1,30 +1,49 @@
 //! One authoritative routed volume and complementary outlet partition.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+
 use super::bounds;
-use crate::cpu::CpuTensor;
-use crate::cpu::reservoir_storage::CpuReservoirContext;
 use crate::runoff::ReservoirError;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, TwoSumOps, UnaryOps};
+use crate::tensor::reservoir_storage::TensorReservoirContext;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Partition {
-    pub routed: CpuTensor,
-    pub outlet: CpuTensor,
-    pub residual: CpuTensor,
-    pub bound: CpuTensor,
+pub(crate) struct Partition<R: Runtime<DType = DType>> {
+    pub routed: Tensor<R>,
+    pub outlet: Tensor<R>,
+    pub residual: Tensor<R>,
+    pub bound: Tensor<R>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Merged {
-    pub volume: CpuTensor,
-    pub bound: CpuTensor,
+pub(crate) struct Merged<R: Runtime<DType = DType>> {
+    pub volume: Tensor<R>,
+    pub bound: Tensor<R>,
 }
 
-pub(crate) fn partition(
-    ctx: &CpuReservoirContext,
-    donor: &CpuTensor,
-    fraction: &CpuTensor,
-) -> Result<Partition, ReservoirError> {
+pub(crate) fn partition<R>(
+    ctx: &TensorReservoirContext<R>,
+    donor: &Tensor<R>,
+    fraction: &Tensor<R>,
+) -> Result<Partition<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     bounds::check_nonnegative(ctx, donor, "donor export volume")?;
     bounds::check_nonnegative(ctx, fraction, "routed fraction")?;
     let c = &ctx.client;
@@ -94,10 +113,23 @@ pub(crate) fn partition(
     })
 }
 
-pub(crate) fn merge(
-    ctx: &CpuReservoirContext,
-    sources: &[&CpuTensor],
-) -> Result<Merged, ReservoirError> {
+pub(crate) fn merge<R>(
+    ctx: &TensorReservoirContext<R>,
+    sources: &[&Tensor<R>],
+) -> Result<Merged<R>, ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let c = &ctx.client;
     let mut volume = ctx.zero.clone();
     let mut bound = ctx.zero.clone();
@@ -122,12 +154,25 @@ pub(crate) fn merge(
     Ok(Merged { volume, bound })
 }
 
-pub(crate) fn equal(
-    ctx: &CpuReservoirContext,
-    actual: &CpuTensor,
-    expected: &CpuTensor,
+pub(crate) fn equal<R>(
+    ctx: &TensorReservoirContext<R>,
+    actual: &Tensor<R>,
+    expected: &Tensor<R>,
     name: &str,
-) -> Result<(), ReservoirError> {
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     crate::numerics::reservoir::drainage::check_metadata(ctx, actual, name)?;
     ctx.finite(actual, name)?;
     ctx.reject_mask(
@@ -139,12 +184,25 @@ pub(crate) fn equal(
     )
 }
 
-pub(crate) fn check_partition(
-    ctx: &CpuReservoirContext,
-    donor: &CpuTensor,
-    fraction: &CpuTensor,
-    receipt: &Partition,
-) -> Result<(), ReservoirError> {
+pub(crate) fn check_partition<R>(
+    ctx: &TensorReservoirContext<R>,
+    donor: &Tensor<R>,
+    fraction: &Tensor<R>,
+    receipt: &Partition<R>,
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let expected = partition(ctx, donor, fraction)?;
     for (name, actual, wanted) in [
         ("routed volume", &receipt.routed, &expected.routed),
@@ -157,11 +215,24 @@ pub(crate) fn check_partition(
     Ok(())
 }
 
-pub(crate) fn check_merge(
-    ctx: &CpuReservoirContext,
-    sources: &[&CpuTensor],
-    receipt: &Merged,
-) -> Result<(), ReservoirError> {
+pub(crate) fn check_merge<R>(
+    ctx: &TensorReservoirContext<R>,
+    sources: &[&Tensor<R>],
+    receipt: &Merged<R>,
+) -> Result<(), ReservoirError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>,
+{
     let expected = merge(ctx, sources)?;
     equal(
         ctx,

@@ -1,8 +1,10 @@
 use super::*;
 use crate::runoff::{ReservoirConfig, ReservoirElement, ReservoirParameters};
+use numr::runtime::cpu::CpuRuntime;
 
-fn context(area: f64) -> Result<CpuReservoirContext, ReservoirError> {
-    CpuReservoirContext::new(
+fn context(area: f64) -> Result<TensorReservoirContext<CpuRuntime>, ReservoirError> {
+    TensorReservoirContext::<CpuRuntime>::new(
+        cpu_client(),
         vec![ReservoirElement {
             id: "receiver".into(),
             parameters: ReservoirParameters::from_si(area, area, 0.0, 0.0, 1.0, 0.0)?,
@@ -100,4 +102,9 @@ fn owned_bridge_import_rejects_altered_uncertainty_and_intermediates() -> Result
         assert!(check_bridge(&ctx, &ctx.zero, &ctx.zero, &received, 3.0, &altered).is_err());
     }
     Ok(())
+}
+
+fn cpu_client() -> numr::runtime::cpu::CpuClient {
+    numr::runtime::cpu::CpuClient::new(numr::runtime::cpu::CpuDevice::new())
+        .with_parallelism(numr::runtime::cpu::ParallelismConfig::new(Some(1), None))
 }

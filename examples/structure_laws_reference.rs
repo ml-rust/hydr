@@ -1,5 +1,9 @@
 //! Public-API observations for frozen high-precision structure-law fixtures.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 use std::io::{self, Write};
 
 use hydr::structures::{
@@ -230,14 +234,17 @@ fn observe(output: &mut impl Write, case: &Case) -> Result<(), Box<dyn std::erro
             },
         )?),
     };
-    let batch = StructureBatch::new(vec![StructureElement {
-        id: case.id.into(),
-        endpoint_a: ENDPOINT_A.into(),
-        endpoint_b: ENDPOINT_B.into(),
-        datum: DATUM.into(),
-        direction: DirectionPolicy::Bidirectional,
-        law,
-    }])?;
+    let batch = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![StructureElement {
+            id: case.id.into(),
+            endpoint_a: ENDPOINT_A.into(),
+            endpoint_b: ENDPOINT_B.into(),
+            datum: DATUM.into(),
+            direction: DirectionPolicy::Bidirectional,
+            law,
+        }],
+    )?;
     let proposal = match batch.propose(&[StructureHeads {
         structure_id: case.id.into(),
         endpoint_a: EndpointHead {

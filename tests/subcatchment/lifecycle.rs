@@ -102,7 +102,8 @@ fn mixed_role_batches_advance_each_native_timer_exactly_once() -> Result {
             });
             states.push(state);
         }
-        let batch = SubcatchmentBatch::new(
+        let batch = SubcatchmentBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
             definitions,
             states.clone(),
             0.0,

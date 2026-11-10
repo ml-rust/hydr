@@ -1,5 +1,9 @@
 //! Complete subcatchment continuation, source receipts, and numerical budget admission.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "subcatchment/fixture.rs"]
 mod fixture;
 
@@ -11,7 +15,7 @@ use hydr::runoff::{
 };
 use hydr::soil::{ModifiedGreenAmptParameters, NativeSoilState};
 
-fn create() -> Result<SubcatchmentBatch> {
+fn create() -> Result<SubcatchmentBatch<crate::runtime::Runtime>> {
     let p = parameters(
         0.5,
         0.5,
@@ -30,7 +34,7 @@ fn input(rain: f64) -> SubcatchmentInput {
     }
 }
 
-fn direct_history() -> Result<SubcatchmentBatch> {
+fn direct_history() -> Result<SubcatchmentBatch<crate::runtime::Runtime>> {
     let p = parameters(0.5, 0.5, SubcatchmentRouting::Direct)?;
     let mut state = SubcatchmentState::initialized(&p)?;
     state.depths_m = [0.125 * 0.3048, 0.25 * 0.3048, 0.0];
@@ -51,7 +55,7 @@ fn recalculate_residual(ledger: &mut SubcatchmentLedger) {
 }
 
 fn rejects_charge(
-    destination: &mut SubcatchmentBatch,
+    destination: &mut SubcatchmentBatch<crate::runtime::Runtime>,
     package: &SubcatchmentSnapshotData,
     expected: &str,
 ) -> Result {

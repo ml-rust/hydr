@@ -11,7 +11,7 @@ pub fn run(
     writer: &mut impl Write,
     case: &Case,
     width: usize,
-    mut batch: OperatingControlBatch,
+    mut batch: OperatingControlBatch<crate::runtime::Runtime>,
 ) -> Result<Vec<String>> {
     let mut errors = Vec::new();
     for (index, expected) in case.decisions.iter().enumerate() {

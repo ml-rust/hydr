@@ -3,9 +3,11 @@
 use super::super::*;
 use super::compatibility::{as_definition, require};
 use super::receipt_bits::ReceiptBits;
-use crate::cpu::structures::actuator::{CpuActuatorState, import_values};
 use crate::numerics::structures::actuator as math;
 use crate::structures::{StructureError, StructureLaw};
+use crate::tensor::structures::actuator::{TensorActuatorState, import_values};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 
 fn activated_position(p: GateActuatorPosition, target: f64) -> GateActuatorPosition {
     if p.lower_opening_m == target && p.upper_opening_m == target {
@@ -41,7 +43,12 @@ fn position(p: &GateActuatorPosition, maximum: f64) -> bool {
 fn anchor(a: &GateActuatorAnchor, maximum: f64, start: f64, time: f64) -> bool {
     a.time_s.is_finite() && a.time_s >= start && a.time_s <= time && position(&a.position, maximum)
 }
-fn packet(batch: &GateActuatorBatch, i: usize, p: &GateTargetUpdate, time: f64) -> bool {
+fn packet<R: Runtime<DType = DType>>(
+    batch: &GateActuatorBatch<R>,
+    i: usize,
+    p: &GateTargetUpdate,
+    time: f64,
+) -> bool {
     let d = &batch.definitions()[i];
     p.actuator_id == d.actuator_id
         && p.structure_id == d.structure_id
@@ -52,13 +59,23 @@ fn packet(batch: &GateActuatorBatch, i: usize, p: &GateTargetUpdate, time: f64) 
         && p.available_at_s <= p.issued_at_s
         && p.issued_at_s <= time
 }
-pub(super) fn check(
-    batch: &GateActuatorBatch,
+pub(super) fn check<R: Runtime<DType = DType>>(
+    batch: &GateActuatorBatch<R>,
     rows: &[GateActuatorState],
     time: f64,
     processed: usize,
     steps: usize,
-) -> Result<CpuActuatorState, StructureError> {
+) -> Result<TensorActuatorState<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
     require(
         rows.len() == batch.definitions().len(),
         "imported actuator state count differs from ordered actual subset",

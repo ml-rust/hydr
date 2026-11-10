@@ -1,13 +1,35 @@
 //! Independent stage, witness, and per-element receipt gates.
 
-use crate::cpu::level_pool::{CpuPoolContext, CpuPoolStep};
-use crate::storage::LevelPoolError;
-use numr::ops::{CompareOps, UnaryOps};
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::interpolate::Interp1dAlgorithms;
 
-pub(crate) fn check_step(
-    context: &CpuPoolContext,
-    step: &CpuPoolStep,
-) -> Result<(), LevelPoolError> {
+use crate::storage::LevelPoolError;
+use crate::tensor::level_pool::{TensorPoolContext, TensorPoolStep};
+
+pub(crate) fn check_step<R>(
+    context: &TensorPoolContext<R>,
+    step: &TensorPoolStep<R>,
+) -> Result<(), LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
     let c = &context.client;
     context.range(&step.old_volume_m3, "receipt original storage")?;
     context.range(&step.volume_m3, "receipt accepted storage")?;

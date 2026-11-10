@@ -1,18 +1,32 @@
 //! Batched normal Riemann brackets with outward floating-point margins.
 
-use super::tensor_types::{CpuTensor, TensorFaceState, any, check_finite, constant};
+use super::tensor_types::{TensorFaceState, any, check_finite, constant};
 use crate::solver::{EngineError, SolverConfig};
-use numr::prelude::{BinaryOps, CompareOps, ConditionalOps, CpuClient, ScalarOps, UnaryOps};
+use numr::dtype::DType;
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
+use numr::runtime::{Runtime, RuntimeClient};
+use numr::tensor::Tensor;
 use solvr::optimize::OptimizeError;
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedBisectionOptions};
 
-pub(super) fn bounds(
-    client: &CpuClient,
-    left: &TensorFaceState,
-    right: &TensorFaceState,
+pub(super) fn bounds<R, C>(
+    client: &C,
+    left: &TensorFaceState<R>,
+    right: &TensorFaceState<R>,
     gravity: f64,
     config: &SolverConfig,
-) -> Result<(CpuTensor, CpuTensor), EngineError> {
+) -> Result<(Tensor<R>, Tensor<R>), EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let zero = constant(&left.h, 0.0)?;
     let one = constant(&left.h, 1.0)?;
     let lw = client.gt(&left.h, &zero)?;
@@ -69,12 +83,16 @@ pub(super) fn bounds(
     Ok((sl, sr))
 }
 
-pub(super) fn shock_speed(
-    client: &CpuClient,
-    upper: &CpuTensor,
-    h: &CpuTensor,
+pub(super) fn shock_speed<R, C>(
+    client: &C,
+    upper: &Tensor<R>,
+    h: &Tensor<R>,
     gravity: f64,
-) -> Result<CpuTensor, EngineError> {
+) -> Result<Tensor<R>, EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R> + BinaryOps<R> + CompareOps<R> + ReduceOps<R> + ScalarOps<R> + UnaryOps<R>,
+{
     // Equivalent to c*sqrt(.5*(H/h)*(1+H/h)), without forming H/h.
     let maximum = client.maximum(upper, h)?;
     let factor = client
@@ -87,12 +105,21 @@ pub(super) fn shock_speed(
     Ok(speed)
 }
 
-pub(super) fn curve(
-    client: &CpuClient,
-    h: &CpuTensor,
-    reference: &CpuTensor,
+pub(super) fn curve<R, C>(
+    client: &C,
+    h: &Tensor<R>,
+    reference: &Tensor<R>,
     gravity: f64,
-) -> numr::error::Result<CpuTensor> {
+) -> numr::error::Result<Tensor<R>>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>,
+{
     let rarefaction = client.mul_scalar(
         &client.sub(&client.sqrt(h)?, &client.sqrt(reference)?)?,
         2.0 * gravity.sqrt(),
@@ -112,14 +139,23 @@ pub(super) fn curve(
     client.where_cond(&client.le(h, reference)?, &rarefaction, &shock)
 }
 
-fn residual(
-    client: &CpuClient,
-    h: &CpuTensor,
-    hl: &CpuTensor,
-    hr: &CpuTensor,
-    jump: &CpuTensor,
+fn residual<R, C>(
+    client: &C,
+    h: &Tensor<R>,
+    hl: &Tensor<R>,
+    hr: &Tensor<R>,
+    jump: &Tensor<R>,
     gravity: f64,
-) -> numr::error::Result<CpuTensor> {
+) -> numr::error::Result<Tensor<R>>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>,
+{
     let result = client.add(
         &client.add(
             &curve(client, h, hl, gravity)?,
@@ -130,15 +166,26 @@ fn residual(
     Ok(result)
 }
 
-fn root_upper(
-    client: &CpuClient,
-    hl: &CpuTensor,
-    hr: &CpuTensor,
-    jump: &CpuTensor,
-    solve: &CpuTensor,
+fn root_upper<R, C>(
+    client: &C,
+    hl: &Tensor<R>,
+    hr: &Tensor<R>,
+    jump: &Tensor<R>,
+    solve: &Tensor<R>,
     gravity: f64,
     config: &SolverConfig,
-) -> Result<CpuTensor, EngineError> {
+) -> Result<Tensor<R>, EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let zero = constant(hl, 0.0)?;
     let maximum = client.maximum(hl, hr)?;
     let coefficient_scale = gravity.sqrt() * std::f64::consts::FRAC_1_SQRT_2;

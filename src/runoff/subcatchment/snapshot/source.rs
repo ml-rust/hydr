@@ -1,15 +1,39 @@
 //! Shared receiver bridge and compact native-soil witness reconstruction.
 
+use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    TypeConversionOps, UnaryOps,
+};
+use numr::runtime::Runtime;
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::optimize::roots::BatchedNewtonAlgorithms;
+
 use super::phase::from_sources;
-use crate::cpu::subcatchment::CpuSubareaGroup;
-use crate::numerics::subcatchment::CpuSubcatchmentSoilStep;
+use crate::numerics::subcatchment::TensorSubcatchmentSoilStep;
 use crate::numerics::subcatchment::bridge::Bridge;
 use crate::runoff::{SubareaReceipt, SubcatchmentError};
+use crate::tensor::subcatchment::TensorSubareaGroup;
 
-pub(super) fn bridge(
-    group: &CpuSubareaGroup,
+pub(super) fn bridge<R>(
+    group: &TensorSubareaGroup<R>,
     sources: &[&SubareaReceipt],
-) -> Result<Bridge, SubcatchmentError> {
+) -> Result<Bridge<R>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     let tensor = |select| from_sources(group, sources, select);
     Ok(Bridge {
         received_depth: tensor(|r| r.bridge.received_depth_m)?,
@@ -27,10 +51,25 @@ pub(super) fn bridge(
     })
 }
 
-pub(super) fn soil(
-    group: &CpuSubareaGroup,
+pub(super) fn soil<R>(
+    group: &TensorSubareaGroup<R>,
     sources: &[&SubareaReceipt],
-) -> Result<Option<CpuSubcatchmentSoilStep>, SubcatchmentError> {
+) -> Result<Option<TensorSubcatchmentSoilStep<R>>, SubcatchmentError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + BatchedNewtonAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
     if group.soil_slots.is_empty() {
         return Ok(None);
     }
@@ -62,7 +101,7 @@ pub(super) fn soil(
             .tensor(&values)
             .map_err(|e| group.map_reservoir_error(e))
     };
-    Ok(Some(CpuSubcatchmentSoilStep {
+    Ok(Some(TensorSubcatchmentSoilStep {
         infiltration_depth: tensor(|r| r.infiltration_depth_m)?,
         adjustment_depth: tensor(|r| r.adjustment_depth_m)?,
         native_rate: proof(|s| s.native_rate_ft_per_s)?,

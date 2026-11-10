@@ -124,7 +124,10 @@ fn original_inputs_match_every_independent_discharge_and_rejection_category() ->
     assert_eq!(cases().count(), 40);
     for case in cases() {
         for reverse in [false, true] {
-            let batch = StructureBatch::new(vec![reference_case::definition(case, case.id)?])?;
+            let batch = StructureBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
+                vec![reference_case::definition(case, case.id)?],
+            )?;
             let packet = reference_case::packet(case, case.id, reverse);
             match batch.propose_with_operations(
                 std::slice::from_ref(&packet),

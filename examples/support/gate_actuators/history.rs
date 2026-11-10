@@ -246,7 +246,7 @@ pub fn run(
 fn rejected(
     writer: &mut impl Write,
     frame: &mut Frame<'_>,
-    batch: &GateActuatorBatch,
+    batch: &GateActuatorBatch<crate::runtime::Runtime>,
     query: &Query,
     error: &StructureError,
     stage: &str,

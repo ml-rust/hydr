@@ -1,30 +1,33 @@
-//! CPU tensor face inputs and scalar error reductions.
+//! Runtime tensor face inputs and scalar error reductions.
 
 use crate::solver::EngineError;
 use numr::dtype::DType;
-use numr::prelude::{BinaryOps, CompareOps, CpuClient, ReduceOps, UnaryOps};
-
-pub(crate) use crate::cpu::CpuTensor;
+use numr::ops::{BinaryOps, CompareOps, ReduceOps, UnaryOps};
+use numr::runtime::{Device, Runtime, RuntimeClient};
+use numr::tensor::Tensor;
 
 /// Finite F64 one-dimensional arrays in a common face normal/tangent frame.
 #[derive(Clone)]
-pub(crate) struct TensorFaceState {
-    pub h: CpuTensor,
-    pub q_normal: CpuTensor,
-    pub q_tangent: CpuTensor,
-    pub bed: CpuTensor,
+pub(crate) struct TensorFaceState<R: Runtime<DType = DType>> {
+    pub h: Tensor<R>,
+    pub q_normal: Tensor<R>,
+    pub q_tangent: Tensor<R>,
+    pub bed: Tensor<R>,
 }
 
 /// Shared conservative flux and normal pressure additions for each side.
-pub(crate) struct TensorFaceFlux {
-    pub shared: [CpuTensor; 3],
-    pub left_pressure: CpuTensor,
-    pub right_pressure: CpuTensor,
-    pub speed: CpuTensor,
+pub(crate) struct TensorFaceFlux<R: Runtime<DType = DType>> {
+    pub shared: [Tensor<R>; 3],
+    pub left_pressure: Tensor<R>,
+    pub right_pressure: Tensor<R>,
+    pub speed: Tensor<R>,
 }
 
-pub(super) fn constant(like: &CpuTensor, value: f64) -> Result<CpuTensor, EngineError> {
-    Ok(CpuTensor::full_scalar(
+pub(super) fn constant<R>(like: &Tensor<R>, value: f64) -> Result<Tensor<R>, EngineError>
+where
+    R: Runtime<DType = DType>,
+{
+    Ok(Tensor::<R>::full_scalar(
         like.shape(),
         DType::F64,
         value,
@@ -32,18 +35,26 @@ pub(super) fn constant(like: &CpuTensor, value: f64) -> Result<CpuTensor, Engine
     )?)
 }
 
-pub(super) fn any(client: &CpuClient, mask: &CpuTensor) -> Result<bool, EngineError> {
+pub(super) fn any<R, C>(client: &C, mask: &Tensor<R>) -> Result<bool, EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R> + ReduceOps<R>,
+{
     if mask.numel() == 0 {
         return Ok(false);
     }
     Ok(client.max(mask, &[0], false)?.item::<f64>()? != 0.0)
 }
 
-pub(super) fn check_finite(
-    client: &CpuClient,
-    value: &CpuTensor,
+pub(super) fn check_finite<R, C>(
+    client: &C,
+    value: &Tensor<R>,
     operation: &'static str,
-) -> Result<(), EngineError> {
+) -> Result<(), EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R> + CompareOps<R> + ReduceOps<R> + UnaryOps<R>,
+{
     if value.numel() == 0 {
         return Ok(());
     }
@@ -57,12 +68,22 @@ pub(super) fn check_finite(
     Ok(())
 }
 
-pub(super) fn check_state(
-    client: &CpuClient,
-    state: &TensorFaceState,
+pub(super) fn check_state<R, C>(
+    client: &C,
+    state: &TensorFaceState<R>,
     shape: &[usize],
-) -> Result<(), EngineError> {
+) -> Result<(), EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R> + BinaryOps<R> + CompareOps<R> + ReduceOps<R> + UnaryOps<R>,
+{
     for value in [&state.h, &state.q_normal, &state.q_tangent, &state.bed] {
+        if !value.device().is_same(client.device()) {
+            return Err(EngineError::rejected(
+                "face inputs",
+                "tensor belongs to another device context: rebuild face inputs with the selected client",
+            ));
+        }
         if value.shape() != shape || value.dtype() != DType::F64 {
             return Err(EngineError::rejected(
                 "face inputs",

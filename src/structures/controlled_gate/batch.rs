@@ -1,28 +1,30 @@
 //! Owning atomic sampled-controller and actual gate-response candidates.
 
 use super::{ControlledGateEvent, ControlledGateTrial};
-use crate::cpu::structures::controlled_gate::CpuControlledGateContext;
 use crate::structures::{
     ControlSample, GateActuatorBatch, OperatingControlBatch, StructureError,
     StructureInputErrorKind,
 };
+use crate::tensor::structures::controlled_gate::TensorControlledGateContext;
+use numr::dtype::DType;
+use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Complete accepted sampled commands and separately modelled actual gate response.
 #[derive(Clone, Debug)]
-pub struct ControlledGateBatch {
-    context: Arc<CpuControlledGateContext>,
-    pub(crate) controls: OperatingControlBatch,
-    pub(crate) actuators: GateActuatorBatch,
+pub struct ControlledGateBatch<R: Runtime<DType = DType>> {
+    context: Arc<TensorControlledGateContext<R>>,
+    pub(crate) controls: OperatingControlBatch<R>,
+    pub(crate) actuators: GateActuatorBatch<R>,
 }
 
-impl ControlledGateBatch {
+impl<R: Runtime<DType = DType>> ControlledGateBatch<R> {
     /// Bind fresh initial children with one sampled controller per supplied actual actuator.
     pub fn new(
-        controls: OperatingControlBatch,
-        actuators: GateActuatorBatch,
+        controls: OperatingControlBatch<R>,
+        actuators: GateActuatorBatch<R>,
     ) -> Result<Self, StructureError> {
-        let context = Arc::new(CpuControlledGateContext::new(&controls, &actuators)?);
+        let context = Arc::new(TensorControlledGateContext::new(&controls, &actuators)?);
         Ok(Self {
             context,
             controls,
@@ -31,12 +33,12 @@ impl ControlledGateBatch {
     }
 
     /// Accepted command continuation, exposed immutably for explicit projections.
-    pub fn controls(&self) -> &OperatingControlBatch {
+    pub fn controls(&self) -> &OperatingControlBatch<R> {
         &self.controls
     }
 
     /// Accepted actual response, exposed immutably for operating-source frames and projections.
-    pub fn actuators(&self) -> &GateActuatorBatch {
+    pub fn actuators(&self) -> &GateActuatorBatch<R> {
         &self.actuators
     }
 
@@ -51,7 +53,13 @@ impl ControlledGateBatch {
     }
 
     /// Next decision, actuator arrival boundary, or common terminal boundary.
-    pub fn next_event(&self) -> Result<Option<ControlledGateEvent>, StructureError> {
+    pub fn next_event(&self) -> Result<Option<ControlledGateEvent>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>,
+    {
         let control = self.controls.next_event();
         let actuator = self.actuators.next_event()?;
         let time_s = match (control, actuator) {
@@ -77,7 +85,17 @@ impl ControlledGateBatch {
         &self,
         end_s: f64,
         decision_samples: &[ControlSample],
-    ) -> Result<ControlledGateTrial, StructureError> {
+    ) -> Result<ControlledGateTrial<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         let duration = end_s - self.time();
         if !end_s.is_finite() || !duration.is_finite() || duration <= 0.0 {
             return Err(StructureError::input(

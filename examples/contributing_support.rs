@@ -1,5 +1,9 @@
 //! Explicit support ownership feeds real surface and standalone runoff consumers.
 
+#[allow(dead_code)]
+#[path = "../tests/support/runtime.rs"]
+mod runtime;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{Domain, SpatialReference};
 use hydr::runoff::{
@@ -119,7 +123,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .map(|d| SubcatchmentState::initialized(&d.parameters))
         .collect::<Result<Vec<_>, _>>()?;
-    let batch = SubcatchmentBatch::new(
+    let batch = SubcatchmentBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         plan.active_definitions().to_vec(),
         states,
         0.0,

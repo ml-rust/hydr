@@ -1,24 +1,39 @@
 //! Closed transformed-domain and declared-zero-region admission before Solvr Linear evaluation.
+use numr::ops::BinaryOps;
+use numr::ops::CompareOps;
+use numr::ops::ConditionalOps;
+use numr::ops::IndexingOps;
+use numr::ops::ShapeOps;
+use numr::ops::TypeConversionOps;
+use numr::ops::UnaryOps;
+use numr::{dtype::DType, runtime::Runtime};
 
-use crate::cpu::{
-    CpuTensor,
-    structures::{
-        CpuStructureContext,
-        pump::{CpuPumpContext, CpuPumpGroup, CpuPumpInput},
-    },
-};
 use crate::structures::{StructureError, StructureInputErrorKind};
-use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ShapeOps, TypeConversionOps, UnaryOps,
+use crate::tensor::structures::{
+    TensorStructureContext,
+    pump::{TensorPumpContext, TensorPumpGroup, TensorPumpInput},
 };
+use numr::tensor::Tensor;
 use solvr::interpolate::{Interp1dAlgorithms, InterpMethod};
 
-pub(super) fn evaluate(
-    context: &CpuStructureContext,
-    pump: &CpuPumpContext,
-    operation: &CpuPumpInput,
-    normalized: &super::normalization::Normalized,
-) -> Result<(CpuTensor, CpuTensor), StructureError> {
+pub(super) fn evaluate<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    pump: &TensorPumpContext<R>,
+    operation: &TensorPumpInput<R>,
+    normalized: &super::normalization::Normalized<R>,
+) -> Result<(Tensor<R>, Tensor<R>), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::IndexingOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::ShapeOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>
+        + solvr::interpolate::Interp1dAlgorithms<R>,
+{
     let c = &context.client;
     let mut flows = Vec::with_capacity(pump.groups.len());
     let mut zeros = Vec::with_capacity(pump.groups.len());
@@ -125,13 +140,25 @@ pub(super) fn evaluate(
     Ok((reference, zero_region))
 }
 
-fn reject(
-    context: &CpuStructureContext,
-    group: &CpuPumpGroup,
-    mask: &CpuTensor,
+fn reject<R: Runtime<DType = DType>>(
+    context: &TensorStructureContext<R>,
+    group: &TensorPumpGroup<R>,
+    mask: &Tensor<R>,
     kind: Option<StructureInputErrorKind>,
     quantity: &str,
-) -> Result<(), StructureError> {
+) -> Result<(), StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::IndexingOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::ShapeOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>
+        + solvr::interpolate::Interp1dAlgorithms<R>,
+{
     if !context.any(mask)? {
         return Ok(());
     }

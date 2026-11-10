@@ -14,7 +14,8 @@ fn direct_lossless_subarea_reproduces_the_reservoir_primitive() -> Result {
     let mut state = SubcatchmentState::initialized(&p)?;
     state.depths_m[1] = 0.25 * 0.3048;
     let config = SubcatchmentConfig::default();
-    let primitive = ReservoirBatch::new(
+    let primitive = ReservoirBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
         vec![ReservoirElement {
             id: "storage".into(),
             parameters: closure,
@@ -100,7 +101,12 @@ fn native_soil_receives_original_ponding_and_rain_once() -> Result {
     state.depths_m[2] = 0.125 * 0.3048;
     let native = state.soil.ok_or("missing native antecedent")?;
     let rain = 0.3048 / 2048.0;
-    let raw = ModifiedGreenAmptBatch::from_native_states(&[soil], &[native])?.trial(
+    let raw = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[soil],
+        &[native],
+    )?
+    .trial(
         64.0,
         &[SoilInput {
             incoming_rate_m_per_s: rain,
@@ -130,7 +136,12 @@ fn pervious_loss_priority_retains_native_soil_and_caps_evaporation() -> Result {
     let mut state = SubcatchmentState::initialized(&p)?;
     state.depths_m[2] = 0.125 * 0.3048;
     let native = state.soil.ok_or("missing pervious antecedent")?;
-    let raw = ModifiedGreenAmptBatch::from_native_states(&[soil], &[native])?.trial(
+    let raw = ModifiedGreenAmptBatch::<crate::runtime::Runtime>::from_native_states(
+        crate::runtime::client(),
+        &[soil],
+        &[native],
+    )?
+    .trial(
         128.0,
         &[SoilInput {
             incoming_rate_m_per_s: 0.0,

@@ -1,5 +1,9 @@
 //! Exclusive point-source ownership, explicit uncertainty, and center-law equivalence.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "operating_sources/binding.rs"]
 mod binding;
 #[path = "operating_sources/events.rs"]

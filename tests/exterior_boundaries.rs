@@ -1,5 +1,9 @@
 //! Complete reservoir Riemann states, dry fronts, strong shocks, and orientation checks.
 
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
+
 #[path = "support/exterior_fixture.rs"]
 mod fixture;
 
@@ -16,7 +20,7 @@ fn complete_uniform_exteriors_preserve_rotation_and_interior_hll_wiring() -> Tes
     let mut rotated = uniform(2, 2, vec![0.0; 4], 1.0, [-0.2, 0.5])?;
     source.advance_to(0.1, 10_000)?;
     rotated.advance_to(0.1, 10_000)?;
-    for cell in source.state().cells() {
+    for cell in source.state()?.cells() {
         assert!(
             (cell.h - 1.0).abs() <= 1e-11
                 && (cell.qx - 0.5).abs() <= 1e-11
@@ -25,8 +29,8 @@ fn complete_uniform_exteriors_preserve_rotation_and_interior_hll_wiring() -> Tes
     }
     for row in 0..2 {
         for column in 0..2 {
-            let before = source.state().cells()[row * 2 + column];
-            let after = rotated.state().cells()[column * 2 + (1 - row)];
+            let before = source.state()?.cells()[row * 2 + column];
+            let after = rotated.state()?.cells()[column * 2 + (1 - row)];
             assert!(
                 (after.h - before.h).abs() <= 1e-11
                     && (after.qx + before.qy).abs() <= 1e-11
@@ -34,7 +38,7 @@ fn complete_uniform_exteriors_preserve_rotation_and_interior_hll_wiring() -> Tes
             );
         }
     }
-    let step = source.last_step().ok_or("missing accepted uniform step")?;
+    let step = source.last_step()?.ok_or("missing accepted uniform step")?;
     let interior = step
         .faces
         .iter()
@@ -69,7 +73,7 @@ fn matching_reservoir_elevation_preserves_a_nonzero_stepped_bed_lake() -> TestRe
         engine.advance_to(0.1, 10_000)?.status,
         AdvanceStatus::ReachedTarget
     );
-    for (cell, h) in engine.state().cells().iter().zip(initial) {
+    for (cell, h) in engine.state()?.cells().iter().zip(initial) {
         assert!((cell.h - h).abs() <= 1e-11 && cell.qx.abs() <= 1e-11 && cell.qy.abs() <= 1e-11);
     }
     Ok(())
@@ -80,12 +84,12 @@ fn complete_inflow_and_transmissive_outflow_preserve_four_supercritical_directio
     for axis in [Axis::X, Axis::Y] {
         for direction in [-1.0, 1.0] {
             let mut engine = through(axis, direction)?;
-            let initial = engine.state().cells()[0];
+            let initial = engine.state()?.cells()[0];
             assert_eq!(
                 engine.advance_to(0.1, 10_000)?.status,
                 AdvanceStatus::ReachedTarget
             );
-            let cell = engine.state().cells()[0];
+            let cell = engine.state()?.cells()[0];
             assert!(
                 (cell.h - initial.h).abs() <= 1e-11
                     && (cell.qx - initial.qx).abs() <= 1e-11
@@ -135,7 +139,7 @@ fn complete_wet_and_dry_reservoirs_rewet_or_drain_without_prescribing_face_disch
             },
         )?;
         engine.advance_to(0.01, 100)?;
-        assert!(engine.state().cells()[0].h > 0.0);
+        assert!(engine.state()?.cells()[0].h > 0.0);
         let ledger = engine.ledger();
         if inflow {
             assert!(ledger.boundary_in > 0.0 && ledger.storage > 0.0);
@@ -173,7 +177,7 @@ fn reservoir_riemann_data_handle_vacuum_and_incoming_shocks_against_supercritica
             },
         )?;
         engine.advance_to(1e-4, 100)?;
-        let step = engine.last_step().ok_or("missing reservoir step")?;
+        let step = engine.last_step()?.ok_or("missing reservoir step")?;
         let boundary = step
             .faces
             .iter()
@@ -183,7 +187,7 @@ fn reservoir_riemann_data_handle_vacuum_and_incoming_shocks_against_supercritica
             boundary.flux.iter().all(|value| value.is_finite())
                 && boundary.signal_speed.is_finite()
         );
-        assert!(engine.state().cells()[0].h >= 0.0);
+        assert!(engine.state()?.cells()[0].h >= 0.0);
         if shock {
             assert!(boundary.flux[0] < 0.0 && engine.ledger().boundary_in > 0.0);
         }
@@ -233,8 +237,8 @@ fn complete_reservoir_reversal_splits_time_and_rotates_tangent_flux() -> TestRes
     )?;
     rotated.advance_to(0.04, 1000)?;
     assert!(split && source.ledger().boundary_in > 0.0 && source.ledger().boundary_out > 0.0);
-    let a = source.state().cells()[0];
-    let b = rotated.state().cells()[0];
+    let a = source.state()?.cells()[0];
+    let b = rotated.state()?.cells()[0];
     assert!(
         (a.h - b.h).abs() <= 1e-11 && (a.qx - b.qy).abs() <= 1e-11 && (a.qy + b.qx).abs() <= 1e-11
     );

@@ -3,7 +3,10 @@ use hydr::structures::*;
 
 #[test]
 fn selected_stopped_response_waives_only_unknown_influential_support() -> Result {
-    let context = StructureBatch::new(vec![pump("pump")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![pump("pump")?],
+    )?;
     let batch = Config::switching().build(&context, &["pump"])?;
     let registry = registry(&context, &batch)?;
     for packet in [
@@ -39,7 +42,10 @@ fn selected_stopped_response_waives_only_unknown_influential_support() -> Result
 #[test]
 fn running_and_curve_shutoff_supply_no_unknown_support_isolation_authority() -> Result {
     for speed in [0.5, 1.0] {
-        let context = StructureBatch::new(vec![pump("pump")?])?;
+        let context = StructureBatch::<crate::runtime::Runtime>::new(
+            crate::runtime::client(),
+            vec![pump("pump")?],
+        )?;
         let mut config = Config::switching();
         config.commands[1] = ControlCommand::PumpRunning { speed_ratio: speed };
         let batch = config.build(&context, &["pump"])?;
@@ -78,7 +84,10 @@ fn running_and_curve_shutoff_supply_no_unknown_support_isolation_authority() -> 
 
 #[test]
 fn known_malformed_inputs_reject_before_selected_stopped_isolation() -> Result {
-    let context = StructureBatch::new(vec![pump("pump")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![pump("pump")?],
+    )?;
     let batch = Config::switching().build(&context, &["pump"])?;
     let registry = registry(&context, &batch)?;
     let base = heads("pump", HeadSupport::Unknown, HeadSupport::Unknown);
@@ -119,7 +128,10 @@ fn known_malformed_inputs_reject_before_selected_stopped_isolation() -> Result {
 
 #[test]
 fn isolated_unknown_lane_cannot_hide_another_lanes_malformed_known_head() -> Result {
-    let context = StructureBatch::new(vec![pump("a")?, pump("b")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![pump("a")?, pump("b")?],
+    )?;
     let batch = Config::switching().build(&context, &["a", "b"])?;
     let registry = registry(&context, &batch)?;
     let packets = [
@@ -141,7 +153,10 @@ fn isolated_unknown_lane_cannot_hide_another_lanes_malformed_known_head() -> Res
 
 #[test]
 fn selected_running_response_retains_suction_and_receiving_regime_checks() -> Result {
-    let context = StructureBatch::new(vec![pump("pump")?])?;
+    let context = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![pump("pump")?],
+    )?;
     let initial = Config::switching().build(&context, &["pump"])?;
     let registry = registry(&context, &initial)?;
     let batch = accept(initial, 1.0, Some(2.0))?;

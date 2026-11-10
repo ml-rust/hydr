@@ -18,7 +18,8 @@ fn shared_and_heterogeneous_curve_layouts_match_independent_element_execution() 
                 states.push(LevelPoolState { volume_m3: volume });
                 inputs.push(exchange);
             }
-            let batch = LevelPoolBatch::new(
+            let batch = LevelPoolBatch::<crate::runtime::Runtime>::new(
+                crate::runtime::client(),
                 elements.clone(),
                 states.clone(),
                 0.0,

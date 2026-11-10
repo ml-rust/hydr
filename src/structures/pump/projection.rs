@@ -1,9 +1,10 @@
 //! Explicit evaluated pump operand projection, absent for isolated operations.
+use numr::{dtype::DType, runtime::Runtime};
 
 use super::PumpHydraulicOperands;
-use crate::cpu::structures::pump::CpuPumpResult;
 use crate::structures::projection::read;
 use crate::structures::{StructureError, StructureOperatingPoint};
+use crate::tensor::structures::pump::TensorPumpResult;
 
 pub(crate) struct PumpOperandProjection {
     head_high: Vec<f64>,
@@ -16,7 +17,10 @@ pub(crate) struct PumpOperandProjection {
     division_exact: Vec<f64>,
 }
 impl PumpOperandProjection {
-    pub(crate) fn new(result: &CpuPumpResult, n: usize) -> Result<Self, StructureError> {
+    pub(crate) fn new<R: Runtime<DType = DType>>(
+        result: &TensorPumpResult<R>,
+        n: usize,
+    ) -> Result<Self, StructureError> {
         Ok(Self {
             head_high: read(&result.head_high, n)?,
             head_low: read(&result.head_low, n)?,

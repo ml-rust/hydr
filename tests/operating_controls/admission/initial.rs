@@ -15,7 +15,10 @@ fn pending() -> fixture::Result<ControlInitialState> {
 #[test]
 fn initial_pending_memory_requires_opposing_qualifying_unexpired_antecedents() -> fixture::Result {
     let case = fixture::case("positive_delays_exact_expiry")?;
-    let structures = StructureBatch::new(vec![reference_case::pump(&reference_case::device(0))?])?;
+    let structures = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![reference_case::pump(&reference_case::device(0))?],
+    )?;
     let bind = |state| {
         structures.with_operating_controls(
             vec![reference_case::definition(
@@ -94,7 +97,10 @@ fn initial_pending_memory_requires_opposing_qualifying_unexpired_antecedents() -
 #[test]
 fn antecedent_packets_preserve_specific_causality_and_identity_categories() -> fixture::Result {
     let case = fixture::case("positive_delays_exact_expiry")?;
-    let structures = StructureBatch::new(vec![reference_case::pump(&reference_case::device(0))?])?;
+    let structures = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![reference_case::pump(&reference_case::device(0))?],
+    )?;
     let changes: [SampleChange; 5] = [
         (
             |sample| sample.controller_id = "other-controller".into(),
@@ -161,7 +167,10 @@ fn antecedent_packets_preserve_specific_causality_and_identity_categories() -> f
 #[test]
 fn transition_chronology_and_known_initial_observation_spacing_are_checked() -> fixture::Result {
     let case = fixture::case("positive_delays_exact_expiry")?;
-    let structures = StructureBatch::new(vec![reference_case::pump(&reference_case::device(0))?])?;
+    let structures = StructureBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        vec![reference_case::pump(&reference_case::device(0))?],
+    )?;
     for time in [1.0, f64::INFINITY] {
         let mut state = reference_case::initial(case, 0);
         state.last_transition_at_s = Some(time);

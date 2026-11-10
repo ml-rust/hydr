@@ -28,13 +28,13 @@ pub struct Capabilities {
     pub unsupported: &'static [&'static str],
 }
 
-/// Returns the CPU reference's implemented scope, independent of application eligibility.
+/// Returns the implemented scope, independent of application eligibility.
 pub fn capabilities() -> Capabilities {
     Capabilities {
         contract: CONTRACT_VERSION,
         equations: "full 2D hydrostatic depth-averaged shallow-water equations with Manning resistance",
         method: "first-order finite volumes, hydrostatic side corrections, bracketed-bound HLL, forward Euler and split sources",
-        execution: "numr CPU runtime, sequential f64 tensors, fixed traversal within the same build and execution environment",
+        execution: "selected Numr runtime and configured client, checked F64 IEEE 754 contracts and arithmetic environment",
         precision: "IEEE 754 binary64 (f64)",
         sources: &[
             "interval-constant cell rain with zero horizontal momentum",
@@ -77,7 +77,7 @@ pub fn capabilities() -> Capabilities {
             "sediment and erosion",
             "wind and Coriolis",
             "atmospheric pressure gradients and horizontal eddy viscosity",
-            "GPU",
+            "GPU numerical qualification",
             "differentiation",
             "field accuracy guarantees",
         ],
