@@ -322,3 +322,5 @@ Constitutive proposals supply no donor storage, outlet integration, storage snap
 ## Sampled operating commands
 
 [Operating controls](operating-controls.md) supplies explicit sampled relay commands with qualification delays, transactional trials, and complete snapshots. Gate targets remain distinct from actual opening. Standalone commands establish no hydraulic or actuator response.
+
+[Ideal constant-rate actuators](gate-actuators.md) advance actual gate opening separately. Their certified positions require exclusive operating-source admission before hydraulic proposals consume them.

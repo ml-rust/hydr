@@ -13,3 +13,5 @@ mod weir;
 pub(crate) use evaluation::evaluate;
 
 pub(crate) mod control;
+
+pub(crate) mod actuator;

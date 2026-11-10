@@ -1,5 +1,6 @@
 //! Typed instantaneous structure laws and held-head proposals without storage or donor acceptance.
 
+mod actuator;
 mod applicability;
 mod batch;
 mod control;
@@ -17,6 +18,17 @@ mod projection;
 mod proposal;
 mod pump;
 
+pub use actuator::{
+    GateActuatorAccuracy, GateActuatorAnchor, GateActuatorArrivalCertificate, GateActuatorBatch,
+    GateActuatorBinaryWitness, GateActuatorCompletionReceipt, GateActuatorDefinition,
+    GateActuatorDirection, GateActuatorEndpointReceipt, GateActuatorEvent,
+    GateActuatorFmaStageReceipt, GateActuatorForwardReceipt, GateActuatorInitialState,
+    GateActuatorMotionReceipt, GateActuatorOutput, GateActuatorPhase, GateActuatorPosition,
+    GateActuatorSchedule, GateActuatorSnapshot, GateActuatorSnapshotData, GateActuatorState,
+    GateActuatorStepDiagnostics, GateActuatorStepReceipt, GateActuatorSupport,
+    GateActuatorTargetChangeReceipt, GateActuatorTimeExpansion, GateActuatorTrial,
+    GateTargetUpdate,
+};
 pub use applicability::{OrificeApplicability, WeirApplicability};
 pub use batch::StructureBatch;
 pub use definition::{DirectionPolicy, FlowDirection, StructureElement, StructureLaw};

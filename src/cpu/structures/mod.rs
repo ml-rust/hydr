@@ -13,3 +13,5 @@ pub(crate) mod pump;
 pub(crate) use context::CpuStructureContext;
 pub(crate) use input::CpuStructureInput;
 pub(crate) use proposal::CpuStructureResult;
+
+pub(crate) mod actuator;

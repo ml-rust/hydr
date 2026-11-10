@@ -81,7 +81,7 @@ The application defines threshold crossings and episode semantics from accepted 
 Checkpoint compatibility includes numerical contract, geometry, parameters, forcing, boundaries, controls, and complete accepted history.
 Checkpoint packages carry `setup: SolverSetup` and `accepted: InitialState`, including full native soil memory.
 They retain independent infiltration/evaporation ledgers, signed adjustments, conservative budget charges, and accepted per-cell source receipts.
-Network and control state remain unsupported.
+Surface checkpoints exclude network and operating-control state. Standalone [sampled controls](operating-controls.md) and [gate actuators](gate-actuators.md) expose separate complete snapshots. Coordinated component restoration remains unsupported.
 Application persistence preserves every package field and exact floating-point bits.
 Positive infinity is valid in unrestricted timestep bounds. Ordinary JSON numbers cannot represent it directly.
 Import checks consistency and compatibility. The application owns content hashes and historical authenticity.
