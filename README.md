@@ -13,6 +13,7 @@ The library is unpublished. Its components support the following calculations:
 | Surface flow | Water depth and horizontal flow across a two-dimensional grid | [Numerical method](docs/numerics.md) and [boundaries](docs/boundaries.md) |
 | Soil and land sources | Rain, Modified Green–Ampt infiltration, capped evaporation, and withdrawals with complete soil memory | [Soil](docs/soil.md) and [land sources](docs/land-sources.md) |
 | Rainfall runoff | Stored water and runoff from three catchment subareas | [Reservoir](docs/reservoir.md) and [subcatchment](docs/subcatchment.md) |
+| Channel cross-sections | Submerged area, surface width, wetted perimeter, and pressure geometry at supplied stages | [Cross-section geometry](docs/cross-sections.md) |
 | Storage pools | Water volume and level from supplied storage curves | [Level pools](docs/level-pool.md) |
 | Coupled storage pools | Accepted structure transfers, local rain and losses, and prescribed external rates or integrated volumes | [Coupled level pools](docs/coupled-level-pools.md) |
 | Runoff into pools | Native runoff generation and pool storage accepted over one common interval | [Runoff-to-pool connections](docs/runoff-pools.md) |

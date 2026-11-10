@@ -21,6 +21,7 @@ cargo test --test coupled_level_pools
 cargo test --test coupled_level_pool_sources
 cargo test --test coupled_pool_inflows
 cargo test --test runoff_pools
+cargo test --test cross_sections
 ```
 
 The fixtures need no external datasets or random inputs. [Analytical cases](../tests/analytical_cases.rs) use formulas from [the analytical helpers](../tests/support/analytic.rs), independently of the production tensor kernel.
@@ -168,6 +169,29 @@ The [exterior-boundary cases](../tests/exterior_boundaries.rs) cover uniform Rie
 The [exterior-contract cases](../tests/exterior_contracts.rs) combine all five policies. They cover dry transmissive copying, source-dependent retries, input admission, and checkpoint consistency.
 
 These tests establish selected boundary behavior only. Finite exterior-compartment coupling remains unestablished.
+
+## Channel cross-section checks
+
+[Cross-section cases](../tests/cross_sections.rs) compare supplied profiles against closed-form geometry. Read the [geometry guide](cross-sections.md) for inputs and field definitions.
+
+At a water depth of `1 m`, the analytical cases require:
+
+| Profile | Area (m²) | Top width (m) | Wetted perimeter (m) | Pressure integral (m³) |
+| --- | --- | --- | --- | --- |
+| Rectangle, `2 m` bottom | `2` | `2` | `4` | `1` |
+| Trapezoid, `2 m` bottom and `1:1` banks | `3` | `4` | `2 + 2√2` | `4/3` |
+| Triangle, `1:1` banks | `1` | `2` | `2√2` | `1/3` |
+
+Normal cases add these allowances:
+
+- Absolute: `1e-12` in the field's SI units.
+- Relative: `1e-12` times the expected value.
+
+Scaled profiles compare quantities after removing their expected geometric scale.
+
+Additional cases check vertical walls, exact bench levels, dry results, separated wet portions, profile subdivision, ordering, and admission errors. Unresolved positive geometry must reject instead of returning dry zero.
+
+These geometry checks establish no dynamic flow, hydraulic connectivity, or measured-event accuracy.
 
 ## Connected-pool checks
 

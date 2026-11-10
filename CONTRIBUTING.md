@@ -49,9 +49,9 @@ Write guides that help library users complete a task or understand a constraint.
 
 Keep public guidance in `docs/`. Keep plans, research notes, and generated evidence outside public documentation.
 
-### Review the rendered page
+### Review the source
 
-Before finishing a documentation change, render the affected sections at desktop and narrow widths.
+Review documentation from its Markdown source. Use visual tools only for a specific layout defect or an explicit request.
 
 - Paragraphs: Keep one reader decision per paragraph. Source line breaks do not create separate paragraphs.
 - Procedures: Use numbered steps for actions. Give each step a clear input or outcome.
@@ -60,7 +60,7 @@ Before finishing a documentation change, render the affected sections at desktop
 - Limits: Separate requirements, results, and unsupported uses so readers can find each one.
 - Evidence: Link test inventories and detailed numerical results from task guides to the relevant acceptance or reference page.
 
-Read the rendered section as a new user. Check that its purpose, next action, units, and limits are clear. A prose lint or shorter word count does not replace this review.
+Read each section as a new user. Check that its purpose, next action, units, and limits are clear. A prose lint or shorter word count does not replace this review.
 
 ## Engineering conventions
 

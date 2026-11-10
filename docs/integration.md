@@ -65,6 +65,10 @@ Use [runoff-to-pool connections](runoff-pools.md) to generate upstream inflows a
 
 Surface-to-network coupling remains unsupported.
 
+### Channel geometry
+
+Use [cross-section geometry](cross-sections.md) to evaluate supplied channel profiles at declared water levels. This static component provides no dynamic river or drainage flow.
+
 ## Runtime selection and admission
 
 A runtime selects where calculations run. Its client identifies the device and execution resources.

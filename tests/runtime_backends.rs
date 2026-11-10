@@ -2,6 +2,10 @@
 
 #[path = "coupled_level_pools/fixture.rs"]
 mod coupled_pool_fixture;
+#[path = "cross_sections/profiles.rs"]
+mod cross_section_profiles;
+#[path = "runtime_backends/cross_sections.rs"]
+mod cross_sections;
 #[path = "coupled_pool_inflows/inflow_fixture.rs"]
 mod inflow_fixture;
 #[path = "runtime_backends/inflows.rs"]
