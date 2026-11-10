@@ -1,7 +1,7 @@
 //! Hydrostatic HLL calculations executed through numr tensor operations.
 
-use super::tensor_types::{TensorFaceFlux, TensorFaceState, check_finite, check_state, constant};
-use super::tensor_wave;
+use super::tensor_hll;
+use super::tensor_types::{TensorFaceFlux, TensorFaceState, check_finite, constant};
 use crate::solver::{EngineError, SolverConfig};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
@@ -61,70 +61,21 @@ where
         + UnaryOps<R>
         + BatchedBisectionAlgorithms<R>,
 {
-    if left.h.shape().len() != 1 {
-        return Err(EngineError::rejected(
-            "face inputs",
-            "require one-dimensional tensor arrays",
-        ));
-    }
-    check_state(client, left, left.h.shape())?;
-    check_state(client, right, left.h.shape())?;
-    if !gravity.is_finite()
-        || gravity <= 0.0
-        || !config.root_absolute_depth.is_finite()
-        || config.root_absolute_depth <= 0.0
-        || !config.root_relative_depth.is_finite()
-        || config.root_relative_depth < 0.0
-        || config.root_iterations == 0
-    {
-        return Err(EngineError::rejected(
-            "face config",
-            "require positive finite gravity and absolute depth tolerance, finite nonnegative relative tolerance, and positive iteration limits",
-        ));
-    }
-    let zero = constant(&left.h, 0.0)?;
-    let one = constant(&left.h, 1.0)?;
+    tensor_hll::check_inputs(client, left, right, gravity, config)?;
     let bed = client.maximum(&left.bed, &right.bed)?;
     let l = reconstruct(client, left, &bed)?;
     let r = reconstruct(client, right, &bed)?;
     let lp = pressure_correction(client, &left.h, &l.h, gravity)?;
     let rp = pressure_correction(client, &right.h, &r.h, gravity)?;
-    let (sl, sr) = tensor_wave::bounds(client, &l, &r, gravity, config)?;
-    let left_only = client.ge(&sl, &zero)?;
-    let right_only = client.le(&sr, &zero)?;
-    let crossing = client.mul(&client.lt(&sl, &zero)?, &client.gt(&sr, &zero)?)?;
-    let span = client.where_cond(&crossing, &client.sub(&sr, &sl)?, &one)?;
-    check_finite(client, &span, "selected HLL wave span")?;
-    let wl = client.div(&sr, &span)?;
-    let wr = client.div(&client.neg(&sl)?, &span)?;
-    let diffusion = client.mul(&wl, &sl)?;
-    let fl = physical_flux(client, &l, gravity)?;
-    let fr = physical_flux(client, &r, gravity)?;
-    let ul = [&l.h, &l.q_normal, &l.q_tangent];
-    let ur = [&r.h, &r.q_normal, &r.q_tangent];
-    let component = |index| -> Result<Tensor<R>, EngineError> {
-        let middle = client.add(
-            &client.add(&client.mul(&wl, &fl[index])?, &client.mul(&wr, &fr[index])?)?,
-            &client.mul(&diffusion, &client.sub(ur[index], ul[index])?)?,
-        )?;
-        let selected = client.where_cond(
-            &left_only,
-            &fl[index],
-            &client.where_cond(&right_only, &fr[index], &middle)?,
-        )?;
-        check_finite(client, &selected, "selected HLL flux")?;
-        Ok(selected)
-    };
-    let shared = [component(0)?, component(1)?, component(2)?];
-    let speed = client.maximum(&client.abs(&sl)?, &client.abs(&sr)?)?;
+    let homogeneous = tensor_hll::calculate(client, &l, &r, gravity, config)?;
     check_finite(client, &lp, "left pressure correction")?;
     check_finite(client, &rp, "right pressure correction")?;
-    check_finite(client, &speed, "face speed")?;
+    check_finite(client, &homogeneous.speed, "face speed")?;
     Ok(TensorFaceFlux {
-        shared,
+        shared: homogeneous.shared,
         left_pressure: lp,
         right_pressure: rp,
-        speed,
+        speed: homogeneous.speed,
     })
 }
 
@@ -177,28 +128,6 @@ where
         &constant(h, 0.0)?,
         &correction,
     )?)
-}
-
-fn physical_flux<R, C>(
-    client: &C,
-    state: &TensorFaceState<R>,
-    gravity: f64,
-) -> Result<[Tensor<R>; 3], EngineError>
-where
-    R: Runtime<DType = DType>,
-    C: RuntimeClient<R> + BinaryOps<R> + CompareOps<R> + ConditionalOps<R> + ScalarOps<R>,
-{
-    let wet = client.gt(&state.h, &constant(&state.h, 0.0)?)?;
-    let denominator = client.where_cond(&wet, &state.h, &constant(&state.h, 1.0)?)?;
-    let velocity = client.div(&state.q_normal, &denominator)?;
-    Ok([
-        state.q_normal.clone(),
-        client.add(
-            &client.mul(&state.q_normal, &velocity)?,
-            &client.mul(&client.mul_scalar(&state.h, 0.5 * gravity)?, &state.h)?,
-        )?,
-        client.mul(&state.q_tangent, &velocity)?,
-    ])
 }
 
 fn state_summary<R, C>(client: &C, state: &TensorFaceState<R>) -> String

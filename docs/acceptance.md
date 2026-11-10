@@ -8,7 +8,7 @@ Passing numerical checks establishes selected computational behavior.
 
 ## Run the checks
 
-1. Read [Contributing](../CONTRIBUTING.md) for the checked numr revision and backend requirements.
+1. Read [Contributing](../CONTRIBUTING.md) for dependency versions and backend requirements.
 2. Run the relevant commands from the repository root.
 3. Read the case limits below before interpreting a passing result.
 
@@ -22,6 +22,7 @@ cargo test --test coupled_level_pool_sources
 cargo test --test coupled_pool_inflows
 cargo test --test runoff_pools
 cargo test --test cross_sections
+cargo test --test channel_flow --test channel_restart -- --nocapture
 ```
 
 The fixtures need no external datasets or random inputs. [Analytical cases](../tests/analytical_cases.rs) use formulas from [the analytical helpers](../tests/support/analytic.rs), independently of the production tensor kernel.
@@ -193,6 +194,42 @@ Additional cases check vertical walls, exact bench levels, dry results, separate
 
 These geometry checks establish no dynamic flow, hydraulic connectivity, or measured-event accuracy.
 
+## Rectangular channel-flow checks
+
+Read [the channel guide](channels.md) for supported geometry and endpoint conditions. [Channel cases](../tests/channel_flow.rs) check first-order flow independently of static cross-section queries.
+
+The dam cases use a 200 m domain, width `2 m`, and distant outer walls. Errors compare cell-centre point samples, not exact cell averages.
+
+| Case at 4 s | Cells | Mean depth error, m | Mean discharge error, m³/s |
+| --- | --- | --- | --- |
+| Ritter dry-bed dam | 100 / 200 / 400 | 0.00656535 / 0.00457839 / 0.00304661 | 0.0342567 / 0.0220558 / 0.0152417 |
+| Stoker wet-bed dam | 100 / 200 / 400 | 0.00919878 / 0.00581262 / 0.00350395 | 0.0451087 / 0.0283505 / 0.0171636 |
+
+Both errors must decrease under spatial refinement. Each depth error stays below `0.06 m`, and discharge error below `0.3 m³/s`.
+
+### Changing widths, dry banks, and friction
+
+| Check | Enforced criterion |
+| --- | --- |
+| Uniform motion in either direction | Depth drift within `1e-12 m` and discharge drift within `1e-11 m³/s` |
+| Wet and partially dry stepped lakes | Depth and discharge drift within `1e-11` SI across changing widths and beds |
+| Raised dry bank | No transfer below the crest; positive wetting when upstream water exceeds it |
+| Width contrast of one million | Shortened steps respect width-aware wave and donor limits without negative water |
+| Smooth varying-width steady flow | Mean depth drift below `0.01 m` and discharge drift below `0.02 m³/s`, both decreasing |
+| Isolated Manning resistance | Fixed-area momentum decay agrees with the exact formula within `1e-12 m³/s` |
+| Erased numerical products | Report transfer and pressure bounds inside the original water and momentum allowances; reject insufficient allowances |
+| Continuation | [Restart cases](../tests/channel_restart.rs) check complete trusted/cold continuation and altered-package rejection |
+
+The smooth-width case runs for `5 s` on 40, 80, and 160 cells. Mean depth drift decreases from `0.000453 m` to `0.000125 m`. Mean discharge drift decreases from `0.00356 m³/s` to `0.000873 m³/s`.
+
+### Separate space and time errors
+
+Ritter timestep refinement keeps 400 cells and halves the maximum interval through `0.02`, `0.01`, and `0.005 s`. Successive mean depth differences decrease from `0.000127 m` to `0.0000625 m`.
+
+Analytical depth error increases slightly at fixed spacing. Smaller timesteps do not remove first-order spatial diffusion. Combined space/time refinement reduces both depth and discharge errors.
+
+These checks cover rectangular reaches only. Arbitrary-profile dynamics, lateral momentum exchange, junctions, contraction losses, and drainage remain unsupported.
+
 ## Connected-pool checks
 
 Read [coupled level pools](coupled-level-pools.md) before selecting this component.
@@ -288,7 +325,7 @@ These cases establish no downstream feedback, geometric nonoverlap proof, dynami
 | Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
 | Independent engine | Nine matched wet-bed/dry-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Analytical front accuracy, independent terrain/transverse-flow comparisons, and broader hydraulic regimes |
-| Extensions | Modified Green–Ampt land, pools with static structures, and free runoff outlets into pools have separate checks | Wider networks, dynamic coupled controls, and external coupling require separate acceptance |
+| Extensions | Land sources, coupled pools, free runoff outlets, and rectangular reaches have separate checks | General channel profiles, lateral momentum exchange, wider networks, and dynamic coupled controls require separate acceptance |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 
 ### Numerical limits retained by the checks

@@ -1,0 +1,86 @@
+/// Explicit host projection of one accepted rectangular channel cell.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChannelCellResult {
+    /// Authoritative stored water volume in m³.
+    pub volume_m3: f64,
+    /// Density-normalized longitudinal momentum in m⁴/s.
+    pub longitudinal_momentum_m4_per_s: f64,
+    /// Water depth above the local bed in metres, including zero when dry.
+    pub depth_m: f64,
+    /// Water elevation in the declared datum, in metres; absent when dry.
+    pub stage_m: Option<f64>,
+    /// Longitudinal depth-averaged velocity in m/s; absent when dry.
+    pub velocity_m_per_s: Option<f64>,
+    /// Longitudinal discharge in m³/s, positive in the reach's increasing direction.
+    pub discharge_m3_per_s: f64,
+    /// True exactly when the cell contains no represented water.
+    pub dry: bool,
+}
+
+/// Cumulative external-water accounting without numerical water adjustments.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChannelWaterLedger {
+    /// Original accepted storage in m³.
+    pub initial_storage_m3: f64,
+    /// Current accepted storage in m³.
+    pub storage_m3: f64,
+    /// Cumulative incoming endpoint volume in m³.
+    pub boundary_in_m3: f64,
+    /// Cumulative outgoing endpoint volume in m³.
+    pub boundary_out_m3: f64,
+    /// Storage change minus net external inflow in m³.
+    pub residual_m3: f64,
+    /// Cumulative cellwise charge for detected numerical flux-integral underflow, in m³.
+    /// This bound consumes the unchanged water tolerance and excludes total water-solution error.
+    pub numerical_transfer_underflow_bound_m3: f64,
+}
+
+/// Explicit host projection of the last accepted interval's bounded receipts.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChannelStepDiagnostics {
+    /// Accepted interval start in seconds.
+    pub start_s: f64,
+    /// Accepted interval end in seconds.
+    pub end_s: f64,
+    /// Number of complete trial recalculations before acceptance.
+    pub retries: usize,
+    /// Width-aware Courant interval bound in seconds, including positive infinity.
+    pub cfl_limit_s: f64,
+    /// All-outgoing donor interval bound in seconds, including positive infinity.
+    pub depletion_limit_s: f64,
+    /// Total storage at the accepted start in m³.
+    pub storage_before_m3: f64,
+    /// Total storage at the accepted end in m³.
+    pub storage_after_m3: f64,
+    /// Incoming endpoint volume during this interval in m³.
+    pub boundary_in_m3: f64,
+    /// Outgoing endpoint volume during this interval in m³.
+    pub boundary_out_m3: f64,
+    /// Storage change minus net endpoint inflow in m³.
+    pub residual_m3: f64,
+    /// Largest absolute cell water residual in m³.
+    pub max_local_residual_m3: f64,
+    /// Largest absolute cell momentum recurrence residual in m⁴/s.
+    pub max_local_momentum_residual_m4_per_s: f64,
+    /// Largest cell bound on observed erased pressure/momentum products in the final interval, in m⁴/s.
+    /// This excludes other rounding and truncation errors.
+    pub max_momentum_underflow_bound_m4_per_s: f64,
+    /// Shared face water volumes in m³, ordered left to right and positive toward increasing x.
+    pub face_volume_m3: Vec<f64>,
+    /// Detected numerical flux-integral underflow bounds in m³, one per ordered face.
+    pub face_transfer_underflow_bound_m3: Vec<f64>,
+    /// Interval cellwise underflow charge in m³, counting interior face bounds twice.
+    /// This bound consumes the unchanged water tolerance and excludes total water-solution error.
+    pub transfer_underflow_bound_m3: f64,
+    /// Shared homogeneous momentum transfers in m⁴/s, ordered left to right.
+    pub face_momentum_m4_per_s: Vec<f64>,
+    /// Left-side hydrostatic pressure corrections times duration in m⁴/s, one per face.
+    pub left_pressure_impulse_m4_per_s: Vec<f64>,
+    /// Right-side hydrostatic pressure corrections times duration in m⁴/s, one per face.
+    pub right_pressure_impulse_m4_per_s: Vec<f64>,
+    /// Signed Manning momentum changes in m⁴/s, one per ordered cell.
+    pub friction_impulse_m4_per_s: Vec<f64>,
+    /// Cell bounds on observed erased pressure/momentum products in the final interval, in m⁴/s.
+    /// These exclude other rounding and truncation errors.
+    pub momentum_underflow_bound_m4_per_s: Vec<f64>,
+}

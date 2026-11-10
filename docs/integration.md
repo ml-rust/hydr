@@ -65,9 +65,11 @@ Use [runoff-to-pool connections](runoff-pools.md) to generate upstream inflows a
 
 Surface-to-network coupling remains unsupported.
 
-### Channel geometry
+### Channel flow and geometry
 
 Use [cross-section geometry](cross-sections.md) to evaluate supplied channel profiles at declared water levels. This static component provides no dynamic river or drainage flow.
+
+Use [rectangular channel flow](channels.md) to advance an unbranched reach with explicit rectangular cells and endpoint conditions. Its restart and water accounting remain separate from surface and pool components.
 
 ## Runtime selection and admission
 
