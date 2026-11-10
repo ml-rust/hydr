@@ -1,17 +1,27 @@
 # hydr
 
-hydr provides hydraulic numerical components on numr runtimes for hydraulic application developers.
+hydr is a Rust library for developers building hydraulic applications. Start with the supported components below, then run the examples.
 
-## Status
+## What you can use
 
-The first-order `f64` reference implements checked domains and conservative time advancement.
-Inputs include terrain, roughness, initial depth/momentum, explicit land/soil memory, rain, potential evaporation, and prescribed withdrawal.
-Boundaries include walls, complete flux ports, wet-subcritical stage/discharge traces, complete wet/dry exterior reservoir states, and admitted transmissive outflow.
-Snapshots preserve complete numerical continuation state. Diagnostics expose accepted steps and component water budgets.
-Measured-event accuracy and agreement with HEC-RAS remain unestablished.
-The crate is unpublished. The existing Git remote remains `ml-rust/rivr`.
+The library is unpublished. Its components support the following calculations:
 
-## Example
+| Component | What it calculates | Guide |
+| --- | --- | --- |
+| Surface flow | Water depth and horizontal flow across a two-dimensional grid | [Numerical method](docs/numerics.md) and [boundaries](docs/boundaries.md) |
+| Soil and land sources | Rain, Modified Green–Ampt infiltration, capped evaporation, and withdrawals with complete soil memory | [Soil](docs/soil.md) and [land sources](docs/land-sources.md) |
+| Rainfall runoff | Stored water and runoff from three catchment subareas | [Reservoir](docs/reservoir.md) and [subcatchment](docs/subcatchment.md) |
+| Storage pools | Water volume and level from supplied storage curves | [Level pools](docs/level-pool.md) |
+| Structure laws | Flow proposals for openings, weirs, pumps, and gates | [Structures](docs/structures.md) |
+| Operating controls | Sampled commands and explicitly assumed ideal pump or gate responses | [Controls](docs/operating-controls.md), [actuators](docs/gate-actuators.md), [controlled gates](docs/controlled-gates.md), and [controlled pumps](docs/controlled-pumps.md) |
+
+**Connected hydraulic systems remain incomplete.** Structure proposals do not yet transfer accepted water between components. Network coupling and coordinated component advancement remain unsupported.
+
+The [operating-source registry](docs/operating-sources.md) assigns one source of operating inputs to each structure. [Contributing-support checks](docs/contributing-support.md) check which areas receive rainfall and where measured inflows replace generated runoff completely. Applications supply the ownership evidence. These checks do not establish hydraulic connections or prove that geographic areas do not overlap.
+
+Operating-source bindings retain uncertainty in actual gate opening beside point flow proposals. These proposals establish no integrated water transfer.
+
+## Try the examples
 
 ```rust
 use hydr::grid::CartesianGrid;
@@ -31,42 +41,38 @@ cargo test --all-targets
 
 Grid spacing uses metres. Construction checks geometry without allocating cell storage.
 
-## Direction
+## Choose a runtime
 
-- Physics: Full two-dimensional shallow-water equations for river and floodplain flow.
-- Numerics: First-order finite volumes, hydrostatic side corrections, bracketed-bound HLL, and split Manning resistance.
-- Foundation: numr 0.15.2 runtime tensors and solvr 0.3.1 batched root algorithms.
-- Acceptance: CFL and all-outgoing depletion bounds trigger full trial recalculation. Negative water rejects without clipping.
-- Extensions: Higher-order methods, backend qualification, and calibration require separate numerical evidence.
-- Interface: A Rust library without a GUI or HEC-RAS runtime dependency.
+All hydraulic state uses 64-bit floating-point (`f64`) precision.
 
-Tensor-bearing components take an explicit numr runtime type and a configured client. Constructors allocate on that client's device. Component factories retain their parent's runtime and client.
+A runtime selects where calculations run. Supply its configured Numr client when constructing a component. Nested components keep that runtime and client.
 
-- CPU: Existing tests and reference executables select `CpuRuntime` with one worker thread at their execution boundary.
-- CUDA: Enable the `cuda` feature and supply a `CudaRuntime` client. Arithmetic admission and algorithm-specific contracts still apply.
-- WGPU: The `f64` numerical profile rejects runtimes without `f64` computation support.
-- Projection: Surface state, soil state, step diagnostics, and snapshot data return fallible owned values through explicit readback.
+| Runtime | Current support |
+| --- | --- |
+| CPU | Checked `f64` reference. Tests and reference examples select `CpuRuntime` with one worker thread. |
+| CUDA | Enable `cuda` and supply a `CudaRuntime` client. Each algorithm still checks its required arithmetic support. |
+| WGPU | WGPU cannot compute `f64`, so Hydr rejects the current hydraulic profile. |
 
-Scalar stage/discharge traces require wet-subcritical states. Other regimes require complete exterior data or an admitted transmissive policy.
-Atomic land sources integrate pinned Modified Green–Ampt soil, rain, capped evaporation, and prescribed withdrawal.
+Reading full surface state, soil memory, detailed diagnostics, or checkpoint data copies results from the device. These calls return errors when the copy fails. Snapshots retain complete continuation state for restart. The surface solver commits flow, soil memory, and land-source changes together.
 
-Structure/network coupling and coupled external components remain unsupported. Standalone [structure laws](docs/structures.md) provide checked instantaneous proposals and held-head volumes.
+## Understand the numerical limits
 
-[Sampled controls](docs/operating-controls.md) emit causal commands. [Ideal gate actuators](docs/gate-actuators.md) advance actual opening with explicit directional rates, numerical bounds, events, and complete snapshots. [Controlled gates](docs/controlled-gates.md) accept sampled commands and actual response atomically. [Controlled pumps](docs/controlled-pumps.md) apply an explicitly assumed instantaneous response and retain complete sampled-control continuation. The [operating-source registry](docs/operating-sources.md) binds one writer per structure and retains opening uncertainty beside center-based proposals. Accepted hydraulic transfers remain separate.
+- Method: First-order finite volumes solve the full two-dimensional shallow-water equations. Hydrostatic side corrections balance bed forces. Bracketed-bound HLL supplies face fluxes, and split Manning resistance represents bed friction.
+- Step checks: CFL limits bound the step using wave speeds. Outflow limits prevent a step from consuming unavailable water. Hydr shortens and recalculates complete trials when needed. Negative water rejects without clipping.
+- Boundaries: Scalar stage or discharge inputs require wet-subcritical flow. Other regimes require complete exterior states or an admitted transmissive policy. Read the [boundary guide](docs/boundaries.md) before choosing an outlet.
+- Missing inputs: Impermeable walls cannot replace unknown outlets or missing terrain.
+- Accuracy: Measured-event accuracy and agreement with HEC-RAS remain unestablished. Higher-order methods, wider GPU checks, and calibration require separate numerical evidence.
 
-Impermeable walls cannot replace unknown outlets or missing terrain.
-Generic numerical operations belong in numr. Generic solving algorithms belong in solvr. Hydraulic equations and acceptance belong in hydr.
-See [Contributing](CONTRIBUTING.md) for development checks.
-Read the [numerical contract](docs/numerics.md), [integration contract](docs/integration.md), [physical boundaries](docs/boundaries.md), and [acceptance coverage](docs/acceptance.md).
+## Integrate or contribute
 
-The standalone [soil component](docs/soil.md) retains native memory. The [land-source contract](docs/land-sources.md) defines atomic hydraulic integration and correction budgets.
+Applications call the Rust library directly. Hydr requires neither a GUI nor a HEC-RAS installation. Numr supplies tensor operations, and Solvr supplies generic solving algorithms. Hydr owns the hydraulic equations and physical checks.
 
-A standalone [conservative reservoir](docs/reservoir.md) retains explicit storage and interval export.
-The standalone [subcatchment component](docs/subcatchment.md) adds native soil memory, capped evaporation, and same-interval paired internal routing.
-Hydraulic attachment and inter-catchment networks remain unsupported.
-
-[Contributing-support admission](docs/contributing-support.md) checks declared rainfall ownership and constructs immutable inputs for real surface/runoff consumers.
-ARUS supplies partition evidence. This admission adds no hydraulic attachment or physical source composition.
+| Reader task | Guide |
+| --- | --- |
+| Construct inputs, advance the solver, and save results | [Library integration](docs/integration.md) |
+| Understand the equations and numerical assumptions | [Numerical contract](docs/numerics.md) |
+| Read the checked cases and accuracy limits | [Acceptance coverage](docs/acceptance.md) |
+| Modify code or documentation | [Contributing](CONTRIBUTING.md) |
 
 ## References
 
