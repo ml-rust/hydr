@@ -34,4 +34,11 @@ pub enum OperatingSourceEventKind {
         /// This actuator reaches its original terminal support.
         terminal: bool,
     },
+    /// A fresh controlled pump's original sampled decision or terminal boundary.
+    PumpControl {
+        /// Original sampled decision index, absent at a separate terminal boundary.
+        decision_index: Option<usize>,
+        /// This controller reaches its original terminal support.
+        terminal: bool,
+    },
 }

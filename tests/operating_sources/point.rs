@@ -144,7 +144,7 @@ fn nonzero_source_error_receipts_remain_separate_from_center_discharge() -> Resu
         0.3,
         &heads,
         &[],
-        &[ActuatorSourceFrame {
+        &[OperatingSourceFrame::ActuatedGate {
             source_id: "actual",
             actuator: &actual,
         }],

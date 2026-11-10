@@ -1,6 +1,6 @@
-//! Explicit source ownership and borrowed fresh actuator frames.
+//! Explicit source ownership and borrowed fresh response frames.
 
-use crate::structures::{GateActuatorBatch, GateTrajectoryBatch};
+use crate::structures::{ControlledPumpBatch, GateActuatorBatch, GateTrajectoryBatch};
 
 /// One explicit writer for a nonempty ordered subset of the complete actual structure batch.
 #[derive(Clone, Debug)]
@@ -26,14 +26,31 @@ pub enum OperatingSourceBinding<'a> {
         /// Only this batch's immutable context is captured during registration.
         actuator: &'a GateActuatorBatch,
     },
+    /// Explicit ideal instantaneous pump response supplied through a fresh accepted frame.
+    ControlledPump {
+        /// Unique nonempty source identity.
+        source_id: String,
+        /// Only immutable control and response definitions are captured during registration.
+        pump: &'a ControlledPumpBatch,
+    },
 }
-/// Fresh accepted actuator continuation borrowed for one exact numerical query time.
+/// Fresh accepted response borrowed for one exact numerical query time.
 #[derive(Clone, Copy, Debug)]
-pub struct ActuatorSourceFrame<'a> {
-    /// Registered actuator source identity, in registered actuated-group order.
-    pub source_id: &'a str,
-    /// Accepted actual response. Queries never advance or interpolate this batch.
-    pub actuator: &'a GateActuatorBatch,
+pub enum OperatingSourceFrame<'a> {
+    /// Accepted actual gate response without implicit advancement or interpolation.
+    ActuatedGate {
+        /// Registered source identity in dynamic-group registration order.
+        source_id: &'a str,
+        /// Accepted ideal finite-rate response.
+        actuator: &'a GateActuatorBatch,
+    },
+    /// Accepted sampled pump response under its explicit instantaneous assumption.
+    ControlledPump {
+        /// Registered source identity in dynamic-group registration order.
+        source_id: &'a str,
+        /// Accepted sampled commands and immutable response assumptions.
+        pump: &'a ControlledPumpBatch,
+    },
 }
 /// Closed common support of every bounded source. A singleton remains a valid point.
 #[derive(Clone, Copy, Debug, PartialEq)]

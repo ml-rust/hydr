@@ -103,7 +103,7 @@ fn fresh_actuator_arrival_flags_join_original_knots_without_advancing_sources() 
     let event = registry
         .next_event_after(
             0.0,
-            &[ActuatorSourceFrame {
+            &[OperatingSourceFrame::ActuatedGate {
                 source_id: "actual",
                 actuator: &actual,
             }],
@@ -131,7 +131,7 @@ fn fresh_actuator_arrival_flags_join_original_knots_without_advancing_sources() 
     let terminal = registry
         .next_event_after(
             1.0,
-            &[ActuatorSourceFrame {
+            &[OperatingSourceFrame::ActuatedGate {
                 source_id: "actual",
                 actuator: &actual,
             }],
@@ -177,7 +177,7 @@ fn empty_common_support_rejects_and_single_actuator_prescribed_intersection_rema
     let support = registry.support().ok_or("Missing closed point support")?;
     assert_eq!(support.start_s, 1.0);
     assert_eq!(support.end_s, 1.0);
-    let frames = [ActuatorSourceFrame {
+    let frames = [OperatingSourceFrame::ActuatedGate {
         source_id: "b",
         actuator: &actual,
     }];

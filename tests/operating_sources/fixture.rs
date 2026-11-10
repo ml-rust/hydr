@@ -272,13 +272,13 @@ impl Mixed {
             registry,
         })
     }
-    pub fn frames(&self) -> Vec<ActuatorSourceFrame<'_>> {
+    pub fn frames(&self) -> Vec<OperatingSourceFrame<'_>> {
         vec![
-            ActuatorSourceFrame {
+            OperatingSourceFrame::ActuatedGate {
                 source_id: "actual-b",
                 actuator: &self.actuators[1],
             },
-            ActuatorSourceFrame {
+            OperatingSourceFrame::ActuatedGate {
                 source_id: "actual-a",
                 actuator: &self.actuators[0],
             },

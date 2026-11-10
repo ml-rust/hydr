@@ -1,4 +1,7 @@
-//! Identity-bound manual packets and static derived-gate tensor descriptors.
+//! Identity-bound manual packets and typed derived operation descriptors.
+
+mod admission;
+mod derived;
 
 use super::CpuStructureContext;
 use crate::cpu::CpuTensor;
@@ -6,9 +9,9 @@ use crate::structures::{
     GateTrajectoryEvaluationData, StructureError, StructureInputErrorKind, StructureLaw,
     StructureOperatingPoint, StructureOperation,
 };
-use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
-use numr::runtime::Device;
+use numr::ops::ConditionalOps;
+
+use admission::check;
 
 /// Checked registry tensor inputs in complete original structure layout.
 pub(crate) struct DerivedGateOperations<'a> {
@@ -17,15 +20,40 @@ pub(crate) struct DerivedGateOperations<'a> {
     pub opening: &'a CpuTensor,
     pub isolated: &'a CpuTensor,
 }
+/// Checked selected pump operation tensors in complete original structure layout.
+#[derive(Clone, Copy)]
+pub(crate) struct DerivedPumpOperations<'a> {
+    pub slots: &'a [usize],
+    pub mask: &'a CpuTensor,
+    pub running: &'a CpuTensor,
+    pub isolated: &'a CpuTensor,
+    pub speed: &'a CpuTensor,
+    pub power_of_two: &'a CpuTensor,
+}
+/// Retained selected operations for explicit proposal projection.
+#[derive(Debug)]
+pub(crate) struct DerivedPumpOperationData {
+    pub slots: Vec<usize>,
+    pub running: CpuTensor,
+    pub speed: CpuTensor,
+}
+struct GateBinding<'a> {
+    slots: &'a [usize],
+    mask: &'a CpuTensor,
+    opening: &'a CpuTensor,
+    isolated: CpuTensor,
+}
 pub(crate) enum CheckedOperationSlot<'a> {
     Supplied(&'a StructureOperation),
     DerivedGate,
+    DerivedPump,
 }
 pub(crate) struct CheckedOperations<'a> {
     slots: Vec<CheckedOperationSlot<'a>>,
     isolated: CpuTensor,
     derived_mask: Option<&'a CpuTensor>,
     opening: Option<&'a CpuTensor>,
+    pump: Option<DerivedPumpOperations<'a>>,
 }
 impl<'a> CheckedOperations<'a> {
     pub(crate) fn new(
@@ -54,6 +82,7 @@ impl<'a> CheckedOperations<'a> {
             isolated: context.tensor(&isolated)?,
             derived_mask: None,
             opening: None,
+            pump: None,
         })
     }
     pub(crate) fn trajectory(
@@ -83,61 +112,74 @@ impl<'a> CheckedOperations<'a> {
         Self::bind(
             context,
             other,
-            &evaluation.binding.slots,
-            &evaluation.binding.tensors.assigned_mask,
-            &evaluation.opening,
-            context.tensor(&closed)?,
+            Some(GateBinding {
+                slots: &evaluation.binding.slots,
+                mask: &evaluation.binding.tensors.assigned_mask,
+                opening: &evaluation.opening,
+                isolated: context.tensor(&closed)?,
+            }),
+            None,
             true,
         )
     }
     pub(crate) fn derived(
         context: &CpuStructureContext,
         packets: &'a [StructureOperation],
-        derived: DerivedGateOperations<'a>,
+        gates: Option<DerivedGateOperations<'a>>,
+        pumps: Option<DerivedPumpOperations<'a>>,
     ) -> Result<Self, StructureError> {
         Self::bind(
             context,
             packets,
-            derived.slots,
-            derived.mask,
-            derived.opening,
-            derived.isolated.clone(),
+            gates.map(|gate| GateBinding {
+                slots: gate.slots,
+                mask: gate.mask,
+                opening: gate.opening,
+                isolated: gate.isolated.clone(),
+            }),
+            pumps,
             false,
         )
     }
     fn bind(
         context: &CpuStructureContext,
         packets: &'a [StructureOperation],
-        derived_slots: &[usize],
-        mask: &'a CpuTensor,
-        opening: &'a CpuTensor,
-        derived_isolated: CpuTensor,
+        gates: Option<GateBinding<'a>>,
+        pumps: Option<DerivedPumpOperations<'a>>,
         trajectory: bool,
     ) -> Result<Self, StructureError> {
         let n = context.elements.len();
-        let mut flags = vec![0.0; n];
-        let mut previous = None;
-        for &slot in derived_slots {
-            if slot >= n || previous.is_some_and(|old| old >= slot) {
+        let gate_flags = gates
+            .as_ref()
+            .map(|gate| derived::gate_slots(context, gate.slots))
+            .transpose()?;
+        let pump_flags = pumps
+            .as_ref()
+            .map(|pump| derived::pump_slots(context, pump.slots))
+            .transpose()?;
+        let mut flags = vec![0u8; n];
+        for index in 0..n {
+            let gate = gate_flags
+                .as_ref()
+                .is_some_and(|values| values[index] == 1.0);
+            let pump = pump_flags
+                .as_ref()
+                .is_some_and(|values| values[index] == 1.0);
+            if gate && pump {
                 return Err(StructureError::input(
                     StructureInputErrorKind::Identity,
-                    "derived gates must follow unique complete-context order",
-                ));
+                    "derived operation ownership overlaps: assign one typed operation per actual structure",
+                ).at(index));
             }
-            if !matches!(
-                context.elements[slot].law,
-                StructureLaw::HydrostaticRectangularGate(_)
-            ) {
-                return Err(StructureError::input(
-                    StructureInputErrorKind::Identity,
-                    "derived operation ownership requires an actual gate",
-                )
-                .at(slot));
-            }
-            flags[slot] = 1.0;
-            previous = Some(slot);
+            flags[index] = if gate {
+                1
+            } else if pump {
+                2
+            } else {
+                0
+            };
         }
-        let expected = n - derived_slots.len();
+        let expected = flags.iter().filter(|&&assigned| assigned == 0).count();
         if packets.len() != expected {
             return Err(StructureError::input(
                 StructureInputErrorKind::OperatingPoint,
@@ -147,44 +189,21 @@ impl<'a> CheckedOperations<'a> {
                 ),
             ));
         }
-        for value in [mask, opening, &derived_isolated] {
-            if value.shape() != [n]
-                || value.dtype() != DType::F64
-                || value.device().id() != context.device.id()
-            {
-                return Err(StructureError::numerical(
-                    "derived gate tensor metadata differs from complete CPU F64 structure layout",
-                ));
-            }
+        if let (Some(gate), Some(flags)) = (&gates, &gate_flags) {
+            derived::gate(context, gate, flags)?;
+        }
+        if let (Some(pump), Some(flags)) = (&pumps, &pump_flags) {
+            derived::pump(context, pump, flags)?;
         }
         let c = &context.client;
-        context.reject(
-            &c.ne(mask, &context.tensor(&flags)?)?,
-            "derived gate ownership mask disagrees with checked static slots",
-        )?;
-        context.reject(
-            &c.mul(
-                mask,
-                &c.mul(
-                    &c.ne(&derived_isolated, &context.zero)?,
-                    &c.ne(&derived_isolated, &context.one)?,
-                )?,
-            )?,
-            "derived gate isolation mask must contain only checked binary flags",
-        )?;
-        context.reject(
-            &c.mul(
-                mask,
-                &c.mul(&derived_isolated, &c.ne(opening, &context.zero)?)?,
-            )?,
-            "derived gate closure certificate contradicts represented opening",
-        )?;
         let mut slots = Vec::with_capacity(n);
         let mut supplied = packets.iter();
         let mut isolated = vec![0.0; n];
         for (index, &assigned) in flags.iter().enumerate() {
-            if assigned == 1.0 {
+            if assigned == 1 {
                 slots.push(CheckedOperationSlot::DerivedGate);
+            } else if assigned == 2 {
+                slots.push(CheckedOperationSlot::DerivedPump);
             } else {
                 let operation = supplied.next().ok_or_else(|| {
                     StructureError::numerical("checked manual complement is incomplete").at(index)
@@ -209,12 +228,19 @@ impl<'a> CheckedOperations<'a> {
                 slots.push(CheckedOperationSlot::Supplied(operation));
             }
         }
-        let isolated = c.where_cond(mask, &derived_isolated, &context.tensor(&isolated)?)?;
+        let mut isolated = context.tensor(&isolated)?;
+        if let Some(gate) = &gates {
+            isolated = c.where_cond(gate.mask, &gate.isolated, &isolated)?;
+        }
+        if let Some(pump) = &pumps {
+            isolated = c.where_cond(pump.mask, pump.isolated, &isolated)?;
+        }
         Ok(Self {
             slots,
             isolated,
-            derived_mask: Some(mask),
-            opening: Some(opening),
+            derived_mask: gates.as_ref().map(|gate| gate.mask),
+            opening: gates.as_ref().map(|gate| gate.opening),
+            pump: pumps,
         })
     }
     pub(crate) fn len(&self) -> usize {
@@ -223,7 +249,7 @@ impl<'a> CheckedOperations<'a> {
     pub(crate) fn supplied(&self, index: usize) -> Option<StructureOperatingPoint> {
         match &self.slots[index] {
             CheckedOperationSlot::Supplied(packet) => Some(packet.operating_point),
-            CheckedOperationSlot::DerivedGate => None,
+            CheckedOperationSlot::DerivedGate | CheckedOperationSlot::DerivedPump => None,
         }
     }
     pub(crate) fn derived_opening(&self) -> Option<(&CpuTensor, &CpuTensor)> {
@@ -232,76 +258,7 @@ impl<'a> CheckedOperations<'a> {
     pub(crate) fn isolated(&self) -> &CpuTensor {
         &self.isolated
     }
-}
-
-fn check(
-    context: &CpuStructureContext,
-    index: usize,
-    operation: &StructureOperation,
-) -> Result<bool, StructureError> {
-    let element = &context.elements[index];
-    if operation.structure_id != element.id {
-        return Err(StructureError::input(
-            StructureInputErrorKind::Identity,
-            format!(
-                "operation={:?},expected={:?}: match complete original structure order",
-                operation.structure_id, element.id
-            ),
-        )
-        .at(index));
+    pub(crate) fn derived_pump(&self) -> Option<&DerivedPumpOperations<'a>> {
+        self.pump.as_ref()
     }
-    let uninfluential = match (&element.law, operation.operating_point) {
-        (StructureLaw::Pump(_), StructureOperatingPoint::PumpStoppedIsolated) => true,
-        (StructureLaw::Pump(_), StructureOperatingPoint::PumpRunning { speed_ratio }) => {
-            if !speed_ratio.is_finite() || speed_ratio <= 0.0 {
-                return Err(StructureError::input(StructureInputErrorKind::OperatingPoint,format!("speed_ratio={speed_ratio}: supply positive finite speed or explicit stopped-isolated operation")).at(index));
-            }
-            false
-        }
-        (
-            StructureLaw::HydrostaticRectangularGate(parameters),
-            StructureOperatingPoint::GateOpening { opening_m },
-        ) => {
-            if !opening_m.is_finite()
-                || opening_m < 0.0
-                || opening_m > parameters.maximum_opening_m()
-            {
-                return Err(StructureError::input(
-                    StructureInputErrorKind::OperatingPoint,
-                    format!(
-                "opening_m={opening_m},maximum_opening_m={}: supply a finite opening in the declared closed range",
-                parameters.maximum_opening_m()
-                    ),
-                )
-                .at(index));
-            }
-            opening_m == 0.0
-        }
-        (
-            StructureLaw::SubmergedOrifice(_) | StructureLaw::SuppressedRectangularWeir(_),
-            StructureOperatingPoint::Passive,
-        ) => false,
-        (StructureLaw::Pump(_), _) => {
-            return Err(StructureError::input(
-                StructureInputErrorKind::OperatingPoint,
-                "pump requires explicit running or stopped-isolated operation",
-            )
-            .at(index));
-        }
-        (StructureLaw::HydrostaticRectangularGate(_), _) => {
-            return Err(StructureError::input(
-                StructureInputErrorKind::OperatingPoint,
-                "gate requires an explicit identity-bound opening operation",
-            )
-            .at(index));
-        }
-        _ => {
-            return Err(StructureError::input(
-                StructureInputErrorKind::OperatingPoint,
-                "passive law requires an explicit Passive operation",
-            )
-            .at(index));
-        }
-    };
-    Ok(uninfluential)
 }

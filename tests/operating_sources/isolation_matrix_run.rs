@@ -96,7 +96,7 @@ pub(super) fn run(recipe: Recipe, mutation: Mutation) -> Result {
     let frames = actual
         .as_ref()
         .map(|batch| {
-            vec![ActuatorSourceFrame {
+            vec![OperatingSourceFrame::ActuatedGate {
                 source_id: "source-0",
                 actuator: batch,
             }]

@@ -91,14 +91,22 @@ fn many_registered_groups_preserve_original_slot_values_and_source_receipts() ->
     let frames = (0..WIDTH)
         .rev()
         .filter_map(|lane| {
-            actual[lane].as_ref().map(|actuator| ActuatorSourceFrame {
-                source_id: &source_ids[lane],
-                actuator,
-            })
+            actual[lane]
+                .as_ref()
+                .map(|actuator| OperatingSourceFrame::ActuatedGate {
+                    source_id: &source_ids[lane],
+                    actuator,
+                })
         })
         .collect::<Vec<_>>();
     assert_eq!(frames.len(), WIDTH / 3);
-    assert_eq!(frames[0].source_id, "source-128");
+    assert!(matches!(
+        frames[0],
+        OperatingSourceFrame::ActuatedGate {
+            source_id: "source-128",
+            ..
+        }
+    ));
     let mut heads = heads(&context);
     for (lane, packet) in heads.iter_mut().enumerate() {
         packet.endpoint_a.support = HeadSupport::Wet {

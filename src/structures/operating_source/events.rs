@@ -1,8 +1,8 @@
 //! Exact static-group event aggregation from current fresh source frames.
 
 use super::{
-    ActuatorSourceFrame, OperatingSourceBatch, OperatingSourceEvent, OperatingSourceEventKind,
-    OperatingSourceEventOrigin,
+    OperatingSourceBatch, OperatingSourceEvent, OperatingSourceEventKind,
+    OperatingSourceEventOrigin, OperatingSourceFrame,
 };
 use crate::cpu::structures::operating_source::{CpuOperatingSourceKind, frames};
 use crate::structures::StructureError;
@@ -14,10 +14,10 @@ impl OperatingSourceBatch {
     pub fn next_event_after(
         &self,
         time_s: f64,
-        actuator_frames: &[ActuatorSourceFrame<'_>],
+        source_frames: &[OperatingSourceFrame<'_>],
     ) -> Result<Option<OperatingSourceEvent>, StructureError> {
         self.check_time(time_s)?;
-        let frames = frames(&self.context, time_s, actuator_frames)?;
+        let frames = frames(&self.context, time_s, source_frames)?;
         let Some(support) = self.support() else {
             return Ok(None);
         };
@@ -42,18 +42,37 @@ impl OperatingSourceBatch {
                     }
                 }
                 CpuOperatingSourceKind::Actuated(_) => {
-                    let frame = next_frame.next().ok_or_else(|| {
-                        StructureError::numerical(
-                            "checked operating-source frame vector is incomplete",
-                        )
-                    })?;
-                    frame.next_event()?.map(|event| {
+                    let Some(OperatingSourceFrame::ActuatedGate { actuator, .. }) =
+                        next_frame.next()
+                    else {
+                        return Err(StructureError::numerical(
+                            "checked actuator event frame is incomplete or has another kind",
+                        ));
+                    };
+                    actuator.next_event()?.map(|event| {
                         (
                             event.time_s,
                             OperatingSourceEventKind::Actuator {
                                 target_index: event.target_index,
                                 arrival_lower_boundary: event.arrival_lower_boundary,
                                 arrival_upper_boundary: event.arrival_upper_boundary,
+                                terminal: event.terminal,
+                            },
+                        )
+                    })
+                }
+                CpuOperatingSourceKind::ControlledPump(_) => {
+                    let Some(OperatingSourceFrame::ControlledPump { pump, .. }) = next_frame.next()
+                    else {
+                        return Err(StructureError::numerical(
+                            "checked pump event frame is incomplete or has another kind",
+                        ));
+                    };
+                    pump.next_event().map(|event| {
+                        (
+                            event.time_s,
+                            OperatingSourceEventKind::PumpControl {
+                                decision_index: event.decision_index,
                                 terminal: event.terminal,
                             },
                         )

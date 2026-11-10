@@ -293,7 +293,7 @@ fn operating_sources_consume_actual_child_position_without_substituting_its_targ
         1.0,
         &heads,
         &[],
-        &[ActuatorSourceFrame {
+        &[OperatingSourceFrame::ActuatedGate {
             source_id: "controlled-response",
             actuator: batch.actuators(),
         }],
@@ -308,7 +308,7 @@ fn operating_sources_consume_actual_child_position_without_substituting_its_targ
         1.5,
         &heads,
         &[],
-        &[ActuatorSourceFrame {
+        &[OperatingSourceFrame::ActuatedGate {
             source_id: "controlled-response",
             actuator: batch.actuators(),
         }],

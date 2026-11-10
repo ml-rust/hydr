@@ -65,8 +65,8 @@ pub use control::{
 
 mod operating_source;
 pub use operating_source::{
-    ActuatorSourceFrame, OperatingSourceBatch, OperatingSourceBinding, OperatingSourceDetail,
-    OperatingSourceEvent, OperatingSourceEventKind, OperatingSourceEventOrigin,
+    OperatingSourceBatch, OperatingSourceBinding, OperatingSourceDetail, OperatingSourceEvent,
+    OperatingSourceEventKind, OperatingSourceEventOrigin, OperatingSourceFrame,
     OperatingSourceOutput, OperatingSourceProposal, OperatingSourceReceipt, OperatingSourceSupport,
 };
 
@@ -78,4 +78,12 @@ mod controlled_gate;
 pub use controlled_gate::{
     ControlledGateBatch, ControlledGateEvent, ControlledGateSnapshot, ControlledGateSnapshotData,
     ControlledGateTrial,
+};
+
+mod controlled_pump;
+pub(crate) use control::same_control_context;
+pub(crate) use controlled_pump::same_controlled_pump_context;
+pub use controlled_pump::{
+    ControlledPumpBatch, ControlledPumpOutput, ControlledPumpSnapshot, ControlledPumpSnapshotData,
+    ControlledPumpTrial, PumpResponseDefinition, PumpResponseModel,
 };

@@ -58,6 +58,7 @@ impl StructureProposal {
         manual: Vec<super::StructureOperation>,
         derived_slots: Vec<usize>,
         opening: crate::cpu::CpuTensor,
+        pumps: Option<crate::cpu::structures::DerivedPumpOperationData>,
         result: CpuStructureResult,
     ) -> Self {
         Self {
@@ -69,6 +70,7 @@ impl StructureProposal {
                     context,
                     slots: derived_slots,
                     opening,
+                    pumps: pumps.map(Box::new),
                     manual,
                 },
             }),

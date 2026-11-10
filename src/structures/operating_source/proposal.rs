@@ -9,7 +9,8 @@ use crate::cpu::structures::{
     },
 };
 use crate::structures::{
-    GateActuatorSupport, StructureError, StructureOperation, StructureProposal,
+    ControlLatch, GateActuatorSupport, StructureError, StructureOperatingPoint, StructureOperation,
+    StructureProposal,
 };
 use std::sync::Arc;
 
@@ -20,7 +21,7 @@ struct PointData {
     hydraulic: StructureProposal,
     point: CpuOperatingSourcePoint,
 }
-/// Immutable center-based point proposal paired with retained operating-source and opening evidence.
+/// Immutable point proposal paired with retained operation provenance and gate-opening evidence.
 ///
 /// No held-volume API or implicit integrated-transfer conversion exists on this type.
 #[derive(Clone, Debug)]
@@ -108,6 +109,36 @@ impl OperatingSourceProposal {
                             position,
                             phase,
                             support,
+                        });
+                    }
+                }
+                (
+                    CpuOperatingSourceKind::ControlledPump(context),
+                    CpuOperatingSourceValue::ControlledPump(value),
+                ) => {
+                    let count = group.slots.len();
+                    let running = crate::structures::projection::read(&value.running, count)?;
+                    let speed = crate::structures::projection::read(&value.speed, count)?;
+                    let high = crate::structures::projection::read(&value.high, count)?;
+                    for (lane, &slot) in group.slots.iter().enumerate() {
+                        let operating_point = if running[lane] == 0.0 {
+                            StructureOperatingPoint::PumpStoppedIsolated
+                        } else {
+                            StructureOperatingPoint::PumpRunning {
+                                speed_ratio: speed[lane],
+                            }
+                        };
+                        details[slot] = Some(OperatingSourceDetail::ControlledPump {
+                            controller_id: context.controls.definitions[lane].controller_id.clone(),
+                            accepted_steps: value.accepted_steps,
+                            accepted_time_s: value.accepted_time_s,
+                            latch: if high[lane] == 0.0 {
+                                ControlLatch::Low
+                            } else {
+                                ControlLatch::High
+                            },
+                            response_model: context.definitions[lane].model,
+                            operating_point,
                         });
                     }
                 }

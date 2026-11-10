@@ -1,10 +1,10 @@
 //! Stateless exclusive source registries and point-only constitutive proposals.
 
 use super::{
-    ActuatorSourceFrame, OperatingSourceBinding, OperatingSourceProposal, OperatingSourceSupport,
+    OperatingSourceBinding, OperatingSourceFrame, OperatingSourceProposal, OperatingSourceSupport,
 };
 use crate::cpu::structures::{
-    CpuStructureInput, DerivedGateOperations,
+    CpuStructureInput, DerivedGateOperations, DerivedPumpOperationData, DerivedPumpOperations,
     operating_source::{CpuOperatingSourceContext, assemble},
 };
 use crate::structures::{
@@ -13,13 +13,13 @@ use crate::structures::{
 };
 use std::sync::Arc;
 
-/// Immutable exclusive source registry. Every point requires original manual packets and fresh actuator frames.
+/// Immutable exclusive registry requiring original manual packets and fresh dynamic frames.
 #[derive(Clone, Debug)]
 pub struct OperatingSourceBatch {
     pub(crate) context: Arc<CpuOperatingSourceContext>,
 }
 impl StructureBatch {
-    /// Bind exactly one explicit writer to every original element without capturing accepted actuator state.
+    /// Bind one explicit writer per original element without capturing dynamic continuation.
     pub fn with_operating_sources(
         &self,
         sources: Vec<OperatingSourceBinding<'_>>,
@@ -58,14 +58,14 @@ impl OperatingSourceBatch {
     }
     /// Evaluate hydraulic laws at admitted centers while retaining mandatory source uncertainty receipts.
     ///
-    /// Manual packets follow the complete original manual-owned subsequence. Frames follow registered actuated-group order.
+    /// Manual packets follow the original manual-owned subsequence. Frames follow dynamic-group registration order.
     /// This method advances no response, accepts no transfer, and supplies no ideal-discharge enclosure or integrated volume.
     pub fn propose_at(
         &self,
         time_s: f64,
         heads: &[StructureHeads],
         manual_operations: &[StructureOperation],
-        actuator_frames: &[ActuatorSourceFrame<'_>],
+        frames: &[OperatingSourceFrame<'_>],
     ) -> Result<OperatingSourceProposal, StructureError> {
         self.check_time(time_s)?;
         let context = &self.context.structures;
@@ -76,17 +76,25 @@ impl OperatingSourceBatch {
                 "supply exactly every manual-owned operation in original complete subsequence order",
             ));
         }
-        let point = assemble(&self.context, time_s, actuator_frames)?;
+        let point = assemble(&self.context, time_s, frames)?;
         let input = CpuStructureInput::with_derived_heads(
             context,
             heads_input,
             manual_operations,
-            DerivedGateOperations {
+            Some(DerivedGateOperations {
                 slots: &self.context.derived_slots,
                 mask: &self.context.derived_mask,
                 opening: &point.opening,
                 isolated: &point.closed,
-            },
+            }),
+            (!self.context.pump_slots.is_empty()).then_some(DerivedPumpOperations {
+                slots: &self.context.pump_slots,
+                mask: &self.context.pump_mask,
+                running: &point.pump_running,
+                isolated: &point.pump_isolated,
+                speed: &point.pump_speed,
+                power_of_two: &point.pump_power_of_two,
+            }),
         )?;
         let result = crate::numerics::structures::proposal(context, &input)?;
         let hydraulic = StructureProposal::from_derived(
@@ -95,6 +103,15 @@ impl OperatingSourceBatch {
             manual_operations.to_vec(),
             self.context.derived_slots.clone(),
             point.opening.clone(),
+            if self.context.pump_slots.is_empty() {
+                None
+            } else {
+                Some(DerivedPumpOperationData {
+                    slots: self.context.pump_slots.clone(),
+                    running: point.pump_running.clone(),
+                    speed: point.pump_speed.clone(),
+                })
+            },
             result,
         );
         Ok(OperatingSourceProposal::new(

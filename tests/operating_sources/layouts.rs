@@ -123,7 +123,7 @@ fn distinct_interleaved_lane_values_survive_compact_gather_scatter_at_vector_and
         let frames = actual
             .as_ref()
             .map(|actual| {
-                vec![ActuatorSourceFrame {
+                vec![OperatingSourceFrame::ActuatedGate {
                     source_id: "actual",
                     actuator: actual,
                 }]

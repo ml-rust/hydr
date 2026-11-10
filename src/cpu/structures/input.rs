@@ -61,9 +61,11 @@ impl CpuStructureInput {
         context: &CpuStructureContext,
         heads: CpuStructureHeads,
         manual: &[crate::structures::StructureOperation],
-        derived: super::operations::DerivedGateOperations<'_>,
+        gates: Option<super::operations::DerivedGateOperations<'_>>,
+        pumps: Option<super::operations::DerivedPumpOperations<'_>>,
     ) -> Result<Self, StructureError> {
-        let operations = super::operations::CheckedOperations::derived(context, manual, derived)?;
+        let operations =
+            super::operations::CheckedOperations::derived(context, manual, gates, pumps)?;
         Self::checked(context, heads, &operations)
     }
     pub(crate) fn heads(

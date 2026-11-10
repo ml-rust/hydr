@@ -44,7 +44,7 @@ The accepted pair preserves the children's dimensional policies. No composite to
 
 `controls()` and `actuators()` expose immutable child references. Their explicit projections retain the existing command, position, support, and diagnostic contracts. `time()` and `accepted_steps()` describe the common accepted continuation.
 
-The actuator reference can supply an `OperatingSourceBinding::Actuated` and each fresh `ActuatorSourceFrame`. The [operating-source registry](operating-sources.md) retains actual opening uncertainty beside center-based hydraulic proposals. The controlled target never substitutes for actual opening. Source selection establishes no enclosure for ideal discharge or integrated transfer volume.
+The actuator reference can supply an `OperatingSourceBinding::Actuated` and each fresh `OperatingSourceFrame::ActuatedGate`. The [operating-source registry](operating-sources.md) retains actual opening uncertainty beside center-based hydraulic proposals. The controlled target never substitutes for actual opening. Source selection establishes no enclosure for ideal discharge or integrated transfer volume.
 
 ## Complete restoration
 

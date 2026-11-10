@@ -152,6 +152,22 @@ pub(super) fn build(
                     CpuOperatingSourceKind::Actuated(Arc::clone(&actuator.context)),
                 )
             }
+            OperatingSourceBinding::ControlledPump { source_id, pump } => {
+                compatible(&context, &pump.context.controls.structures, &source_id)?;
+                let domain = pump.controls().schedule();
+                intersection(
+                    &mut support,
+                    OperatingSourceSupport {
+                        start_s: domain.initial_time_s,
+                        end_s: domain.end_s,
+                    },
+                )?;
+                (
+                    source_id,
+                    pump.context.controls.slots.clone(),
+                    CpuOperatingSourceKind::ControlledPump(Arc::clone(&pump.context)),
+                )
+            }
         };
         if id.trim().is_empty()
             || id.chars().any(char::is_control)

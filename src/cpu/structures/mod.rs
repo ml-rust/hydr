@@ -16,8 +16,12 @@ pub(crate) use proposal::CpuStructureResult;
 
 pub(crate) mod actuator;
 
-pub(crate) use operations::DerivedGateOperations;
+pub(crate) use operations::{
+    DerivedGateOperations, DerivedPumpOperationData, DerivedPumpOperations,
+};
 
 pub(crate) mod operating_source;
 
 pub(crate) mod controlled_gate;
+
+pub(crate) mod controlled_pump;

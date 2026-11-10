@@ -39,7 +39,7 @@ fn canonical_closed_sources_waive_only_unknown_support_and_keep_original_packets
             vec![]
         };
         let frames = if source == 2 {
-            vec![ActuatorSourceFrame {
+            vec![OperatingSourceFrame::ActuatedGate {
                 source_id: "source",
                 actuator: &actual,
             }]
@@ -68,7 +68,7 @@ fn canonical_closed_sources_waive_only_unknown_support_and_keep_original_packets
         0.5,
         &heads,
         &[],
-        &[ActuatorSourceFrame {
+        &[OperatingSourceFrame::ActuatedGate {
             source_id: "stalled",
             actuator: &stalled,
         }],
@@ -108,7 +108,7 @@ fn malformed_known_heads_reject_before_every_closed_source_waiver() -> Result {
             vec![]
         };
         let frames = if source == 2 {
-            vec![ActuatorSourceFrame {
+            vec![OperatingSourceFrame::ActuatedGate {
                 source_id: "source",
                 actuator: &actual,
             }]
@@ -189,7 +189,7 @@ fn positive_openings_and_zero_targets_never_isolate_unknown_heads() -> Result {
                 0.0,
                 &heads,
                 &[],
-                &[ActuatorSourceFrame {
+                &[OperatingSourceFrame::ActuatedGate {
                     source_id: "actual",
                     actuator: &actual,
                 }],
@@ -228,7 +228,7 @@ fn unresolved_actual_closure_keeps_positive_center_and_unknown_heads_influential
             actual.time(),
             &unknown(&context),
             &[],
-            &[ActuatorSourceFrame {
+            &[OperatingSourceFrame::ActuatedGate {
                 source_id: "actual",
                 actuator: &actual,
             }],

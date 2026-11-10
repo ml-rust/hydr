@@ -15,7 +15,7 @@ fn actuated_frames_require_registered_order_identity_and_exact_accepted_time() -
             0.0,
             &heads,
             &manual,
-            &[ActuatorSourceFrame {
+            &[OperatingSourceFrame::ActuatedGate {
                 source_id: "actual-b",
                 actuator: &fixture.actuators[1],
             }],
@@ -24,31 +24,31 @@ fn actuated_frames_require_registered_order_identity_and_exact_accepted_time() -
     )?;
     for frames in [
         vec![
-            ActuatorSourceFrame {
+            OperatingSourceFrame::ActuatedGate {
                 source_id: "actual-a",
                 actuator: &fixture.actuators[0],
             },
-            ActuatorSourceFrame {
+            OperatingSourceFrame::ActuatedGate {
                 source_id: "actual-b",
                 actuator: &fixture.actuators[1],
             },
         ],
         vec![
-            ActuatorSourceFrame {
+            OperatingSourceFrame::ActuatedGate {
                 source_id: "actual-b",
                 actuator: &fixture.actuators[1],
             },
-            ActuatorSourceFrame {
+            OperatingSourceFrame::ActuatedGate {
                 source_id: "actual-b",
                 actuator: &fixture.actuators[0],
             },
         ],
         vec![
-            ActuatorSourceFrame {
+            OperatingSourceFrame::ActuatedGate {
                 source_id: "foreign",
                 actuator: &fixture.actuators[1],
             },
-            ActuatorSourceFrame {
+            OperatingSourceFrame::ActuatedGate {
                 source_id: "actual-a",
                 actuator: &fixture.actuators[0],
             },
@@ -64,7 +64,7 @@ fn actuated_frames_require_registered_order_identity_and_exact_accepted_time() -
         )?;
     }
     let mut extra = fixture.frames();
-    extra.push(ActuatorSourceFrame {
+    extra.push(OperatingSourceFrame::ActuatedGate {
         source_id: "foreign",
         actuator: &fixture.actuators[0],
     });
@@ -74,11 +74,11 @@ fn actuated_frames_require_registered_order_identity_and_exact_accepted_time() -
     )?;
     let later = advance(fixture.actuators[0].clone(), 1.0)?;
     let frames = [
-        ActuatorSourceFrame {
+        OperatingSourceFrame::ActuatedGate {
             source_id: "actual-b",
             actuator: &fixture.actuators[1],
         },
-        ActuatorSourceFrame {
+        OperatingSourceFrame::ActuatedGate {
             source_id: "actual-a",
             actuator: &later,
         },
@@ -111,11 +111,11 @@ fn separately_reconstructed_and_cold_restored_frames_preserve_full_immutable_ide
         source.schedule().clone(),
     )?;
     let frames = [
-        ActuatorSourceFrame {
+        OperatingSourceFrame::ActuatedGate {
             source_id: "actual-b",
             actuator: &fixture.actuators[1],
         },
-        ActuatorSourceFrame {
+        OperatingSourceFrame::ActuatedGate {
             source_id: "actual-a",
             actuator: &rebuilt,
         },
@@ -137,11 +137,11 @@ fn separately_reconstructed_and_cold_restored_frames_preserve_full_immutable_ide
     let mut restored = rebuilt;
     restored.restore_data(&advanced_a.snapshot_data()?)?;
     let frames = [
-        ActuatorSourceFrame {
+        OperatingSourceFrame::ActuatedGate {
             source_id: "actual-b",
             actuator: &advanced_b,
         },
-        ActuatorSourceFrame {
+        OperatingSourceFrame::ActuatedGate {
             source_id: "actual-a",
             actuator: &restored,
         },
@@ -177,11 +177,11 @@ fn matching_current_centers_do_not_waive_original_frame_definition_or_context_bi
             source.outputs()?[0].position.opening_m
         );
         let frames = [
-            ActuatorSourceFrame {
+            OperatingSourceFrame::ActuatedGate {
                 source_id: "actual-b",
                 actuator: &fixture.actuators[1],
             },
-            ActuatorSourceFrame {
+            OperatingSourceFrame::ActuatedGate {
                 source_id: "actual-a",
                 actuator: &foreign,
             },
@@ -205,7 +205,7 @@ fn numerically_equal_signed_zero_frame_and_query_times_keep_separate_original_re
             source_id: "actual".into(),
             actuator: &actual,
         }])?;
-        let frames = [ActuatorSourceFrame {
+        let frames = [OperatingSourceFrame::ActuatedGate {
             source_id: "actual",
             actuator: &actual,
         }];
@@ -242,7 +242,7 @@ fn raw_initial_clock_bits_remain_part_of_immutable_actuator_frame_identity() -> 
             0.0,
             &heads(&context),
             &[],
-            &[ActuatorSourceFrame {
+            &[OperatingSourceFrame::ActuatedGate {
                 source_id: "actual",
                 actuator: &foreign,
             }],

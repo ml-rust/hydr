@@ -3,6 +3,7 @@
 use crate::cpu::structures::operations::CheckedOperations;
 use crate::cpu::{CpuTensor, structures::CpuStructureContext};
 use crate::structures::{StructureError, StructureOperatingPoint};
+use numr::ops::ConditionalOps;
 
 #[derive(Debug)]
 pub(crate) struct CpuPumpInput {
@@ -40,11 +41,20 @@ impl CpuPumpInput {
                 | None => {}
             }
         }
-        Ok(Some(Self {
+        let mut input = Self {
             running: context.tensor(&running)?,
             isolated: context.tensor(&isolated)?,
             speed: context.tensor(&speed)?,
             power_of_two: context.tensor(&power)?,
-        }))
+        };
+        if let Some(derived) = operations.derived_pump() {
+            let c = &context.client;
+            input.running = c.where_cond(derived.mask, derived.running, &input.running)?;
+            input.isolated = c.where_cond(derived.mask, derived.isolated, &input.isolated)?;
+            input.speed = c.where_cond(derived.mask, derived.speed, &input.speed)?;
+            input.power_of_two =
+                c.where_cond(derived.mask, derived.power_of_two, &input.power_of_two)?;
+        }
+        Ok(Some(input))
     }
 }

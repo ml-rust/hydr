@@ -1,15 +1,16 @@
-//! Mandatory source uncertainty paired with center-based constitutive output.
+//! Mandatory source provenance and gate-opening uncertainty paired with constitutive output.
 
 use crate::structures::{
-    GateActuatorPhase, GateActuatorPosition, GateActuatorSupport, StructureOutput,
+    ControlLatch, GateActuatorPhase, GateActuatorPosition, GateActuatorSupport, PumpResponseModel,
+    StructureOperatingPoint, StructureOutput,
 };
 
-/// An instantaneous center-based hydraulic result with its responsible operating source.
+/// An instantaneous hydraulic result with its responsible operating source.
 #[derive(Clone, Debug, PartialEq)]
 pub struct OperatingSourceOutput {
-    /// Hydraulic law evaluated at the admitted represented center opening and supplied heads.
+    /// Hydraulic law evaluated from the admitted actual operation and supplied heads.
     pub hydraulic: StructureOutput,
-    /// Source ownership, point support, and independently retained opening uncertainty.
+    /// Source ownership, point support, and source-specific operation or opening evidence.
     pub source: OperatingSourceReceipt,
 }
 /// Identity and original point time attached to every hydraulic output row.
@@ -23,7 +24,7 @@ pub struct OperatingSourceReceipt {
     pub structure_id: String,
     /// Original query time, preserving its F64 bits.
     pub time_s: f64,
-    /// Original source semantics and opening evidence.
+    /// Original source semantics, actual operation, and applicable opening evidence.
     pub detail: OperatingSourceDetail,
 }
 /// Source-specific evidence. Position bounds imply no ideal-flow or integrated-volume enclosure.
@@ -56,5 +57,20 @@ pub enum OperatingSourceDetail {
         phase: GateActuatorPhase,
         /// Canonical closed, certainly positive, or unresolved closure support.
         support: GateActuatorSupport,
+    },
+    /// Accepted sampled command under an explicit ideal instantaneous response model.
+    ControlledPump {
+        /// Original controller identity in the registered ordered pump subset.
+        controller_id: String,
+        /// Accepted original control interval count at this frame.
+        accepted_steps: usize,
+        /// Original frame accepted time, preserving its bits independently of the query time.
+        accepted_time_s: f64,
+        /// Accepted sampled relay latch selecting the original command.
+        latch: ControlLatch,
+        /// Explicit assumed response model, without inferred motor dynamics.
+        response_model: PumpResponseModel,
+        /// Actual stopped isolation or original running speed under the declared model.
+        operating_point: StructureOperatingPoint,
     },
 }

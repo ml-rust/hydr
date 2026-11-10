@@ -24,3 +24,6 @@ pub use signal::{ControlSample, ControlStageSignal};
 pub use snapshot::{OperatingControlSnapshot, OperatingControlSnapshotData};
 pub use state::{ControlInitialState, ControlPending, ControlState};
 pub use trial::OperatingControlTrial;
+
+mod compatibility;
+pub(crate) use compatibility::same_context as same_control_context;

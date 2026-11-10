@@ -1,24 +1,20 @@
-//! Bit-preserving tensor replacement from original-time or trusted actual positions.
+//! Bit-preserving tensor assembly from prescribed positions and trusted actual responses.
 
+use super::frames::metadata;
 use super::{CpuOperatingSourceContext, CpuOperatingSourceKind};
 use crate::cpu::{
     CpuTensor,
     structures::{actuator::CpuActuatorPosition, gate::trajectory::TrajectoryPointMetadata},
 };
-use crate::structures::{
-    ActuatorSourceFrame, GateActuatorBatch, StructureError, StructureInputErrorKind,
-};
-use numr::{
-    dtype::DType,
-    ops::{BinaryOps, CompareOps, IndexingOps, ShapeOps},
-    runtime::Device,
-};
+use crate::structures::{OperatingSourceFrame, StructureError};
+use numr::ops::{BinaryOps, CompareOps, IndexingOps, ShapeOps};
 
 #[derive(Clone, Debug)]
 pub(crate) enum CpuOperatingSourceValue {
     Manual,
     Prescribed,
     Actuated(Box<CpuActuatedSourceValue>),
+    ControlledPump(Box<CpuControlledPumpSourceValue>),
 }
 #[derive(Clone, Debug)]
 pub(crate) struct CpuActuatedSourceValue {
@@ -28,97 +24,24 @@ pub(crate) struct CpuActuatedSourceValue {
     pub phase: CpuTensor,
 }
 #[derive(Clone, Debug)]
+pub(crate) struct CpuControlledPumpSourceValue {
+    pub accepted_steps: usize,
+    pub accepted_time_s: f64,
+    pub running: CpuTensor,
+    pub speed: CpuTensor,
+    pub high: CpuTensor,
+}
+#[derive(Clone, Debug)]
 pub(crate) struct CpuOperatingSourcePoint {
     pub opening: CpuTensor,
     pub absolute_error: CpuTensor,
     pub closed: CpuTensor,
+    pub pump_running: CpuTensor,
+    pub pump_isolated: CpuTensor,
+    pub pump_speed: CpuTensor,
+    pub pump_power_of_two: CpuTensor,
     pub values: Vec<CpuOperatingSourceValue>,
     pub prescribed_metadata: Vec<TrajectoryPointMetadata>,
-}
-pub(crate) fn frames<'a>(
-    context: &CpuOperatingSourceContext,
-    time_s: f64,
-    frames: &[ActuatorSourceFrame<'a>],
-) -> Result<Vec<&'a GateActuatorBatch>, StructureError> {
-    let mut result = Vec::with_capacity(context.groups.len().min(frames.len()));
-    let mut supplied = frames.iter();
-    for group in &context.groups {
-        if let CpuOperatingSourceKind::Actuated(original) = &group.kind {
-            let frame = supplied.next().ok_or_else(|| {
-                StructureError::input(
-                    StructureInputErrorKind::Identity,
-                    format!(
-                        "source={:?}: supply every actuated frame in registration order",
-                        group.id
-                    ),
-                )
-            })?;
-            if frame.source_id != group.id {
-                return Err(StructureError::input(
-                    StructureInputErrorKind::Identity,
-                    format!(
-                        "source={:?},frame={:?}: match registered actuated source order",
-                        group.id, frame.source_id
-                    ),
-                ));
-            }
-            if !crate::structures::same_actuator_context(original, &frame.actuator.context) {
-                return Err(StructureError::input(
-                    StructureInputErrorKind::Definition,
-                    format!(
-                        "source={:?}: actuator immutable context, original inputs, or policies differ",
-                        group.id
-                    ),
-                ));
-            }
-            if frame.actuator.time() != time_s {
-                return Err(StructureError::input(
-                    StructureInputErrorKind::UnsupportedRegime,
-                    format!(
-                        "source={:?},accepted_time={},query_time={time_s}: supply an actuator frame at the exact query time",
-                        group.id,
-                        frame.actuator.time()
-                    ),
-                ));
-            }
-            for tensor in [
-                &frame.actuator.state.position.center,
-                &frame.actuator.state.position.lower,
-                &frame.actuator.state.position.upper,
-                &frame.actuator.state.position.error,
-                &frame.actuator.state.phase,
-            ] {
-                metadata(context, tensor, group.slots.len(), &group.id)?;
-            }
-            result.push(frame.actuator);
-        }
-    }
-    if supplied.next().is_some() {
-        return Err(StructureError::input(
-            StructureInputErrorKind::Identity,
-            "extra actuator source frame: supply only registered actuated groups",
-        ));
-    }
-    Ok(result)
-}
-fn metadata(
-    context: &CpuOperatingSourceContext,
-    tensor: &CpuTensor,
-    count: usize,
-    id: &str,
-) -> Result<(), StructureError> {
-    if tensor.dtype() != DType::F64
-        || tensor.shape() != [count]
-        || tensor.device().id() != context.structures.device.id()
-    {
-        return Err(StructureError::input(
-            StructureInputErrorKind::Definition,
-            format!(
-                "source={id:?}: require matching CPU F64 device and ordered source tensor shape"
-            ),
-        ));
-    }
-    Ok(())
 }
 fn prescribed(
     context: &CpuOperatingSourceContext,
@@ -129,6 +52,10 @@ fn prescribed(
         opening: structures.zero.clone(),
         absolute_error: structures.zero.clone(),
         closed: structures.zero.clone(),
+        pump_running: structures.zero.clone(),
+        pump_isolated: structures.zero.clone(),
+        pump_speed: structures.one.clone(),
+        pump_power_of_two: structures.one.clone(),
         values: Vec::with_capacity(context.groups.len()),
         prescribed_metadata: Vec::new(),
     };
@@ -180,7 +107,7 @@ fn concatenate(
 ) -> Result<CpuTensor, StructureError> {
     match values {
         [] => Err(StructureError::numerical(
-            "actuator source concatenation requires a nonempty checked tensor group",
+            "dynamic source concatenation requires a nonempty checked tensor group",
         )),
         [one] => Ok((*one).clone()),
         _ => Ok(context.structures.client.cat(values, 0)?),
@@ -189,15 +116,16 @@ fn concatenate(
 pub(crate) fn assemble(
     context: &CpuOperatingSourceContext,
     time_s: f64,
-    supplied_frames: &[ActuatorSourceFrame<'_>],
+    supplied_frames: &[OperatingSourceFrame<'_>],
 ) -> Result<CpuOperatingSourcePoint, StructureError> {
-    let frames = frames(context, time_s, supplied_frames)?;
+    let frames = super::frames(context, time_s, supplied_frames)?;
     let mut point = prescribed(context, time_s)?;
     let mut centers = Vec::with_capacity(frames.len());
     let mut errors = Vec::with_capacity(frames.len());
     let mut lower = Vec::with_capacity(frames.len());
     let mut upper = Vec::with_capacity(frames.len());
     let mut next = frames.into_iter();
+    let mut pumps = Vec::new();
     for group in &context.groups {
         match &group.kind {
             CpuOperatingSourceKind::Manual => point.values.push(CpuOperatingSourceValue::Manual),
@@ -205,9 +133,11 @@ pub(crate) fn assemble(
                 point.values.push(CpuOperatingSourceValue::Prescribed)
             }
             CpuOperatingSourceKind::Actuated(_) => {
-                let actuator = next.next().ok_or_else(|| {
-                    StructureError::numerical("checked actuator frame vector is incomplete")
-                })?;
+                let Some(OperatingSourceFrame::ActuatedGate { actuator, .. }) = next.next() else {
+                    return Err(StructureError::numerical(
+                        "checked actuator frame vector is incomplete or has another kind",
+                    ));
+                };
                 let position = &actuator.state.position;
                 centers.push(&position.center);
                 errors.push(&position.error);
@@ -223,6 +153,34 @@ pub(crate) fn assemble(
                             phase: actuator.state.phase.clone(),
                         },
                     )));
+            }
+            CpuOperatingSourceKind::ControlledPump(_) => {
+                let Some(OperatingSourceFrame::ControlledPump { pump, .. }) = next.next() else {
+                    return Err(StructureError::numerical(
+                        "checked pump frame vector is incomplete or has another kind",
+                    ));
+                };
+                let selected = pump.selected()?;
+                for tensor in [
+                    &selected.running,
+                    &selected.speed,
+                    &selected.power_of_two,
+                    &selected.high,
+                ] {
+                    metadata(context, tensor, group.slots.len(), &group.id)?;
+                }
+                point
+                    .values
+                    .push(CpuOperatingSourceValue::ControlledPump(Box::new(
+                        CpuControlledPumpSourceValue {
+                            accepted_steps: pump.accepted_steps(),
+                            accepted_time_s: pump.time(),
+                            running: selected.running.clone(),
+                            speed: selected.speed.clone(),
+                            high: selected.high.clone(),
+                        },
+                    )));
+                pumps.push(selected);
             }
         }
     }
@@ -260,6 +218,26 @@ pub(crate) fn assemble(
         point.absolute_error =
             c.index_put(&point.absolute_error, 0, &context.actuator_indices, &error)?;
         point.closed = c.index_put(&point.closed, 0, &context.actuator_indices, &canonical)?;
+    }
+    if !pumps.is_empty() {
+        let running = concatenate(
+            context,
+            &pumps.iter().map(|p| &p.running).collect::<Vec<_>>(),
+        )?;
+        let speed = concatenate(context, &pumps.iter().map(|p| &p.speed).collect::<Vec<_>>())?;
+        let power = concatenate(
+            context,
+            &pumps.iter().map(|p| &p.power_of_two).collect::<Vec<_>>(),
+        )?;
+        let c = &context.structures.client;
+        let isolated = c.sub(&context.pump_one, &running)?;
+        point.pump_running =
+            c.index_put(&point.pump_running, 0, &context.pump_indices, &running)?;
+        point.pump_isolated =
+            c.index_put(&point.pump_isolated, 0, &context.pump_indices, &isolated)?;
+        point.pump_speed = c.index_put(&point.pump_speed, 0, &context.pump_indices, &speed)?;
+        point.pump_power_of_two =
+            c.index_put(&point.pump_power_of_two, 0, &context.pump_indices, &power)?;
     }
     Ok(point)
 }

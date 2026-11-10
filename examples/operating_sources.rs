@@ -1,13 +1,13 @@
 //! Exclusive manual, prescribed, and accepted actuator inputs for one hydraulic point.
 
 use hydr::structures::{
-    ActuatorSourceFrame, DirectionPolicy, EndpointHead, GateActuatorAccuracy,
-    GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule, GateApplicability,
-    GateMotionLimits, GateOpeningKnot, GateOpeningTrajectory, GateParameters, GateTargetUpdate,
+    DirectionPolicy, EndpointHead, GateActuatorAccuracy, GateActuatorDefinition,
+    GateActuatorInitialState, GateActuatorSchedule, GateApplicability, GateMotionLimits,
+    GateOpeningKnot, GateOpeningTrajectory, GateParameters, GateTargetUpdate,
     GateTrajectoryAccuracy, GateTrajectoryAssignment, HeadConvention, HeadSupport,
-    OperatingSourceBinding, OrificeApplicability, PumpApplicability, PumpCurve, PumpCurveKnot,
-    PumpParameters, PumpSpeedPolicy, StructureBatch, StructureElement, StructureError,
-    StructureHeads, StructureLaw, StructureOperatingPoint, StructureOperation,
+    OperatingSourceBinding, OperatingSourceFrame, OrificeApplicability, PumpApplicability,
+    PumpCurve, PumpCurveKnot, PumpParameters, PumpSpeedPolicy, StructureBatch, StructureElement,
+    StructureError, StructureHeads, StructureLaw, StructureOperatingPoint, StructureOperation,
     SubmergedOrificeParameters,
 };
 
@@ -215,7 +215,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 operating_point: StructureOperatingPoint::PumpRunning { speed_ratio: 1.0 },
             },
         ],
-        &[ActuatorSourceFrame {
+        &[OperatingSourceFrame::ActuatedGate {
             source_id: "actual-drive",
             actuator: &actuator,
         }],
