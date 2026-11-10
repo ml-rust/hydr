@@ -9,6 +9,7 @@ cargo test --all-features
 cargo test --test analytical_cases -- --nocapture
 cargo test --test radial_shoreline --test transverse_transport --test terrain_envelope -- --nocapture
 cargo test --features numr/rayon --test engine_contract --test checkpoint_package --test definition_identity
+cargo test --test coupled_level_pools
 ```
 
 Use the numr source revision recorded in [Contributing](../CONTRIBUTING.md).
@@ -102,6 +103,24 @@ Transmissive boundaries admit only dry or resolved supercritical-outgoing post-s
 Accepted face speeds reconstruct the native combined CFL bound during package import.
 These tests establish selected boundary behaviour. They establish no finite exterior-compartment coupling or physical-domain accuracy.
 
+## Closed coupled pools
+
+`tests/coupled_level_pools.rs` checks accepted water transfers between separate pools through declared structures. Read [coupled level pools](coupled-level-pools.md) before selecting this component.
+
+| Case | Enforced criterion |
+| --- | --- |
+| Submerged orifice and reversal | Signed midpoint transfers of `1` and `-1 m³`, within `4e-10 m³` |
+| Linear pump and held gate | Independently derived midpoint transfer of `1 m³`, within `4e-10 m³` |
+| Competing free weirs | One donor budget produces transfers of `2/3` and `1/3 m³`, independent of connection order |
+| Serial free weirs | Incoming water cannot finance another outgoing transfer during the same interval |
+| Dry receiver and positive films | Explicit dry support admits wetting. Represented positive water retains its volume and stage. |
+| Temporal refinement | Independent discrete recurrence agreement within `1e-8 m³`, quadratic continuous-error bounds, and successive error ratios from `3.8` to `4.2` |
+| Rejection and restart | Rejected trials preserve accepted state. Forged checkpoints reject atomically. Trusted and owned restart reproduce complete continuation. |
+
+The refinement case holds the endpoint at `0.5 s` and halves intervals from `0.5` through `0.03125 s`. Its finest continuous transfer error must remain below `1e-4 m³`.
+
+The orifice and gate fixtures explicitly use artificial gravity `0.5 m/s²` for exact algebraic references. These checks cover closed exchange-only pools with static manual operations. They establish no surface-to-network coupling or measured-event accuracy.
+
 ## Gate status
 
 | Gate | Checked scope | Remaining evidence |
@@ -109,11 +128,11 @@ These tests establish selected boundary behaviour. They establish no finite exte
 | Contract | SI inputs, shapes, references, masks, sources, boundaries, outputs, and exclusions | Physical suitability of each application domain |
 | Determinism | Repeated runs, complete trusted/package restart, bit checks, rollback, and cancellation | Cross-platform bitwise equality remains unsupported |
 | Analytical | Selected lake, dam, vacuum, friction, Manning, contracting radial lake, shear transport, and moving-shoreline cases | Broader hydraulic jumps, radial cycles, and application-specific diffusion budgets |
-| Conservation | Rain, prescribed losses, shared faces, ports, donor depletion, and barrier isolation | Paired component transfers remain unsupported |
+| Conservation | Rain, prescribed losses, shared faces, ports, donor depletion, barrier isolation, and closed pool-to-pool transfers | Surface-to-network transfers remain unsupported |
 | Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
 | Independent engine | Nine matched wet-bed/dry-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Analytical front accuracy, independent terrain/transverse-flow comparisons, and broader hydraulic regimes |
-| Extensions | Explicit Modified Green–Ampt land has separate native and atomic-source checks. Structures, networks, and external coupling remain excluded | Capability-specific acceptance before admission |
+| Extensions | Explicit Modified Green–Ampt land and closed pools with static structure operations have separate checks | Wider networks, dynamic coupled controls, and external coupling require separate acceptance |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 
 Lake tests enforce depth and momentum drift below `1e-11` SI.

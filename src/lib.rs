@@ -12,6 +12,7 @@
 //! # Ok::<(), hydr::error::GridError>(())
 //! ```
 
+pub mod coupling;
 pub mod error;
 pub mod grid;
 pub mod model;

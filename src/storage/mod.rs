@@ -2,6 +2,7 @@
 
 mod accounting;
 mod batch;
+mod coupling;
 mod curve;
 pub(crate) mod definition;
 mod error;
@@ -11,6 +12,7 @@ mod snapshot;
 mod source_policy;
 mod source_projection;
 mod source_receipt;
+mod trial;
 
 pub use batch::{LevelPoolBatch, LevelPoolTrial};
 pub use curve::{LevelPoolCurve, LevelPoolKnot};

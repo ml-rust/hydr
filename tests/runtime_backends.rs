@@ -1,5 +1,7 @@
 //! Actual runtime execution and arithmetic admission through public components.
 
+#[path = "coupled_level_pools/fixture.rs"]
+mod coupled_pool_fixture;
 #[path = "support/runtime.rs"]
 mod runtime;
 
@@ -151,6 +153,45 @@ fn selected_cpu_client_preserves_still_water_and_trusted_restart() -> Result {
 fn selected_cuda_client_preserves_still_water_and_trusted_restart() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
     still_water_execution!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?);
+    Ok(())
+}
+
+macro_rules! coupled_pool_execution {
+    ($runtime:ty, $client:expr) => {{
+        use hydr::coupling::CoupledLevelPoolBatch;
+
+        let (setup, initial) = coupled_pool_fixture::orifice_case([4.0, 2.0])?;
+        let batch = CoupledLevelPoolBatch::<$runtime>::new($client, setup, initial)?;
+        let original = batch.snapshot_data()?;
+        let mut next = batch.trial_to(0.25)?.into_next();
+        assert_eq!(batch.snapshot_data()?, original);
+        assert_eq!(next.time(), 0.25);
+        let checkpoint = next.snapshot();
+        let checkpoint_data = checkpoint.data()?;
+        next = next.trial_to(0.5)?.into_next();
+        let continued = next.snapshot_data()?;
+        let volumes = next.pools().states()?;
+        coupled_pool_fixture::near(volumes.iter().map(|pool| pool.volume_m3).sum(), 6.0);
+        assert!(volumes[0].volume_m3 < 4.0);
+        assert!(volumes[1].volume_m3 > 2.0);
+        next.restore(&checkpoint)?;
+        assert_eq!(next.snapshot_data()?, checkpoint_data);
+        next = next.trial_to(0.5)?.into_next();
+        assert_eq!(next.snapshot_data()?, continued);
+    }};
+}
+
+#[test]
+fn selected_cpu_client_executes_coupled_pool_exchange_and_trusted_restart() -> Result {
+    coupled_pool_execution!(runtime::Runtime, runtime::client());
+    Ok(())
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn selected_cuda_client_executes_coupled_pool_exchange_and_trusted_restart() -> Result {
+    use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+    coupled_pool_execution!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?);
     Ok(())
 }
 

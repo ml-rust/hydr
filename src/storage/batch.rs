@@ -184,13 +184,7 @@ where
         inputs: &[LevelPoolInput],
         sources: Option<&[super::LevelPoolSources]>,
     ) -> Result<LevelPoolTrial<R>, LevelPoolError> {
-        let dt = end - self.time;
-        if !end.is_finite() || !dt.is_finite() || dt <= 0.0 {
-            return Err(LevelPoolError::input(format!(
-                "time={},end={end},dt={dt}: require finite strictly increasing time",
-                self.time
-            )));
-        }
+        let dt = super::trial::duration(self.time, end)?;
         if inputs.len() != self.elements().len() {
             return Err(LevelPoolError::input(format!(
                 "input count={},element count={}: supply one original exchange per element",
@@ -210,11 +204,7 @@ where
                 .at(index));
             }
         }
-        let steps = self.steps.checked_add(1).ok_or_else(|| {
-            LevelPoolError::numerical(
-                "accepted interval count overflows. Start another component history",
-            )
-        })?;
+        let steps = super::trial::next_step_count(self.steps)?;
         let incoming = self.context.tensor(
             &inputs
                 .iter()
@@ -227,43 +217,7 @@ where
                 .map(|i| i.outgoing_volume_m3)
                 .collect::<Vec<_>>(),
         )?;
-        let (state, step) = if let Some(sources) = sources {
-            let input =
-                crate::tensor::level_pool::TensorPoolSourceInput::<R>::new(&self.context, sources)?;
-            crate::numerics::storage::advance_with_sources(
-                &self.context,
-                &self.state,
-                &incoming,
-                &outgoing,
-                steps,
-                dt,
-                &input,
-            )?
-        } else {
-            crate::numerics::storage::advance(
-                &self.context,
-                &self.state,
-                &incoming,
-                &outgoing,
-                steps,
-            )?
-        };
-        crate::numerics::storage::check_step(&self.context, &step)?;
-        super::accounting::step_totals(&self.context, &step)?;
-        super::accounting::totals(&self.context, &state)?;
-        Ok(LevelPoolTrial {
-            next: Self {
-                context: Arc::clone(&self.context),
-                state,
-                time: end,
-                steps,
-                last: Some(Arc::new(StoredStep {
-                    start: self.time,
-                    end,
-                    step,
-                })),
-            },
-        })
+        self.trial_prepared(end, dt, steps, &incoming, &outgoing, sources)
     }
 }
 impl<R> LevelPoolTrial<R>
