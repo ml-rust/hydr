@@ -2,6 +2,7 @@
 
 pub(crate) mod codes;
 mod context;
+pub(crate) mod control;
 pub(crate) mod gate;
 mod input;
 mod operations;

@@ -1,0 +1,54 @@
+//! Original-bit inputs and frozen sampled-control histories.
+use super::types::{Case, Decision, Sample, Timer};
+use hydr::structures::{ControlCommand, ControlLatch};
+
+pub const CASES: &[Case] = &[Case {
+    family: "public_timer",
+    id: "public_zero_delay_fresh_state",
+    lower: f64::from_bits(0x3ff0000000000000),
+    upper: f64::from_bits(0x4000000000000000),
+    high_delay: f64::from_bits(0x0000000000000000),
+    low_delay: f64::from_bits(0x0000000000000000),
+    maximum_gap: f64::from_bits(0x3ff0000000000000),
+    lateness: f64::from_bits(0x0000000000000000),
+    low_command: ControlCommand::PumpStoppedIsolated,
+    high_command: ControlCommand::PumpRunning {
+        speed_ratio: f64::from_bits(0x3ff0000000000000),
+    },
+    start: f64::from_bits(0x0000000000000000),
+    end: f64::from_bits(0x3ff0000000000000),
+    decision_times: &[f64::from_bits(0x3ff0000000000000)],
+    initial_latch: ControlLatch::Low,
+    initial_pending: None,
+    antecedent: None,
+    initial_transition: None,
+    binding: "success",
+    binding_element: None,
+    decisions: &[Decision {
+        sample: Sample {
+            observed: f64::from_bits(0x3ff0000000000000),
+            available: f64::from_bits(0x3ff0000000000000),
+            stage: f64::from_bits(0x4000000000000000),
+        },
+        expected: "success",
+        latch: ControlLatch::High,
+        pending: None,
+        transition_count: 1,
+        transitioned: true,
+        qualifies: true,
+        accepted_time: f64::from_bits(0x3ff0000000000000),
+        timer: Some(Timer {
+            started: f64::from_bits(0x3ff0000000000000),
+            delay: f64::from_bits(0x0000000000000000),
+            high: f64::from_bits(0x0000000000000000),
+            low: f64::from_bits(0x0000000000000000),
+            ready: true,
+            allowed: Some((
+                f64::from_bits(0x0000000000000000),
+                f64::from_bits(0x0000000000000000),
+            )),
+            overflow: false,
+            within: true,
+        }),
+    }],
+}];

@@ -307,7 +307,7 @@ Run `cargo run --example gate_trajectories_reference` for original-bit opening a
 
 `StructureError` separates typed input categories, numerical representation errors, and runtime errors. Input categories distinguish definition, identity, datum, head convention, operating point, unknown support, unsupported regime, and nonfinite original data. Ordered element indices remain available without parsing diagnostic strings.
 
-The component supplies no donor storage, outlet integration, storage snapshots, controls, network solve, bed or sill changes, or hydraulic coupling. A future coordinator owns synchronized head provenance and paired shared-volume admission.
+Constitutive proposals supply no donor storage, outlet integration, storage snapshots, physical actuator response, network solve, or bed or sill changes. Sampled operating controls supply commands separately. Hydraulic coupling remains unsupported. A future coordinator owns synchronized head provenance and paired shared-volume admission.
 
 ## Applicability references
 
@@ -318,3 +318,7 @@ The component supplies no donor storage, outlet integration, storage snapshots, 
 - [USBR submerged-weir measurement limitations](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap07_15.html).
 - [Hydraulic Institute pump-curve and affinity assumptions](https://datatool.pumps.org/pump-fundamentals/pump-curves).
 - [EPA hydraulic addendum pump affinity model](https://www.epa.gov/system/files/documents/2022-02/swmm5-reference-manual-ii-addendum-20220210mas2wr-1.pdf).
+
+## Sampled operating commands
+
+[Operating controls](operating-controls.md) supplies explicit sampled relay commands with qualification delays, transactional trials, and complete snapshots. Gate targets remain distinct from actual opening. Standalone commands establish no hydraulic or actuator response.

@@ -5,11 +5,11 @@ use std::fmt;
 /// Explicit input-admission category, independent from numeric representation errors.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StructureInputErrorKind {
-    /// Missing, mismatched-law, malformed-speed, or unsupported-speed operation.
+    /// Incomplete or law-incompatible operation or decision-sample input.
     OperatingPoint,
     /// Invalid physical definition or explicit interval declaration.
     Definition,
-    /// Unknown, duplicate, or reordered structure/endpoint identity.
+    /// Unknown, duplicate, or reordered structure, endpoint, controller, or signal identity.
     Identity,
     /// Incompatible vertical reference.
     Datum,
@@ -17,16 +17,16 @@ pub enum StructureInputErrorKind {
     HeadConvention,
     /// Influential endpoint support is unknown.
     UnknownSupport,
-    /// Known support lies outside the declared law's admitted regime.
+    /// Known input lies outside declared physical or temporal support.
     UnsupportedRegime,
-    /// Original head or trajectory query input is nonfinite.
+    /// Original heads, queries, or control samples contain nonfinite values.
     NonfiniteInput,
 }
 
-/// Rejection preserves immutable definitions and earlier proposals.
+/// Rejection preserves accepted state, definitions, and earlier proposals.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StructureError {
-    /// Physical metadata or endpoint support is unsupported.
+    /// Physical metadata, observations, or temporal support is unsupported.
     InvalidInput {
         /// Ordered element index when known.
         element: Option<usize>,
@@ -35,7 +35,7 @@ pub enum StructureError {
         /// Offending input and corrective action.
         context: String,
     },
-    /// Active law, trajectory admission, or held-volume arithmetic cannot meet its numerical contract.
+    /// Numerical evaluation or timing cannot meet its declared contract.
     Numerical {
         /// Ordered element index when known.
         element: Option<usize>,
@@ -46,7 +46,7 @@ pub enum StructureError {
     Runtime {
         /// Ordered element index when known.
         element: Option<usize>,
-        /// Original Numr operation diagnostic.
+        /// Original numerical operation diagnostic.
         context: String,
     },
 }

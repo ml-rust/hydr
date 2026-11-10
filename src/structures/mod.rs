@@ -2,11 +2,13 @@
 
 mod applicability;
 mod batch;
+mod control;
 pub(crate) mod definition;
 mod error;
 mod gate;
 mod heads;
 mod held;
+pub(crate) mod identity;
 mod operation;
 mod operation_projection;
 mod output;
@@ -38,4 +40,13 @@ pub use proposal::StructureProposal;
 pub use pump::{
     PumpApplicability, PumpCurve, PumpCurveKnot, PumpHydraulicOperands, PumpParameters,
     PumpSpeedPolicy,
+};
+
+pub use control::{
+    ControlCommand, ControlCommandOutput, ControlDecisionReceipt, ControlDecisionSchedule,
+    ControlEvent, ControlInitialState, ControlLatch, ControlPending, ControlSample,
+    ControlStageSignal, ControlState, ControlStepDiagnostics, ControlTimeExpansion,
+    ControlTimerWitness, ControlTransitionReceipt, OperatingControlBatch,
+    OperatingControlDefinition, OperatingControlSnapshot, OperatingControlSnapshotData,
+    OperatingControlTrial, SampledControlTiming,
 };

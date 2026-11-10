@@ -11,3 +11,5 @@ pub(crate) mod pump;
 mod weir;
 
 pub(crate) use evaluation::evaluate;
+
+pub(crate) mod control;
