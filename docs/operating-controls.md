@@ -1,80 +1,135 @@
-# Sampled operating controls
+# Generate sampled operating commands
 
-`OperatingControlBatch` emits deterministic sampled device commands with explicit hysteresis, qualification delays, and complete transactional continuation.
+Use `OperatingControlBatch` to generate pump commands or gate targets from sampled stage observations. Start by declaring the thresholds and decision times.
 
-Commands describe requested operations. `GateTarget` never asserts an actual gate opening. Pump commands establish no response dynamics, flow, donor availability, or hydraulic transfer.
+A command requests an operation. It does not establish actual device response, flow, donor availability, or water transfer.
 
-## Definitions and applicability
+## Declare the controller
 
-| Input | Contract |
+| Input | Required value |
 | --- | --- |
-| Controlled devices | Nonempty unique subset in original structure order, bound to the complete actual `StructureBatch` context |
-| Signal | Explicit controller, signal, support, and common-datum identities |
+| Controlled devices | A nonempty unique subset in original structure order, bound to the complete actual `StructureBatch` context |
+| Signal | Controller, signal, support, and common-datum identities |
 | Thresholds | Finite lower stage strictly below finite upper stage |
-| Delays | Explicit finite nonnegative high/low sampled qualification durations |
-| Commands | Explicit low/high mappings admitted by the actual pump speed policy or gate opening range |
-| Initial state | Explicit latch and complete supplied antecedent memory, or an explicit fresh-memory assumption |
-| Schedule | Original finite strictly increasing decisions inside a finite nonnegative support horizon |
-| Timing | Explicit maximum decision gap, maximum timer lateness, and sampled applicability evidence |
+| Delays | Explicit finite nonnegative high/low qualification durations |
+| Commands | Low/high mappings admitted by the actual pump speed policy or gate opening range |
+| Initial state | An explicit latch with complete antecedent memory, or an explicit fresh-memory assumption |
+| Schedule | Original finite, strictly increasing decisions inside a finite nonnegative support horizon |
+| Timing | Maximum decision gap, maximum timer lateness, and evidence supporting sampled control |
 
-External signal support need not equal either structure endpoint. The caller supplies causal stage samples at the exact decision time. Availability must precede or equal observation. Finite negative availability and antecedent times remain valid.
+The signal's physical support can differ from both structure endpoints. Declare its identity and elevation reference explicitly.
 
-Every decision requires one ordered sample per controller. Unknown, dry, stale, future, and incompatible sample support receives no implicit replacement or last-value hold.
+## Supply observations at decisions
 
-## Sampled qualification
+1. Supply one sample per controller, in controller order.
+2. Use the exact original decision time as the observation time.
+3. Supply an availability time no later than the observation time.
+4. Keep the original finite timestamps, including negative availability and antecedent times.
 
-| Current latch | Qualifying sample | Result |
+Unknown, dry, stale, future, or incompatible samples reject. Hydr supplies no replacement or last-value hold.
+
+## Understand qualification
+
+The latch records whether the controller currently selects its low or high command. Qualification measures persistence across supplied samples.
+
+| Current latch | Observation | Result |
 | --- | --- | --- |
-| Low | Stage at or above the upper threshold | Start or continue high qualification |
-| High | Stage at or below the lower threshold | Start or continue low qualification |
-| Either | Opposing predicate is false | Retain latch and cancel incomplete qualification |
-| Either | Qualification reaches its explicit delay within lateness allowance | Switch once and clear pending state |
+| Low | Stage reaches or exceeds the upper threshold | Start or continue high qualification |
+| High | Stage reaches or falls below the lower threshold | Start or continue low qualification |
+| Either | Opposing condition is false | Retain the latch and cancel incomplete qualification |
+| Either | Qualification reaches its delay within the lateness allowance | Switch once and clear pending state |
 
-Zero delay switches at the qualifying decision. The hysteresis band retains the latch and cancels incomplete opposing qualification. All controllers read the same original pre-decision sample batch and update simultaneously.
+A zero delay switches at the qualifying decision. Inside the hysteresis band, the latch stays unchanged and incomplete opposing qualification cancels.
 
-Qualification establishes persistence across the supplied samples only. It establishes no continuous threshold history or absence of between-sample excursions. No minimum on/off dwell, continuous event localization, generic rule grammar, PID, or native SWMM rule execution applies.
+All controllers read the same original sample batch. They update simultaneously.
 
-## Numerical timing
+### What qualification does not prove
 
-Selected-runtime F64 `Tensor<R>` fields retain relay state, predicates, timer anchors, transition counters, and receipts. Controls inherit their bound `StructureBatch<R>` client and [arithmetic admission](integration.md#runtime-selection-and-admission). Original timestamps anchor timers. Repeated interval additions never accumulate timer age.
+Persistence applies only to the supplied samples. The component does not establish continuous threshold history or rule out excursions between samples.
 
-TwoSum retains exact finite elapsed high and low components. Readiness compares that expansion against the original delay. Lateness compares elapsed against the exact finite delay-plus-allowance expansion. Equal highs compare through their lows. Used elapsed overflow rejects numerically before residual arithmetic.
+Unsupported control models include:
 
-A positive overflowing allowed threshold uses an explicit overflow tag and no nonfinite DTO scalar. Its residual arithmetic remains masked. A finite elapsed high admits this branch through monotone rounding, including positive residuals near maximum finite values.
+- Minimum on/off dwell.
+- Continuous event localization.
+- Generic rule grammar or PID.
+- Native SWMM rule execution.
 
-Exact schedule-gap checks cover initial, consecutive, terminal, and declared antecedent-to-first-future-observation spacing. These checks establish known spacing, never historical authenticity. Counter and index tensors remain within exact F64 integer capacity. Accepted interval counters use checked integer metadata.
+## Advance and accept a trial
 
-## Trials and projections
+1. Choose a positive interval ending no later than the next decision or terminal horizon.
+2. Call `trial_to` with the required samples at a decision endpoint.
+3. Supply no samples for a non-decision interval.
+4. Consume `into_next()` to accept the complete candidate.
 
-`trial_to` requires a positive original interval ending no later than the next decision or terminal horizon. A non-decision interval requires no samples and changes accepted time only. A decision endpoint retains both left and right commands. The endpoint transition applies to the right interval.
+A non-decision interval changes accepted time only.
 
-Dropping a trial preserves accepted state, timers, counters, and retained diagnostics. `into_next()` accepts the complete candidate by ownership. This component does not atomically accept hydraulic state or conserved transfers.
+A decision endpoint retains both commands. The old command applies on the left of that endpoint, and the transition applies on its right.
 
-Normal advancement retains derived state and commands as tensors. `commands()`, `states()`, `diagnostics()`, and snapshot value packages are explicit fallible projections. Retained last-step storage contains immediate before/after tensors and original inputs. It contains no previous batch or recursive step chain.
+Dropping or rejecting a trial preserves accepted state, timers, counters, and diagnostics. Acceptance covers the controller only.
 
-## Complete restoration
+## Read results
 
-Trusted snapshots clone complete tensor continuation without projection. Restore checks complete original definition bits and retains the destination's immutable bound structure context.
+Normal advancement keeps derived state and commands in runtime tensors. These calls copy data into caller-owned values and can return errors:
 
-Caller-owned snapshot packages retain:
+| Request | Result |
+| --- | --- |
+| `commands()` | Requested device operations |
+| `states()` | Latches and qualification state |
+| `diagnostics()` | Retained control evidence |
+| Snapshot value package | Complete values for persistence |
 
-- Complete actual structure definitions.
-- Control definitions.
-- Initial antecedents.
-- Future decision schedule.
-- Timing policy.
-- Accepted counters.
-- Current state.
-- Bounded final diagnostics.
+The final step retains immediate before/after tensors and original inputs. It retains no previous batch or recursive step chain.
 
-Preserve every F64 bit when encoding, including signed zero.
+## Save and restore
 
-Import checks current schedule position, sample causality, timer chronology, transition-count parity, and complete retained receipts. Numr recomputes retained transition witnesses and the immediate final trial. Explicit receipt projections compare the imported package against these recomputed values. Those projections occur only during caller-owned import checks.
+### Save a complete state
 
-A rejected import changes no accepted value. Receipt consistency establishes no historical authenticity. Equivalent continuation requires the same future supplied samples and declared build/runtime/layout envelope.
+Trusted snapshots retain tensor state without copying derived arrays to the host. Restore checks original definition bits and retains the destination's bound structure context.
 
-## Integration boundary
+Caller-owned packages must preserve:
 
-Actuator response remains separate from command generation. Only admitted actual gate position can feed `StructureOperatingPoint::GateOpening`. The controller supplies no native SWMM control grammar or native actuator behavior. A later adapter must establish exclusive device authority before consuming commands.
+| Definitions and policy | Continuation |
+| --- | --- |
+| Complete actual structure and control definitions | Current state and accepted counters |
+| Initial antecedents and future decisions | Bounded final diagnostics |
+| Timing policy | Every original F64 bit, including signed zero |
 
-Hydraulic coupling owns common-time trials and paired acceptance. Standalone sampled command continuation establishes no endogenous hydraulic feedback or coupled accuracy claim.
+### Check an imported package
+
+Import checks schedule position, sample causality, timer chronology, transition-count parity, and complete retained receipts.
+
+Numr recomputes the retained transition witnesses and immediate final trial. Import compares explicit receipt values with those results. These copies occur only during caller-owned import checks.
+
+Rejected imports change no accepted value. Consistency does not authenticate historical observations.
+
+Repeatable continuation requires the same future samples and declared build, runtime, and layout.
+
+## Timing arithmetic
+
+Controls retain F64 `Tensor<R>` state on their bound `StructureBatch<R>` client.
+
+Runtime tensors retain latches, qualification predicates, timer anchors, transition counters, and receipts. Read [runtime admission](integration.md#runtime-selection-and-admission) before selecting a provider.
+
+| Timing rule | Numerical requirement |
+| --- | --- |
+| Timer age | Use original timestamps, never repeated interval additions |
+| Readiness | Compare TwoSum elapsed high/low components with the original delay |
+| Lateness | Compare elapsed with the exact finite delay-plus-allowance expansion |
+| Equal high components | Compare their signed low components |
+| Used elapsed overflow | Reject before residual arithmetic |
+
+An overflowing positive allowed threshold uses an explicit tag. It creates no nonfinite package scalar, and its residual arithmetic stays masked.
+
+A finite elapsed high admits that branch through monotone rounding. This includes positive residuals near maximum finite values.
+
+Schedule-gap checks cover initial, consecutive, terminal, and declared antecedent-to-first-future-observation spacing. They establish known spacing, not historical authenticity.
+
+Counter and index tensors stay within exact F64 integer capacity. Accepted interval counters use checked integer metadata.
+
+## Connect commands to devices
+
+Only admitted actual position can supply `StructureOperatingPoint::GateOpening`. A requested `GateTarget` cannot substitute for that position.
+
+Use [controlled gates](controlled-gates.md) or [controlled pumps](controlled-pumps.md) for the supported response models. Exclusive device authority must apply before consuming commands.
+
+Hydraulic coupling owns common-time trials and paired acceptance. Standalone control continuation establishes no native actuator behavior, endogenous hydraulic feedback, or coupled accuracy.

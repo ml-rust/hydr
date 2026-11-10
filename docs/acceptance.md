@@ -1,8 +1,16 @@
-# Numerical acceptance coverage
+# Numerical checks and accuracy limits
 
-hydr checks synthetic numerical cases separately from application accuracy.
+Use this page to see what Hydr checks before choosing a component. Start with the results for your calculation.
 
-## Reproduce the checks
+Passing numerical checks establishes selected computational behavior.
+
+**Application limit:** These results establish no measured-event accuracy or physical-domain suitability.
+
+## Run the checks
+
+1. Read [Contributing](../CONTRIBUTING.md) for the checked numr revision and backend requirements.
+2. Run the relevant commands from the repository root.
+3. Read the case limits below before interpreting a passing result.
 
 ```sh
 cargo test --all-features
@@ -14,18 +22,15 @@ cargo test --test coupled_level_pool_sources
 cargo test --test coupled_pool_inflows
 ```
 
-Use the numr source revision recorded in [Contributing](../CONTRIBUTING.md).
-Fixtures and analytical evaluations live in `tests/analytical_cases.rs` and `tests/support/analytic.rs`.
-They require no external datasets or random inputs.
-Expected fields evaluate mathematical formulas independently of the production tensor kernel.
-The scalar face oracle checks 48 deterministic face pairs within `1e-9` SI component error.
-It establishes arithmetic agreement, not independent scientific acceptance.
+The fixtures need no external datasets or random inputs. [Analytical cases](../tests/analytical_cases.rs) use formulas from [the analytical helpers](../tests/support/analytic.rs), independently of the production tensor kernel.
 
-## Synthetic results
+The scalar face reference checks 48 deterministic face pairs within `1e-9` SI component error. This establishes arithmetic agreement only. It supplies no independent scientific acceptance.
 
-Results below use CPU `f64` tensors and the declared first-order method.
-Depth error is the mean absolute difference between cell-centre values and analytical point samples.
-It is no comparison against exact cell averages.
+## Surface-flow results
+
+These results use CPU `f64` tensors and the declared first-order method.
+
+**Depth error** means the mean absolute difference from analytical values sampled at cell centres. These values are not errors against exact cell averages.
 
 | Case | Resolution | Depth error, m | Enforced criterion |
 | --- | --- | --- | --- |
@@ -35,79 +40,139 @@ It is no comparison against exact cell averages.
 | Thacker moving shoreline, 0.5 s | 40² / 80² cells | 0.000328837 / 0.000180059 | Below 0.01 m and decreasing |
 | Manning equilibrium, 5 s | 40 / 80 cells | Maximum drift 0.000127508 / 0.0000417833 | Depth/discharge drift below 0.01 SI and decreasing |
 
-The dam cases span 200 m. Their outer walls remain outside the disturbed region.
-Vacuum fans use exact outward far-field ports because moving states cannot terminate at impermeable walls.
-Thacker uses a translating circular shoreline in a parabolic bowl over `[-2,2]² m`.
-Manning uses source-complete boundary momentum, including pressure.
+### Case definitions
 
-Ritter temporal refinement fixes 400 cells and maximum intervals `0.02`, `0.01`, and `0.005 s`.
-Successive mean depth differences decrease from `0.000126820 m` to `0.0000624591 m`.
-Analytical errors increase slightly as smaller timesteps increase first-order spatial diffusion at fixed spacing.
-Combined refinement decreases depth error from `0.00651800` to `0.00458525` to `0.00310221 m`.
+| Case | Physical setup |
+| --- | --- |
+| Dam breaks | A 200 m domain, with outer walls beyond the disturbed region |
+| Vacuum fans | Exact outward far-field ports. Moving states cannot terminate at impermeable walls. |
+| Thacker shoreline | A translating circular shoreline in a parabolic bowl over `[-2,2]² m` |
+| Manning equilibrium | Source-complete boundary momentum, including pressure |
 
-## Radial, transverse, and terrain checks
+### Refinement in space and time
 
-The radial case contracts an affine circular lake over `z=0.1*(x²+y²)` in `[-2,2]² m`.
-Its exact scale satisfies `a''+1.962*a=1.962/a³`, starting at `a=1.2` with zero velocity.
-At `0.5 s`, relative depth L1 decreases from `0.0667579` to `0.0467074` on `40²/80²` grids.
-Both values stay below `0.1`. Mean component discharge errors stay below `0.005 m²/s`.
-Initialization and error evaluation use cell-centre point samples, rather than exact cell averages.
+The Ritter time-refinement case keeps 400 cells. Smaller timesteps do not remove spatial error.
+
+| Check | Result and interpretation |
+| --- | --- |
+| Maximum intervals | `0.02`, `0.01`, and `0.005 s` |
+| Successive mean depth differences | Decrease from `0.000126820 m` to `0.0000624591 m` |
+| Error against the analytical solution | Increases slightly as smaller timesteps increase first-order spatial diffusion at fixed spacing |
+| Combined space/time refinement | Depth error decreases through `0.00651800`, `0.00458525`, and `0.00310221 m` |
+
+## Flow across two dimensions
+
+### Contracting circular lake
+
+The case contracts an affine circular lake over `z=0.1*(x²+y²)` in `[-2,2]² m`.
+
+| Property | Definition or criterion |
+| --- | --- |
+| Exact scale | `a''+1.962*a=1.962/a³`, initially `a=1.2` with zero velocity |
+| Evaluation time | `0.5 s` |
+| Relative depth L1 error | Decreases from `0.0667579` to `0.0467074` on `40²/80²` grids. Both values remain below `0.1`. |
+| Mean component discharge error | Below `0.005 m²/s` |
+| Sampling | Cell-centre point samples for initialization and error evaluation, without exact cell averaging |
+
 Only contraction executes. Expansion, reversal, and complete cycles remain unchecked.
 
-The shear case transports a tangential Gaussian discharge through constant depth and normal velocity.
-Its exact peak is `0.1 m²/s`, with depth `1 m` and normal velocity `1 m/s`.
-Mean tangential discharge errors decrease through `0.000501248`, `0.000257749`, and `0.000129640 m²/s` at `100/200/400` cells.
-Each grid also requires relative discharge L1 below `0.2`, excluding a nearly erased profile.
-Sampling uses the centre row beyond transverse walls' numerical domain of dependence during all 32 accepted steps.
-Depth and normal discharge remain constant there within `1e-10` SI.
-The complete square-grid problem also passes quarter-turn covariance within `1e-11` SI.
-These results measure selected first-order diffusion. They establish no general amplitude-preservation guarantee.
+### Transport of flow across the main direction
 
-Stepped lakes include `1e-9 m` films, dry plateaus, and bed jumps up to several metres.
-Coarse and refined grids retain the existing `1e-11` SI still-water criterion.
-A `1.5 m` crest blocks an initially stationary `1 m` upstream column.
-A `0.2 m` crest permits positive downstream transfer. This checks connectivity, without establishing overtopping discharge accuracy.
+The shear case carries a tangential Gaussian discharge through constant depth and normal velocity.
 
-Shallow wetting compares momentum reset thresholds `0`, `1e-8`, and `1e-6 m` on identical inputs.
-Relative to zero, mean depth differences reach `2.20e-9 m` and `1.46e-7 m` at `0.5 s`.
-The initial upstream depth is `2e-6 m`. These differences are material at that scale.
-All three runs conserve stored water and record signed removed momentum.
-A separate moving-film case checks retained positive water and signed reset diagnostics.
-The shallow fixture also covers extreme neighboring depth ratios without increasing the root iteration budget.
+| Property | Definition or criterion |
+| --- | --- |
+| Exact peak | `0.1 m²/s` |
+| Depth and normal velocity | `1 m` and `1 m/s` |
+| Mean tangential discharge errors | `0.000501248`, `0.000257749`, and `0.000129640 m²/s` at `100/200/400` cells |
+| Profile retention | Relative discharge L1 below `0.2` on each grid, excluding a nearly erased profile |
+| Sampling | Centre row beyond the transverse walls' numerical domain of dependence during all 32 accepted steps |
+| Constant depth and normal discharge | Within `1e-10` SI on that row |
+| Quarter-turn rotation (covariance) | Complete square-grid case agrees within `1e-11` SI |
 
-## Independent wet-bed and dry-bed references
+These results measure selected first-order diffusion. They establish no general guarantee of amplitude preservation.
 
-Six matched wet-bed dam runs pass against independently executed Clawpack PyClaw v5.12.0 sources.
-Both depth and discharge differences decrease through 100, 200, and 400 cells for each downstream depth.
-The threshold-defined fronts occupy matching cells. Both engines conserve water within their declared tolerances.
-Read [the reference comparison](reference-comparison.md) for pinned sources, reproducible commands, measured norms, and scope limits.
-Three exactly dry Ritter runs also pass against Clawpack's untouched compiled augmented solver.
-Their cross-engine depth and discharge differences decrease under refinement, with matching threshold-defined fronts.
-However, support-matched analytical front errors are `2`, `1`, and `2.5 m`. Front accuracy and convergence remain unestablished.
-Read [the dry-bed comparison](dry-reference-comparison.md) for the analytical diagnostic, external dry policy, and reproduction commands.
-Terrain and genuine two-dimensional transverse comparisons remain separate gates.
+### Terrain barriers and shallow water
 
-## Physical wet-subcritical boundaries
+| Check | Enforced behavior |
+| --- | --- |
+| Stepped lakes | `1e-9 m` films, dry plateaus, and bed jumps of several metres retain the `1e-11` SI still-water criterion on coarse/refined grids |
+| High crest | A `1.5 m` crest blocks an initially stationary `1 m` upstream column |
+| Low crest | A `0.2 m` crest permits positive downstream transfer. This checks connectivity, without establishing overtopping discharge accuracy. |
+| Momentum-reset thresholds | `0`, `1e-8`, and `1e-6 m` on identical shallow-wetting inputs |
+| Threshold sensitivity | Mean depth differences from the zero-threshold run reach `2.20e-9 m` and `1.46e-7 m` at `0.5 s` |
 
-`tests/physical_boundaries.rs` checks open-lake balance, four-face orientation, discharge budgets, reversal, forcing edges, retries, and restart.
-Tensor-kernel cases independently check complete uniform flux and constructed shock/rarefaction traces.
-Matching open stages preserve a stepped lake within `1e-11` SI.
-Constant discharge boundaries agree with their accepted water volume within `1e-12 m³`.
-Dry, critical, supercritical, missing-inflow-data, and out-of-branch requests reject without mutating accepted state.
-These gates admit only the wet-subcritical boundary contract. They establish no physical-domain or field-accuracy claim.
+The shallow case starts at `2e-6 m` upstream depth. The threshold-dependent differences are material at that scale.
 
-## Complete exterior and transmissive boundaries
+All three threshold runs conserve stored water and record signed removed momentum. A separate moving-film case checks retained positive water and signed reset diagnostics.
 
-`tests/exterior_boundaries.rs` checks uniform Riemann wiring, rotation, stepped-bed lake balance, dry transitions, reversal, vacuum, and strong incoming shocks.
-`tests/exterior_contracts.rs` checks all five boundary policies together, dry transmissive copying, source-dependent retries, input admission, and checkpoint consistency.
-Complete exterior states prescribe reservoir data, rather than achieved face discharge.
-Transmissive boundaries admit only dry or resolved supercritical-outgoing post-source states.
-Accepted face speeds reconstruct the native combined CFL bound during package import.
-These tests establish selected boundary behaviour. They establish no finite exterior-compartment coupling or physical-domain accuracy.
+The shallow case also covers extreme neighboring depth ratios without increasing the root iteration budget.
 
-## Closed coupled pools
+## Comparisons with another engine
 
-`tests/coupled_level_pools.rs` checks accepted water transfers between separate pools through declared structures. Read [coupled level pools](coupled-level-pools.md) before selecting this component.
+### Wet-bed dams
+
+The [wet-bed comparison](reference-comparison.md) uses six matched Clawpack PyClaw v5.12.0 runs.
+
+- Depth and discharge: Differences decrease through 100, 200, and 400 cells for each downstream depth.
+- Front position: Threshold-defined fronts occupy matching cells.
+- Conservation: Both engines conserve water within their declared tolerances.
+
+**Accuracy limit:** Agreement between engines establishes no analytical accuracy.
+
+### Exactly dry Ritter dams
+
+The [dry-bed comparison](dry-reference-comparison.md) uses three runs with Clawpack's untouched compiled augmented solver.
+
+- Depth and discharge: Differences decrease under refinement.
+- Front position: Threshold-defined fronts occupy matching cells.
+- Conservation: The comparison enforces its declared water-residual criteria.
+
+**Accuracy limit:** Analytical front errors on matching cell-mean support are `2`, `1`, and `2.5 m`. Front accuracy and convergence remain unestablished.
+
+The linked guides contain pinned sources, reproduction commands, measured norms, and external dry policies.
+
+Independent terrain and genuine two-dimensional transverse-flow comparisons remain separate acceptance requirements.
+
+## Open-boundary checks
+
+Read [the boundary guide](boundaries.md) before choosing a boundary policy.
+
+### Prescribed water level (stage) and discharge
+
+Water is present, and flow across the boundary is slower than local gravity waves. These checks admit only this wet-subcritical regime.
+
+| Check | Enforced result |
+| --- | --- |
+| Matching open stages | Preserve a stepped lake within `1e-11` SI |
+| Constant discharge | Agrees with accepted water volume within `1e-12 m³` |
+| Uniform flow | Complete boundary flux agrees with independent calculations |
+| Waves at the boundary | Calculated traces match constructed shocks (abrupt changes) and rarefactions (spreading waves) |
+| Unsupported requests | Dry, critical, supercritical, missing-inflow-data, and out-of-branch requests reject without changing accepted state |
+
+Test details: [wave and flux calculations](../src/numerics/boundary/tests.rs) and [physical boundaries](../tests/physical_boundaries.rs).
+
+The physical cases also cover four-face orientation, reversal, forcing edges, retries, and restart.
+
+### Exterior reservoirs and transmissive outlets
+
+| Policy or check | Meaning |
+| --- | --- |
+| Complete exterior state | Prescribes reservoir data. It does not prescribe achieved face discharge. |
+| Transmissive outlet | Admits only dry or resolved supercritical-outgoing states after source updates |
+| Restart | Checkpoint import rebuilds the combined timestep safety limit (CFL) from recorded face wave speeds |
+
+The [exterior-boundary cases](../tests/exterior_boundaries.rs) cover uniform Riemann wiring and rotation. They also cover stepped-bed balance, dry transitions, reversal, vacuum, and strong incoming shocks.
+
+The [exterior-contract cases](../tests/exterior_contracts.rs) combine all five policies. They cover dry transmissive copying, source-dependent retries, input admission, and checkpoint consistency.
+
+These tests establish selected boundary behavior only. Finite exterior-compartment coupling remains unestablished.
+
+## Connected-pool checks
+
+Read [coupled level pools](coupled-level-pools.md) before selecting this component.
+
+### Closed pools with static structures
 
 | Case | Enforced criterion |
 | --- | --- |
@@ -119,21 +184,27 @@ These tests establish selected boundary behaviour. They establish no finite exte
 | Temporal refinement | Independent discrete recurrence agreement within `1e-8 m³`, quadratic continuous-error bounds, and successive error ratios from `3.8` to `4.2` |
 | Rejection and restart | Rejected trials preserve accepted state. Forged checkpoints reject atomically. Trusted and owned restart reproduce complete continuation. |
 
-The refinement case holds the endpoint at `0.5 s` and halves intervals from `0.5` through `0.03125 s`. Its finest continuous transfer error must remain below `1e-4 m³`.
+The refinement endpoint is `0.5 s`. Intervals halve from `0.5` through `0.03125 s`, with finest continuous transfer error below `1e-4 m³`.
 
-The orifice and gate fixtures explicitly use artificial gravity `0.5 m/s²` for exact algebraic references. These checks cover closed exchange-only pools with static manual operations. They establish no surface-to-network coupling or measured-event accuracy.
+The orifice and gate cases use artificial gravity `0.5 m/s²` for exact algebraic references.
 
-`tests/coupled_level_pool_sources.rs` separately checks explicit local sources with static structure operations. Cases check source order, rain-funded withdrawal, capped losses without incoming credit, accepted-start area, and a dry rainfall footprint.
+[Closed-pool tests](../tests/coupled_level_pools.rs) cover exchange-only pools with static manual operations. They establish no surface-to-network coupling.
 
-Retry checks compare recalculated sources and transfers against an independent formula at the actual accepted duration. Exact-zero forcing retains common hydraulic bits and zero source counters.
+### Local rain and losses
 
-Invalid forcing and forged source packages reject atomically. Trusted and owned restart repeat complete continuation.
+| Check | Required behavior |
+| --- | --- |
+| Source order | Rain-funded withdrawal and capped losses follow the declared order. Incoming water supplies no withdrawal credit. |
+| Area and wetting | Sources use accepted-start area and the declared dry rainfall footprint |
+| Retry | Recalculated sources and transfers match an independent formula at the actual accepted duration |
+| Explicit zero forcing | Common hydraulic bits remain unchanged, with zero source counters |
+| Rejection and continuation | Invalid forcing and forged source packages reject atomically. Trusted and owned restart reproduce complete continuation. |
 
-These source fixtures establish no runoff attachment or field accuracy.
+[Source cases](../tests/coupled_level_pool_sources.rs) retain static structure operations. They establish no runoff attachment.
 
-## Prescribed pool inflows
+### Prescribed external inflows
 
-`tests/coupled_pool_inflows.rs` checks already-selected nonnegative external inputs. It retains the existing head, transfer, mass, and independent-volume tolerances.
+[Inflow cases](../tests/coupled_pool_inflows.rs) use already-selected nonnegative inputs. Existing head, transfer, mass, and independent-volume tolerances remain binding.
 
 | Case | Enforced criterion |
 | --- | --- |
@@ -144,15 +215,28 @@ These source fixtures establish no runoff attachment or field accuracy.
 | Shortened intervals | Actual-duration products and orifice transfer match an independent formula |
 | Arithmetic and continuation | Positive absorption and unrepresentable products reject atomically. Complete restart repeats continuation, and altered current/start ledgers or original operands reject. |
 
-Explicit-zero boundaries retain common closed and source-only numerical bits. Actual CPU/CUDA tests share one inflow and complete-restart body. These synthetic checks establish no measured-replacement selection, generated-runoff attachment, geometric ownership proof, or field accuracy.
+Explicit-zero boundaries retain common closed and source-only numerical bits. CPU/CUDA tests share one inflow and complete-restart calculation.
 
-Integrated-volume cases check original operand bits, mixed rate/volume inputs, exact spans including zero, and fresh forcing after recalculation requests. A positive receiver film accepts the smallest supplied volume over `2 s`, although dividing that input by duration rounds to zero. Dry receivers retain `3` times that smallest volume exactly, although dividing and multiplying it back changes its bits. Filling a dry receiver with the smallest volume rejects because its midpoint depth is unrepresentable.
+### Volumes supplied for one interval
 
-Exact/mixed restart checks preserve complete state and original forcing kinds. Forged operands, durations, and retries reject atomically. CPU/CUDA tests share one mixed-input and complete-restart body. Supplied integrated volumes establish no full native-runoff attachment.
+These checks use a supplied total volume without converting it to a rate.
 
-## Gate status
+| Check | Required behavior |
+| --- | --- |
+| Original operands | Preserve original floating-point bits for exact and mixed rate/volume inputs |
+| Time support | Require the exact supplied interval, including zero-volume inputs. Shortening requests fresh forcing. |
+| Smallest positive input | A positive receiver film accepts it over `2 s`, although division by duration rounds the rate to zero |
+| Dry receiver | Retains `3` times the smallest volume exactly, although division and multiplication change the bits |
+| Unresolved midpoint | A dry receiver rejects the smallest volume because its midpoint depth is unrepresentable |
+| Continuation | Exact/mixed restart retains complete state and original input kinds. Forged operands, durations, and retries reject atomically. |
 
-| Gate | Checked scope | Remaining evidence |
+CPU/CUDA tests share one mixed-input and complete-restart calculation.
+
+**Scope limit:** These inflow checks prove no measured-replacement selection or geometric ownership. They establish no generated-runoff attachment or full native-runoff attachment.
+
+## Remaining acceptance work
+
+| Area | Checked scope | Remaining evidence |
 | --- | --- | --- |
 | Contract | SI inputs, shapes, references, masks, sources, boundaries, outputs, and exclusions | Physical suitability of each application domain |
 | Determinism | Repeated runs, complete trusted/package restart, bit checks, rollback, and cancellation | Cross-platform bitwise equality remains unsupported |
@@ -164,9 +248,13 @@ Exact/mixed restart checks preserve complete state and original forcing kinds. F
 | Extensions | Explicit Modified Green–Ampt land and closed pools with static structure operations have separate checks | Wider networks, dynamic coupled controls, and external coupling require separate acceptance |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 
-Lake tests enforce depth and momentum drift below `1e-11` SI.
-The fixed-depth friction substep enforces component error below `1e-12`.
-Water checks enforce dimensional absolute/relative tolerances without water clipping.
-Film momentum resets remain visible in the adjustment ledger.
+### Numerical limits retained by the checks
+
+| Quantity | Requirement |
+| --- | --- |
+| Lake depth and momentum drift | Below `1e-11` SI |
+| Fixed-depth friction substep | Component error below `1e-12` |
+| Water balance | Dimensional absolute/relative tolerances, without water clipping |
+| Film momentum resets | Signed changes remain visible in the adjustment ledger |
 
 These results support native numerical demonstrations. They establish no universal depth, warning-time, velocity, or recession accuracy.

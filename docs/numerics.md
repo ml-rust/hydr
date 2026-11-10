@@ -1,109 +1,187 @@
 # Numerical contract
 
-hydr solves hydrostatic, depth-averaged shallow-water equations for hydraulic application developers.
+Use this reference to understand Hydr's surface equations, advancement method, numerical checks, and accuracy limits.
+
+Hydr solves hydrostatic, depth-averaged shallow-water equations.
 
 ## Equations and support
 
-- Conserved cell state: Depth `h` in metres and discharge per width `qx=h*u`, `qy=h*v` in m²/s.
-- Pressure: `g*h²/2`, with full advective momentum flux in both horizontal directions.
-- Terrain: One bed elevation per Cartesian cell. No subgrid storage or unresolved connections exist.
-- Coordinates: Projected metres with a caller-attested CRS, vertical datum, and grid origin.
-- Water levels: Terrain and water inputs require compatible elevation references. hydr performs no datum or CRS transformations.
-- Density: Constant, with hydrostatic pressure and depth-averaged horizontal momentum.
-- Excluded physics: Nonhydrostatic motion, vertical jets, sediment, erosion, debris, wind, and Coriolis.
-- Other excluded forces: Atmospheric pressure gradients and horizontal eddy viscosity.
+| Quantity or assumption | Contract |
+| --- | --- |
+| Conserved state | Depth `h` in metres and discharge per width `qx=h*u`, `qy=h*v` in m²/s |
+| Momentum flux | Full advection in both horizontal directions, with pressure `g*h²/2` |
+| Terrain | One bed elevation per Cartesian cell. No subgrid storage or unresolved connections. |
+| Coordinates | Projected metres with caller-attested CRS, vertical datum, and grid origin |
+| Water levels | Compatible terrain and water elevation references. Hydr performs no datum or CRS transformation. |
+| Fluid | Constant density, hydrostatic pressure, and depth-averaged horizontal momentum |
+
+Excluded physics:
+
+- Vertical processes: Nonhydrostatic motion and vertical jets.
+- Transported material: Sediment, erosion, and debris.
+- Additional forces: Wind, Coriolis, atmospheric pressure gradients, and horizontal eddy viscosity.
 
 ## Discretization
 
-1. Evaluate explicit soil from accepted interval-start ponding and incoming rain once.
-2. Add rain, remove returned native infiltration with bounded reconciliation, cap evaporation, then remove prescribed withdrawal.
-3. Reconstruct each face against the higher adjoining bed.
-4. Calculate shared HLL fluxes and admitted physical boundary traces using conservative normal wave bounds.
-5. Apply side-specific hydrostatic pressure corrections once, without a centred bed source.
-6. Bound the interval by combined directional CFL and every proposed outgoing face/port rate.
-7. Recalculate from accepted tensors whenever the interval shortens.
-8. Advance transport, then apply exact fixed-depth Manning vector decay.
-9. Check state and ledgers before atomic acceptance.
+Each candidate interval follows this order:
 
-The discretization remains first order. MUSCL, SSP-RK2, and HLLC remain unimplemented extensions.
-The retained reference matches the first-order candidate's equations and source order.
-Explicit Modified Green–Ampt land preserves pinned native state. Prescribed withdrawal remains a separate demand without a soil interpretation.
-Rain and numerical correction add zero horizontal momentum. Every sink removes proportional donor momentum.
+1. Evaluate soil using accepted interval-start ponding and incoming rain once.
+2. Add rain, then remove native infiltration with bounded reconciliation.
+3. Cap evaporation, then remove prescribed withdrawal.
+4. Reconstruct each face against the higher adjoining bed.
+5. Calculate shared HLL fluxes and admitted boundary traces using conservative normal wave bounds.
+6. Apply side-specific hydrostatic pressure corrections once, without a centred bed source.
+7. Bound the interval by combined directional CFL and every proposed outgoing face/port rate.
+8. Recalculate from accepted tensors whenever the interval shortens.
+9. Advance transport, then apply exact fixed-depth Manning vector decay.
+10. Check state and ledgers before atomic acceptance.
+
+The method remains first order. The retained reference uses the same candidate equations and source order.
+
+MUSCL, SSP-RK2, and HLLC remain unimplemented extensions.
+
+### Source and momentum conventions
+
+| Process | Convention |
+| --- | --- |
+| Modified Green–Ampt land | Preserve the pinned native soil state. |
+| Prescribed withdrawal | Treat it as a separate demand without a soil interpretation. |
+| Rain and numerical correction | Add zero horizontal momentum. |
+| Sinks | Remove proportional donor momentum. |
 
 ## Wave bounds
 
-Dry-front bounds include twice the wet-state celerity. Separating wet states admit vacuum.
-Two-rarefaction states use their analytical outer heads, including identical states and near-vacuum fans.
-Other faces solve the normal Riemann depth relation through solvr's retained upper bracket.
-The bracket uses a derived compression upper estimate before bounded expansion and bisection.
+The face calculation chooses its wave bounds from the local wet/dry condition.
+
+| Condition | Calculation |
+| --- | --- |
+| Dry front | Include twice the wet-state celerity. |
+| Separating wet states | Admit vacuum. |
+| Two rarefactions | Use analytical outer heads, including identical states and near-vacuum fans. |
+| Other faces | Solve the normal Riemann depth relation through Solvr's retained upper bracket. |
+
+### Upper estimates for the root
+
+A compression estimate bounds the search before expansion and bisection. It avoids excessive expansion from thin films.
+
 For `H >= M=max(hL,hR)`, the shock curves satisfy:
 
 ```text
 fL(H)+fR(H) >= (H-M)*(sqrt(g/(2*hL))+sqrt(g/(2*hR)))
 ```
 
-This estimate avoids excessive expansion from thin films.
 Unequal depths also use a one-sided shock estimate:
 
 ```text
 HR = hR + max(2*sqrt(g*hL)-(uR-uL),0)*sqrt(2*hR/g)
 ```
 
-For `H>=hR`, `fR(H)>=(H-hR)*sqrt(g/(2*hR))`, while `fL(H)>=-2*sqrt(g*hL)`.
-Therefore `HR` bounds the root from above. The symmetric estimate exchanges left and right depths.
-The bracket selects the smallest finite estimate before outward padding and checked residual evaluation.
-This avoids excessive bisection across extreme depth ratios. Iteration exhaustion still returns an error.
-Film brackets receive additional relative refinement because absolute depth error alone cannot control shock-speed sensitivity.
-Hydr requests a relative tolerance capped at `1e-12` and an absolute tolerance of one F64 subnormal quantum.
-These stricter tolerances remain within the configured absolute/relative depth ceiling.
-Wave endpoints receive outward padding of `16*f64::EPSILON` times the local speed scale.
-This padding is no interval-arithmetic proof. Extreme unrepresentable arithmetic returns an error.
+For `H>=hR`, these inequalities make `HR` an upper root bound:
+
+```text
+fR(H)>=(H-hR)*sqrt(g/(2*hR))
+fL(H)>=-2*sqrt(g*hL)
+```
+
+The symmetric estimate exchanges left and right depths.
+
+The bracket selects the smallest finite estimate, then applies outward padding and checks the residual. This avoids excessive bisection across extreme depth ratios.
+
+Iteration exhaustion still returns an error.
+
+### Refinement and arithmetic limits
+
+Thin-film shock speeds need relative refinement. An absolute depth error alone cannot control their sensitivity.
+
+| Control | Contract |
+| --- | --- |
+| Relative depth tolerance | Capped at `1e-12` |
+| Absolute depth tolerance | One F64 subnormal quantum |
+| Configured ceiling | These stricter tolerances stay within the configured absolute/relative depth ceiling. |
+| Wave endpoint padding | `16*f64::EPSILON` times the local speed scale |
+
+Padding is no interval-arithmetic proof. Extreme unrepresentable arithmetic returns an error.
 
 ## Physical boundary traces
 
-Wet-subcritical stage and discharge boundaries connect the interior to a compatible one-wave trace.
-The trace contributes its complete physical flux directly, with normal pressure once.
-Discharge traces conserve the requested numerical discharge and recalculate all momentum components from the same state.
-Passing their state through another HLL calculation would change the prescribed mass flux.
-The solver checks both discharge and local velocity compatibility after root refinement.
-Complete wet/dry exterior reservoir states enter the existing HLL solver before flux calculation.
-Admitted transmissive boundaries copy dry or resolved supercritical-outgoing post-source states outside.
-Every face exposes its final numerical signal speed for accepted-interval CFL consistency checks.
-Read [the boundary contract](boundaries.md) for admissibility, critical margins, units, and unsupported regimes.
+Wet-subcritical Stage/Discharge inputs connect the interior to a compatible one-wave trace.
+
+| Boundary calculation | Contract |
+| --- | --- |
+| Completed trace | Contribute the complete physical flux directly, with normal pressure once. |
+| Discharge trace | Conserve the requested numerical discharge. Recalculate all momentum components from the same state. |
+| Compatibility | Check both discharge and local velocity after root refinement. |
+| Wet/dry exterior reservoir | Enter the existing HLL solver before flux calculation. |
+| Transmissive boundary | Copy dry or resolved supercritical-outgoing post-source states outside. |
+| Accepted face | Expose the final numerical signal speed for interval CFL checks. |
+
+Passing a completed discharge trace through HLL again changes its prescribed mass flux.
+
+Read [the boundary contract](boundaries.md) for admissible regimes, critical margins, units, and pressure conventions.
 
 ## Stability, positivity, and accounting
 
-- Combined directional CFL: At most `0.45`.
-- Depletion: Reserve every outgoing shared face and outward port rate without crediting simultaneous inflow.
-- Trial recalculation: Sources, reconstructions, bounds, and fluxes recompute after interval reduction.
-- Complete fluxes: No pressure/transport scaling limiter changes the shared numerical flux.
-- Negative depth: Reject the trial without clipping. Proved soil arithmetic excess requires an explicit bounded water adjustment.
-- Positive films: Retain every representable positive depth.
-- Optional film reset: Retain depth, reset momentum, and report signed momentum removal in m⁴/s.
-- Water residual: Storage change minus rain, boundary exchange, infiltration, evaporation, prescribed withdrawal, and signed numerical adjustments.
-- Dimensional controls: `SolverConfig` records root, step, film, and water-ledger tolerances.
+| Check | Enforced behavior |
+| --- | --- |
+| Combined directional CFL | At most `0.45` |
+| Depletion | Reserve every outgoing shared-face and outward-port rate without crediting simultaneous inflow. |
+| Shortening | Recalculate sources, reconstruction, bounds, and fluxes. |
+| Complete flux | No pressure/transport scaling limiter changes the shared numerical flux. |
+| Negative depth | Reject without clipping. Proved soil arithmetic excess needs an explicit bounded water adjustment. |
+| Positive film | Retain every representable positive depth. |
+| Optional momentum reset | Retain film depth, reset momentum, and report signed removal in m⁴/s. |
 
-Default volume tolerance is `1e-9 m³ + 1e-12*scale`, with a `1 m³` scale floor.
-These computational tolerances establish no physical inundation threshold or observational accuracy target.
-The independent cumulative adjustment budget defaults to `1e-9 m³`. A balanced residual never authorizes unlimited numerical water creation.
-Read [land sources](land-sources.md) for source order, native-state retention, representability, and restart consistency.
+### Water budgets
+
+Water residual: Storage change minus rain, boundary exchange, infiltration, evaporation, prescribed withdrawal, and signed numerical adjustments.
+
+`SolverConfig` records dimensional root, step, film, and water-ledger tolerances.
+
+| Budget | Default and meaning |
+| --- | --- |
+| Volume tolerance | `1e-9 m³ + 1e-12*scale`, with a `1 m³` scale floor |
+| Cumulative adjustment | Independent limit of `1e-9 m³` |
+
+A balanced residual never authorizes unlimited numerical water creation.
+
+These computational tolerances define neither a physical inundation threshold nor an observational accuracy target.
+
+Read [land sources](land-sources.md) for source order, native state, representability, and restart consistency.
 
 ## Execution and limitations
 
-State, geometry, forcing, indexing, flux evaluation, transport, source updates, and reductions execute through Numr `Tensor<R>` fields.
-Constructors receive the configured `R::Client`. Allocation uses `client.device()`.
-Numr owns scaled Euclidean magnitude. Solvr owns generic bracket expansion and bisection.
-Hydr retains the physical residual, compression estimate, wet/dry branches, and wave-speed conversion.
-The checked CPU F64 reference requests one thread at the caller boundary.
-Explicit client dispatch preserves that policy under downstream dependency feature unification.
-Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission). Backend availability establishes no hydraulic qualification.
-Ordinary advancement retains flow, native soil memory, and bounded detailed receipts as tensors.
-Explicit state, soil, cell, observer, diagnostic, and owned-checkpoint requests perform fallible projections.
-Rejected-candidate diagnostics can project fields. Scalar control and accounting reductions remain permitted.
-Trusted snapshots share immutable tensor storage without projection. No solver operation mutates accepted tensors in place.
+### Library responsibilities
 
-Hydrostatic reconstruction has documented steep/shallow/coarse-grid artifacts.
-Two-wave HLL diffuses transverse transport. The complete application accuracy envelope remains unestablished.
+| Layer | Work |
+| --- | --- |
+| Numr `Tensor<R>` | State, geometry, forcing, indexing, fluxes, transport, source updates, and reductions |
+| Numr primitives | Scaled Euclidean magnitude |
+| Solvr | Generic bracket expansion and bisection |
+| Hydr | Physical residuals, compression estimates, wet/dry branches, and conversion to wave speed |
+
+Constructors receive the configured `R::Client`. Allocation uses `client.device()`.
+
+The CPU F64 reference requests one thread at the caller boundary. Explicit dispatch preserves that policy under downstream dependency feature unification.
+
+Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission). Backend availability establishes no hydraulic qualification.
+
+### Device data and reads
+
+| Operation | Data behavior |
+| --- | --- |
+| Ordinary advancement | Retain flow, native soil memory, and bounded detailed records as tensors. |
+| Explicit state, soil, cell, observer, diagnostic, or owned-checkpoint request | Copy data through a fallible projection. |
+| Rejected-candidate diagnostics | Can project fields. |
+| Scalar control and accounting | Reductions remain permitted. |
+| Trusted snapshot | Share immutable tensor storage without projection. |
+
+No solver operation mutates accepted tensors in place.
+
+### Accuracy limits
+
+- Hydrostatic reconstruction: Documented artifacts remain on steep, shallow, or coarse grids.
+- Two-wave HLL: Transverse transport diffuses.
+- Application accuracy: The complete accuracy envelope remains unestablished.
 
 ## Mathematical references
 
@@ -111,4 +189,4 @@ Two-wave HLL diffuses transverse transport. The complete application accuracy en
 - [Delestre et al.](https://arxiv.org/html/1206.4986): Hydrostatic corrections and steep/shallow limitations.
 - [FullSWOF authors](https://arxiv.org/abs/1401.4125): Shallow-water finite-volume methods and source treatment.
 
-The implementation uses original code under Apache-2.0. No upstream solver source or external benchmark dataset is copied.
+The implementation uses original Apache-2.0 code. It copies no upstream solver source or external benchmark dataset.

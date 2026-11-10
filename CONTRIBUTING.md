@@ -49,6 +49,19 @@ Write guides that help library users complete a task or understand a constraint.
 
 Keep public guidance in `docs/`. Keep plans, research notes, and generated evidence outside public documentation.
 
+### Review the rendered page
+
+Before finishing a documentation change, render the affected sections at desktop and narrow widths.
+
+- Paragraphs: Keep one reader decision per paragraph. Source line breaks do not create separate paragraphs.
+- Procedures: Use numbered steps for actions. Give each step a clear input or outcome.
+- Choices: Use a table when readers must compare inputs, supported cases, or results. Keep long signatures outside comparison tables.
+- Detail: Explain the user action before exact bit rules, internal checks, or numerical derivations.
+- Limits: Separate requirements, results, and unsupported uses so readers can find each one.
+- Evidence: Link test inventories and detailed numerical results from task guides to the relevant acceptance or reference page.
+
+Read the rendered section as a new user. Check that its purpose, next action, units, and limits are clear. A prose lint or shorter word count does not replace this review.
+
 ## Engineering conventions
 
 - Module roots contain wiring and module documentation.

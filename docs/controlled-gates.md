@@ -1,68 +1,117 @@
-# Atomic controlled gate response
+# Advance gate controls and response together
 
-`ControlledGateBatch` gives hydraulic application developers one accepted state for sampled controls and ideal gate response.
+Use `ControlledGateBatch` to accept sampled control and ideal gate response as one state. Construct fresh child batches first.
 
-The batch owns both child batches. Each immutable trial advances their complete candidate states together. Actual opening remains distinct from the requested target.
+The batch owns both children. Requested target and actual opening remain separate values.
 
-## Construction and authority
+## Construct the owner
 
-`ControlledGateBatch::new` consumes a fresh `OperatingControlBatch` and a fresh `GateActuatorBatch`.
+`ControlledGateBatch::new` consumes an `OperatingControlBatch` and a `GateActuatorBatch`.
 
-| Requirement | Contract |
+| Check | Requirement |
 | --- | --- |
-| Fresh children | Both children remain at their original initial state with zero accepted intervals |
-| Actual model | Complete original structure definitions match, including geometry, applicability, orientation, and numerical bits |
-| Gate ownership | Every supplied controller binds exactly one supplied actuator through the same actual gate identity |
-| Commands | Both original commands are `ControlCommand::GateTarget` inside the actual gate range |
-| Order | Existing child admission retains the same actual-structure order. Construction adds no reordered or expanded child layout |
-| Calendar | Original initial time, terminal time, and every decision/target time match by F64 bits |
-| Initial target | The initial selected command numerically equals the actuator's original target |
+| Fresh state | Both children retain their initial state with zero accepted intervals |
+| Physical model | Complete original structure definitions match, including geometry, applicability, orientation, and numerical bits |
+| Ownership | Every controller binds exactly one supplied actuator through the same actual gate |
+| Commands | Both commands are `ControlCommand::GateTarget` within the gate range |
+| Order | Preserve the actual-structure order without reordering or expanding the child layout |
+| Calendar | Initial time, terminal time, and all decision/target times match by F64 bits |
+| Initial target | Selected initial command numerically equals the actuator's initial target |
 
-Initial numerical equality permits differently signed zeros. Each child retains its own original bits. Repeated numerically equal commands preserve the actuator's active target bits and motion anchor. The actuator separately retains the latest raw command bits.
+Numerical equality permits differently signed zeros. Each child retains its original bits.
 
-The composite supplies one target writer for its owned actuators. It accepts no manual target packets. Other structures can remain outside the controlled subset.
+The owner supplies the only target writer for its actuators. It accepts no manual target packets. Other structures can remain outside this subset.
 
-## Decision and response ordering
+## Advance to an event
 
-At a decision endpoint, every controller consumes its complete ordered causal sample. The existing sampled-control model determines the candidate latch. Numr selects that latch's original low or high target directly from persistent F64 tensors. Normal trials create no host target packets and project no derived command arrays.
+1. Read `next_event()`.
+2. Choose an endpoint no later than that next-event bound.
+3. Supply complete ordered causal samples at a decision endpoint, or an empty slice otherwise.
+4. Call `trial_to(end_s, samples)`.
+5. Consume `into_next()` to accept both candidate children.
 
-The actuator evaluates the old target through the endpoint's left state. The selected endpoint command applies to the right interval. A coincident arrival completes the old episode before a new target starts. A new command never repairs a rejected old-target endpoint retroactively.
+The next-event bound already includes the terminal horizon.
 
-The computed command's issue and availability times equal the original decision time. Sensor availability remains separate. A causal observation available earlier does not make the computed command available before its decision.
+Dropping or rejecting the candidate preserves both children. Control, response, and numerical errors cannot partially accept a step.
 
-Non-decision intervals require an empty sample slice. Both children advance once through the same original interval. The controller retains its command while the actuator advances actual opening.
+Exactly coincident represented events combine flags. Hydr never merges different original times through an epsilon.
 
-## Events and atomic trials
+### What happens at a decision
 
-`next_event()` combines original decisions, actuator arrival boundaries, and the terminal horizon. Exactly coincident times combine their flags. No epsilon merges distinct original events. A trial cannot cross the next event or extend terminal support.
+| Order | Action |
+| --- | --- |
+| 1 | Every controller reads its complete original sample and determines a candidate latch |
+| 2 | The actuator follows the old target through the endpoint's left state |
+| 3 | A coincident arrival completes the old episode |
+| 4 | The selected command applies to the right interval |
 
-`trial_to(end_s, samples)` borrows the accepted batch immutably. Dropping a candidate preserves both children. Any control, response, or numerical rejection preserves both children. `into_next()` accepts the complete candidate pair by ownership.
+A new command cannot repair a rejected old-target endpoint.
 
-The accepted pair preserves the children's dimensional policies. No composite tolerance weakens qualification timing, opening uncertainty, arrival windows, or positive-opening support.
+Numr selects the latch's original low or high target from persistent F64 tensors. Normal trials create no host target packets or derived command arrays.
 
-## Results and hydraulic proposals
+Computed issue and availability times equal the original decision time. Earlier sensor availability does not make the command available earlier.
 
-`controls()` and `actuators()` expose immutable child references. Their explicit projections retain the existing command, position, support, and diagnostic contracts. `time()` and `accepted_steps()` describe the common accepted continuation.
+### Intervals without decisions
 
-The actuator reference can supply an `OperatingSourceBinding::Actuated` and each fresh `OperatingSourceFrame::ActuatedGate`. The [operating-source registry](operating-sources.md) retains actual opening uncertainty beside center-based hydraulic proposals. The controlled target never substitutes for actual opening. Source selection establishes no enclosure for ideal discharge or integrated transfer volume.
+Both children advance once over the same original interval. The controller retains its command while the actuator advances actual opening.
 
-## Complete restoration
+Repeated numerically equal commands preserve active target bits and the motion anchor. The actuator separately retains the latest raw command bits.
 
-Trusted snapshots clone both complete child continuations without derived array projection. Restoration checks compatible original inputs and retains destination contexts.
+Child accuracy policies remain binding. Composition does not relax qualification timing, opening uncertainty, arrival windows, or positive-opening support.
 
-Caller-owned snapshot packages include both complete child packages. Preserve every original F64 bit during encoding. Import first checks each child through its existing receipt arithmetic. Cross-child checks then require matching clocks, counters, calendar progress, and retained interval boundaries.
+## Read results and query flow
 
-The composition also checks current command/target correspondence and retained command provenance. Latest raw commands retain their original bits. Target generations agree with control transitions when low and high targets differ numerically. Numerically equal targets retain generation zero despite latch transitions. Retained immediate before states and latest transition/change receipts must agree across children.
+| Accessor | Result |
+| --- | --- |
+| `controls()` | Immutable controller reference with its existing projections |
+| `actuators()` | Immutable actuator reference with position, support, and diagnostics |
+| `time()` | Common accepted time |
+| `accepted_steps()` | Common accepted interval count |
 
-A rejected import changes neither child. These bounded consistency checks establish no complete historical authenticity. Snapshots retain no recursive prior-state chain. Bitwise continuation requires the same build, runtime, layout, accepted partition, and future causal samples.
+Use the actuator with `OperatingSourceBinding::Actuated` and a fresh `OperatingSourceFrame::ActuatedGate`.
+
+The [source registry](operating-sources.md) keeps opening uncertainty attached to center-based flow proposals. It never substitutes a controlled target for actual opening.
+
+These proposals establish no enclosure of ideal discharge or integrated transfer volume.
+
+## Save and restore
+
+### Trusted snapshots
+
+Trusted snapshots retain both complete child continuations without copying derived arrays. Restore checks compatible original inputs and retains destination contexts.
+
+### Caller-owned packages
+
+Preserve both complete child packages and every original F64 bit during encoding.
+
+Import checks each child's receipt arithmetic before checking their relationship:
+
+| Cross-child check | Required agreement |
+| --- | --- |
+| Progress | Clocks, counters, calendar progress, and retained interval boundaries |
+| Authority | Current command/target correspondence and retained command provenance |
+| Generations | Control transitions match target generations when low/high targets differ numerically |
+| Equal targets | Generation stays zero despite latch transitions |
+| Retained evidence | Immediate before states and latest transition/change receipts agree |
+
+Latest raw commands retain their original bits. Rejected imports change neither child.
+
+Packages retain no recursive prior-state chain. Bounded consistency checks do not authenticate complete history.
+
+Bitwise continuation requires the same build, runtime, layout, accepted step partition, and future causal samples.
 
 ## Scope and example
 
-The response inherits the explicitly supplied ideal constant directional rates. It excludes mechanical dynamics and native actuator parity. Sampled qualification establishes no continuous trigger completeness or endogenous hydraulic feedback.
+The response uses the supplied ideal constant directional rates. It excludes mechanical dynamics and native actuator parity.
 
-Pump response, accepted hydraulic transfers, ideal-discharge enclosures, and measured-event accuracy remain unsupported by this component.
+This component does not establish:
 
-Run the deterministic opening/reversal example:
+- Continuous trigger completeness or endogenous hydraulic feedback.
+- Pump response.
+- Accepted hydraulic transfers or ideal-discharge enclosures.
+- Measured-event accuracy.
+
+Run the opening/reversal example:
 
 ```sh
 cargo run --example controlled_gates

@@ -1,113 +1,220 @@
 # Connect level pools
 
-Coupled level pools advance connected storage through declared hydraulic structures for Rust applications. Start with the physical requirements below.
+Use `CoupledLevelPoolBatch` to advance water between separate pools through declared structures. Start by defining the physical storage and connections.
 
-Read [level pools](level-pool.md) for storage curves and [structure laws](structures.md) for supported flow relations.
+This guide covers static manual operations with optional local sources and prescribed external inflows. Read [acceptance coverage](acceptance.md#connected-pool-checks) for checked cases and accuracy limits.
 
-## Check the physical model
+## Define the physical model
 
-- Storage: Each pool represents connected, approximately level water with its own stage-volume curve.
-- Ownership: Pool volumes must describe separate physical storage. Do not count the same water in multiple pools.
-- Units: Supply volumes in m³, elevations in metres, and time in seconds.
-- Datum: Each structure and its connected pools must use the same vertical reference.
-- Dry support: Declare the physical zero-volume stage limit and the bed at each connection.
+1. Give each pool its own [stage-volume curve](level-pool.md).
+2. Declare separate physical storage without counting the same water twice.
+3. Use one vertical reference for each structure and its connected pools.
+4. Declare each pool's physical zero-volume elevation and each connection's local bed.
+5. Supply evidence supporting the storage and physical connections.
 
-Zero volume has no reported water elevation. Midpoint estimates use the declared zero-volume limit when water enters or leaves a dry pool. This limit must match the storage curve origin.
+Each pool represents connected, approximately level water. Supply volumes in m³, elevations in metres, and time in seconds.
 
-A connection's local bed can lie above that origin. Water below a raised connection cannot supply that outlet.
+### Describe dry pools and raised outlets
 
-## Define connections and operations
+Zero volume has no reported water elevation. Midpoint estimates use the declared zero-volume limit when a pool wets or dries.
 
-1. Give each pool and structure a stable identity.
+The declared limit must match the storage curve origin. Connection beds must lie at or above that origin. Water below a raised connection cannot supply its outlet.
+
+### Bind structures and manual operations
+
+1. Give pools and structures stable identities.
 2. Bind each structure endpoint to its declared pool.
-3. Supply evidence supporting the local bed and physical connection.
-4. Supply one explicit static operation for each structure.
-5. Choose timestep limits and separate head, transfer-volume, and water-balance tolerances.
+3. Supply one explicit static operation for every structure.
+4. Choose timestep limits and separate water-level (head), transfer-volume, and water-balance tolerances.
+5. Construct the batch with `new(client, setup, initial)`.
 
-Passive structures, stopped pumps, running pumps, and fixed gate openings use their existing operation types. No implicit pump operation applies.
+Choose the matching operation from [structure laws](structures.md):
+
+- Passive operation for passive structures.
+- Explicit isolated-stop or running operation for pumps.
+- Fixed opening for gates.
+
+Hydr supplies no implicit pump operation. The configured client selects the runtime used by the batch.
 
 ## Supply local rain and losses
 
-Set `CoupledLevelPoolSetup.source_policies` to enable local sources before calling `new`. Supply one `LevelPoolSourcePolicy` per pool, including evidence supporting rainfall area and supplied bottom demand.
+1. Set `CoupledLevelPoolSetup.source_policies` before constructing the batch.
+2. Supply one `LevelPoolSourcePolicy` per pool.
+3. Declare evidence supporting rainfall area and supplied bottom demand.
+4. Supply rates through `CoupledLevelPoolForcingInterval.sources`.
 
-`CoupledLevelPoolForcingInterval.sources` supplies constant rates for every pool when source policies are enabled. Use `None` when local sources are disabled. Rain and potential evaporation use m/s. Potential bottom loss uses m³/s. Supply explicit zero rates where a process does not apply.
+When policies are enabled, `sources` must contain one record per pool. Supply explicit zero rates where a process does not apply. When local sources are disabled, use `None`.
 
-Call `trial_with_forcing_to` with an interval covering the accepted time and requested endpoint. `trial_to` requires both local sources and external inflows to be absent.
+| Source field | Units |
+| --- | --- |
+| Rain | m/s |
+| Potential evaporation | m/s |
+| Potential bottom loss | m³/s |
 
-The calculation freezes rainfall and evaporation area at the accepted start. An exact storage knot selects its right segment. Dry pools use the declared rain-receiving basal footprint.
+Rates remain constant over the declared forcing interval. Bottom demand supplies a potential loss. It establishes no inferred soil process.
 
-Rain enters first. Bottom loss then consumes available water, followed by evaporation. Each loss is capped by remaining water. Structure withdrawals use that post-source availability. Water arriving through another structure cannot supply withdrawals during the same interval.
+### Choose the area used by sources
 
-Shortened trials recalculate every source process from the original accepted state. They preserve the original accepted heads for midpoint estimates.
+Rain and evaporation use the area at the accepted interval start. At an exact storage knot, Hydr selects the right segment.
 
-## Declare prescribed external inflows
+Dry pools use the basal footprint: their declared rain-receiving area. Source calculations retain this area throughout the attempted interval.
 
-Add each `CoupledPoolInflowBinding` to `CoupledLevelPoolSetup.external_inflows`. Identify its receiving pool, boundary, selected input, and physical support. Supply evidence supporting that boundary and ownership of the incoming water.
+## Declare external inflows
+
+1. Add each `CoupledPoolInflowBinding` to `CoupledLevelPoolSetup.external_inflows`.
+2. Identify its receiving pool, boundary, selected input, and physical location or area.
+3. Supply boundary evidence and independent ownership evidence.
+4. Supply one `CoupledPoolInflow` per boundary in `CoupledLevelPoolForcingInterval.inflows`.
+
+`physical_support_id` names the actual location or area represented by the input.
 
 Boundary IDs and selected input IDs must each be unique. Distinct, independently owned inputs can share a declared physical support.
 
-Ownership asserts an external origin without duplicated inputs or overlap with represented pool storage and local rainfall. Identity checks establish no geometry. Your application supplies already-selected flows and the physical evidence. Hydr neither selects measured replacements nor proves GIS overlap or contributing-area ownership.
+### Check ownership before supplying water
 
-Supply one `CoupledPoolInflow` per declared boundary in `CoupledLevelPoolForcingInterval.inflows`, including explicit zeros. Choose `CoupledPoolInflowValue::Rate` for finite nonnegative m³/s. Choose `IntervalVolume` for a supplied finite nonnegative integrated volume in m³. Record order can differ from binding order. Missing, duplicate, unknown, and mismatched inputs reject.
+Your application supplies already-selected flows and physical evidence. Ownership must establish:
 
-External water enters after local losses and structure withdrawals. It cannot fund those earlier operations during the same interval. Shortened trials recalculate boundary volumes from the original rates and actual duration.
+- External origin, outside represented pool storage.
+- Exclusion of water already represented by local rainfall.
+- No duplicated supplied input.
 
-## Supply integrated interval volumes
+Identity checks establish no geometry. Hydr neither selects measured replacements nor proves GIS overlap or contributing-area ownership.
 
-Integrated volumes retain their original floating-point operands. Hydr never divides a supplied volume by duration and multiplies it back.
+### Choose a rate or a supplied volume
 
-Any integrated input requires exact forcing-span bits, including when its volume is zero. Use accepted-time bits for `start_s` and requested-endpoint bits for `end_s`. Rate and volume inputs can share one forcing interval.
+| Value | Use it for | Units |
+| --- | --- | --- |
+| `CoupledPoolInflowValue::Rate` | A constant inflow rate over the declared interval | m³/s |
+| `IntervalVolume` | A volume already calculated for a specific time interval | m³ |
 
-Rate-only forcing supports automatic interval shortening. Integrated forcing returns `RecomputeInterval` when the maximum step or a retryable calculation requires a smaller interval. Recompute every contributing input for the suggested span and submit fresh forcing. Never scale or slice the old integrated inputs.
+Values must be finite and nonnegative. Supply explicit zeros for declared boundaries without incoming water.
 
-Recalculation requests preserve the complete accepted state. A successful integrated interval reaches its requested endpoint with zero internal retries. An impossible smaller interval returns `Unresolved`.
+Record order can differ from binding order. Missing, duplicate, unknown, or mismatched inputs reject. Rate and volume inputs can share one forcing interval.
 
-Exact volume retention does not bypass hydraulic head checks. Positive water still requires a represented positive midpoint depth. A dry pool receiving the smallest positive floating-point volume cannot represent that midpoint and rejects.
+## Set the time interval
 
-`external_inflows()` returns cumulative external volumes and rounding bounds by boundary. Native incoming counters also contain structure transfers. Do not subtract native incoming and outgoing counters to infer external water.
+### Rate-only forcing
 
-## Advance an interval
+Set forcing coverage to include the accepted time and requested endpoint.
 
-`trial_to` and `trial_with_forcing_to` calculate candidates from the accepted state. They check storage, forcing, structure support, shared transfers, and convergence before returning a candidate.
+Endpoints must be finite and the requested duration must be positive. Coverage satisfies `start_s <= batch.time() < requested_end <= end_s`.
 
-| Result | Caller action |
+Rate-only nonconvergence triggers automatic shortening. Maximum-step limits can also cap the accepted endpoint.
+
+Each shortened attempt recalculates source effects and boundary volumes from the original accepted state.
+
+### A volume already calculated for an interval
+
+1. Set forcing `start_s` from `batch.time()`.
+2. Set forcing `end_s` from the requested endpoint.
+3. Calculate every supplied volume for that complete span.
+4. Submit this forcing at the same requested endpoint.
+
+Hydr checks exact floating-point bit equality for both endpoints. This rule also applies to zero supplied volumes.
+
+Hydr retains the original volume operand. It never divides a supplied volume by duration and multiplies it back.
+
+## Advance and handle the outcome
+
+Use `trial_to` only when local sources and external inflows are absent. Otherwise, use `trial_with_forcing_to`.
+
+Both methods calculate a candidate without changing the original accepted state.
+
+| Outcome | Next action |
 | --- | --- |
-| Successful trial | Read the accepted endpoint and consume `into_next` to retain the candidate. |
-| Shortened interval | Continue from the actual accepted time. The requested endpoint remains incomplete. |
-| `RecomputeInterval` | Recompute contributions for the suggested span and submit fresh forcing. |
+| Successful trial | Read the actual endpoint. Consume `into_next` to retain the candidate. |
+| Shortened rate-only interval | Continue from the actual accepted time. The requested endpoint remains incomplete. |
+| `RecomputeInterval` | Accepted state stays unchanged. Follow the [fresh-forcing procedure](#respond-to-a-recalculation-request). |
 | Rejected interval | Read the error. The original accepted state remains unchanged. |
 
-The calculation estimates connection flow from midpoint water levels. It repeats the trial until head and transfer-volume changes meet their separate tolerances. Support flags must also agree exactly.
+### Respond to a recalculation request
 
-Head means water elevation. A support flag records whether water reaches a pool or connection.
+Integrated inputs require `RecomputeInterval` when a maximum step or retryable calculation requires a smaller interval.
 
-Rate-only nonconvergence shortens the interval and recalculates it. Integrated inputs require fresh forcing instead. Iteration, retry, and minimum-step limits stop unresolved calculations.
+1. Read the suggested endpoint.
+2. Recompute every contributing input from the accepted state for that span.
+3. Submit fresh forcing with exact start and end bits.
 
-## Understand the water balance
+Never scale, slice, or reuse the old integrated inputs for a shorter span.
 
-Each connection retains one signed transfer volume. Positive volume moves from endpoint A to endpoint B. Both endpoints use that same volume.
+Suggestions lie strictly between the accepted time and requested endpoint. Their durations meet the minimum-step limit. An impossible smaller interval returns `Unresolved`.
 
-Competing outlets share the donor's post-source available water. Hydraulic inflows cannot finance another outgoing transfer during that interval.
+A successful integrated interval reaches its requested endpoint with zero internal retries. Terminal input and runtime errors remain errors.
 
-The calculation preserves represented positive water films. A mathematically exhausted donor can retain a small positive volume after conservative floating-point calculations.
+### Understand the numerical checks
 
-Unresolved positive transfers return an error instead of disappearing during aggregation. Numerical bounds describe arithmetic uncertainty without adding water to close a balance.
+Hydr estimates structure flow from midpoint heads and repeats the calculation until separate head and transfer-volume tolerances pass.
 
-## Save and restore
+A support flag records whether water reaches a pool or connection. These flags must agree exactly between iterations.
 
-Trusted snapshots retain numerical arrays on the selected runtime. Owned checkpoint data copies those arrays into application-owned values for persistence. Copying data from the runtime can return errors.
+Iteration, retry, and minimum-step limits stop unresolved calculations.
 
-Use `snapshot()` and `restore()` within a running process. Use `snapshot_data()` and `restore_data()` when your application stores checkpoint data.
+## Understand when water becomes available
 
-Restore checks the physical definition and numerical controls. It retains the destination's configured client. Preserve every checkpoint field and floating-point bit when encoding data.
+Hydr applies each attempted interval in this order:
 
-Forcing checkpoints retain source policies, external bindings, cumulative process and boundary counters, and the original forcing interval. One bounded start frame retains both pool state and external ledgers. Import recalculates the final interval's forcing before checking its transfers and accepted state.
+1. Add local rain.
+2. Apply bottom loss, capped by available water.
+3. Apply evaporation, capped by remaining water.
+4. Allocate structure withdrawals against post-source storage.
+5. Credit incoming structure transfers and external water.
 
-## Current limits
+Local rain can supply a withdrawal during the interval. Incoming structure transfers and external water cannot fund earlier withdrawals or local losses.
 
-- Forcing: Local rain, supplied bottom loss, evaporation, and prescribed external rates or integrated volumes are supported. External withdrawals, full native-runoff attachment, and replacement selection remain excluded.
-- Operations: Static manual operations are supported. Control schedules, trajectories, and actuator frames remain excluded.
-- Regimes: Existing structure restrictions still apply. Running pumps require wet support. Submerged orifices require water above the opening's top elevation at both endpoints.
-- Crossings: Unresolved bed or hydraulic-cutoff transitions return errors after bounded interval shortening.
-- Geometry: Multiple-elevation closure events require later event localization. Availability scaling does not resolve those events.
-- Accuracy: Synthetic numerical checks establish no measured-event accuracy or universal GPU qualification.
+Original accepted heads remain the starting anchor for midpoint estimates.
+
+### Interpret transfer and water-balance results
+
+Each structure retains one signed transfer volume. Positive volume moves from endpoint A to endpoint B. Both endpoints use that same volume.
+
+Competing outlets share their donor's post-source available water.
+
+- Positive films: Represented positive water remains positive. Conservative arithmetic can leave a small film in a mathematically exhausted donor.
+- Unresolved transfers: Positive transfers return an error if aggregation cannot represent them.
+- Rounding bounds: Bounds describe arithmetic uncertainty. Hydr adds no water to close a balance.
+
+`external_inflows()` returns cumulative external volumes and rounding bounds by boundary. Native incoming counters also contain structure transfers. Never infer external water by subtracting native incoming and outgoing counters.
+
+## Save and restore a complete checkpoint
+
+| Task | API |
+| --- | --- |
+| Continue within a running process | `snapshot()` and `restore()` |
+| Store application-owned checkpoint data | `snapshot_data()` and `restore_data()` |
+
+Trusted snapshots retain numerical arrays on the selected runtime. Owned checkpoint data copies those arrays into application-owned values. Copying data can return errors.
+
+Restore checks the physical definition and numerical controls. It retains the destination's configured client.
+
+Preserve every checkpoint field and floating-point bit when encoding data. Complete forcing checkpoints retain:
+
+- Physical definitions, source policies, and external bindings.
+- Cumulative process counters and boundary counters.
+- Original forcing and one bounded start frame with pool state and external ledgers.
+
+Import recalculates the final interval's forcing. It checks transfers and accepted state before restoration.
+
+## Unsupported uses and support limits
+
+### Hydraulic support still applies
+
+- Running pumps require wet support.
+- Submerged orifices require water above the opening's top elevation at both endpoints.
+- Positive water requires a represented positive midpoint depth.
+
+A dry pool receiving the smallest positive floating-point volume cannot represent that midpoint and rejects. Exact volume retention does not bypass this check.
+
+A hydraulic cutoff is an elevation where the permitted flow regime changes.
+
+Bed or hydraulic-cutoff transitions require bounded shortening or fresh integrated inputs. Unresolved transitions return errors.
+
+Connections can become unavailable at different elevations. Availability scaling does not locate those separate closure events. Those events require further event localization.
+
+### These capabilities remain excluded
+
+- External withdrawals and full native-runoff attachment.
+- Measured-replacement selection.
+- Control schedules, trajectories, and actuator frames.
+- Surface-to-network coupling.
+
+Read [acceptance coverage](acceptance.md) for numerical evidence. Synthetic checks establish neither measured-event accuracy nor universal GPU qualification.

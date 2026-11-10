@@ -1,61 +1,160 @@
-# Typed structure-law proposals
+# Evaluate flow through a structure
 
-`hydr::structures::StructureBatch` evaluates explicit instantaneous laws and immutable held-head volume proposals. It advances no storage and establishes no donor availability or paired-transfer acceptance.
+Use `hydr::structures::StructureBatch` to calculate flow through declared openings, weirs, pumps, or gates. Choose the physical law before supplying water levels (heads).
 
-Run the [ordinary structure example](../examples/structures.rs):
+## Choose the calculation
+
+| You need | Use |
+| --- | --- |
+| Flow at one instant | `StructureBatch::propose` or `propose_with_operations` |
+| Volume while heads and operation stay fixed | `proposal.held_volumes` |
+| Accepted transfers between evolving pools | [Coupled level pools](coupled-level-pools.md) |
+| Commands or moving openings | [Operating controls](operating-controls.md), [actuators](gate-actuators.md), or [operating sources](operating-sources.md) |
+
+A standalone structure proposal advances no storage. It checks neither donor availability nor acceptance of a paired transfer.
+
+Run the ordinary example:
 
 ```sh
 cargo run --example structures
 ```
 
-The example supplies every coefficient and applicability declaration explicitly. Coefficients have no defaults.
+The [example](../examples/structures.rs) supplies every coefficient and applicability declaration explicitly. Coefficients have no defaults.
 
-## Admitted physical laws
+## Prepare and evaluate a proposal
 
-| Law | Physical scope |
+1. Choose a supported law and its physical inputs.
+2. Declare structure identity, endpoint order, datum, and direction policy.
+3. Supply supported heads and an explicit operation where required.
+4. Create a proposal, then request its outputs or held-head volumes.
+
+### 1. Choose a law
+
+| Law | Admitted physical setting |
 | --- | --- |
-| `SubmergedOrifice` | Known wet stages strictly above the declared opening crown at both endpoints |
-| `SuppressedRectangularWeir` | Suppressed sharp-crested rectangular free/submerged overflow with the adopted Villemonte correction |
-| `Pump` | Supplied bounded reference curve with explicit fixed orientation, speed policy, and operation |
-| `HydrostaticRectangularGate` | Thin rectangular aperture between hydrostatic quiescent pools with an explicit held opening |
+| [SubmergedOrifice](#orifices-and-rectangular-weirs) | Known wet stages strictly above the opening crown at both endpoints |
+| [SuppressedRectangularWeir](#orifices-and-rectangular-weirs) | Suppressed sharp-crested rectangular free/submerged overflow with the adopted Villemonte correction |
+| [Pump](#pumps) | Supplied bounded reference curve with fixed orientation, declared speed policy, and explicit operation |
+| [HydrostaticRectangularGate](#hydrostatic-rectangular-gates) | Thin rectangular aperture between hydrostatic quiescent pools, with an explicit held opening |
 
-Orifice parameters require positive finite area, dimensionless discharge coefficient, and gravity. Sill/crown elevations require finite values with crown above sill. Weir parameters require positive finite crest length and coefficient, plus finite crest elevation. The weir coefficient uses SI `m^(1/2)/s`.
 
-`OrificeApplicability` retains coefficient provenance and fully submerged applicability evidence. `WeirApplicability` separately retains coefficient provenance, free-nappe/approach assumptions, and correction applicability evidence. Nonempty declarations record the caller's physical claims. They establish no site-specific coefficient accuracy.
+### 2. Bind identities and heads
 
-The rectangular correction does not apply to contracted, broad-crested, ogee, or other crest geometries. General partial-orifice models, culverts, gate trajectories, and inferred blockage remain unsupported. Pump curves and hydrostatic gates follow separate operating contracts below.
+Every `StructureElement` requires a unique structure ID and distinct ordered endpoint IDs. Parallel structures can share endpoint pairs.
 
-## Exact identity and head support
+| Declaration | Requirement |
+| --- | --- |
+| Input order | Match the exact structure order and endpoint identities |
+| Datum | Both endpoints use the declared common elevation reference |
+| Head convention | `HeadConvention::QuiescentStage` supplies water-surface elevations |
+| Energy heads | Explicit energy-head packets reject |
+| Conversion | No datum transformation or silent head-convention conversion occurs |
 
-Every `StructureElement` declares a unique structure ID, distinct ordered endpoint IDs, common datum, direction policy, and concrete law. Parallel structures can share endpoint pairs. Input packets must match the exact structure order, endpoint identities, and datum.
+“Head support” records whether an endpoint's water level or dry bed is known.
 
-`HeadConvention::QuiescentStage` identifies water-surface stage heads. Explicit energy-head packets reject. No datum transformation or silent head-convention conversion occurs.
-
-| Head support | Admission |
+| Head support | Meaning and admission |
 | --- | --- |
 | `Wet { stage_m }` | Original finite water-surface elevation |
-| `Dry { bed_elevation_m }` | Known finite dry bed, subject to the concrete law's connection restrictions |
-| `Unknown` | Rejects influential support. Explicit pump isolation and exact zero gate opening admit uninfluential unknown heads |
+| `Dry { bed_elevation_m }` | Known finite dry bed, subject to the law's connection restrictions |
+| `Unknown` | Influential unknown heads reject. Explicit pump isolation and exact zero gate opening permit uninfluential unknown heads. |
 
-Dry support never receives a fabricated physical water elevation. Wet-above-crest flow toward eligible dry support uses the free-overflow law. Both dry, or no wet donor above crest, returns below-crest zero.
+Dry support never receives a fabricated water elevation.
 
-Orifices reject either dry endpoint, partial submergence, and exact crown equality. Both original wet stages must lie strictly above crown before equal-head or ideal-flap shortcuts.
+### 3. Supply an operation
 
-## Direction, regimes, and zero flow
+`propose_with_operations` requires one ordered, identity-bound `StructureOperation` for every structure.
 
-Positive discharge means endpoint A to B. Reversed heads retain the same endpoint identities and produce negative discharge.
+| Operation | Required use |
+| --- | --- |
+| `Passive` | Passive laws |
+| `PumpStoppedIsolated` | Exact zero with no evaluated hydraulic head operands |
+| `PumpRunning { speed_ratio }` | Explicit positive supported speed and checked curve query |
+| `GateOpening { opening_m }` | Finite original relative opening within the gate's inclusive range |
 
-`Bidirectional` requires explicit symmetric coefficient applicability. `AtoBOnly` and `BtoAOnly` declare ideal flap behavior. Unsupported support/regimes reject before flap blocking. A physically eligible prohibited direction returns exact zero with `FlapBlocked` status.
+`propose(heads)` remains available for passive-only batches. Missing pump or gate operations reject.
 
-`StructureRegime` records the physical classification separately from status. Blocked flows retain their nominal proposed direction. Equal eligible passive wet heads and below-crest weir support return `PhysicalZero` with no proposed direction. Equal pump heads query zero differential head and can produce positive flow.
+Operation checks bind every packet to its identity and law before granting any head-support waiver.
 
-Direction and regime use original supported heads. Rounded depth differences never decide whether unequal original stages produce flow. Active-only derived arithmetic follows physical eligibility and flap policy. Blocked branches skip unused constitutive products and expose no invented hydraulic operands.
+### 4. Read flow or held-head volume
 
-## Stable numerical evaluation
+Construct `StructureBatch::<R>::new(client, elements)` with your selected Numr client. Read the [runtime requirements](#select-and-preserve-a-runtime).
 
-`StructureBatch::<R>::new(client, elements)` receives the configured Numr client. The laws retain F64 `Tensor<R>` fields. The checked CPU reference uses one thread. Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission). Coefficient/geometry sums of logarithms remain cached. Passive laws and gates use Numr operations directly. Pumps reuse Solvr interpolation.
+`batch.propose(heads)` creates opaque immutable proposal tensors. Repeated calls leave definitions and earlier proposals unchanged.
 
-For an active fully submerged orifice:
+`proposal.outputs()` explicitly copies results from the selected runtime:
+
+- Original head support and law identity.
+- Regime, status, direction, and discharge.
+- Hydraulic operands used by active calculations.
+
+A held-head volume assumes unchanged heads and operation throughout the interval.
+
+1. Use a finite nonnegative start and a finite positive represented duration.
+2. Call `proposal.held_volumes(HeldHeadInterval { start, end })`.
+3. Read the original signed `Q*dt` result and retained instantaneous proposal.
+
+Active product overflow or zero underflow rejects. Physical-zero and blocked proposals retain exact zero volumes.
+
+Held volumes preserve interval and sign. They do not integrate evolving trajectories or limit withdrawals against available water.
+
+No clipping, storage advancement, or fabricated conservation residual occurs in this API.
+
+## Interpret direction and zero flow
+
+Positive discharge means A to B. Reversed heads preserve endpoint identities and produce negative discharge where the law permits reversal.
+
+| Direction policy | Behavior |
+| --- | --- |
+| `Bidirectional` | Requires explicit symmetric coefficient applicability |
+| `AtoBOnly` | Ideal flap permits A-to-B flow |
+| `BtoAOnly` | Ideal flap permits B-to-A flow |
+
+Unsupported support or regimes reject before flap blocking. An eligible prohibited direction returns exact zero with `FlapBlocked` status.
+
+`StructureRegime` records physical classification separately from status. Blocked flows retain their nominal proposed direction.
+
+| Zero-flow case | Result |
+| --- | --- |
+| Equal eligible passive wet heads | `PhysicalZero`, without a proposed direction |
+| Weir support below the crest | `PhysicalZero`, without a proposed direction |
+| Equal pump heads | Query zero differential head. Positive pump flow remains possible. |
+
+Direction and regime use original supported heads. Rounded depth differences never determine whether unequal original stages produce flow.
+
+Only eligible, permitted branches evaluate derived hydraulic arithmetic. Blocked branches skip unused products and expose no invented operands.
+
+## Orifices and rectangular weirs
+
+### Declare geometry and applicability
+
+| Law | Required parameters |
+| --- | --- |
+| Orifice | Positive finite area, dimensionless discharge coefficient, and gravity. Finite sill and crown elevations, with crown above sill. |
+| Weir | Positive finite crest length and coefficient, plus finite crest elevation. The coefficient uses SI `m^(1/2)/s`. |
+
+`OrificeApplicability` retains coefficient provenance and fully submerged applicability evidence.
+
+`WeirApplicability` separately retains coefficient provenance, free-nappe/approach assumptions, and correction applicability evidence.
+
+Nonempty declarations record the caller's physical claims. They establish no site-specific coefficient accuracy.
+
+### Check endpoint support
+
+| Condition | Result |
+| --- | --- |
+| Orifice with either endpoint dry | Reject |
+| Orifice partially submerged or exactly at crown equality | Reject |
+| Orifice equal-head or ideal-flap shortcut | Both original wet stages must first lie strictly above the crown |
+| Wet weir donor above crest, eligible dry receiver | Free overflow |
+| Both weir endpoints dry, or no wet donor above crest | Below-crest zero |
+
+The rectangular correction excludes contracted, broad-crested, ogee, and other crest geometries.
+
+General partial-orifice models, complete culverts, and inferred blockage remain unsupported by these laws.
+
+### Numerical formulas
+
+Active fully submerged orifice:
 
 ```text
 gap = highStage-lowStage
@@ -63,7 +162,7 @@ logQ = log(Cd)+log(area)+0.5*(log(2)+log(g)+log(gap))
 Qabs = exp(logQ)
 ```
 
-For active free weir overflow:
+Active free weir overflow:
 
 ```text
 Hu = highStage-crest
@@ -71,7 +170,7 @@ logQ = log(Cw)+log(length)+1.5*log(Hu)
 Qabs = exp(logQ)
 ```
 
-For active submerged weir overflow:
+Active submerged weir overflow:
 
 ```text
 Hu = highStage-crest
@@ -84,73 +183,82 @@ logQ = log(Cw)+log(length)+(1.5-0.385)*log(Hu)
 Qabs = exp(logQ)
 ```
 
-The submerged form equals the adopted factor `(1-(Hd/Hu)^1.5)^0.385` in real arithmetic. It avoids subtracting a rounded power from one.
+The submerged form equals `(1-(Hd/Hu)^1.5)^0.385` in real arithmetic. It avoids subtracting a rounded power from one.
 
-Active head depths and the direct original-stage gap require positive finite representation. The represented submergence ratio admits `[0,1]`, including rounded one and underflowed zero. Its independently positive original gap remains mandatory.
+| Numerical quantity | Admission rule |
+| --- | --- |
+| Active depths and direct original-stage gap | Positive finite representation required |
+| Represented submergence ratio | `[0,1]`, including rounded one and underflowed zero |
+| Distinct stages with equal rounded relative depths | The independently positive direct gap preserves the active case |
+| Normalized gap | No normalized-gap calculation or positivity gate applies |
+| Unused products | `Cd*area`, `Cw*length`, radicand, and power intermediates need not be representable |
+| Final active discharge | Must be finite and strictly positive. Overflow or zero underflow rejects without clipping or manufacturing flow. |
 
-Rounded upstream/downstream depths can coincide despite distinct original stages. The direct gap preserves that active case. No normalized-gap calculation or positivity gate applies.
+Unused intermediates can overflow or underflow while final discharge remains representable.
 
-The evaluator never requires representability of unused `Cd*area`, `Cw*length`, radicand, or power intermediates. Those products can overflow or underflow while final discharge remains representable. Active final discharge must remain finite and strictly positive. Final overflow or zero underflow rejects without clipping or manufacturing flow.
+## Pumps
 
-Configured arithmetic requires round-to-nearest ties-to-even and gradual underflow. Context construction checks the shared execution envelope. Callers must preserve that envelope throughout proposal evaluation.
+`StructureLaw::Pump(PumpParameters)` calculates flow from a supplied curve. It contains no operating-rule, timer, control-state, or hysteresis engine.
 
-## Immutable proposals and held volumes
+### Supply a bounded curve
 
-`batch.propose(heads)` creates opaque immutable proposal tensors. Repeated calls neither mutate definitions nor alter earlier proposals. `proposal.outputs()` explicitly projects original support, law identity, regime, status, direction, discharge, and active hydraulic operands.
+`PumpCurve::new` uses receiving stage minus donor stage as its head argument.
 
-`proposal.held_volumes(HeldHeadInterval { start, end })` requires finite nonnegative start and finite positive represented duration. It calculates the original signed `Q*dt` once. Active product overflow and zero underflow reject. Physical-zero/blocked proposals retain exact zero volumes.
+| Curve property | Requirement |
+| --- | --- |
+| Head knots | Finite, strictly increasing, with finite positive represented widths |
+| Flow knots | Finite, nonnegative, nonincreasing, and positive at least once |
+| Plateaus | Positive plateaus and declared zero-flow plateaus are supported |
+| Domain | Closed and bounded. No extrapolation. Negative head requires explicit coverage. |
+| Zero-flow endpoint | Creates no implicit high-head check-valve extension |
 
-Held volumes preserve the original interval, sign, and instantaneous proposal. They are not integrated evolving trajectories, availability-limited withdrawals, or accepted paired exchanges. No clipping, storage advancement, or fake conservation residual appears.
+Curve provenance records source/revision, SI units, reference speed, fluid applicability, and the valid operating envelope.
 
-## Checked numerical scope
+`PumpApplicability` records how the curve applies to endpoint stages:
 
-Actual passive-law Numr execution passes fourteen independently frozen 800-digit reference cases. Twelve cases retain positive discharge. Two cases reject unrepresentable final discharge. The maximum measured relative discharge error across admitted cases is approximately `9.53e-14`.
+- Quiescent endpoint-stage interpretation.
+- Connection-loss and velocity-head accounting.
+- Stopped-isolation evidence and operating assumptions.
 
-These cases cover ordinary laws, adjacent stages, rounded depth plateaus, and normalized-gap underflow. They also cover unused coefficient, power, and radicand products outside representable range while final discharge remains finite.
+A raw manufacturer total-head curve does not automatically satisfy this endpoint-stage contract.
 
-Ordinary comparison uses `1e-12 m³/s + 1e-12*abs(reference)`. Tiny/extreme comparison uses `max(32*ulp(reference),1e-12*abs(reference))` with mandatory positive discharge. Mixed layouts exercise scalar, SIMD, and tail positions. No cross-layout bitwise equality promise follows.
+### Declare orientation and speed
 
-This evidence checks numerical law evaluation. It establishes no empirical correction accuracy, site coefficient accuracy, field accuracy, or complete HEC solver parity.
-
-## Explicit pump curves and operation
-
-`StructureLaw::Pump(PumpParameters)` supplies a constitutive proposal only. It has no control-state, operating-rule, timer, or hysteresis engine.
-
-`PumpCurve::new` accepts finite head knots and finite nonnegative flow knots. Heads increase strictly with finite positive represented widths. Flow is nonincreasing and includes at least one positive knot. Positive plateaus and declared zero-flow plateaus remain supported.
-
-The head argument is receiving stage minus donor stage. The curve has a closed bounded domain with no extrapolation. Negative head is eligible only when explicitly covered. A zero-flow endpoint never creates an implicit high-head check-valve extension.
-
-Curve provenance records source/revision, SI units, reference speed, fluid applicability, and valid operating envelope. `PumpApplicability` separately records quiescent endpoint-stage interpretation, connection-loss/velocity-head accounting, stopped-isolation evidence, and operating assumptions. A raw manufacturer total-head curve does not automatically meet this endpoint-stage contract.
-
-Pump orientation requires `AtoBOnly` or `BtoAOnly`. `Bidirectional` rejects. Gradient reversal never reverses the declared pump direction.
+Pump orientation requires `AtoBOnly` or `BtoAOnly`. `Bidirectional` rejects. A reversed gradient never reverses the declared pump direction.
 
 | Speed policy | Contract |
 | --- | --- |
-| `PumpSpeedPolicy::ReferenceOnly` | Exact ratio one, with no implied affinity claim |
-| `DeclaredAffinity { minimum_ratio, maximum_ratio, applicability }` | Explicit positive finite inclusive interval containing one, with supplied affinity evidence |
+| `PumpSpeedPolicy::ReferenceOnly` | Exact ratio one, without an implied affinity claim |
+| `DeclaredAffinity { minimum_ratio, maximum_ratio, applicability }` | Positive finite inclusive interval containing one, with supplied affinity evidence |
 
-There is no default speed, suction bound, curve, or operating point. A running donor must remain strictly above its finite common-datum minimum suction stage. Both running donor and receiver require known wet support, including at declared shutoff. Dry delivery needs a separate outlet-head contract. These checks establish no NPSH, priming, or cavitation model.
+There is no default speed, suction bound, curve, or operating point.
 
-`propose_with_operations` requires one ordered identity-bound `StructureOperation` per structure:
+### Check running and stopped support
 
-| Operating point | Behavior |
+| Operation | Required support and result |
 | --- | --- |
-| `Passive` | Required for passive laws |
-| `PumpStoppedIsolated` | Exact zero with no evaluated hydraulic head operands |
-| `PumpRunning { speed_ratio }` | Explicit positive supported speed and checked curve query |
-| `GateOpening { opening_m }` | Finite original relative opening within the gate's declared inclusive range |
+| Running | Known wet donor and receiver, including at declared shutoff |
+| Suction | Donor stage strictly above its finite common-datum minimum suction stage |
+| Dry delivery | Requires a separate outlet-head contract |
+| Stopped isolation | Explicitly excludes forward siphoning and reverse flow. Dry or unknown heads can be uninfluential. |
 
-The existing `propose(heads)` remains available for passive-only batches. Missing pump or gate operations reject. Operation checks bind every packet to its exact identity and concrete law before any head-support waiver.
+Isolation still requires correct identity, datum, quiescent-stage convention, and valid known values. Energy-head packets reject even while isolated.
 
-Stopped isolation explicitly excludes forward siphoning and reverse flow. It allows unknown or dry support because those heads are uninfluential. Identity, datum, quiescent-stage convention, and malformed known-value checks remain mandatory. Energy-head packets reject even while isolated. No unknown head becomes a fabricated dry elevation.
+No unknown head becomes a fabricated dry elevation. These checks establish no NPSH, priming, or cavitation model.
 
-Running positive output records `PumpCurve/PumpRunning`. A supported declared zero-flow query records `PumpCurve/PumpShutoff`. Isolation records `PumpIsolated/PumpStoppedIsolated`. Running shutoff retains evaluated operands. Isolation exposes none. Original operation and support remain attached to every projected and held-volume proposal.
+| Pump outcome | Regime/status pair | Hydraulic operands |
+| --- | --- | --- |
+| Positive output | `PumpCurve/PumpRunning` | Retained |
+| Supported zero-flow query | `PumpCurve/PumpShutoff` | Retained |
+| Isolation | `PumpIsolated/PumpStoppedIsolated` | None |
 
-## Checked pump affinity normalization
+Original operation and support remain attached to projected and held-volume proposals.
 
-Pump reference/affinity queries reuse grouped Solvr Linear interpolation on the selected Numr runtime tensors. No interpolation or search algorithm is copied into hydr.
+### Keep affinity queries inside the supplied curve
 
-Numr TwoSum forms the original oriented stage difference as `headHigh+headLow`. The normalized query uses two ordered divisions:
+Pumps reuse grouped Solvr Linear interpolation on the selected Numr runtime. Hydr copies no interpolation or search algorithm.
+
+Numr TwoSum retains the oriented stage difference as `headHigh+headLow`. The query uses two ordered divisions:
 
 ```text
 q1 = headHigh / speed
@@ -158,69 +266,151 @@ referenceHead = q1 / speed
 Q = speed * Qreference(referenceHead)
 ```
 
-No speed square is formed or required to be representable. Exact reference ratio one bypasses division. Exact head zero requires both high and low components zero. Nonfinite used divisions and nonzero head collapse reject.
+| Query condition | Behavior |
+| --- | --- |
+| Exact reference ratio one | Bypass division |
+| Exact head zero | Both high and low components must be zero |
+| Nonfinite used division or nonzero head collapse | Reject |
+| Speed square | Never formed or required to be representable |
 
-The generic uncertainty envelope retains the signed-subtraction witness contribution:
+The error bound includes the signed-subtraction witness:
 
 ```text
 errorBound >= abs(headLow)/speed² + b(q1)/speed + b(referenceHead)
 b(y) = EPSILON*abs(y) + MIN_SUBNORMAL
 ```
 
-Each positive bound division/addition rounds outward. Exact zero terms retain zero without padding. The displayed speed-square notation denotes two ordered bound divisions, not a computed square.
+Each positive bound division or addition rounds outward. Exact zero terms stay zero without padding.
 
-A supplied power-of-two speed has an exact division certificate when finite upward scaling applies. Downward scaling requires normal final query magnitude. Reference/zero certificates also apply. These certificates remove division-rounding terms only. They never discard original head-low uncertainty. No FMA-zero exactness assumption applies.
+The displayed `speed²` denotes two ordered bound divisions, not a computed square.
 
-A complete signed uncertainty interval controls closed-domain admission. An entirely outside interval returns `UnsupportedRegime`. An interval overlapping an endpoint without remaining inside returns numerical ambiguity. No argument clips to the curve boundary.
+Division certificates remove only division-rounding terms:
 
-The same complete interval controls declared shutoff. An interval spanning positive and zero-flow regions rejects as unresolved. An exact certified zero knot or wholly supported zero plateau returns exact zero. The original normalized high query remains unchanged for Solvr.
+| Certificate | Condition |
+| --- | --- |
+| Power-of-two upward scaling | Finite upward scaling applies |
+| Power-of-two downward scaling | Final query magnitude is normal |
+| Reference or zero | Its exact conditions apply |
 
-Certified positive support requires finite positive interpolated discharge and finite positive final speed-scaled discharge. Original signed held-volume products retain the existing overflow/underflow checks. No donor availability or accepted-transfer claim follows.
+Certificates never discard original `headLow` uncertainty. No FMA-zero exactness assumption applies.
 
-`PumpHydraulicOperands` exposes original head high/low, speed, normalized query, uncertainty bound/interval, division certificate, and reference-speed flow. The certificate alone never implies zero uncertainty. Near steep or shutoff regions, no universal relative-accuracy claim follows.
+### Read curve-domain and shutoff decisions
 
-## Checked pump numerical scope
+The complete signed uncertainty interval controls both domain and shutoff checks.
 
-Actual Numr execution passes 26 independently frozen exact-rational cases: 13 positive proposals and four declared shutoff proposals. Seven cases reject numerical ambiguity or unrepresentable arithmetic. Two cases reject completely unsupported transformed domains. The maximum measured relative discharge error across positive cases is approximately `2.13e-16`.
+| Complete uncertainty interval | Result |
+| --- | --- |
+| Entirely outside the curve | `UnsupportedRegime` |
+| Overlaps an endpoint without remaining inside | Numerical ambiguity |
+| Spans positive and zero-flow regions | Unresolved rejection |
+| Exact certified zero knot or wholly supported zero plateau | Exact zero |
 
-The comparison checks original TwoSum head witnesses, transformed-head bounds/intervals, zero-region classification, final flow, and held products independently. Cases include nonbinary speeds, nonzero head-low contributions, and tiny/huge speeds whose unused squares are unrepresentable.
+The original normalized high query remains unchanged for Solvr. No argument clips to a curve boundary.
 
-Ordinary flow tolerance is `64*EPSILON*max(abs(reference),abs(output))`, without a unit floor. Exact binary analytical fixtures retain exact expected bits. This numerical evidence establishes no field accuracy, manufacturer-curve accuracy, efficiency, control behavior, or native SWMM parity.
+Positive support requires finite positive interpolated discharge and finite positive final speed-scaled discharge.
+
+Held products retain overflow/underflow checks. Numerical support establishes no donor availability or accepted-transfer claim.
+
+`PumpHydraulicOperands` exposes the calculation used for the proposal:
+
+- Original head high/low and speed.
+- Normalized query, uncertainty bound/interval, and division certificate.
+- Reference-speed flow.
+
+A certificate alone never implies zero uncertainty. No universal relative-accuracy claim applies near steep or shutoff regions.
 
 ## Hydrostatic rectangular gates
 
-`StructureLaw::HydrostaticRectangularGate(GateParameters)` integrates local pressure-head discharge across a thin vertical rectangular aperture. The connection joins quiescent pools with hydrostatic pressure and negligible approach velocity.
+`StructureLaw::HydrostaticRectangularGate(GateParameters)` integrates local pressure-head discharge across a thin vertical rectangular aperture.
 
-`GateParameters::new` requires explicit width, sill, maximum relative opening, discharge coefficient, gravity, and `GateApplicability`. Width, maximum opening, coefficient, and gravity require positive finite values. The sill requires a finite common-datum elevation. No width-times-opening or absolute maximum-crown representation requirement applies.
+The model joins quiescent pools with hydrostatic pressure and negligible approach velocity.
 
-`GateApplicability` retains coefficient provenance, hydrostatic/quiescent-pool evidence, complete-aperture connection evidence, and free/submerged coefficient applicability. A single supplied symmetric coefficient covers the declared opening and head envelope. Bidirectional flow requires explicit symmetric applicability. Nonempty evidence establishes no coefficient calibration or field accuracy.
+### Declare aperture geometry
 
-The closure extends the local orifice relation by integrating hydrostatic pressure differences. It establishes no general channel-sluice, vena-contracta, hydraulic-jump, energy-head, air-demand, or nonhydrostatic-jet model. EPA equivalent-weir branches and HEC gated-spillway transitions define different models. No numerical identity with those models is claimed.
+`GateParameters::new` requires every input below explicitly.
 
-Each proposal supplies `GateOpening { opening_m }` within `[0,maximum_opening_m]`. The original opening remains authoritative. A rounded absolute crown minus sill never replaces it.
+| Input | Requirement |
+| --- | --- |
+| Width, maximum relative opening, discharge coefficient, gravity | Positive finite values |
+| Sill | Finite common-datum elevation |
+| `GateApplicability` | Coefficient provenance, hydrostatic/quiescent-pool evidence, complete-aperture connection evidence, and free/submerged coefficient applicability |
+| Coefficient envelope | One supplied symmetric coefficient covers the declared opening and head envelope |
+| Bidirectional flow | Explicit symmetric applicability |
 
-An exact zero opening declares impermeable closure. Unknown heads become uninfluential only after identity, law, datum, convention, and malformed-known-value checks. No hydraulic operands appear for this closed branch. A positive opening requires known wet or dry support at both endpoints. Every known dry bed must lie at or below the sill, including before ideal flap blocking.
+No width-times-opening or absolute maximum-crown representation requirement applies.
 
-Original wet stages determine direction. A supported wet endpoint above the sill supplies flow toward eligible known-dry support. Both dry endpoints or no wet donor above the sill give exact physical zero. Equal wet stages give exact zero. Positive supported proposals retain nominal direction when blocked by an ideal flap.
+Nonempty evidence establishes no coefficient calibration or field accuracy.
 
-Let `U` denote the original donor stage, `D` the wet receiver stage, `z` the sill, and `a` the original opening. Define `t=min(z+a,U)` and `m=min(t,max(z,D))` in exact geometry. For an eligible dry receiver, set `m=z` without inventing a stage.
+### Supply the held opening
+
+Each proposal requires `GateOpening { opening_m }` within `[0,maximum_opening_m]`.
+
+The original relative opening stays authoritative. A rounded absolute crown minus sill never replaces it.
+
+| Opening/support | Admission |
+| --- | --- |
+| Exact zero opening | Impermeable closure. Uninfluential unknown heads are allowed after identity, law, datum, convention, and malformed-known-value checks. |
+| Positive opening | Known wet or dry support at both endpoints |
+| Known dry bed | Must lie at or below the sill, even before ideal flap blocking |
+
+The closed branch exposes no hydraulic operands.
+
+### Interpret the gate regime
+
+Original wet stages determine direction.
+
+| Supported condition | Result |
+| --- | --- |
+| Wet donor above sill toward eligible known-dry support | Flow |
+| Both endpoints dry, or no wet donor above sill | Exact physical zero |
+| Equal wet stages | Exact zero |
+| Eligible flow blocked by an ideal flap | Retain the nominal direction |
+
+`StructureRegime` distinguishes `GateClosed`, `GateBelowSill`, `EqualHeads`, `FreeGateAperture`, `MixedGateAperture`, and `SubmergedGateAperture`.
+
+Active outputs carry `GateHydraulicOperands`. Physical-zero and flap-blocked outputs carry no evaluated hydraulic operands.
+
+### Pressure integral
+
+| Symbol | Original physical quantity |
+| --- | --- |
+| `U` | Donor stage |
+| `D` | Wet receiver stage |
+| `z` | Sill |
+| `a` | Opening |
+
+Define `t=min(z+a,U)` and `m=min(t,max(z,D))` in exact geometry.
+
+For an eligible dry receiver, use `m=z` without inventing a stage.
 
 ```text
 Qabs = Cd*width*sqrt(2*g) *
        [(m-z)*sqrt(U-D) + (2/3)*((U-m)^(3/2)-(U-t)^(3/2))]
 ```
 
-The submerged term is absent without wet receiver coverage above the sill. The free term is absent when the receiver covers the complete aperture. Fully submerged geometry reduces to the original opening times the square root of the direct original-stage gap.
+| Aperture coverage | Integral term |
+| --- | --- |
+| No wet receiver coverage above sill | Submerged term absent |
+| Receiver covers the complete aperture | Free term absent |
+| Fully submerged | Original opening times the square root of the direct original-stage gap |
 
-`StructureRegime` distinguishes `GateClosed`, `GateBelowSill`, `EqualHeads`, `FreeGateAperture`, `MixedGateAperture`, and `SubmergedGateAperture`. Active outputs carry `GateHydraulicOperands`. Physical-zero and flap-blocked outputs carry no evaluated hydraulic operands.
+This pressure-integral model does not supply a general channel-sluice or nonhydrostatic-jet model.
 
-## Checked gate geometry arithmetic
+It also excludes vena-contracta, hydraulic-jump, energy-head, and air-demand models.
 
-Numr TwoSum retains the finite crown as `crownHigh+crownLow=sill+opening`. Original stages compare against that expansion. A positive crown overflow places every finite stage below the crown. Invalid overflow residuals never enter active arithmetic.
+EPA equivalent-weir branches and HEC gated-spillway transitions are different models. Hydr claims no numerical identity with them.
 
-Fully submerged height uses the original opening and direct stage gap. Unused sill-relative depths can overflow without rejecting this branch. Active required geometry must retain finite representation.
+### Check crown and strip geometry
 
-For a full-height donor and partially submerged receiver, retain `(d,e)=TwoSum(D,-sill)`. Represent submerged height by `d` with independent error bound `abs(e)`. Compute the complementary free height through two witnessed subtractions:
+Numr TwoSum retains a finite crown as `crownHigh+crownLow=sill+opening`. Original stages compare against that expansion.
+
+Positive crown overflow places every finite stage below the crown. Invalid overflow residuals never enter active arithmetic.
+
+Fully submerged height uses the original opening and direct stage gap. Unused sill-relative depths can overflow without rejecting this branch.
+
+For a full-height donor and partially submerged receiver, retain `(d,e)=TwoSum(D,-sill)`.
+
+The submerged height is `d`, with independent error bound `abs(e)`. Two witnessed subtractions retain the complementary free height:
 
 ```text
 (v,r1) = TwoSum(opening,-d)
@@ -228,15 +418,34 @@ For a full-height donor and partially submerged receiver, retain `(d,e)=TwoSum(D
 freeHeightError >= abs(r1)+abs(r2)
 ```
 
-The low receiver-depth component preserves a positive free strip when rounded `d` equals the opening. Partly wetted donors use the direct original `U-D` or `U-sill` difference. No subtraction of independently rounded relative depths decides this strip.
+The low receiver-depth component preserves a positive free strip when rounded `d` equals the opening.
 
-The same witnessed subtraction sequence supplies upper free pressure head `B=U-(crownHigh+crownLow)`. Lower free head uses `A=fl(L+B)`. Its bound includes both input bounds and the addition witness. Original positive `L` remains a separate factor when absorbed into `A`.
+Partly wetted donors use direct original `U-D` or `U-sill` differences. Independently rounded relative depths never determine that strip.
 
-Each strictly positive active height or pressure head requires an outward relative error bound at most `64*EPSILON`. Exact-zero error bypasses bound division. This numerical admission has no absolute metre floor. Exact positive subnormal geometry remains eligible. Active overflow, unresolved positive geometry, and excess relative uncertainty reject.
+The same subtraction sequence gives upper free pressure head `B=U-(crownHigh+crownLow)`.
 
-The represented strip sum supplies a closure discrepancy center and an independent uncertainty bound. Original length and target witnesses supply a separate physical allowance. Disjoint intervals reject. These receipts check arithmetic consistency alongside the relative operand restriction. They establish no universal final-flow accuracy bound and never modify physical lengths.
+Lower free head uses `A=fl(L+B)`. Its bound includes both input bounds and the addition witness.
 
-The free pressure integral uses a stable positive form:
+Original positive `L` remains a separate factor when absorbed into `A`.
+
+| Geometry condition | Admission |
+| --- | --- |
+| Strictly positive active height or pressure head | Outward relative error bound at most `64*EPSILON` |
+| Exact-zero error | Bypass bound division |
+| Exact positive subnormal geometry | Eligible. No absolute metre floor applies. |
+| Active overflow, unresolved positive geometry, or excess relative uncertainty | Reject |
+
+Required active geometry must retain finite representation.
+
+### Read arithmetic diagnostics
+
+The represented strip sum provides a closure-discrepancy center and an independent uncertainty bound.
+
+Original length and target witnesses provide a separate physical allowance. Disjoint intervals reject.
+
+These checks accompany the relative operand restriction. They never modify physical lengths or establish universal final-flow accuracy.
+
+The free pressure integral uses this stable positive form:
 
 ```text
 r = B/A
@@ -244,24 +453,175 @@ K = 1+r/(1+sqrt(r))
 Jfree = (2/3)*L*sqrt(A)*K
 ```
 
-The represented ratio admits `[0,1]`. Rounded one preserves a positive thin strip through its independent `L` factor. The evaluator forms submerged and free strip logarithms separately. Numr `stack` and `logsumexp` combine them. An absent strip uses negative infinity. Only the final combined discharge is exponentiated.
+The represented ratio permits `[0,1]`. Rounded one retains a positive thin strip through independent `L`.
 
-`GateHydraulicOperands` exposes the original opening, crown expansion, represented strip heights, active pressure heads, and independent bounds. An absent crown expansion identifies positive crown overflow. It also exposes the free ratio/factor, closure receipt, and final log discharge. Absent strip pressures remain undefined through optional getters. Closure bounds are diagnostic evidence, never water adjustments.
+The evaluator forms submerged and free strip logarithms separately. Numr `stack` and `logsumexp` combine them.
 
-Held-head volume proposals retain the same original opening throughout the interval. They establish no motion trajectory, actuator response, motion limit, control state, timer, or hysteresis behavior. Storage advancement, donor availability, and paired-volume acceptance remain separate mechanisms.
+An absent strip uses negative infinity. Only the combined final discharge is exponentiated.
 
-## Gate numerical evidence
+`GateHydraulicOperands` exposes:
 
-Forty original-F64 cases freeze their inputs, categories, and tolerances before kernel execution. Independent references use an 800-digit direct pressure integral and exact rational geometry. The reference integral subtracts high-precision powers independently of the production formula.
+- Original opening, crown expansion, represented strip heights, active pressure heads, and independent bounds.
+- Free ratio/factor, closure receipt, and final log discharge.
+
+An absent crown expansion identifies positive crown overflow. Absent strip pressures remain undefined through optional getters.
+
+Closure bounds are diagnostics, never water adjustments.
+
+A held-head proposal keeps the same original opening throughout its interval. It does not integrate motion or advance storage.
+
+Trajectory, actuator response, motion limits, control state, timers, hysteresis, donor availability, and paired acceptance require separate mechanisms.
+
+## Prescribed opening trajectories
+
+`GateOpeningTrajectory` supplies immutable continuous piecewise-linear openings through original SI knots.
+
+### Declare trajectories
+
+| Input | Contract |
+| --- | --- |
+| Knots | At least two finite nonnegative times and openings. Original times strictly increase. |
+| Motion limits | Explicit finite nonnegative opening/closing speeds. Zero prohibits that direction. |
+| Accuracy | Explicit finite nonnegative absolute-metre and relative opening-error limits. No defaults. |
+| Provenance | Nonempty source and operating-envelope evidence, without control characters |
+| Binding | Every gate appears exactly once in original subsequence order |
+| Gate range | Every original opening stays within its actual bound gate maximum |
+
+`StructureBatch::with_gate_trajectories` retains the complete original structure context. Matching IDs cannot substitute different geometry or applicability.
+
+`GateTrajectoryBatch::propose_at` requires complete ordered heads and explicit original-order non-gate operations.
+
+Passive packets remain explicit. Pump operation never defaults to stopped.
+
+### Query within common time support
+
+The closed common support is the intersection of original trajectory domains.
+
+| Query/event rule | Behavior |
+| --- | --- |
+| Outside common support | No extrapolation or implicit last hold |
+| Events | Retain every original knot inside common support, including both boundaries |
+| Event merging | Only exactly equal original times merge |
+| `next_event_after` | Returns a strictly later event |
+| `check_interval` | Reports internal and exact terminal events without integrating or advancing |
+| Knot metadata | Original-time equality and right-sided segment. Terminal knot uses the last segment. |
+
+Rounded opening establishes neither arrival nor closed support.
+
+Repeated, shuffled, or rejected queries change no cursor, state, or previous evaluation.
+
+### Understand motion and opening checks
+
+Numr TwoSum retains both duration and displacement lows for motion admission.
+
+| Motion certificate | Requirement |
+| --- | --- |
+| Power-of-two duration metadata | Advisory until its high witness matches Numr |
+| Exact speed | Both lows vanish |
+| Exact positive subnormal quotient | Finite upward back-product when required |
+| Other segments | Conservative upper-speed acceptance or lower-speed excess certificate |
+| Overlapping limit uncertainty | Numerical rejection |
+
+Solvr supplies matching F64 Linear values and independent absolute-error receipts.
+
+| Opening-error case | Admission |
+| --- | --- |
+| Absolute bound fits declared metre budget | Accept |
+| Otherwise, positive opening | Outward relative bound must fit the declared relative limit |
+| Both-zero policy | Zero receipts required |
+
+Either the absolute or relative branch suffices. There is no additive budget or unit-scale floor.
+
+Conservative positive receipts reject some mathematically exact interior evaluations.
+
+| Original support | Representation requirement |
+| --- | --- |
+| Positive opening | Positive represented opening, regardless of accuracy budgets |
+| Zero knot or zero plateau | Exact zero opening and receipt |
+| Segment and gate range | Value remains inside original bounds, without clipping |
+
+Tolerances govern numerical opening admission. They grant no coefficient accuracy or physical motion-limit exception.
+
+### Read trajectory outputs
+
+`evaluate` and `propose_at` retain derived openings as Numr tensors. Explicit `outputs()` and `operations()` copy them from the runtime.
+
+Diagnostic rejection masks remain separate from numerical state copies.
+
+Held volumes use the sampled opening. They never integrate gate motion across the requested interval.
+
+Actuator response, acceleration, inertia, controls, timers, hysteresis, storage advancement, and paired coupling remain separate mechanisms.
+
+Run the original-bit opening and error-receipt observer:
+
+```sh
+cargo run --example gate_trajectories_reference
+```
+
+## Select and preserve a runtime
+
+`StructureBatch::<R>::new(client, elements)` receives the configured Numr client. Laws retain F64 `Tensor<R>` fields.
+
+| Execution requirement | Contract |
+| --- | --- |
+| CPU reference | One thread |
+| Other runtimes | [F64 arithmetic admission](integration.md#runtime-selection-and-admission) |
+| Arithmetic | Round-to-nearest ties-to-even and gradual underflow |
+| Context | Checks the shared execution envelope during construction |
+| Caller | Preserves that envelope throughout proposal evaluation |
+
+Coefficient/geometry logarithm sums remain cached. Passive laws and gates use Numr operations directly. Pumps reuse Solvr interpolation.
+
+## Read the numerical evidence
+
+These results check numerical law evaluation. They establish no empirical correction accuracy, site coefficient accuracy, field accuracy, or complete HEC solver parity.
+
+### Passive laws
+
+Actual Numr execution passes fourteen independently frozen 800-digit reference cases.
+
+| Check | Result or criterion |
+| --- | --- |
+| Categories | Twelve positive discharges and two rejected unrepresentable final discharges |
+| Maximum measured relative error | Approximately `9.53e-14` across admitted cases |
+| Ordinary comparison | `1e-12 m³/s + 1e-12*abs(reference)` |
+| Tiny/extreme comparison | `max(32*ulp(reference),1e-12*abs(reference))`, with mandatory positive discharge |
+| Layouts | Scalar, SIMD, and tail positions. No cross-layout bitwise equality promise. |
+
+Cases include ordinary laws, adjacent stages, rounded depth plateaus, and normalized-gap underflow.
+
+Unused coefficient, power, and radicand products can exceed representable range while final discharge stays finite.
+
+### Pumps
+
+Actual Numr execution passes 26 independently frozen exact-rational cases.
+
+| Check | Result or criterion |
+| --- | --- |
+| Categories | 13 positive, four declared shutoff, seven numerical ambiguity/arithmetic rejections, and two unsupported transformed domains |
+| Maximum measured positive-flow relative error | Approximately `2.13e-16` |
+| Ordinary flow tolerance | `64*EPSILON*max(abs(reference),abs(output))`, without a unit floor |
+| Exact binary analytical fixtures | Exact expected bits |
+| Independent comparisons | TwoSum head witnesses, transformed-head bounds/intervals, zero-region classification, final flow, and held products |
+
+Cases include nonbinary speeds, nonzero head-low contributions, and tiny/huge speeds with unrepresentable unused squares.
+
+This evidence establishes no manufacturer-curve accuracy, efficiency, control behavior, or native SWMM parity.
+
+### Gates
+
+Forty original-F64 cases freeze inputs, categories, and tolerances before kernel execution.
+
+Independent references use an 800-digit direct pressure integral and exact rational geometry. They subtract high-precision powers independently of production arithmetic.
 
 | Coverage | Result |
 | --- | --- |
 | Original cases | 34 successes, four numerical rejections, and two distinct support rejections |
-| Direction checks | All 80 forward/reversed rows match their frozen categories and applicable numerical gates |
+| Direction checks | All 80 forward/reversed rows match frozen categories and applicable gates |
 | Ordinary discharge | Maximum relative error `2.2204460375522126e-16`, below `128*EPSILON` |
 | Extreme discharge | Maximum relative error `3.706741754709129e-14`, below `1e-12` |
-| Positive subnormal | Two-ULP allowance with mandatory positive output |
-| Geometry receipts | Original-input lengths and pressures lie within their independent reported bounds |
+| Positive subnormal | Two-ULP allowance and mandatory positive output |
+| Geometry diagnostics | Original-input lengths and pressures lie within independent reported bounds |
 | Batch layouts | Widths 1, 31, 32, 33, 64, and 65, including mixed laws and exact rejection indices |
 | Additional checks | Sill/crown transitions, opening sweeps, repeated proposals, submerged-orifice overlap, and held-volume representation limits |
 
@@ -270,44 +630,43 @@ cargo test --test gate_laws
 cargo run --example gate_laws_reference
 ```
 
-The observer includes original input bits, signed discharge, held volume, geometry witnesses, and closure receipts. Log-discharge error remains diagnostic because the frozen acceptance gates bound discharge. No universal pre-exponential log-error bound follows from those gates. Numerical agreement establishes no calibrated gate coefficient, field accuracy, control behavior, or accepted coupling.
+The observer includes original input bits, signed discharge, held volume, geometry witnesses, and closure receipts.
 
-## Prescribed gate trajectories
+Log-discharge error remains diagnostic. Frozen acceptance gates bound discharge and supply no universal pre-exponential log-error bound.
 
-`GateOpeningTrajectory` supplies immutable continuous piecewise-linear openings through explicit original SI knots.
+Agreement establishes no calibrated coefficient, field accuracy, control behavior, or accepted coupling.
 
-| Input | Contract |
+## Handle rejection and scope limits
+
+`StructureError` separates typed input categories, numerical representation errors, and runtime errors.
+
+| Input category | What differs or is unsupported |
 | --- | --- |
-| Knots | At least two finite nonnegative times and openings. Original times strictly increase |
-| Motion limits | Explicit finite nonnegative opening/closing speeds. Zero prohibits motion in that direction |
-| Accuracy | Explicit finite nonnegative absolute-metre and relative opening-error limits. No defaults apply |
-| Provenance | Nonempty source and operating-envelope evidence without control characters |
-| Binding | Every gate appears exactly once in its original subsequence order |
-| Gate range | Every original opening lies within its actual bound gate maximum |
+| Definition or identity | Physical definition, structure order, or exact endpoint binding |
+| Datum or head convention | Elevation reference or supported stage-head interpretation |
+| Operating point | Operation or speed/opening policy |
+| Unknown support or unsupported regime | Influential unknown heads or an unadmitted physical setting |
+| Nonfinite original data | Original values outside finite input requirements |
 
-`StructureBatch::with_gate_trajectories` retains the complete original structure context. Same IDs never substitute different geometry or applicability. `GateTrajectoryBatch::propose_at` requires complete ordered heads and explicit original-order non-gate operations. Passive packets remain explicit. Pump operation never defaults to stopped.
+Ordered element indices remain available without parsing diagnostic strings.
 
-Numr TwoSum retains both duration and displacement lows for motion admission. Power-of-two duration metadata remains advisory until its high witness matches Numr. Exact speed certificates require both lows to vanish. Exact positive subnormal quotients use a finite upward back-product when required. Other segments require conservative upper-speed acceptance or lower-speed excess certificates. Unresolved limit overlap rejects numerically.
+Standalone proposals contain no donor storage, evolving outlet integration, storage snapshots, physical actuator response, network solve, or bed/sill changes.
 
-Solvr supplies matching F64 Linear values and independent absolute-error receipts. Hydr admits a receipt when its absolute bound fits the declared metre budget. Otherwise, positive lanes require an outward relative bound within the declared relative limit. Either branch suffices. No additive budget or unit-scale floor applies. Both-zero policies require zero receipts. Conservative positive receipts reject some mathematically exact interior evaluations.
+[Coupled level pools](coupled-level-pools.md) separately supplies synchronized head estimates and accepted shared transfers for its admitted scope.
 
-Original positive support always requires positive represented opening, regardless accuracy budgets. An original zero knot or zero plateau requires exact zero opening and receipt. Values remain inside original segment bounds and the actual gate maximum. No clipping applies. Tolerances establish numerical opening admission, never coefficient accuracy or physical motion-limit exceptions.
+### Commands and actuator response
 
-The closed common support is the intersection of original trajectory domains. No extrapolation or implicit last hold applies. Events retain every original knot inside common support, including both boundaries. Only exactly equal original times merge. `next_event_after` returns strictly later events. `check_interval` reports internal events and exact terminal events without integrating or advancing.
+| Separate component | What it supplies |
+| --- | --- |
+| [Operating controls](operating-controls.md) | Sampled relay commands, qualification delays, immutable trials, and complete snapshots |
+| [Ideal constant-rate actuators](gate-actuators.md) | Actual gate opening over time |
+| [Mixed operating sources](operating-sources.md) | Manual operations, prescribed gate subsets, and fresh actual-actuated frames |
 
-Point outputs retain original-time knot equality and right-sided segment metadata. The terminal knot uses the last segment. Rounded opening never establishes arrival or closed support. Repeated, shuffled, or rejected queries mutate no trajectory cursor, state, or previous evaluation.
+A gate target differs from actual opening. Standalone commands establish no hydraulic or actuator response.
 
-`evaluate` and `propose_at` retain derived openings as Numr tensors. Explicit `outputs()` and `operations()` project them. Existing diagnostic rejection masks remain distinct from numerical state projection. Proposal held volumes retain the sampled opening and never integrate motion over the requested interval.
+Point outputs retain source and opening receipts beside discharge evaluated at the admitted center.
 
-Actuator response, acceleration, inertia, controls, timers, hysteresis, storage advancement, and paired coupling remain separate mechanisms.
-
-Run `cargo run --example gate_trajectories_reference` for original-bit opening and error-receipt observations.
-
-## Errors and remaining mechanisms
-
-`StructureError` separates typed input categories, numerical representation errors, and runtime errors. Input categories distinguish definition, identity, datum, head convention, operating point, unknown support, unsupported regime, and nonfinite original data. Ordered element indices remain available without parsing diagnostic strings.
-
-Constitutive proposals supply no donor storage, outlet integration, storage snapshots, physical actuator response, network solve, or bed or sill changes. Sampled operating controls supply commands separately. Hydraulic coupling remains unsupported. A future coordinator owns synchronized head provenance and paired shared-volume admission.
+They supply no ideal-flow enclosure or integrated transfer.
 
 ## Applicability references
 
@@ -318,9 +677,3 @@ Constitutive proposals supply no donor storage, outlet integration, storage snap
 - [USBR submerged-weir measurement limitations](https://www.usbr.gov/tsc/techreferences/mands/wmm/chap07_15.html).
 - [Hydraulic Institute pump-curve and affinity assumptions](https://datatool.pumps.org/pump-fundamentals/pump-curves).
 - [EPA hydraulic addendum pump affinity model](https://www.epa.gov/system/files/documents/2022-02/swmm5-reference-manual-ii-addendum-20220210mas2wr-1.pdf).
-
-## Sampled operating commands
-
-[Operating controls](operating-controls.md) supplies explicit sampled relay commands with qualification delays, transactional trials, and complete snapshots. Gate targets remain distinct from actual opening. Standalone commands establish no hydraulic or actuator response.
-
-[Ideal constant-rate actuators](gate-actuators.md) advance actual gate opening separately. [Mixed operating sources](operating-sources.md) bind explicit manual operations, prescribed gate subsets, and fresh actual-actuated frames. Point outputs retain source and opening receipts beside discharge evaluated at the admitted center. They supply no ideal-flow enclosure or integrated transfer.

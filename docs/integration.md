@@ -1,17 +1,19 @@
-# Library integration contract
+# Integrate Hydr into an application
 
-Use this guide to construct a Hydr solver and read its results. It also covers complete restart data. The numerical contract is `hydr-swe-numr-cpu-1`.
+Use this guide to supply physical inputs, advance the solver, read results, and save complete restart data.
 
 ## Ownership
+
+Native Rust application workers call Hydr directly. A separate solver service is unnecessary.
 
 | Layer | Responsibility |
 | --- | --- |
 | numr | Tensor storage, arithmetic, indexing, conditional selection, reductions, and stable elementwise magnitude |
 | solvr | Generic batched bracket expansion/bisection, Newton correction iteration, and retained residuals |
-| hydr | Hydraulic/land state, physical equations, soil admission, boundaries, accepted steps, snapshots, and conservation |
+| hydr | Hydraulic and land state, physical equations, soil admission, boundaries, accepted steps, snapshots, and conservation |
 | Application | Provider acquisition, GIS preparation, provenance, jobs, persistence, publication, maps, and event assessment |
 
-Native Rust application workers call the library directly. A separate solver service is unnecessary. Keep browser-facing data contracts free of native solver and tensor dependencies.
+Keep browser-facing data contracts free of native solver and tensor dependencies.
 
 ## Lifecycle
 
@@ -28,89 +30,123 @@ An accepted step is a completed update that passes Hydr's numerical checks.
 
 ### 2. Construct and advance the solver
 
-| API | What the application does |
+| API | Application action |
 | --- | --- |
-| `capabilities()` | Read the implemented method, arithmetic requirements, sources, boundaries, and unsupported uses |
+| `capabilities()` | Read implemented methods, arithmetic requirements, sources, boundaries, and unsupported uses. |
 | `Solver::<R>::new(client, setup, initial)` | Supply physical inputs and a configured client. Hydr checks them and allocates `Tensor<R>` state. |
-| `advance_to` | Advance toward a target time and read the accepted time and completion status |
-| `advance_controlled` | Check cancellation between steps and receive accepted fields through an observer |
+| `advance_to` | Request a target time, then read the accepted time and completion status. |
+| `advance_controlled` | Check cancellation between steps and receive accepted fields through an observer. |
 
-Invalid targets reject before advancement. Numerical errors preserve the last accepted step. Earlier accepted steps within the same advancement call remain committed.
+Always read `AdvanceStatus` before treating the requested horizon as complete.
 
-Cancellation or an exhausted step budget returns the time actually reached. Check `AdvanceStatus` before treating the requested horizon as complete.
-
-For connected storage pools, use [coupled level pools](coupled-level-pools.md). `CoupledLevelPoolBatch` advances declared pool transfers with static manual operations, optional local sources, and prescribed external inflows. Supply already-selected inputs and physical ownership evidence. Surface-to-network coupling remains unsupported.
+| Outcome | State retained by Hydr |
+| --- | --- |
+| Invalid target | No advancement occurs. |
+| Numerical error | The last accepted step remains. Earlier accepted steps in the same call stay committed. |
+| Cancellation or exhausted step budget | The result reports the time actually reached. |
 
 ### 3. Read results and retain checkpoints
 
-| API | What it returns |
+| API | Result |
 | --- | --- |
-| `snapshot`, `restore` | Complete tensor continuation without copying fields to the host. Restore rejects incompatible definitions or device contexts. |
+| `snapshot`, `restore` | Complete tensor continuation without copying fields to the host. Incompatible definitions or device contexts reject. |
 | `Snapshot::data`, `restore_data` | Checked owned checkpoint data for application-managed persistence. Export and import can return errors. |
 | `state`, `cell`, `cell_at` | Accepted fields or the containing cell's output, without interpolation. Device transfers can return errors. |
 | `ledger`, `last_step` | Scalar water budgets or detailed interval and face records. Detailed transfers can return errors. |
 | `soil_state` | Complete accepted soil memory. Device transfers can return errors. |
 
+### Connected storage pools
+
+Use [coupled level pools](coupled-level-pools.md) for declared pool-to-pool transfers.
+
+`CoupledLevelPoolBatch` supports static manual operations, optional local sources, and prescribed external inflows. Supply already-selected inputs and physical ownership evidence.
+
+Surface-to-network coupling remains unsupported.
+
 ## Runtime selection and admission
 
 A runtime selects where calculations run. Its client identifies the device and execution resources.
 
-Tensors store numerical arrays on the selected device. Components use Numr `Tensor<R>` values with `R: Runtime<DType = DType>`. Constructors receive the configured `R::Client` and allocate through `client.device()`. Nested components reuse that client.
+1. Select `R: Runtime<DType = DType>`.
+2. Supply the configured `R::Client` to the constructor.
+3. Preserve the required arithmetic environment throughout continuation.
 
-Cross-context operations and trusted restoration check `Device::is_same`. Restoration retains the destination client.
+Components store arrays as Numr `Tensor<R>`. Allocation uses `client.device()`, and nested components reuse the client.
 
-- `cuda` and `wgpu` features expose the corresponding Numr and Solvr backend implementations.
-- Availability: A backend must also support the required precision and arithmetic. Compilation alone establishes no hydraulic accuracy.
-- Construction checks `R::computes_float_dtype(DType::F64)` and the declared basic arithmetic contract before uploading F64 fields.
-- Arithmetic probes run on the selected client. Callers preserve nearest-even rounding and gradual underflow throughout continuation.
-- Gate actuators additionally require `FusedMulAddContract::Ieee754Fused`. Basic F64 support alone does not admit fused actuator calculations.
-- Unsupported precision or contracts return errors. No CPU fallback, host recomputation, or F32 substitution applies.
-- CPU F64 remains the checked numerical reference. These documents claim no GPU numerical qualification.
+### Requirements for the selected runtime
 
-Ordinary `advance_to` keeps accepted flow, soil memory, and recent detailed records as tensors. The host reads scalar control and accounting results.
+| Requirement | Hydr behavior |
+| --- | --- |
+| F64 support | Construction checks `R::computes_float_dtype(DType::F64)` before uploading fields. |
+| Basic arithmetic | Construction checks the declared contract and runs probes on the selected client. |
+| Rounding | Callers preserve nearest-even rounding and gradual underflow. |
+| Gate actuators | These additionally require `FusedMulAddContract::Ieee754Fused`. Basic F64 support alone is insufficient. |
+| Unsupported precision or contract | Hydr returns an error without CPU fallback, host recomputation, or F32 substitution. |
+| Context compatibility | Cross-context operations and trusted restore check `Device::is_same`. Restore retains the destination client. |
 
-`advance_controlled` requests copies of accepted fields and diagnostics. State, soil, cell, diagnostic, and owned-checkpoint reads return `Result` and report transfer errors.
+The `cuda` and `wgpu` features expose the corresponding Numr and Solvr implementations. Backend availability and compilation establish no hydraulic accuracy.
+
+CPU F64 remains the checked numerical reference. These documents establish no general GPU numerical qualification.
+
+### When data leaves the device
+
+Ordinary `advance_to` retains accepted flow, soil memory, and recent detailed records as tensors. The host reads scalar control and accounting results.
+
+`advance_controlled` requests copies of accepted fields and diagnostics.
+
+State, soil, cell, diagnostic, and owned-checkpoint reads return `Result`. Handle transfer errors from these calls.
 
 ## Boundary and source admission
 
-A boundary describes what happens at the edge of a surface domain. Open boundaries represent water entering or leaving the grid.
+A boundary describes behavior at the surface domain's edge. Open boundaries represent water entering or leaving the grid.
 
-### Exterior faces
+### Declare exterior faces
 
-A source-complete port supplies water and momentum fluxes, including pressure, with compatible flow and conservative wave-speed bounds.
+| Support | Required declaration |
+| --- | --- |
+| Walls | Genuine impermeable exterior boundaries and inactive-cell interfaces |
+| Inactive mask | Impermeable exclusions. Missing influential terrain cannot silently become a wall. |
+| Open port | An active exterior face with bounded data over every forcing interval |
 
-- Wall constructor: Explicitly declares genuine impermeable exterior boundaries and inactive-cell interfaces.
-- Mask: Inactive cells declare impermeable exclusions. Missing influential terrain cannot silently become a wall.
-- Port support: An active exterior face with bounded data over each forcing interval.
-- Port mass: Outward signed m³/s. Negative values enter the domain.
-- Port momentum: Outward x/y momentum flux integrated over face width, in m⁴/s².
-- Pressure convention: The port includes normal pressure and all interface/bed corrections exactly once.
-- Port eligibility: The provider supplies a compatible regime and conservative normal signal-speed bound with provenance.
+A source-complete port supplies water and momentum fluxes, including pressure. It also supplies compatible flow and conservative wave-speed bounds.
 
-### Local sources
+| Port quantity | Convention |
+| --- | --- |
+| Water rate | Outward signed m³/s. Negative values enter the domain. |
+| Momentum | Outward x/y momentum flux integrated over face width, in m⁴/s² |
+| Pressure | Include normal pressure and interface/bed corrections exactly once. |
+| Eligibility | Supply a compatible regime and conservative normal signal-speed bound with provenance. |
 
-- Local rain: Cell-supported m/s, with zero horizontal momentum.
-- Soil: Explicit impervious or pinned Modified Green–Ampt physical land with matching complete antecedent memory.
-- Potential evaporation: Explicit nonnegative m/s demand capped after infiltration, before prescribed withdrawal.
-- Withdrawal: Separate m/s demand with donor momentum. Unavailable water rejects without silently capping demand.
+### Choose boundary data
 
-### Choose the boundary input
+| Input | Supported meaning |
+| --- | --- |
+| `BoundaryForcing::Stage` | A compatible wet-subcritical trace at the supplied elevation |
+| `BoundaryForcing::Discharge` | A compatible wet-subcritical trace with the supplied signed outward numerical water rate, in m³/s |
+| `BoundaryForcing::Exterior` | Complete wet or explicitly dry maintained reservoir data, evaluated through the interior HLL solver |
+| `BoundaryForcing::Transmissive` | Copy a post-source dry state or resolved supercritical outflow outside the domain. |
 
-Flux integrals alone cannot establish a wave bound or boundary eligibility. Stage-only and discharge-only inputs cannot construct a source-complete port.
+Declare Stage/Discharge support with `BoundaryConditions::with_open_faces`. Supply every declared face exactly once in each `ForcingInterval.boundaries`.
 
-Wet-subcritical characteristic boundaries use `BoundaryForcing::Stage` or `BoundaryForcing::Discharge` in `ForcingInterval.boundaries`. `BoundaryConditions::with_open_faces` declares their support. Every interval supplies each open face exactly once.
+- Elevation: Stage uses the domain's vertical datum.
+- Inflow: Supply tangential velocity. Outflow carries the interior tangential velocity.
+- Reversal: Every trial checks the incoming/outgoing rule again.
+- Scalar rejection: Dry, critical, and supercritical traces reject without wall or sonic substitution.
+- Exterior data: Reservoir elevation and velocities prescribe neither achieved face elevation nor achieved face discharge.
+- Transmissive rejection: Subcritical, critical, or incoming flow requires complete exterior data.
 
-Stage values use the domain elevation datum. Discharge values impose signed outward numerical water rates in m³/s.
+Flux integrals alone cannot establish a wave bound or boundary eligibility. Stage-only and discharge-only data cannot construct a source-complete port.
 
-Inflow requires the supplied tangential velocity. Outflow carries the interior tangential velocity. Reversal rechecks this admission rule during every trial.
+Read [physical boundaries](boundaries.md) for equations, tolerances, and pressure conventions. Never substitute walls for required open boundaries.
 
-Scalar stage/discharge traces reject dry, critical, and supercritical regimes without wall or sonic substitution.
+### Supply local sources
 
-`BoundaryForcing::Exterior` supplies complete wet or explicitly dry reservoir data to the same HLL solver as interior faces. Its elevation and velocities describe the maintained exterior state. They prescribe no achieved numerical face elevation or discharge.
-
-`BoundaryForcing::Transmissive` copies post-source dry states or resolved supercritical outflow outside the domain. Transmissive subcritical, critical, or incoming flow rejects and requires complete exterior data.
-
-Read [physical boundaries](boundaries.md) for trace equations, tolerances, and pressure conventions. Never substitute walls for required open boundaries.
+| Process | Input and order |
+| --- | --- |
+| Rain | Cell-supported m/s with zero horizontal momentum |
+| Soil | Explicit impervious or pinned Modified Green–Ampt land with matching complete antecedent memory |
+| Potential evaporation | Nonnegative m/s demand, capped after infiltration and before prescribed withdrawal |
+| Withdrawal | Separate m/s demand carrying donor momentum. Unavailable water rejects without silently capping demand. |
 
 ## Results and checkpoints
 
@@ -118,49 +154,105 @@ Read [physical boundaries](boundaries.md) for trace equations, tolerances, and p
 
 | Result | Meaning |
 | --- | --- |
-| `CellResult::Dry` | Depth is zero. Physical velocity and water elevation remain undefined. |
-| Positive film | The cell returns its represented positive water depth. |
-| `Unsupported` | The location is unknown or unsupported. It never means dry zero. |
+| `CellResult::Dry` | Zero depth. Physical velocity and water elevation remain undefined. |
+| Positive film | The cell retains and reports its represented positive water depth. |
+| `Unsupported` | Unknown or unsupported location. This never means dry zero. |
 
 Internal coordinate ties select the positive-coordinate cell. Maximum exterior edges return unsupported.
 
-Face records describe numerical flux over the accepted interval. They retain orientation and spatial support.
+Face records retain the accepted interval's numerical flux, orientation, and spatial support.
 
-- `StepDiagnostics.boundary_traces` records accepted physical traces and their compatibility residuals.
-- `signal_speed` records each face's final numerical wave speed in m/s.
-- `StepDiagnostics.transmissive_states` records the post-source interior states used by accepted transmissive boundaries.
-- Boundary ledgers integrate actual oriented exterior face fluxes, including reversals.
+| Record | Contents |
+| --- | --- |
+| `StepDiagnostics.boundary_traces` | Accepted physical traces and compatibility residuals |
+| `signal_speed` | Each face's final numerical wave speed, in m/s |
+| `StepDiagnostics.transmissive_states` | Post-source interior states used by accepted transmissive boundaries |
+| Boundary ledgers | Actual oriented exterior face fluxes, integrated over time, including reversals |
 
 The application defines threshold crossings and episode semantics from accepted fields.
 
 ### Save complete restart data
 
-Checkpoint compatibility includes the numerical contract and the physical definition. Checks cover geometry, parameters, forcing, boundaries, controls, and required continuation history.
+1. Save the complete package, including `setup: SolverSetup` and `accepted: InitialState`.
+2. Preserve every package field and floating-point value exactly.
+3. Restore into a compatible physical definition and numerical contract.
+4. Handle import errors before using the restored state.
 
-Checkpoint packages carry `setup: SolverSetup` and `accepted: InitialState`, including full native soil memory. They retain independent infiltration/evaporation ledgers, signed adjustments, conservative budget charges, and accepted per-cell source receipts.
+The package includes full native soil memory and accepted per-cell source records. It retains independent infiltration/evaporation ledgers, signed adjustments, and conservative budget charges.
 
-Surface checkpoints exclude network and operating-control state. Standalone [sampled controls](operating-controls.md) and [gate actuators](gate-actuators.md) expose separate complete snapshots. Coordinated component restoration remains unsupported.
+Compatibility checks cover geometry, parameters, forcing, boundaries, controls, and required continuation history.
 
-[Operating-source bindings](operating-sources.md) are immutable. Reconstruct them from original definitions and restore each actuator before supplying fresh point-query frames. Source bindings retain no independent numerical clock or continuation history.
+### Know each checkpoint's scope
 
-### Preserve floating-point values
+Checkpoint compatibility includes the numerical contract `hydr-swe-numr-cpu-1`.
 
-Application persistence preserves every package field and exact floating-point bits. Positive infinity is valid in unrestricted timestep bounds. Ordinary JSON numbers cannot represent it directly.
+| Component | Restart responsibility |
+| --- | --- |
+| Surface solver | Its checkpoint excludes network and operating-control state. Coordinated restoration with those components remains unsupported. |
+| [Sampled controls](operating-controls.md) and [gate actuators](gate-actuators.md) | Each exposes a separate complete snapshot. |
+| [Operating-source bindings](operating-sources.md) | Reconstruct immutable bindings from original definitions. Restore each actuator before supplying fresh point-query frames. |
 
-Import checks consistency and compatibility. The application owns content hashes and historical authenticity. Final soil state establishes continuation support. It cannot prove historical infiltration without a separately authenticated history.
+Source bindings retain no independent numerical clock or continuation history.
 
-Import reconstructs the combined CFL bound from maximum face speeds along each axis. The stored bound must agree within 64 times `f64::EPSILON` in relative rounding. No fixed absolute tolerance applies.
+### Encode checkpoints without rounding
 
-Transmissive witnesses must satisfy their regime and physical flux checks. Exterior fluxes remain numerical Riemann fluxes.
+Save original numerical values before formatting them for display. Do not round displayed decimals and then persist those rounded values.
+
+Choose an encoding that preserves every package field and these special cases:
+
+| Value | Persistence requirement |
+| --- | --- |
+| Finite floats | Preserve the stored binary value, including the distinct `+0.0` and `-0.0` bit patterns. Signed zero affects immutable identity. |
+| Positive infinity | Preserve it in unrestricted timestep bounds. Ordinary JSON numbers cannot represent it directly. |
+
+Import checks internal consistency and compatibility with the model. The application manages content hashes and authenticated history.
+
+Stored soil memory lets the calculation continue. It cannot prove past infiltration without a separately authenticated history.
+
+### Understand restart checks
+
+Hydr combines wave speeds into a timestep safety limit, called the CFL bound.
+
+Import recalculates this limit from the recorded largest face wave speed along each axis.
+
+| Stored data | Import check |
+| --- | --- |
+| Combined timestep safety limit | Stored and recalculated values must agree within 64 times `f64::EPSILON` in relative rounding. No fixed absolute tolerance applies. |
+| Transmissive states | Check the admitted flow regime and physical flux. |
+| Exterior fluxes | These remain numerical Riemann fluxes calculated by the boundary solver. |
 
 ### Reproduce a run
 
-Immutable checkpoint identity includes floating-point bits, including signed zero. Exact restart requires the same build, dependency source, selected-runtime arithmetic envelope, and accepted-step partition. Different requested intermediate target times can change the step partition and numerical result. Cross-platform bitwise equality remains unsupported.
+1. Use the same build and dependency sources.
+2. Use the same runtime and client config.
+3. Preserve the same arithmetic guarantees, including rounding and underflow behavior.
+4. Use the same sequence of accepted timestep lengths.
+5. Preserve the same requested intermediate times when comparing runs.
 
-The application workspace must supply its own Cargo patches for the checked numr and solvr sources. Cargo does not inherit dependency-local `.cargo/config.toml` files. Numerical calls use the caller's configured client. The CPU reference configures one thread explicitly, including under dependency feature unification.
+The accepted timestep sequence is the step partition. Changing intermediate targets can change that sequence and the numerical result.
+
+Cross-platform bitwise equality remains unsupported.
+
+### Configure the application workspace
+
+Supply Cargo patches for the checked numr and solvr sources in the application workspace.
+
+Cargo does not inherit a dependency's local `.cargo/config.toml`. See [local dependency overrides](../CONTRIBUTING.md#local-dependency-overrides).
+
+Numerical calls use the caller's configured client. The CPU reference explicitly selects one thread, including under dependency feature unification.
 
 ## First supported integration milestone
 
-Run synthetic closed basins or manufactured source-complete-port cases inside a native application worker. Persist checked packages, report water budgets, and consume accepted fields through the adapter boundary. Keep these calculations labelled numerical demonstrations.
+Start with an artificial test problem inside a native application worker:
 
-Real urban-event use still requires network/structure coupling and independent event evidence. Domains requiring unsupported boundary regimes remain excluded. Applications must reuse Hydr calculations instead of maintaining a competing numerical kernel.
+- Closed basin: Keep water inside declared impermeable boundaries.
+- Analytical open-boundary case: Supply complete prescribed water and momentum fluxes, including pressure, with compatible wave-speed bounds.
+
+1. Save the checked checkpoint package.
+2. Report the water budget.
+3. Pass accepted fields to the application's data adapter.
+4. Label these calculations numerical demonstrations.
+
+Real urban-event use still requires network/structure coupling and independent event evidence. Domains requiring unsupported boundary regimes remain excluded.
+
+Applications must reuse Hydr calculations instead of maintaining a competing numerical kernel.

@@ -1,10 +1,53 @@
-# Standalone Modified Green–Ampt soil
+# Calculate soil infiltration
 
-`hydr::soil::ModifiedGreenAmptBatch<R>` advances complete soil memory on persistent Numr `Tensor<R>` fields. Construction receives the configured `R::Client`. The checked CPU reference uses one thread. Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission).
+Use `ModifiedGreenAmptBatch<R>` to calculate infiltration while retaining complete soil memory. Start by choosing standalone or coupled calculation.
 
-The component follows EPA SWMM v5.2.4 Modified Green–Ampt, pinned at `7952ca837988b1c32f791812eccc9fd64547e093`. The [reference harness](soil-reference.md) records original C results. Generic Newton iteration belongs to solvr. Hydr supplies the soil correction, native branches, and prescribed fallback.
+| Your task | Component |
+| --- | --- |
+| Calculate raw infiltration rates and soil state | This standalone soil component |
+| Apply infiltration to surface water with evaporation, accounting, and retries | [Land sources](land-sources.md) |
 
-## Explicit construction and trials
+Infiltration means water entering the soil. This component follows the Modified Green–Ampt method in EPA SWMM v5.2.4.
+
+## Construct the soil batch
+
+1. Supply soil parameters in SI or native EPA units.
+2. Choose explicit EPA initialization or complete antecedent state.
+3. Supply the configured Numr `R::Client`.
+
+`hydr::soil::ModifiedGreenAmptBatch<R>` keeps its numerical state in Numr `Tensor<R>` fields. The checked CPU reference uses one thread. Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission).
+
+### Choose parameter units
+
+Use `ModifiedGreenAmptParameters`. Both constructors take a dimensionless maximum deficit. Native refers to EPA's internal units and state fields.
+
+| Method | Suction | Conductivity |
+| --- | --- | --- |
+| `from_si` | Metres | Metres/second |
+| `from_native` | Feet | Feet/second |
+
+Parameters require finite nonnegative suction, positive conductivity, and maximum deficit in `[0,1]`. Derived `Lu` and recovery time must remain finite and positive. Positive SI/native parameter conversions must retain their values.
+
+### Choose initial soil memory
+
+Use `ModifiedGreenAmptBatch<R>` with the configured `client` and soil `parameters`.
+
+| Method | Initial state |
+| --- | --- |
+| `initialized` | Explicit EPA initialization from `client` and `parameters` |
+| `from_native_states` | All five checked native `states`, alongside `client` and `parameters` |
+
+## Advance and accept an interval
+
+1. Call `trial` or `trial_native` with one input per cell.
+2. Read `outputs()` when you need interval results.
+
+Then choose one outcome:
+
+| Decision | Action |
+| --- | --- |
+| Accept the candidate | Consume `into_next()` to obtain the complete next batch. |
+| Keep the original state | Discard the trial without calling `into_next()`. |
 
 ```rust
 use hydr::soil::{ModifiedGreenAmptBatch, ModifiedGreenAmptParameters, SoilInput};
@@ -24,40 +67,67 @@ let restart_state = next.native_states()?;
 # Ok::<(), hydr::soil::SoilError>(())
 ```
 
-| API | Contract |
+Both trial methods require a positive finite duration.
+
+### Supply water once
+
+Inputs describe nonnegative incoming rain/runon and nonnegative ponding. They exclude evaporation. Requested forcing never overrides native branch rules.
+
+| Input path | Arithmetic contract |
 | --- | --- |
-| `ModifiedGreenAmptParameters::from_si` | Suction in metres, conductivity in metres/second, dimensionless maximum deficit |
-| `ModifiedGreenAmptParameters::from_native` | Suction in feet, conductivity in feet/second, dimensionless maximum deficit |
-| `ModifiedGreenAmptBatch::<R>::initialized(client, parameters)` | Explicit EPA antecedent initialization on the selected client |
-| `ModifiedGreenAmptBatch::<R>::from_native_states(client, parameters, states)` | Checked complete antecedent state without inferred history |
-| `trial` / `trial_native` | Immutable interval computation with positive finite duration and one input per cell |
-| `outputs` | Native/SI interval rates and depths, projected at the application output boundary |
-| `into_next` | Accept the complete candidate batch |
-| `native_states` | Project complete state for output or reconstruction |
+| `trial` | SI input tensors divide by `0.3048` |
+| `trial_native` | Inputs retain exact feet/second and feet branch probes |
+| SI output | Native rate multiplies by `0.3048` before interval-depth multiplication |
 
-Inputs represent nonnegative incoming rain/runon and nonnegative ponding. They exclude evaporation. Native trials retain exact feet/second and feet branch probes. SI trials divide input tensors by `0.3048`. SI output rate multiplies native rate by `0.3048` before interval-depth multiplication.
+Selected interval rates, conversions, depths, and final state must remain representable. A source-returned zero rate stays zero independently of rounded state differences.
 
-Discarding a trial preserves every accepted field. Repeated trials borrow the same immutable state. Reconstruction requires the same checked parameters and all five native fields. Numerical continuation uses persistent tensors, without host-state projection between accepted intervals.
+### Read results or continue
 
-## Complete native memory
-
-| Field | Meaning |
+| API | Result |
 | --- | --- |
-| `imd` | Dimensionless initial moisture deficit |
-| `f_ft` | Event infiltration memory in feet, including legal negative values |
-| `fu_ft` | Upper-zone memory in feet, bounded by native capacity |
+| `outputs()` | Interval rates and depths in native and SI units |
+| `into_next()` | Complete accepted candidate |
+| `native_states()` | All five state fields for output or reconstruction |
+
+Reading result arrays copies them from the selected runtime and can return an error.
+
+Repeated trials borrow the same immutable state. Discarding a trial preserves every accepted field. Numerical continuation uses persistent tensors without copying state to the host between accepted intervals.
+
+## Save complete soil memory
+
+Reconstruction requires the same checked parameters and every field below. Do not reconstruct state from cumulative infiltration alone.
+
+| Field | Meaning and admitted range |
+| --- | --- |
+| `imd` | Dimensionless initial moisture deficit, from zero through its exact recovery ceiling |
+| `f_ft` | Recoverable event infiltration memory in feet, including legal negative values |
+| `fu_ft` | Upper-zone memory in feet, from zero through native capacity |
 | `saturated` | Independent saturation flag |
 | `t_s` | Recovery timer in seconds, including negative expired values |
 
-`F` is recoverable event memory. It is not a lifetime infiltration ledger. A reachable wet/dry sequence produces negative `F` while `Fu` remains positive. Saturated dry intervals preserve moisture memory and saturation while decrementing `T`.
+`F` tracks recoverable event memory. Use a separate ledger for lifetime infiltration. A reachable wet/dry sequence produces negative `F` while `Fu` remains positive.
 
-Finite signed `F` and `T` remain admissible independently of saturation. Imported state receives no guessed history restrictions. `Fu` must lie between zero and native upper-zone capacity. `IMD` must lie between zero and its exact recovery ceiling.
+Saturated dry intervals preserve moisture memory and saturation while decrementing `T`. Finite signed `F` and `T` remain admissible independently of saturation. Import adds no guessed history restrictions.
 
-The ceiling follows the implemented recovery arithmetic. Let `C=fl(IMDmax*Lu)` and `M_upper=max(IMDmax,fl(C/Lu))`. Recovery uses `fl(fl(C-Fu)/Lu)` with `0<=Fu<=C`. Monotonic subtraction and division bound that result by `fl(C/Lu)`. The rounding band is `M_upper-IMDmax`. Admission preserves endpoint state without clamping. Positive subnormal capacity remains admissible. Positive maximum deficit with capacity rounded to zero is rejected.
+### Recovery ceiling and small capacities
 
-Parameters require finite nonnegative suction, positive conductivity, and maximum deficit in `[0,1]`. Derived `Lu` and recovery time must remain finite and positive. Positive SI/native parameter bridges must retain their values. Selected interval rates, unit conversions, depths, and final state must remain representable. Source-returned zero rate remains zero, independently of rounded state differences.
+The `IMD` ceiling follows the implemented arithmetic:
 
-## Numerical semantics
+```text
+C=fl(IMDmax*Lu)
+M_upper=max(IMDmax,fl(C/Lu))
+Recovery: fl(fl(C-Fu)/Lu), with 0<=Fu<=C
+```
+
+Here `fl` means the represented floating-point result. Monotonic subtraction and division bound recovery by `fl(C/Lu)`. The rounding band is `M_upper-IMDmax`.
+
+Admission preserves endpoint state without clamping. Positive subnormal capacity (below the normal floating-point range) remains admissible. A positive maximum deficit with capacity rounded to zero rejects.
+
+## Understand the preserved numerical rules
+
+The implementation is pinned to EPA commit `7952ca837988b1c32f791812eccc9fd64547e093`. The [reference harness](soil-reference.md) records original C results.
+
+Solvr supplies generic Newton iteration. Hydr supplies soil equations, native branches, and the prescribed fallback.
 
 | Mechanism | Preserved behavior |
 | --- | --- |
@@ -68,23 +138,27 @@ Parameters require finite nonnegative suction, positive conductivity, and maximu
 | Saturation equality | Native strict comparisons preserve equality branches |
 | Saturated event update | `F += F2-F`, retaining the original rounding order |
 | Unsaturated crossing | Direct assignment `F=F2` |
-| Root iteration | solvr batched Newton, at most 20 corrections, strict pre-update `abs(correction)<1e-5 ft` |
+| Root iteration | Solvr batched Newton, at most 20 corrections, strict pre-update `abs(correction)<1e-5 ft` |
 | Root fallback | Every nonconverged or nonfinite Newton lane selects native `F2min` |
 
 `InfilFactor` and `Evap.recoveryFactor` equal one. Inactive tensor expressions use safe operands. Active invalid logarithms or singular derivatives reach native fallback. Legal signed event memory receives no premature logarithm-domain rejection.
 
-Tiny positive ponding can enter effective-zero recovery. Saturated zero-availability intervals preserve saturation. Requested forcing never overrides these native branch rules.
+Tiny positive ponding can enter effective-zero recovery. Saturated zero-availability intervals preserve saturation.
 
-## Differential checks
+## Check agreement with EPA results
 
-Generate a fresh 72-case/158-row native corpus with the reference harness. Run the public comparison example:
+Generate a fresh 72-case/158-row native corpus with the [reference harness](soil-reference.md). Then run:
 
 ```sh
 cargo run --example soil_reference -- resource/evidence/soil-component-oracle-extended/soil.csv
 cargo test --test soil_component
 ```
 
-The example reads the full native schema. It compares initialization, every supported modified STEP, interval rate/depth, and all five fields. Direct F2 probes run through saturated public states. Original-model cases and the zero-Ks helper receive explicit unsupported reports.
+The example reads the full native schema. It compares initialization, every supported modified STEP, interval rate/depth, and all five state fields.
+
+Direct F2 probes run through saturated public states. Original-model cases and the zero-Ks helper receive explicit unsupported reports.
+
+### Comparison criteria
 
 The checked corpus covers 60 modified state sequences, 69 STEP calls, and nine F2 probes.
 
@@ -96,12 +170,20 @@ The checked corpus covers 60 modified state sequences, 69 STEP calls, and nine F
 | Recovery time | `1e-9 s + 1e-11 relative` |
 | Saturation and zero/reset branch witnesses | Exact |
 
-Rotated oracle batches check 17,550 lanes at lengths 31, 32, 33, 64, and 65. These place branch probes in SIMD and scalar tail positions. Public lifecycle checks cover mixed/independent batches, SI/native conversion, immutable trials, complete-state restart, negative memory, and rejected-trial rollback.
+Rotated batches check 17,550 lanes at lengths 31, 32, 33, 64, and 65. Branch probes occupy SIMD positions and scalar tails.
 
-Checked scalar and SIMD logarithm paths conform within the frozen comparison tolerances. Bitwise restart requires a fixed batch layout, build, and runtime. No cross-shape bitwise equality is established.
+Lifecycle checks cover mixed/independent batches, SI/native conversion, immutable trials, complete restart, negative memory, and rejected-trial rollback.
 
-## Scope
+### What these checks establish
 
-Outputs are raw empirical soil infiltration. This component supplies no conservative surface-water coupling claim. Surface availability handling, evaporation, coupled retries, lifetime ledgers, checkpoint packaging, and the original Green–Ampt model remain outside this standalone API.
+Checked scalar and SIMD logarithm paths meet the frozen tolerances. Bitwise restart requires a fixed batch layout, build, and runtime. Cross-shape bitwise equality remains unestablished.
 
-The separate [land-source engine integration](land-sources.md) supplies atomic surface coupling, numerical admission, evaporation, ledgers, and complete-state checkpoints.
+## Current limits
+
+Standalone outputs describe raw empirical soil infiltration. This API excludes:
+
+- Surface-water availability handling and conservative surface coupling.
+- Evaporation, coupled retries, and lifetime water ledgers.
+- Checkpoint packaging and the original Green–Ampt model.
+
+Use [land sources](land-sources.md) for atomic surface coupling, numerical admission, evaporation, ledgers, and complete-state checkpoints.

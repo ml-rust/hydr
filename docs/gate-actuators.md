@@ -1,27 +1,138 @@
-# Ideal constant-rate gate actuators
+# Advance actual gate opening
 
-`GateActuatorBatch` models actual opening under an explicitly declared ideal response with constant, independently supplied opening and closing rates. The model binds to existing hydrostatic rectangular gates. It consumes causal targets and retains complete immutable continuation.
+Use `GateActuatorBatch` to calculate opening under a declared ideal response. Supply directional rates and causal targets before advancing.
 
-This model excludes acceleration, inertia, backlash, deadband, mechanical stops beyond the declared range, and load-dependent rate changes. It supplies no native actuator parity, coefficient calibration, field accuracy, continuous feedback, or hydraulic consumption claim.
+This model binds to existing hydrostatic rectangular gates. It retains complete state for continuation, but does not consume hydraulic water.
 
-## Definitions and applicability
+## Check that the model applies
 
-`StructureBatch::with_gate_actuators` accepts explicit definitions, initial states, and a finite target schedule. Every actuator binds one unique gate inside a nonempty subset ordered by the complete original structure context. Matching IDs alone never substitute different geometry, applicability, or context. Non-gates and duplicate authority reject.
+The response uses constant, independently supplied opening and closing rates.
 
-| Input | Contract |
+| Included | Excluded |
 | --- | --- |
-| `GateActuatorDefinition` | Unique actuator/structure identities, directional rates, numerical policy, rate provenance, and ideal-response applicability |
-| Directional rates | Explicit finite nonnegative metres/second. Zero stalls motion in that direction |
-| `GateActuatorInitialState` | Explicit actual opening and target inside the bound gate range |
+| Ideal directional motion within the declared gate range | Acceleration, inertia, backlash, and deadband |
+| Explicit zero rates that stall one direction | Load-dependent rates and mechanical stops beyond the declared range |
+| Numerical opening and arrival bounds | Native actuator parity, coefficient calibration, or field accuracy |
+
+Continuous feedback remains outside this model.
+
+## Construct the actuator batch
+
+Call `StructureBatch::with_gate_actuators` with definitions, initial states, and a finite target schedule.
+
+Each actuator binds one unique gate. The nonempty subset follows the complete original structure order.
+
+| Input | Requirement |
+| --- | --- |
+| `GateActuatorDefinition` | Unique actuator/structure identities, rates, numerical policy, rate provenance, and ideal-response applicability |
+| Directional rates | Explicit finite nonnegative metres/second. Zero stalls that direction |
+| `GateActuatorInitialState` | Actual opening and target inside the bound gate range |
 | `GateActuatorSchedule` | Finite nonnegative initial time strictly before the finite terminal horizon |
-| Target calendar | Original finite times strictly increasing within `(initial_time_s,end_s]`. An empty calendar retains the initial target |
+| Target calendar | Original finite times, strictly increasing within `(initial_time_s,end_s]`. An empty calendar retains the initial target |
 | `GateActuatorAccuracy` | Explicit finite nonnegative opening and arrival-window allowances |
 
-No rate, initial position, target, numerical policy, or applicability default exists.
+There are no defaults for rates, position, target, numerical policy, or applicability.
 
-## Ideal response and anchors
+Non-gates and duplicate authority reject. Matching IDs cannot substitute changed geometry, applicability, or structure context.
 
-For an exact anchor position `x`, target `g`, and original elapsed time `h`, the declared response is:
+## Supply targets and advance
+
+`next_event` selects the next strictly later target, arrival boundary, or terminal event.
+
+1. Read `next_event` and choose an endpoint no later than that event.
+2. At an original target event, supply one complete ordered `GateTargetUpdate` per actuator.
+3. Set `issued_at_s` to the exact event time.
+4. Supply finite `available_at_s` no later than `issued_at_s`. Negative availability times remain valid.
+5. Call `trial_to` for a positive represented interval inside the declared support.
+6. Consume `into_next()` to accept the complete candidate.
+
+Missing packets, stale issue times, future availability, or packets outside target events reject. Hydr supplies no implicit hold or replacement.
+
+### Endpoint ordering
+
+| At the endpoint | Result |
+| --- | --- |
+| Old target | Determines the left state |
+| Changed target | Applies on the right interval |
+| Coincident completion | Completes the old episode before installing the new target |
+| Numerically repeated target | Retains the motion anchor and does not restart motion |
+| Terminal horizon | Returns no next event and grants no extrapolation or implicit hold |
+
+Exactly coincident represented event times combine flags. Different original times never merge through an epsilon.
+
+Scalar reductions select event time and flags. Requests for affected identities copy those values explicitly.
+
+Dropping or rejecting a trial preserves positions, anchors, targets, counters, certificates, and time. Acceptance covers actuator state only.
+
+## Read opening and arrival status
+
+`outputs()`, `states()`, `last_step()`, and trial diagnostics explicitly copy values and can return errors.
+
+Ordinary successful advancement keeps derived position/state tensors on the selected runtime without copying full arrays.
+
+### Opening support
+
+Every position satisfies finite `0 <= lower <= opening <= upper <= gate_maximum`.
+
+| Support | Meaning |
+| --- | --- |
+| `ExactClosed` | Canonical zero center, singleton zero interval, and zero error |
+| `CertainlyPositive` | Strictly positive lower bound |
+| `ClosureUnresolved` | Bounds include both zero and positive opening |
+
+An upper bound above zero with a zero center rejects, regardless of the accuracy allowance. Rounded center equality never proves arrival or closure.
+
+An exact target singleton retains original active target bits for center and endpoints, with zero error.
+
+### Arrival phases
+
+The arrival window covers every position admitted by the anchor bounds. It retains prior uncertainty and is not truncated at the horizon.
+
+| Phase | Meaning |
+| --- | --- |
+| `BeforeWindow` | Accepted time precedes the certified earliest boundary |
+| `InsideWindow` | Accepted time lies inside the unresolved finite window |
+| `Complete` | A retained analytic upper or forward target singleton proves all-position completion |
+| `BeyondHorizon` | A valid lower certificate proves no arrival within remaining support |
+| `Stalled` | Every admitted position lies strictly on the same zero-rate side |
+| `UnresolvedWithStalledSupport` | Some positions cannot reach the target, while others can arrive or already equal it |
+
+Public clocks remain finite. Missing endpoints use optional values or status tags, never infinite event times.
+
+A finite upper beyond terminal support remains a censored certificate. It neither extends support nor marks terminal completion.
+
+An earliest bound overlapping support with an unavailable upper rejects numerically. It cannot become an unsupported beyond-horizon claim.
+
+## Save and restore
+
+### Choose a snapshot form
+
+| Form | What it retains |
+| --- | --- |
+| Trusted snapshot | Complete persistent tensor state, without derived array copies |
+| Caller-owned package | Definitions, original inputs, calendar, policies, accepted state, counters, and bounded final receipts |
+
+Trusted restore checks the full bound context. Caller-owned encoding must preserve every original F64 bit, including signed zeros and repeated raw target packets.
+
+### What import checks
+
+Import recomputes arrival and forward proofs before accepting the package.
+
+| Evidence | Import check |
+| --- | --- |
+| Position | Canonical support and effective completion bounds |
+| Targets | Generations and retained causal receipts |
+| Previous completion | One bounded receipt preserves old-target authority across later target changes |
+
+Invalid imports leave accepted state unchanged. Receipts contain no recursive history chain.
+
+Consistency checks do not authenticate history or replay arbitrary command history. Equivalent continuation requires compatible build, runtime, and layout with the same future causal targets inside support.
+
+## Numerical response contract
+
+### Motion and anchors
+
+For anchor position `x`, target `g`, and original elapsed time `h`, the ideal response is:
 
 ```text
 x < g: min(g, x + opening_rate*h)
@@ -29,21 +140,48 @@ x > g: max(g, x - closing_rate*h)
 x = g: g
 ```
 
-Each accepted anchor retains a represented center and a certified lower/upper opening interval. Ordinary accepted substeps retain that original anchor. They never repeatedly accumulate timestep displacements or reset prior uncertainty. An actual changed target propagates the complete admitted left-position interval into its new anchor.
+An anchor stores a represented center and certified lower/upper opening bounds. Ordinary substeps keep that original anchor.
 
-Repeated numerically equal targets preserve the active target bits, anchor, episode, arrival certificate, and counters. This equality includes differently signed zeros. The latest raw packet retains its original bits and causal metadata separately.
+Hydr never repeatedly accumulates timestep displacements or resets earlier uncertainty. A changed target carries the entire admitted left-position interval into its new anchor.
 
-## Explicit numerical policies
+Numerically equal targets, including differently signed zeros, retain:
 
-Opening accuracy uses `maximum_absolute_opening_error_m` OR `maximum_relative_opening_error`. The absolute branch admits a finite error bound within the explicit metre allowance. Otherwise, positive opening requires an outward relative bound within the explicit relative allowance. The allowances never add. Both-zero opening policies admit only zero error receipts. A numerical allowance never changes the physical rate or support.
+- Active target bits and anchor.
+- Episode and arrival certificate.
+- Counters.
 
-`maximum_arrival_window_s` independently bounds the complete certified arrival window. The comparison uses its exact TwoSum width expansion, including the signed low. Rounded width alone never establishes admission. Position and timing policies remain independent. Neither allowance repairs an invalid center, false closure, or unsupported completion.
+The latest raw packet retains its own original bits and causal metadata separately.
 
-## Strict fused execution
+### Opening and timing allowances
 
-The actuator retains F64 `Tensor<R>` state on its bound `StructureBatch<R>` client. The checked CPU reference configures one thread. Runtime availability alone establishes no fused arithmetic capability. Construction requires the basic arithmetic contract and `FusedMulAddContract::Ieee754Fused` under nearest-even rounding with gradual underflow. Callers preserve that execution envelope throughout continuation and import. No host or unfused fallback substitutes for the provider contract.
+Opening admission uses an absolute allowance **or** a relative allowance. The allowances never add or change physical rates and support.
 
-Numr TwoSum retains the exact original elapsed difference as a high component `h` and signed low component `l`. For signed directional rate `k` and anchor operand `x`, the forward path uses:
+| Policy | Admission |
+| --- | --- |
+| `maximum_absolute_opening_error_m` | Finite error bound lies within the metre allowance |
+| `maximum_relative_opening_error` | If absolute admission does not apply, positive opening needs an outward relative bound within this allowance |
+| Both opening allowances zero | Only zero-error receipts pass |
+| `maximum_arrival_window_s` | The entire certified arrival window fits the independent timing allowance |
+
+Arrival-window width uses its exact TwoSum expansion, including the signed low component. Rounded width alone cannot establish admission.
+
+Neither policy repairs an invalid center, false closure, or unsupported completion.
+
+The absolute opening error covers both distances from center to interval endpoints. The physical capped response maps endpoint bounds into range. An unexplained center clamp cannot repair containment.
+
+### Required arithmetic
+
+State uses F64 `Tensor<R>` on the bound `StructureBatch<R>` client. The CPU reference explicitly selects one thread.
+
+Construction requires:
+
+- The basic arithmetic contract.
+- `FusedMulAddContract::Ieee754Fused`.
+- Nearest-even rounding with gradual underflow.
+
+Keep that arithmetic environment during continuation and import. Runtime availability alone is insufficient. No host or unfused fallback substitutes for the provider contract.
+
+TwoSum retains original elapsed time as high `h` and signed low `l`. For signed rate `k` and anchor operand `x`:
 
 ```text
 q0 = fused_mul_add(k,h,x)
@@ -51,73 +189,67 @@ if l != 0:
     q1 = fused_mul_add(k,l,q0)
 ```
 
-The second stage retains the signed elapsed low. Its uncertainty adds outward to the first-stage allowance. Exact zero low skips the second operation and allowance. A separate `rate*abs(l)` charge never duplicates the evaluated correction. Unused standalone products can overflow without rejecting a finite fused result. Used nonfinite results or TwoSum residuals reject.
+The second stage includes the signed elapsed low and adds uncertainty outward to the first-stage allowance. Exact zero low skips that operation and allowance.
 
-Fused zero alone never proves mathematical zero. Local zero-grid certificates or checked exact-binary witnesses can establish exact local results. Uncertified zero retains its rounding allowance. Unavailable optional witness arithmetic never invalidates an otherwise admitted fused path.
+A separate `rate*abs(l)` charge never duplicates the evaluated correction. Unused standalone products can overflow without rejecting a finite fused result.
 
-## Position support and closure
+Used nonfinite results or TwoSum residuals reject.
 
-Every admitted position satisfies `0 <= lower <= opening <= upper <= gate_maximum` with finite scalars. The reported absolute error covers both distances from the center to its interval endpoints. The physical capped response maps certified endpoint bounds into the physical range. No unexplained center clamp repairs containment.
+### Exact zero and completion
 
-| Support | Meaning |
+Fused zero does not alone prove mathematical zero. Local zero-grid certificates or checked exact-binary witnesses can prove exact local results.
+
+Uncertified zero retains its rounding allowance. Missing optional witness arithmetic does not invalidate an otherwise admitted fused path.
+
+Arrival bounds use the entire anchor interval, original rates, target, and anchor epoch.
+
+| Completion proof | Result |
 | --- | --- |
-| `ExactClosed` | Canonical zero center, zero singleton interval, and zero error |
-| `CertainlyPositive` | Strictly positive lower opening bound |
-| `ClosureUnresolved` | The interval includes both zero and positive support |
+| Retained analytic upper | Set canonical target state without unused displacement arithmetic |
+| Earlier forward endpoint singleton | Retain the original lower and tighten only the effective upper |
 
-If the upper bound remains positive, represented center zero rejects regardless accuracy allowance. An exact target singleton uses original active target bits for center and endpoints, with zero error. Rounded center equality never proves arrival or closure. Actual hydraulic isolation still requires a separate exclusive operating-source adapter.
+Both paths retain one bounded completion receipt. They increment arrival count once per accepted active episode.
 
-## Arrival windows and completion
+Initial holds, repeated targets, discarded trials, and repeated proofs add no arrivals.
 
-Arrival bounds derive from the complete anchor interval, original directional rates, target, and anchor epoch. Bounds never discard prior uncertainty or truncate their width at the terminal horizon. Public clocks remain finite. Unavailable endpoints use explicit optional values or status tags instead of infinite event times.
+## Checks and reference output
 
-| Phase | Contract |
+The CPU F64 reference covers 16 original-bit histories, two supplemental closure families, and two separate policy companions.
+
+Six layouts cover scalar, vector, and tail widths. Exact rational replay uses no enclosure slack.
+
+| Checked quantity | Coverage |
 | --- | --- |
-| `BeforeWindow` | Accepted time precedes the certified earliest boundary |
-| `InsideWindow` | Accepted time lies inside the unresolved finite arrival window |
-| `Complete` | A retained analytic upper or forward target singleton proves all-position completion |
-| `BeyondHorizon` | A valid lower certificate proves no arrival within remaining support |
-| `Stalled` | Every admitted position lies strictly on the same zero-rate side |
-| `UnresolvedWithStalledSupport` | Some admitted positions cannot reach the target while others can arrive or already equal it |
+| Physical response | Position enclosures and fused-stage errors |
+| Timing | Complete arrival windows and causal targets |
+| Continuation | Retained receipts |
+| Motion histories | Asymmetric reversals, repeated targets, stalls, and ordinary nonbinary closure |
+| Arithmetic cases | Subnormal support, large clocks, and signed-low overflow cancellation |
 
-A finite upper beyond terminal support remains a censored certificate. It never extends support or marks terminal completion. An overlapping earliest bound with an unavailable upper rejects numerically. It never becomes an unsupported beyond-horizon claim.
-
-At the analytic upper, canonical target state follows from the retained completion proof without unused displacement arithmetic. A forward endpoint singleton can prove completion earlier. It preserves the original lower and tightens only the effective upper. Both paths retain one bounded completion receipt and increment arrival count once per accepted active episode. Initial holds, repeated targets, discarded trials, and repeated proofs add no arrivals.
-
-## Causal targets and events
-
-Every original target event requires one complete ordered `GateTargetUpdate` per actuator. `issued_at_s` equals that exact event time. Finite `available_at_s` cannot exceed issue time. Negative availability timestamps remain valid. Missing packets, stale issue times, future availability, and packets outside target events reject without implicit holds or replacements.
-
-`next_event` reports the next strictly later target, arrival boundary, or terminal event. Exactly coincident represented times combine flags. Different original times never merge through an epsilon. Scalar reductions select event time/flags. Dynamic affected identities appear only in explicit projections.
-
-`trial_to` requires a positive represented interval inside support and cannot cross the next event. The old target determines the endpoint's left state. A changed endpoint target applies to the right interval. Coincident completion finishes the old episode before installing the new target. A repeated target never restarts motion. Terminal state returns no next event. No extrapolation or implicit terminal hold extends the declared horizon.
-
-## Trials, projections, and restoration
-
-Trials borrow accepted state immutably. Dropping or rejecting a trial preserves positions, anchors, targets, counters, certificates, and time. `into_next()` accepts the complete candidate by ownership. This acceptance establishes no hydraulic state or shared-transfer acceptance. `outputs()`, `states()`, `last_step()`, and trial diagnostics fallibly project positions, support, phases, and retained numerical evidence. Successful ordinary advancement retains derived position/state tensors without array readback.
-
-Trusted snapshots clone complete persistent state and check the full bound context before restoration. Caller-owned packages retain definitions, original inputs, calendar, policies, accepted state, counters, and bounded final receipts. Preserve every original F64 bit during encoding, including signed zeros and raw repeated-target packets.
-
-Owned import recomputes current arrival/forward proofs, effective completion bounds, canonical support, target generations, and retained causal receipts. One retained previous-completion receipt preserves old-target authority across later target changes. Receipts contain no recursive history chain. Invalid imports change no accepted state. Consistency checks establish no historical authenticity or arbitrary command-history replay. Equivalent continuation requires compatible build/runtime/layout and the same future causal targets within the declared support.
-
-## Numerical checks
-
-The CPU F64 reference checks 16 original-bit physical histories, two supplemental closure families, and two separate policy companions. Six layouts cover scalar, vector, and tail widths. Exact rational replay checks physical position enclosures, fused-stage errors, complete arrival windows, causal targets, and retained receipts without enclosure slack.
-
-| Observations | Passing rows |
+| Observation | Passing rows |
 | --- | ---: |
 | Initial states | 22,826 |
 | Accepted intervals | 35,934 |
-| Rejected trials with unchanged state | 1,130 |
+| Rejected trials preserving state | 1,130 |
 | Successful requested results | 21,696 |
 | Required numerical rejections | 1,808 |
 
-All 83,394 rows pass, including all 23,504 requested results. Cases include asymmetric reversals, repeated targets, stalls, ordinary nonbinary closure, subnormal support, large clocks, and signed-low overflow cancellation. Stable Rust and Rust 1.95 emit identical reference bytes.
+All 83,394 rows pass, including 23,504 requested results.
 
-Thirty-five integration tests check admission, events, continuation, and forged imports. A separate tensor-kernel test checks exact counter capacity. These checks establish numerical behavior for the declared ideal model. They establish no mechanical calibration, native actuator parity, or measured-event accuracy.
+Stable Rust and Rust 1.95 emit identical reference bytes. Thirty-five integration tests cover admission, events, continuation, and forged imports. A separate tensor test checks exact counter capacity.
 
-Run `cargo run --quiet --example gate_actuators_reference` for the original-bit CSV observations. The observer emits approximately 381 MB. Redirect stdout to a file.
+Run the original-bit CSV observer with stdout redirected to a file. Output is approximately 381 MB.
 
-## Integration boundary
+```sh
+cargo run --quiet --example gate_actuators_reference > gate-actuators.csv
+```
 
-[Sampled controls](operating-controls.md) emit requested targets. This actuator supplies its separately admitted ideal actual response. The [operating-source registry](operating-sources.md) resolves manual, prescribed, and actual-actuated authority before feeding [structure proposals](structures.md). Only certified actual closure grants its unknown-head isolation waiver. Native SWMM actuator behavior, continuous feedback, accepted hydraulic consumption, and coupled accuracy remain unsupported.
+These checks establish behavior for the declared ideal model. They establish no mechanical calibration, native parity, or measured-event accuracy.
+
+## Connect to controls and hydraulic laws
+
+[Sampled controls](operating-controls.md) generate targets. This actuator supplies the separately admitted ideal actual response.
+
+The [source registry](operating-sources.md) resolves manual, prescribed, and actual-actuated authority before [structure proposals](structures.md).
+
+Only certified actual closure grants the waiver for unknown heads. Native SWMM actuator behavior, continuous feedback, accepted hydraulic consumption, and coupled accuracy remain unsupported.

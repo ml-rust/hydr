@@ -1,6 +1,8 @@
 # hydr
 
-hydr is a Rust library for developers building hydraulic applications. Start with the supported components below, then run the examples.
+hydr is a Rust library for building hydraulic applications. Choose a component below, then follow its guide.
+
+For your first integration, follow [Library integration](docs/integration.md).
 
 ## What you can use
 

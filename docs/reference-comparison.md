@@ -1,9 +1,8 @@
 # Independent wet-bed comparison
 
-Hydraulic developers can compare hydr against an independently executed Clawpack solver with the reference harness.
+Use this guide to reproduce the six wet-bed comparisons against Clawpack. Read the criteria before comparing results.
 
-The six checked runs use untouched PyClaw and Riemann sources from Clawpack v5.12.0.
-These norms measure differences between engines. Analytical accuracy remains a separate gate.
+The checked runs use untouched PyClaw and Riemann sources from Clawpack v5.12.0. Differences between engines establish no analytical accuracy.
 
 ## Cases and methods
 
@@ -18,15 +17,18 @@ These norms measure differences between engines. Analytical accuracy remains a s
 | Sources | No rainfall, withdrawals, or friction |
 | Boundaries | Impermeable remote walls outside the disturbed region |
 
-hydr executes its CPU `f64` method on one transverse row.
-Clawpack executes classic first-order wave propagation with its Python HLL routine and Roe/Einfeldt speed estimates.
-hydr uses conservative HLL fluxes with physical bracketed wave bounds.
+### Methods being compared
+
+| Engine | Method |
+| --- | --- |
+| hydr | CPU `f64`, one transverse row, conservative HLL fluxes with physical bracketed wave bounds |
+| Clawpack | Classic first-order wave propagation, Python HLL routine, Roe/Einfeldt speed estimates |
+
 Neither run uses second-order corrections or subgrid terrain.
 
-The Python adapter loads original PyClaw, static metadata, and shallow-water HLL modules through namespace packages.
-This route bypasses unrelated compiled package imports and requires no Fortran compiler.
-The adapter changes no upstream numerical source.
-Upstream logging creates a local file and socket. The adapter places its log beside the generated reference fields.
+The Python adapter loads the original PyClaw, static metadata, and shallow-water HLL modules through namespace packages. This avoids unrelated compiled imports and needs no Fortran compiler.
+
+The adapter changes no upstream numerical source. Upstream logging creates a local file and socket, with the log beside generated reference fields.
 
 ## Frozen criteria
 
@@ -41,19 +43,27 @@ Upstream logging creates a local file and socket. The adapter places its log bes
 | Wet state | Strictly positive depth at every accepted reference state and exported endpoint |
 | Input agreement | Matching case metadata, endpoint, cell centres, and row count |
 
-The suite rejects missing fronts and malformed or mismatched reference files.
-Exactly dry cases remain excluded because this Python HLL routine divides by depth.
-The harness never replaces a dry bed with a positive film.
-The [exactly dry comparison](dry-reference-comparison.md) uses Clawpack's compiled augmented solver and documents its different dry policy.
+### Rejected or excluded inputs
+
+- Reference files: Missing fronts and malformed or mismatched files reject.
+- Exactly dry cases: This Python HLL routine divides by depth. The harness never substitutes a positive film.
+
+Use [the exactly dry comparison](dry-reference-comparison.md) for Clawpack's compiled augmented solver and its different dry policy.
 
 ## Reproduce the comparison
 
-The recorded environment uses Python 3.12.7 and NumPy 2.4.0.
-Other environments require repeating the checks. Follow [Contributing](../CONTRIBUTING.md) for hydr's Rust dependencies and local patches.
+| Prerequisite | Requirement |
+| --- | --- |
+| Recorded Python environment | Python 3.12.7 and NumPy 2.4.0. Repeat the checks with any different environment. |
+| Rust dependencies | Follow [Contributing](../CONTRIBUTING.md), including local patches. |
+| Working directory | Repository root |
+| Evidence destination | Fresh `comparison_root`. Existing CSV and JSON destinations reject writes. |
 
-Run these commands from the repository root.
-Sources and generated fields remain under ignored `resource/` directories.
-Choose a fresh `comparison_root` for each run. Existing CSV and JSON destinations reject writes.
+1. Fetch and check the pinned archives.
+2. Extract the sources under ignored `resource/` directories.
+3. Run the six cases and compare their generated fields.
+
+The commands below perform all three steps.
 
 ```sh
 mkdir -p resource/reference-engines/clawpack || exit 1
@@ -83,13 +93,18 @@ cargo run --example reference_comparison -- suite "$comparison_root/reference" "
 cargo test --example reference_comparison || exit 1
 ```
 
-Each reference CSV declares its case and method before the `x,h,qx` header.
-Its JSON sidecar records source hashes, command, Python/NumPy versions, water accounting, and accepted timestep extrema.
-The sidecar also records the adapter hash and output hash.
-Retain these files with the source archives and their licences.
-Hashes identify the executed files. They establish no historical authenticity.
+### Retain the evidence
+
+| Artifact | Contents |
+| --- | --- |
+| Reference CSV | Case and method before the `x,h,qx` header |
+| JSON sidecar | Source hashes, command, Python/NumPy versions, water accounting, and accepted timestep extrema |
+| Adapter/output identity | Adapter hash and output hash in the sidecar |
+
+Retain these files with the source archives and licences. Hashes identify executed files. They establish no historical authenticity.
 
 Both pinned components carry BSD-3-Clause licences: [PyClaw](https://github.com/clawpack/pyclaw/blob/60de625fb28b2e19db828d06db0cc3247109bd24/LICENSE) and [Riemann](https://github.com/clawpack/riemann/blob/c29dcab4af30913fc16e4406fe56fe5f0a322b1f/LICENSE).
+
 The executed [PyClaw solver](https://github.com/clawpack/pyclaw/blob/60de625fb28b2e19db828d06db0cc3247109bd24/src/pyclaw/classic/solver.py) calls the original [Python HLL routine](https://github.com/clawpack/riemann/blob/c29dcab4af30913fc16e4406fe56fe5f0a322b1f/riemann/shallow_1D_py.py).
 
 ## Measured results
@@ -103,17 +118,26 @@ The executed [PyClaw solver](https://github.com/clawpack/pyclaw/blob/60de625fb28
 | `wet-tenth` | 200 | `3.58245e-5` | `7.28412e-5` | 0 |
 | `wet-tenth` | 400 | `2.27618e-5` | `3.96578e-5` | 0 |
 
-Both engines reach `4 s` in 401 accepted steps in every case.
-The smallest interval is `4.13003e-14 s`, completing the endpoint after accumulated floating-point time additions.
-The largest represented interval is `0.010000000000000009 s`.
-The harness records actual intervals instead of inferring equal partitions from equal timestep ceilings.
+### Time and water accounting
 
-Rust's CSV comparison reports maximum absolute reference and hydr water residuals of `4.69e-13 m²` and `5.68e-14 m³`.
-The unit width makes their numerical storage values comparable.
-Python sidecars use NumPy reductions, so their last bits differ from Rust's CSV sums.
+| Measurement | Result |
+| --- | --- |
+| Endpoint | Both engines reach `4 s` in 401 accepted steps in every case |
+| Smallest interval | `4.13003e-14 s`, completing the endpoint after accumulated floating-point time additions |
+| Largest represented interval | `0.010000000000000009 s` |
+| Maximum absolute reference water residual | `4.69e-13 m²`, from Rust's CSV comparison |
+| Maximum absolute hydr water residual | `5.68e-14 m³`, from the same comparison |
 
-Whole-domain means include undisturbed cells and dilute local differences.
-Equal threshold-defined fronts establish no exact shock-position accuracy.
-These runs establish selected wet-bed agreement only.
-The separate dry-bed comparison passes its cross-engine gates while front accuracy remains unestablished.
+The harness records actual intervals. Equal timestep ceilings do not imply equal partitions.
+
+Unit width makes the numerical storage values comparable. NumPy sidecar reductions and Rust CSV sums differ in their last bits.
+
+## Interpret the limits
+
+- Whole-domain means include undisturbed cells and dilute local differences.
+- Equal threshold-defined fronts establish no exact shock-position accuracy.
+- These runs establish selected wet-bed agreement only.
+
+The separate dry-bed comparison passes its cross-engine criteria while front accuracy remains unestablished.
+
 Independent terrain, two-dimensional transverse-flow, and measured-event comparisons remain open.

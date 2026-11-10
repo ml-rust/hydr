@@ -1,24 +1,57 @@
 # Pinned EPA runoff reference
 
-`tools/reference/swmm_runoff.py` records original EPA runoff behavior independently of hydr production numerics. It adds no public runoff API or conservative hydraulic attachment claim.
+Use this guide to reproduce original EPA runoff behavior with [the reference harness](../tools/reference/swmm_runoff.py).
 
-The harness uses SWMM v5.2.4, commit `7952ca837988b1c32f791812eccc9fd64547e093`. Its [original archive](https://codeload.github.com/USEPA/Stormwater-Management-Model/tar.gz/7952ca837988b1c32f791812eccc9fd64547e093) requires SHA256 `0c882c315b64d5236b3569f891e9ad71421bc5b7d92a5710ceb1ae3b7f34c6cf`.
+The harness records observations independently of Hydr production numerics. It establishes no public runoff API or conservative hydraulic attachment claim.
+
+## Pinned source
+
+| Property | Value |
+| --- | --- |
+| Engine | SWMM v5.2.4 |
+| Commit | `7952ca837988b1c32f791812eccc9fd64547e093` |
+| [Original archive](https://codeload.github.com/USEPA/Stormwater-Management-Model/tar.gz/7952ca837988b1c32f791812eccc9fd64547e093) SHA256 | `0c882c315b64d5236b3569f891e9ad71421bc5b7d92a5710ceb1ae3b7f34c6cf` |
 
 ## Source and execution
 
-The C adapter includes unchanged `subcatch.c` and `infil.c`. It links every remaining original solver translation unit, including `odesolve.c`. The build checks every original file against the checksum-pinned archive before and after compilation. Native execution repeats that complete source check.
+| Source handling | Rule |
+| --- | --- |
+| Included files | Unchanged `subcatch.c` and `infil.c` |
+| Linked files | Every remaining original solver translation unit, including `odesolve.c` |
+| Build integrity | Every original file checked against the checksum-pinned archive before and after compilation |
+| Execution integrity | Repeats the complete source check |
 
-Only the included infiltration source maps `UCF` to a native feet/seconds parameter bridge. Original engine unit conversion remains unchanged elsewhere. Requested rain passes through the original rain-gage units. Evidence records both requested and actual native precipitation.
+### Units and factors
 
-`InfilFactor`, `Adjust.hydconFactor`, and `Evap.recoveryFactor` equal one. Seasonal patterns and excluded physical components remain disabled explicitly.
+Only the included infiltration source maps `UCF` to a native feet/seconds parameter bridge. Original engine conversion remains unchanged elsewhere.
 
-The [pinned README](https://github.com/USEPA/Stormwater-Management-Model/blob/7952ca837988b1c32f791812eccc9fd64547e093/README.md) declares SWMM source public domain. The [original ODE header](https://github.com/USEPA/Stormwater-Management-Model/blob/7952ca837988b1c32f791812eccc9fd64547e093/src/solver/odesolve.c) separately records Numerical Recipes in C, Cambridge University Press, 1992, as its implementation provenance. No original numerical source body is copied into tracked tooling. This observation harness establishes no production algorithm reuse decision.
+Requested rain passes through original rain-gage units. Evidence records both requested and actual native precipitation.
+
+| Setting | Value |
+| --- | --- |
+| `InfilFactor`, `Adjust.hydconFactor`, `Evap.recoveryFactor` | One |
+| Seasonal patterns and excluded physical components | Explicitly disabled |
+
+### Reuse limits
+
+The [pinned README](https://github.com/USEPA/Stormwater-Management-Model/blob/7952ca837988b1c32f791812eccc9fd64547e093/README.md) declares SWMM source public domain.
+
+The [original ODE header](https://github.com/USEPA/Stormwater-Management-Model/blob/7952ca837988b1c32f791812eccc9fd64547e093/src/solver/odesolve.c) separately records implementation provenance: Numerical Recipes in C, Cambridge University Press, 1992.
+
+No original numerical source body is copied into tracked tooling. This observation harness establishes no production algorithm reuse decision.
 
 ## Reproduce
 
-Requirements: Python3.10 or newer with its standard library, and a C11 compiler supporting GNU section garbage collection and `libm`. Use the original extracted archive described in the [soil reference guide](soil-reference.md).
+| Requirement | Value |
+| --- | --- |
+| Python | Python3.10 or newer, with its standard library |
+| Compiler | C11, GNU section garbage collection, and `libm` |
+| Source | Original extracted archive from [the soil reference guide](soil-reference.md) |
+| Working directory | Repository root |
+| Destinations | Fresh build and output paths. Existing evidence is never overwritten. |
 
-Run from the repository root with fresh destinations:
+1. Build the original component.
+2. Run the catalog with fresh output paths.
 
 ```sh
 python3 tools/reference/swmm_runoff.py build \
@@ -33,13 +66,36 @@ python3 tools/reference/swmm_runoff.py run \
   --output resource/reference-engines/swmm/runoff-reference.csv
 ```
 
-The canonical compiler flags include `-std=c11 -D_GNU_SOURCE -O2 -ffp-contract=off -ffunction-sections -fdata-sections -Wl,--gc-sections`. The feature-test macro exposes original POSIX interfaces under strict C11. Original CMake leaves GNU C extensions enabled. Compiler include/search overrides are removed. Build and output paths never overwrite existing evidence.
+### Compiler environment
 
-The deterministic catalog covers depression filling and endpoint thresholds, equilibrium, recession/refinement, zero branches, antecedent state, intermittent forcing, competing losses, routing, and original adaptive ODE behavior. Direct endpoint and ODE probes operate on copied native state. They remain separate from advancing timesteps.
+Canonical flags are `-std=c11 -D_GNU_SOURCE -O2 -ffp-contract=off -ffunction-sections -fdata-sections -Wl,--gc-sections`.
+
+- POSIX interfaces: The feature-test macro exposes them under strict C11.
+- Original CMake: Leaves GNU C extensions enabled.
+- Compiler overrides: Include/search overrides are removed.
+
+### Catalog coverage
+
+| Group | Cases |
+| --- | --- |
+| Storage | Depression filling and endpoint thresholds |
+| Flow | Equilibrium, recession/refinement, zero branches, and routing |
+| Forcing and memory | Antecedent state, intermittent forcing, and competing losses |
+| Solver | Original adaptive ODE behavior |
+
+Direct endpoint and ODE probes use copied native state. They remain separate from advancing timesteps.
 
 ## Native protocol
 
-The adapter accepts one command per line. Inputs use feet, square feet, seconds, feet/second, and cubic feet/second.
+The adapter accepts one command per line.
+
+| Input quantity | Native unit |
+| --- | --- |
+| Length | Feet |
+| Area | Square feet |
+| Time | Seconds |
+| Depth rate | Feet/second |
+| Discharge | Cubic feet/second |
 
 ```text
 INIT A fracImperv fracZeroImperv W slope nImp nPerv dStoreImp dStorePerv route routedFraction S Ks IMDmax evapDryOnly
@@ -59,13 +115,23 @@ ODE subarea dt tolerance initialStep
 | `IMD F Fu Sat T` | Complete original native soil state |
 | `runon` | Zero at the restricted component's accepted endpoint |
 
-`INIT` records actual original stored parameters and derives original class-area runoff coefficients. `STATE` restores the complete emitted restricted witness. `STEP` follows original old-state, internal-routing, external-runon, and runoff calls.
+### Command behavior
 
-The harness repeats every case in a fresh process. Stdout and stderr must match byte-for-byte. Multi-step cases restart halfway from the complete restricted witness. Following physical observations must retain identical floating-point bits.
+| Command | Action |
+| --- | --- |
+| `INIT` | Records original stored parameters and derives original class-area runoff coefficients |
+| `STATE` | Restores the complete emitted restricted witness |
+| `STEP` | Follows original old-state, internal-routing, external-runon, and runoff calls |
 
-Each multi-step case also advances one trial, restores the saved witness in that process, and repeats the remaining commands. Every following physical/diagnostic field must match, excluding only the protocol index. Evidence retains trial commands, restored witness, and raw hashes.
+### Repeatability and restoration
 
-This restart check covers the isolated component phase. It excludes full-driver weather cursors, graphs, hydraulic routing, and automatic wet/dry timestep selection.
+1. Repeat every case in a fresh process. Stdout and stderr must match byte-for-byte.
+2. Restart multi-step cases halfway from their complete restricted witness. Following physical observations must retain identical floating-point bits.
+3. Advance one trial, restore its saved witness in-process, then repeat the remaining commands.
+
+The final check requires identical physical/diagnostic fields, excluding only the protocol index. Evidence retains trial commands, restored witnesses, and raw hashes.
+
+This checks the isolated component phase only. Full-driver weather cursors, graphs, hydraulic routing, and automatic wet/dry timestep selection remain excluded.
 
 ## Evidence and interpretation
 
@@ -76,11 +142,26 @@ This restart check covers the isolated component phase. It excludes full-driver 
 | JSON | Runtime identity, exact catalog commands, repeated hashes, restart witnesses, observed discrepancies, and unsupported scope |
 | `.native` directory | Exact hexadecimal commands, original17-digit stdout, stderr, and restricted restart runs |
 
-The original code reports endpoint discharge multiplied by the full interval. This quantity can differ materially from storage-implied transfer. Original evaporation and infiltration can independently claim the same available water. These discrepancies remain visible in evidence.
+### Accounting discrepancies remain visible
 
-Gross subarea transfer includes previous-endpoint internal delivery. Whole-catchment implied outlet export includes external runon only. The output separately records internal routing lag between prior delivered rates and current endpoint rates. A coarse native timestep does not guarantee cancellation.
+| Original behavior | Interpretation risk |
+| --- | --- |
+| Endpoint discharge multiplied by the full interval | Can differ materially from transfer implied by storage changes |
+| Independent evaporation and infiltration claims | Both processes can claim the same available water |
 
-Python independently sums represented subarea storage and endpoint transfers. It compares bookkeeping identities and frozen analytical recession/equilibrium gates. It never forces the physical mass residual to zero.
+The harness retains these discrepancies in its evidence.
+
+| Reported quantity | Meaning |
+| --- | --- |
+| Gross subarea transfer | Includes previous-endpoint internal delivery |
+| Whole-catchment implied outlet export | Includes external runon only |
+| Internal routing lag | Difference between prior delivered rates and current endpoint rates |
+
+A coarse native timestep does not guarantee cancellation.
+
+Python independently sums represented subarea storage and endpoint transfers. It checks bookkeeping identities and frozen analytical recession/equilibrium criteria.
+
+The harness never forces the physical mass residual to zero.
 
 The consumer binds emitted forcing, clocks, parameters, and state to submitted commands. Ten archive-free corruption regressions check these gates:
 
@@ -88,7 +169,9 @@ The consumer binds emitted forcing, clocks, parameters, and state to submitted c
 python3 -m unittest discover -s tools/reference -p test_swmm_runoff.py
 ```
 
-Material endpoint-quadrature, routing-lag, or competing-loss discrepancies are not arithmetic water adjustments. The harness never clips losses, repairs native state, or substitutes another ODE/controller.
+Material endpoint-quadrature, routing-lag, and competing-loss discrepancies are not arithmetic water adjustments.
+
+The harness preserves original losses and native state. It substitutes no ODE or controller.
 
 The checked catalog produces 214 rows across 29 cases. Fourteen multi-step cases pass fresh restart and same-process trial restoration.
 
@@ -99,4 +182,13 @@ The checked catalog produces 214 rows across 29 cases. Fourteen multi-step cases
 
 These measured discrepancies prevent unchanged native bookkeeping from defining conservative hydraulic transfers.
 
-Excluded scope includes snow, groundwater, LID, pollutants, seasonal patterns, inter-subcatchment graphs, hydraulic feedback, and full SWMM-driver rewind. Production transfer semantics and competing-loss admission require a separately checked implementation.
+## Scope limits
+
+| Excluded scope | Limit |
+| --- | --- |
+| Snow, groundwater, LID, and pollutants | No observation of those components |
+| Seasonal patterns | Explicitly disabled |
+| Inter-subcatchment graphs and hydraulic feedback | No connected-system claim |
+| Full SWMM-driver rewind | Only the restricted component phase is restored |
+
+Production transfer semantics and competing-loss admission require a separately checked implementation.

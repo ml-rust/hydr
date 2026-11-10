@@ -1,133 +1,205 @@
-# Conservative standalone subcatchment
+# Calculate runoff from a subcatchment
 
-`hydr::runoff::SubcatchmentBatch` advances explicit three-subarea storage, native soil memory, losses, and paired internal transfers.
-The component uses persistent `Tensor<R>` fields on a caller-configured Numr client. The checked CPU F64 reference uses one thread. Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission).
-It supplies no hydraulic attachment or GIS ownership inference.
+Use `hydr::runoff::SubcatchmentBatch` to calculate storage, soil losses, and runoff from three declared subareas. Start by checking the physical support.
 
-Run the [standalone example](../examples/subcatchment.rs):
+This standalone component does not attach runoff to a hydraulic model or infer GIS ownership. Run the [example](../examples/subcatchment.rs) to inspect its inputs and outputs:
 
 ```sh
 cargo run --example subcatchment
 ```
 
-## Physical support
+## Define the contributing area
 
-`SubcatchmentGeometry` supplies explicit SI geometry and fractions. `SubcatchmentParameters::new` checks support and caches existing reservoir closures.
+`SubcatchmentGeometry` supplies explicit SI geometry and area fractions. `SubcatchmentParameters::new` checks physical support and uses the checked [reservoir relations](reservoir.md).
 
-| Ordered subarea | Actual storage area | Runoff coefficient class area |
+The area formulas use these quantities:
+
+- `A`: Total physical area, `total_area_m2`, in m².
+- `fi`: Impervious fraction of total area, `impervious_fraction`, dimensionless.
+- `f0`: Fraction within impervious area having zero depression storage, `zero_storage_impervious_fraction`, dimensionless.
+
+| Ordered subarea | Actual storage area | Area used for runoff coefficient class |
 | --- | --- | --- |
 | `ImperviousZeroStorage` | `A*fi*f0` | `A*fi` |
 | `ImperviousStorage` | `A*fi*(1-f0)` | `A*fi` |
 | `Pervious` | `A*(1-fi)` | `A*(1-fi)` |
 
-Subarea zero has zero depression storage. Positive pervious support requires soil parameters and complete native antecedent memory.
-Absent subareas require zero depth and receive no positive external or internal volume. They perform no soil call.
-Mathematically positive areas cannot silently underflow into absent support.
+### Check active and absent subareas
 
-Element IDs are unique and nonempty. They establish definition identity without asserting disjoint contributing areas.
-The caller owns rainfall support and external runon allocation. Local hydraulic rainfall cannot cover the same contributing support twice.
+- Subarea zero has zero depression storage.
+- Positive pervious support requires soil parameters and complete native antecedent memory.
+- Absent subareas require zero depth and receive no positive external or internal volume.
+- Absent subareas perform no soil call.
+- Mathematically positive areas cannot underflow into absent support.
 
-## Explicit state and forcing
+Element IDs must be unique and nonempty. They identify definitions without proving disjoint contributing areas.
 
-`SubcatchmentState` retains three depths and optional complete `NativeSoilState`. `initialized` explicitly selects dry storage and original initialized soil memory.
+External runon is water entering from outside this modeled subcatchment. The caller owns rainfall support and runon allocation. Local hydraulic rainfall cannot cover the same contributing support twice.
+
+## Supply initial state and forcing
+
+`SubcatchmentState` retains three depths and optional complete `NativeSoilState`. Use `initialized` only to explicitly select dry storage and original initialized soil memory.
+
 Imported native state preserves signed event infiltration `F` and recovery time `T`. Saturation remains an independent flag.
 
-Each `SubcatchmentInput` supplies constant nonnegative rain and potential evaporation rates in metres/second.
-Its three external runon quantities are authoritative destination volumes in cubic metres over the original interval.
-Positive inputs require representable interval depths and physical volumes. Unresolved positive transfers return errors without clipping.
+| Input | Meaning |
+| --- | --- |
+| Rain | Constant nonnegative rate in metres/second |
+| Potential evaporation | Constant nonnegative rate in metres/second |
+| Three external runon quantities | Authoritative destination volumes in cubic metres over the original interval |
 
-`trial_to(end_time, inputs)` uses `dt=end_time-accepted_time`. The endpoint must be finite and strictly increasing.
-The component supplies no automatic timestep controller.
+Each `SubcatchmentInput` supplies these values. Positive inputs require represented interval depths and physical volumes. Unresolved positive transfers return errors without clipping.
 
-## Source order and routing
+The component stores numerical state in Numr `Tensor<R>` fields. Supply the configured Numr client when constructing it. The checked CPU F64 reference uses one thread. Other runtimes require [F64 arithmetic admission](integration.md#runtime-selection-and-admission).
 
-1. Rain applies once over represented active areas.
-2. Original external and routed volumes merge in fixed interface order.
-3. The existing Modified Green–Ampt trial receives original ponding and the constructed total supply rate.
-4. Infiltration and proved bounded soil correction precede capped evaporation.
-5. Existing reservoir drainage advances the remaining available water.
-6. Donor export partitions into identical routed debit/credit and complementary outlet volume.
+## Choose internal routing
 
-`SubcatchmentRouting` supports direct outlets, impervious-to-pervious routing, and pervious-to-impervious-storage routing.
+`SubcatchmentRouting` supports these choices:
+
+| Choice | Destination |
+| --- | --- |
+| Direct outlet | Export leaves the subcatchment |
+| Impervious-to-pervious | Impervious export enters the pervious subarea |
+| Pervious-to-impervious-storage | Pervious export enters the impervious subarea with storage |
+
 Routing fractions lie within `[0,1]`. Positive fractions require supported receivers.
-Donors advance before receivers in two fixed topological phases. Each pervious soil state advances exactly once per trial.
-Accepted boundaries retain no pending routing queue.
 
-The receiver converts declared volume into a supply rate. Its independently represented storage increment retains a visible bridge residual.
-The original declared volume remains authoritative. The component never adjusts that volume to conceal conversion error.
-Positive split portions and merged additions must remain represented. Absorbed or underflowed transfers reject the complete trial.
+Donors advance before receivers in two fixed topological phases. Each pervious soil state advances once per trial. Accepted boundaries retain no pending routing queue.
 
-Drainage reuses the [reservoir contract](reservoir.md), including its checked branches and reconstructed-state admission.
-No-loss direct paths preserve the primitive's timing expression. Loss or transfer paths derive event timing from post-source available depth.
-Integrated export follows represented storage depletion. Endpoint discharge multiplied by the full interval never replaces that export.
-Instantaneous-overflow endpoint discharge remains undefined and appears as `None`.
+### How transferred water is represented
 
-## Independent accounting
+The receiver converts declared volume into a supply rate. Its separately represented storage increment retains a visible conversion residual.
 
-The physical water ledger includes initial/current storage, rain, external runon, infiltration, evaporation, outlet export, and explicit soil correction.
-Identical internal debit/credit volumes cancel physically. Internal traffic remains visible in its own counter.
-Every subarea, catchment, aggregate interval, and cumulative history retains independent water checks.
+The original declared volume remains authoritative. The component never changes that volume to conceal conversion error. Positive split portions and merged additions must remain represented. Absorbed or underflowed transfers reject the complete trial.
+
+## Advance and accept a trial
+
+1. Call `trial_to(end_time, inputs)` with a finite endpoint after the accepted time.
+2. Read trial outputs or diagnostics when needed.
+
+Then choose one outcome:
+
+| Decision | Action |
+| --- | --- |
+| Accept the candidate | Consume `into_next()` to obtain the complete next batch. |
+| Keep the original state | Discard the trial without calling `into_next()`. All accepted states and counters remain unchanged. |
+
+The duration is `dt=end_time-accepted_time`. This component supplies no automatic timestep controller.
+
+### Source order
+
+1. Apply rain once over represented active areas.
+2. Merge original external and routed volumes in fixed interface order.
+3. Evaluate Modified Green–Ampt using original ponding and the constructed total supply rate.
+4. Apply infiltration and proved bounded soil correction, then capped evaporation.
+5. Advance reservoir drainage using remaining available water.
+6. Partition donor export into identical routed debit/credit and complementary outlet volume.
+
+Drainage retains the [reservoir contract](reservoir.md), including its branches and reconstructed-state checks.
+
+Parameter construction caches these reservoir relations for reuse during trials.
+
+| Path | Timing and output rule |
+| --- | --- |
+| No-loss direct path | Preserve the reservoir's timing expression |
+| Loss or transfer path | Derive event timing from post-source available depth |
+| Integrated export | Use represented storage depletion |
+| Instantaneous overflow | Endpoint discharge is undefined and appears as `None` |
+
+Endpoint discharge multiplied by the full interval never replaces integrated export.
+
+### What happens on rejection
+
+Any donor, receiver, soil, root, or accounting error rejects the complete candidate.
+
+Discarding a successful trial preserves storage, both phase-role soil batches, accepted time, and every ledger counter. `into_next()` accepts by ownership without copying numerical arrays to the host.
+
+## Read results
+
+Numerical continuation uses persistent tensors and never advances copied output arrays. Array output methods return an error if copying fails.
+
+| API | What you can inspect |
+| --- | --- |
+| Batch `states()` | Current depths and complete native soil memory |
+| Batch `last_step()` | Last accepted source, drainage, and paired-interface diagnostics |
+| Trial `outputs()` | Supported storage, losses, integrated exports, endpoint discharge, and residuals |
+| Trial `diagnostics()` | Original interval, phase work, budgets, source receipts, and transfer identities |
+| Batch `ledger()` | Complete cumulative physical and uncertainty counters |
+
+## Check the water balance
+
+The physical ledger counts each process once:
+
+| Stored water | Inputs | Outputs | Explicit numerical term |
+| --- | --- | --- | --- |
+| Initial and current subarea storage | Rain and external runon | Infiltration, evaporation, and outlet export | Soil correction |
+
+Identical internal debit/credit volumes cancel physically. Their traffic remains visible in a separate counter.
+
+Water checks apply independently to every subarea, catchment, aggregate interval, and cumulative history.
+
+### Keep uncertainty budgets separate
+
+An outward bound rounds uncertainty upward to avoid understating it.
 
 | Control or diagnostic | Meaning |
 | --- | --- |
 | `config.reservoir` | Existing root and independent physical volume controls |
 | `max_cumulative_water_adjustment_m3` | Separate absolute soil correction budget, default `1e-9 m³` |
-| Transfer uncertainty charge | Outward accumulated partition, merge, and receiver-bridge envelopes |
+| Transfer uncertainty charge | Outward accumulated partition, merge, and receiver-conversion envelopes |
 | Physical scale lower bound | Conservative cumulative initial storage, rain, external runon, and internal traffic scale |
 | Rain-area difference | Represented applied rain minus total-area rain, with a separate arithmetic bound |
 
-Transfer uncertainty uses a conservatively rounded `volume_absolute+volume_relative*physical_scale` allowance.
-It cannot replace a physical residual or consume the soil correction budget.
-Rain-area bounds remain separate diagnostics. They authorize no additional rain or water correction.
-Owned imports check the scale lower bound against an independent count-dependent counter ceiling.
-Cumulative nominal soil correction must fit its conservative absolute charge, including reduction and cumulative-addition rounding allowances.
+Transfer uncertainty uses a conservatively rounded `volume_absolute+volume_relative*physical_scale` allowance. It cannot replace a physical residual or consume the soil correction budget.
 
-The arithmetic contract requires round-to-nearest ties-to-even and gradual underflow. Construction probes the configured client for these properties. The caller must preserve this arithmetic envelope throughout continuation and import. The component does not recheck FTZ/DAZ or rounding mode before every operation.
+Rain-area bounds remain separate diagnostics. They authorize no additional rain or water correction.
+
+Owned imports check the scale lower bound against an independent count-dependent counter ceiling. Cumulative nominal soil correction must fit its conservative absolute charge, including reduction and cumulative-addition rounding allowances.
+
+### Preserve the required arithmetic
+
+Construction probes the configured client for round-to-nearest ties-to-even and gradual underflow. Preserve those conditions throughout continuation and import.
+
+The component does not recheck FTZ/DAZ or rounding mode before every operation. FTZ/DAZ modes replace subnormal values with zero and violate this arithmetic contract. Subnormal values fall below the normal floating-point range.
+
 Positive storage and transfers require finite represented volumes. Bounds and counters cannot silently overflow.
 
-## Atomic continuation and output
+## Save and restore
 
-Trials borrow accepted state immutably. Any donor, receiver, soil, root, or accounting error rejects the complete candidate.
-Discarding a successful trial preserves accepted storage, both phase-role soil batches, time, and every ledger counter.
-`into_next` accepts the complete candidate by ownership without numerical projection.
-
-| API | Explicit output boundary |
+| Task | API and behavior |
 | --- | --- |
-| Batch `states()` | Current depths and complete native soil memory |
-| Batch `last_step()` | Complete last accepted source, drainage, and paired-interface diagnostics |
-| Trial `outputs()` | Supported subarea storage, losses, integrated exports, endpoint discharge, and residuals |
-| Trial `diagnostics()` | Original interval, phase work, budgets, source receipts, and transfer identities |
-| Batch `ledger()` | Complete cumulative physical and uncertainty counters |
+| Retain an in-process checkpoint | `snapshot()` retains complete tensor continuation without copying arrays to the host |
+| Save application-owned data | `snapshot_data()` copies values on request and returns an error if copying fails |
+| Restore either form | Check exact definition/config bits before atomic replacement |
 
-Numerical continuation consumes persistent tensors. It never advances projected arrays. Array output methods return fallible projections.
+Owned import checks accepted depths, final diagnostics, cumulative counters, and independent budgets. It checks complete source algebra and numerical receipts without replaying soil history or root-finding iterations.
 
-## Restart and scope
+Exact restart requires the same build/runtime, ordered batch layout, and accepted interval partition. Receipt consistency establishes numerical admission. It does not authenticate history.
 
-`snapshot()` clones complete persistent tensor continuation without projection. `snapshot_data()` fallibly projects caller-owned values on request.
-Both restore paths check exact definition/config bits before atomic replacement.
-Owned import checks complete source algebra and numerical receipts without replaying soil history or roots.
-It also checks accepted depths, final diagnostics, cumulative counters, and independent budgets.
-
-Exact restart requires the same build/runtime, ordered batch layout, and accepted interval partition.
-Receipt consistency establishes numeric admission, not historical authenticity.
+## Understand differences from native SWMM
 
 The method preserves pinned soil-call semantics and native-derived runoff coefficients.
-Its first-order source priority, integrated export, and same-interval routing depart from native SWMM bookkeeping.
-Coarse-step native identity and field accuracy remain unestablished. Use refinement evidence for the intended forcing and geometry.
 
-The [native runoff oracle](runoff-reference.md) exposes native endpoint-volume, competing-loss, and previous-rate routing discrepancies independently.
-This component supports no inter-catchment graph, hydraulic attachment, groundwater, LID, snow, quality, or tailwater feedback.
+Its first-order source priority, integrated export, and same-interval routing differ from native SWMM bookkeeping. Coarse-step native identity and field accuracy remain unestablished. Use refinement evidence for your forcing and geometry.
 
-## Checked temporal accuracy
+The [native runoff oracle](runoff-reference.md) independently exposes discrepancies in endpoint volume, competing losses, and previous-rate routing.
 
-Two smooth finite-Manning cases use constant-conductivity, zero-deficit soil and positive mobile depths throughout a 64-second horizon.
-Both route half the donor export. The cases use area fractions `(1/4,1/4,1/2)` and native-derived coefficients.
-An independent SciPy DOP853 calculation integrates depths, gross exports, outlets, and routed volumes separately.
-Primary and tighter references agree within `2.22e-7` of the production tolerance. The reference acceptance limit is `0.01`.
+## Check temporal accuracy
 
-Depth tolerance is `1e-9 m + 0.005*initial_mobile_depth`.
-Volume tolerance is `1e-9 m³ + 0.005*max(abs(reference), relevant_initial_mobile_volume)`.
-Each row reports the maximum normalized dynamic error across every endpoint and checked quantity. A value above one exceeds that physical tolerance.
+### Smooth routing cases
+
+Two finite-Manning cases use constant-conductivity, zero-deficit soil. Mobile depths stay positive throughout a 64-second horizon.
+
+Both route half the donor export, use area fractions `(1/4,1/4,1/2)`, and use native-derived coefficients.
+
+An independent SciPy DOP853 calculation integrates depths, gross exports, outlets, and routed volumes separately. Primary and tighter references agree within `2.22e-7` of the production tolerance. The reference acceptance limit is `0.01`.
+
+| Quantity | Physical tolerance |
+| --- | --- |
+| Depth | `1e-9 m + 0.005*initial_mobile_depth` |
+| Volume | `1e-9 m³ + 0.005*max(abs(reference), relevant_initial_mobile_volume)` |
+
+Each result reports the largest ratio of error to its allowed physical tolerance. It covers every endpoint and checked quantity. Values above one exceed the physical target.
 
 | Timestep, seconds | Impervious to pervious | Pervious to impervious storage |
 | --- | --- | --- |
@@ -138,14 +210,21 @@ Each row reports the maximum normalized dynamic error across every endpoint and 
 | 0.0625 | 0.0149466582 | 0.0815597663 |
 | 0.03125 | 0.0074777801 | 0.0408344056 |
 
-Both errors decrease strictly. Every finest-grid error meets its frozen tolerance.
+Both errors decrease strictly, and every finest-grid error meets its frozen tolerance.
+
 The one-second pervious-routing case exceeds the physical target. Conservation alone does not establish temporal accuracy.
-Separate branch-crossing soil histories retain all four timestep observations and native differences without a general accuracy claim.
+
+Separate branch-crossing soil histories retain all four timestep observations and native differences. They establish no general accuracy claim.
+
+### Native soil comparisons
 
 Matching-input EPA comparisons check 8,244 constructed soil calls across 24 complete sequences.
-All 16,488 full-sequence and isolated-call comparisons meet the unchanged soil component tolerances.
-Checks include returned rate, complete native memory, exact zero/nonzero branches, and saturation flags.
+
+All 16,488 full-sequence and isolated-call comparisons meet the unchanged [soil tolerances](soil.md#comparison-criteria). Checks cover returned rate, complete native memory, exact zero/nonzero branches, and saturation flags.
+
 Restricted native soil restarts reproduce 24 midpoint suffixes exactly. This establishes no complete SWMM-driver rewind capability.
+
+### Reproduce the comparison
 
 The comparison uses CPU F64, SciPy `1.16.3`, and NumPy `2.4.0`. Use fresh output paths:
 
@@ -156,3 +235,11 @@ python3 tools/reference/subcatchment_temporal.py run --frozen-spec /tmp/hydr-sub
 ```
 
 The tools freeze physical inputs, norms, reference controls, and source hashes before comparison. Generated fields remain outside public source history.
+
+## Current limits
+
+This standalone component excludes:
+
+- Inter-catchment graphs and hydraulic attachment.
+- Groundwater, LID, snow, and water quality.
+- Tailwater feedback.
