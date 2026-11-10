@@ -28,11 +28,11 @@ Passive structures, stopped pumps, running pumps, and fixed gate openings use th
 
 ## Supply local rain and losses
 
-Use `new_with_sources` to enable local sources. Supply one `LevelPoolSourcePolicy` per pool, including evidence supporting rainfall area and supplied bottom demand.
+Set `CoupledLevelPoolSetup.source_policies` to enable local sources before calling `new`. Supply one `LevelPoolSourcePolicy` per pool, including evidence supporting rainfall area and supplied bottom demand.
 
-`CoupledLevelPoolSourceInterval` supplies constant rates for every pool over one declared interval. Rain and potential evaporation use m/s. Potential bottom loss uses m³/s. Supply explicit zero rates where a process does not apply.
+`CoupledLevelPoolForcingInterval.sources` supplies constant rates for every pool when source policies are enabled. Use `None` when local sources are disabled. Rain and potential evaporation use m/s. Potential bottom loss uses m³/s. Supply explicit zero rates where a process does not apply.
 
-Call `trial_with_sources_to` with an interval covering the accepted time and requested endpoint. Source-enabled pools reject `trial_to` because it supplies no forcing.
+Call `trial_with_forcing_to` with an interval covering the accepted time and requested endpoint. `trial_to` requires both local sources and external inflows to be absent.
 
 The calculation freezes rainfall and evaporation area at the accepted start. An exact storage knot selects its right segment. Dry pools use the declared rain-receiving basal footprint.
 
@@ -40,9 +40,23 @@ Rain enters first. Bottom loss then consumes available water, followed by evapor
 
 Shortened trials recalculate every source process from the original accepted state. They preserve the original accepted heads for midpoint estimates.
 
+## Declare prescribed external inflows
+
+Add each `CoupledPoolInflowBinding` to `CoupledLevelPoolSetup.external_inflows`. Identify its receiving pool, boundary, selected input, and physical support. Supply evidence supporting that boundary and ownership of the incoming water.
+
+Boundary IDs and selected input IDs must each be unique. Distinct, independently owned inputs can share a declared physical support.
+
+Ownership asserts an external origin without duplicated inputs or overlap with represented pool storage and local rainfall. Identity checks establish no geometry. Your application supplies already-selected flows and the physical evidence. Hydr neither selects measured replacements nor proves GIS overlap or contributing-area ownership.
+
+Supply one `CoupledPoolInflowRate` per declared boundary in `CoupledLevelPoolForcingInterval.inflows`, including explicit zeros. Rates use finite nonnegative m³/s. Record order can differ from binding order. Missing, duplicate, unknown, and mismatched inputs reject.
+
+External water enters after local losses and structure withdrawals. It cannot fund those earlier operations during the same interval. Shortened trials recalculate boundary volumes from the original rates and actual duration.
+
+`external_inflows()` returns cumulative external volumes and rounding bounds by boundary. Native incoming counters also contain structure transfers. Do not subtract native incoming and outgoing counters to infer external water.
+
 ## Advance an interval
 
-`trial_to` calculates a candidate from the accepted state. It checks storage, structure support, shared transfers, and convergence before returning that candidate.
+`trial_to` and `trial_with_forcing_to` calculate candidates from the accepted state. They check storage, forcing, structure support, shared transfers, and convergence before returning a candidate.
 
 | Result | Caller action |
 | --- | --- |
@@ -74,11 +88,11 @@ Use `snapshot()` and `restore()` within a running process. Use `snapshot_data()`
 
 Restore checks the physical definition and numerical controls. It retains the destination's configured client. Preserve every checkpoint field and floating-point bit when encoding data.
 
-Source checkpoints also retain physical source policies, cumulative counters, and the original forcing interval. Import recalculates the final interval's sources before checking its transfers and accepted state.
+Forcing checkpoints retain source policies, external bindings, cumulative process and boundary counters, and the original forcing interval. One bounded start frame retains both pool state and external ledgers. Import recalculates the final interval's forcing before checking its transfers and accepted state.
 
 ## Current limits
 
-- Sources: Explicit local rain, supplied bottom loss, and evaporation are supported. External inflows and runoff attachment remain excluded.
+- Forcing: Explicit local rain, supplied bottom loss, evaporation, and prescribed external inflows are supported. External withdrawals, generated-runoff attachment, and replacement selection remain excluded.
 - Operations: Static manual operations are supported. Control schedules, trajectories, and actuator frames remain excluded.
 - Regimes: Existing structure restrictions still apply. Running pumps require wet support. Submerged orifices require water above the opening's top elevation at both endpoints.
 - Crossings: Unresolved bed or hydraulic-cutoff transitions return errors after bounded interval shortening.

@@ -4,8 +4,9 @@ pub mod level_pools;
 
 pub use level_pools::{
     CoupledLevelPoolBatch, CoupledLevelPoolConfig, CoupledLevelPoolError,
-    CoupledLevelPoolInitialState, CoupledLevelPoolIterationData, CoupledLevelPoolSetup,
-    CoupledLevelPoolSnapshot, CoupledLevelPoolSnapshotData, CoupledLevelPoolSourceInterval,
-    CoupledLevelPoolStepDiagnostics, CoupledLevelPoolTransfer, CoupledLevelPoolTrial,
-    CoupledPoolAttachment, CoupledPoolConnection, CoupledPoolSupport,
+    CoupledLevelPoolForcingInterval, CoupledLevelPoolInitialState, CoupledLevelPoolIterationData,
+    CoupledLevelPoolSetup, CoupledLevelPoolSnapshot, CoupledLevelPoolSnapshotData,
+    CoupledLevelPoolStartData, CoupledLevelPoolStepDiagnostics, CoupledLevelPoolTransfer,
+    CoupledLevelPoolTrial, CoupledPoolAttachment, CoupledPoolConnection, CoupledPoolInflowBinding,
+    CoupledPoolInflowLedger, CoupledPoolInflowRate, CoupledPoolInflowReceipt, CoupledPoolSupport,
 };

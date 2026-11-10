@@ -8,7 +8,9 @@ use crate::structures::{
 pub(super) fn same_setup(a: &CoupledLevelPoolSetup, b: &CoupledLevelPoolSetup) -> bool {
     let ac = &a.config;
     let bc = &b.config;
-    a.pools.len() == b.pools.len()
+    a.source_policies == b.source_policies
+        && a.external_inflows == b.external_inflows
+        && a.pools.len() == b.pools.len()
         && a.pools.iter().zip(&b.pools).all(|(a, b)| a.same_bits(b))
         && same_elements(&a.structures, &b.structures)
         && ac.storage.same_bits(&bc.storage)
@@ -103,12 +105,17 @@ pub(super) fn same_step(
     a: &CoupledLevelPoolStepDiagnostics,
     b: &CoupledLevelPoolStepDiagnostics,
 ) -> bool {
-    let sources = match (&a.source_interval, &b.source_interval) {
+    let sources = match (&a.forcing_interval, &b.forcing_interval) {
         (None, None) => true,
         (Some(a), Some(b)) => a.same_bits(b),
         _ => false,
     };
     sources
+        && a.external_inflows.len() == b.external_inflows.len()
+        && a.external_inflows
+            .iter()
+            .zip(&b.external_inflows)
+            .all(|(a, b)| a.same_bits(b))
         && bits(
             &[
                 a.start_s,
@@ -164,4 +171,11 @@ fn same_optional(a: Option<f64>, b: Option<f64>) -> bool {
         (Some(a), Some(b)) => a.to_bits() == b.to_bits(),
         _ => false,
     }
+}
+
+pub(super) fn same_external(
+    a: &[super::CoupledPoolInflowLedger],
+    b: &[super::CoupledPoolInflowLedger],
+) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.same_bits(b))
 }

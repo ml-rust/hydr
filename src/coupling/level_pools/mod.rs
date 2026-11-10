@@ -1,18 +1,20 @@
-//! Connected level pools with checked structure laws and optional explicit local sources.
+//! Connected level pools with checked laws, explicit local sources, and prescribed external inflows.
 
 mod batch;
 mod context;
 mod definition;
 mod error;
 mod exchange;
+mod forcing;
 mod heads;
 mod identity;
+mod inflows;
 mod iteration;
 mod mass;
 mod output;
 mod projection;
+mod restoration;
 mod snapshot;
-mod sources;
 mod topology;
 mod trial;
 
@@ -25,7 +27,14 @@ pub use error::CoupledLevelPoolError;
 pub use output::{
     CoupledLevelPoolIterationData, CoupledLevelPoolStepDiagnostics, CoupledLevelPoolTransfer,
 };
-pub use snapshot::{CoupledLevelPoolSnapshot, CoupledLevelPoolSnapshotData};
+pub use snapshot::{
+    CoupledLevelPoolSnapshot, CoupledLevelPoolSnapshotData, CoupledLevelPoolStartData,
+};
 pub use trial::CoupledLevelPoolTrial;
 
-pub use sources::CoupledLevelPoolSourceInterval;
+pub use forcing::CoupledLevelPoolForcingInterval;
+
+pub use inflows::{
+    CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolInflowRate,
+    CoupledPoolInflowReceipt,
+};

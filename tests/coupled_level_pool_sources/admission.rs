@@ -4,7 +4,7 @@ use super::source_fixture::{Batch, enabled, interval, policies, rates};
 #[test]
 fn source_policies_require_complete_explicit_physical_evidence() -> Result {
     for mode in 0..4 {
-        let (setup, initial) = orifice_case([4.0, 2.0])?;
+        let (mut setup, initial) = orifice_case([4.0, 2.0])?;
         let mut policy = policies(2);
         match mode {
             0 => policy.clear(),
@@ -15,8 +15,9 @@ fn source_policies_require_complete_explicit_physical_evidence() -> Result {
             3 => policy[1].bottom_loss_provenance.clear(),
             _ => return Err("Unknown policy mutation".into()),
         }
+        setup.source_policies = Some(policy);
         assert!(
-            Batch::new_with_sources(crate::runtime::client(), setup, initial, policy).is_err(),
+            Batch::new(crate::runtime::client(), setup, initial).is_err(),
             "Accepted source policy mutation={mode}"
         );
     }
@@ -31,7 +32,7 @@ fn source_calls_require_enabled_policies_and_explicit_forcing_even_for_zero_rate
     assert!(closed.source_policies().is_none());
     assert!(
         closed
-            .trial_with_sources_to(0.25, &interval(vec![rates(0.0, 0.0, 0.0); 2]))
+            .trial_with_forcing_to(0.25, &interval(vec![rates(0.0, 0.0, 0.0); 2]))
             .is_err()
     );
     assert_eq!(closed.snapshot_data()?, original);
@@ -51,24 +52,25 @@ fn invalid_interval_coverage_and_incomplete_rates_reject_atomically() -> Result 
     let before = batch.snapshot_data()?;
     for mode in 0..11 {
         let mut forcing = interval(vec![rates(0.0, 0.0, 0.0); 2]);
+        let sources = forcing.sources.as_mut().ok_or("Missing source fixture")?;
         match mode {
             0 => forcing.start_s = 0.125,
             1 => forcing.end_s = 0.125,
             2 => forcing.start_s = f64::NAN,
             3 => forcing.end_s = f64::INFINITY,
-            4 => forcing.sources.clear(),
+            4 => sources.clear(),
             5 => {
-                forcing.sources.pop();
+                sources.pop();
             }
-            6 => forcing.sources.push(rates(0.0, 0.0, 0.0)),
-            7 => forcing.sources[0].rain_rate_m_per_s = -1.0,
-            8 => forcing.sources[1].bottom_loss_rate_m3_per_s = f64::NAN,
-            9 => forcing.sources[0].potential_evaporation_rate_m_per_s = f64::INFINITY,
+            6 => sources.push(rates(0.0, 0.0, 0.0)),
+            7 => sources[0].rain_rate_m_per_s = -1.0,
+            8 => sources[1].bottom_loss_rate_m3_per_s = f64::NAN,
+            9 => sources[0].potential_evaporation_rate_m_per_s = f64::INFINITY,
             10 => forcing.start_s = forcing.end_s,
             _ => return Err("Unknown forcing mutation".into()),
         }
         assert!(
-            batch.trial_with_sources_to(0.25, &forcing).is_err(),
+            batch.trial_with_forcing_to(0.25, &forcing).is_err(),
             "Accepted forcing mutation={mode}"
         );
         assert_eq!(batch.snapshot_data()?, before);
@@ -81,12 +83,12 @@ fn gaps_after_an_accepted_interval_do_not_advance_state() -> Result {
     let (setup, initial) = orifice_case([4.0, 2.0])?;
     let forcing = interval(vec![rates(0.25, 0.0, 0.0); 2]);
     let batch = enabled(setup, initial)?
-        .trial_with_sources_to(0.25, &forcing)?
+        .trial_with_forcing_to(0.25, &forcing)?
         .into_next();
     let before = batch.snapshot_data()?;
     let mut gap = forcing;
     gap.start_s = 0.5;
-    assert!(batch.trial_with_sources_to(0.75, &gap).is_err());
+    assert!(batch.trial_with_forcing_to(0.75, &gap).is_err());
     assert_eq!(batch.snapshot_data()?, before);
     Ok(())
 }
@@ -101,7 +103,7 @@ fn unrepresentable_source_products_reject_without_partial_acceptance() -> Result
     let before = batch.snapshot_data()?;
     assert!(
         batch
-            .trial_with_sources_to(2.0, &interval(vec![rates(f64::MAX, 0.0, 0.0); 2]))
+            .trial_with_forcing_to(2.0, &interval(vec![rates(f64::MAX, 0.0, 0.0); 2]))
             .is_err()
     );
     assert_eq!(batch.snapshot_data()?, before);

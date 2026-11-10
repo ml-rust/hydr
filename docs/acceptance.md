@@ -11,6 +11,7 @@ cargo test --test radial_shoreline --test transverse_transport --test terrain_en
 cargo test --features numr/rayon --test engine_contract --test checkpoint_package --test definition_identity
 cargo test --test coupled_level_pools
 cargo test --test coupled_level_pool_sources
+cargo test --test coupled_pool_inflows
 ```
 
 Use the numr source revision recorded in [Contributing](../CONTRIBUTING.md).
@@ -128,7 +129,22 @@ Retry checks compare recalculated sources and transfers against an independent f
 
 Invalid forcing and forged source packages reject atomically. Trusted and owned restart repeat complete continuation.
 
-These source fixtures establish no runoff attachment, external-inflow coupling, or field accuracy.
+These source fixtures establish no runoff attachment or field accuracy.
+
+## Prescribed pool inflows
+
+`tests/coupled_pool_inflows.rs` checks already-selected nonnegative external inputs. It retains the existing head, transfer, mass, and independent-volume tolerances.
+
+| Case | Enforced criterion |
+| --- | --- |
+| Separate boundaries | Rates `0.25/0.75 m³/s` over `2 s` produce volumes `1.5/2.5 m³` from initial `1/1 m³` |
+| Shared receiving pool | Rates `0.25/0.5 m³/s` add `1.5 m³` over `2 s`, independent of boundary order |
+| Donor and loss order | External water funds neither same-interval structure withdrawals nor earlier local losses |
+| Combined forcing | Local sources, a constant pump, and external rates `0.5/0.25 m³/s` produce final volumes `3.75/3.25 m³` |
+| Shortened intervals | Actual-duration products and orifice transfer match an independent formula |
+| Arithmetic and continuation | Positive absorption and unrepresentable products reject atomically. Complete restart repeats continuation, and altered current/start ledgers or original operands reject. |
+
+Explicit-zero boundaries retain common closed and source-only numerical bits. Actual CPU/CUDA tests share one inflow and complete-restart body. These synthetic checks establish no measured-replacement selection, generated-runoff attachment, geometric ownership proof, or field accuracy.
 
 ## Gate status
 

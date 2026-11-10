@@ -2,6 +2,10 @@
 
 #[path = "coupled_level_pools/fixture.rs"]
 mod coupled_pool_fixture;
+#[path = "coupled_pool_inflows/inflow_fixture.rs"]
+mod inflow_fixture;
+#[path = "runtime_backends/inflows.rs"]
+mod inflows;
 #[path = "support/runtime.rs"]
 mod runtime;
 
@@ -197,10 +201,10 @@ fn selected_cuda_client_executes_coupled_pool_exchange_and_trusted_restart() -> 
 
 macro_rules! coupled_pool_source_execution {
     ($runtime:ty, $client:expr) => {{
-        use hydr::coupling::{CoupledLevelPoolBatch, CoupledLevelPoolSourceInterval};
+        use hydr::coupling::{CoupledLevelPoolBatch, CoupledLevelPoolForcingInterval};
         use hydr::storage::{LevelPoolSourcePolicy, LevelPoolSources};
 
-        let (setup, initial) = coupled_pool_fixture::orifice_case([4.0, 2.0])?;
+        let (mut setup, initial) = coupled_pool_fixture::orifice_case([4.0, 2.0])?;
         let policies = vec![
             LevelPoolSourcePolicy {
                 dry_basal_footprint_assertion:
@@ -210,22 +214,23 @@ macro_rules! coupled_pool_source_execution {
             };
             2
         ];
-        let forcing = CoupledLevelPoolSourceInterval {
+        let forcing = CoupledLevelPoolForcingInterval {
             start_s: 0.0,
             end_s: 1.0,
-            sources: vec![
+            sources: Some(vec![
                 LevelPoolSources {
                     rain_rate_m_per_s: 0.25,
                     potential_evaporation_rate_m_per_s: 0.0,
                     bottom_loss_rate_m3_per_s: 0.0,
                 };
                 2
-            ],
+            ]),
+            inflows: vec![],
         };
-        let batch =
-            CoupledLevelPoolBatch::<$runtime>::new_with_sources($client, setup, initial, policies)?;
+        setup.source_policies = Some(policies);
+        let batch = CoupledLevelPoolBatch::<$runtime>::new($client, setup, initial)?;
         let original = batch.snapshot_data()?;
-        let mut next = batch.trial_with_sources_to(0.25, &forcing)?.into_next();
+        let mut next = batch.trial_with_forcing_to(0.25, &forcing)?.into_next();
         assert_eq!(batch.snapshot_data()?, original);
         assert_eq!(next.time(), 0.25);
         let dt: f64 = 0.25;
@@ -235,7 +240,7 @@ macro_rules! coupled_pool_source_execution {
         coupled_pool_fixture::near(states[1].volume_m3, 2.0 + 0.25 * dt + transfer);
         let checkpoint = next.snapshot();
         let checkpoint_data = checkpoint.data()?;
-        next = next.trial_with_sources_to(0.5, &forcing)?.into_next();
+        next = next.trial_with_forcing_to(0.5, &forcing)?.into_next();
         let continued = next.snapshot_data()?;
         let totals = next.pools().totals()?;
         coupled_pool_fixture::near(totals.volume_m3, 6.25);
@@ -248,7 +253,7 @@ macro_rules! coupled_pool_source_execution {
         );
         next.restore(&checkpoint)?;
         assert_eq!(next.snapshot_data()?, checkpoint_data);
-        next = next.trial_with_sources_to(0.5, &forcing)?.into_next();
+        next = next.trial_with_forcing_to(0.5, &forcing)?.into_next();
         assert_eq!(next.snapshot_data()?, continued);
     }};
 }

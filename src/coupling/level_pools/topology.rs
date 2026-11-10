@@ -43,15 +43,42 @@ where
         endpoints: &[(usize, usize)],
         ids: &[String],
     ) -> Result<Self, CoupledLevelPoolError> {
-        let mut groups = vec![Vec::new(); pool_count];
-        for (edge, &(a, b)) in endpoints.iter().enumerate() {
-            groups[a].push((ids[edge].as_str(), edge));
-            groups[b].push((ids[edge].as_str(), endpoints.len() + edge));
+        if ids.len() != endpoints.len() {
+            return Err(CoupledLevelPoolError::input(
+                "structure identities and endpoints differ in count",
+            ));
         }
-        let zero = endpoints
+        let input_count = endpoints
             .len()
             .checked_mul(2)
             .ok_or_else(|| CoupledLevelPoolError::input("endpoint count overflows"))?;
+        let mut targets = Vec::with_capacity(input_count);
+        for (edge, (&(a, b), id)) in endpoints.iter().zip(ids).enumerate() {
+            targets.push((a, edge, id.as_str()));
+            targets.push((b, endpoints.len() + edge, id.as_str()));
+        }
+        Self::new_grouped(client, pool_count, input_count, &targets)
+    }
+
+    pub fn new_grouped(
+        client: &R::Client,
+        pool_count: usize,
+        input_count: usize,
+        targets: &[(usize, usize, &str)],
+    ) -> Result<Self, CoupledLevelPoolError> {
+        let mut groups = vec![Vec::new(); pool_count];
+        for &(pool, input, identity) in targets {
+            if input >= input_count {
+                return Err(CoupledLevelPoolError::input(
+                    "transfer input exceeds declared input count",
+                ));
+            }
+            let group = groups.get_mut(pool).ok_or_else(|| {
+                CoupledLevelPoolError::input("transfer target exceeds declared pool count")
+            })?;
+            group.push((identity, input));
+        }
+        let zero = input_count;
         let mut order = Vec::new();
         let mut widths = Vec::new();
         let mut margins = Vec::new();
@@ -79,7 +106,11 @@ where
         let order = tensor_index(&order)?;
         let mut levels = Vec::new();
         while widths.iter().any(|&n| n > 1) {
-            let total: usize = widths.iter().sum();
+            let total = widths.iter().try_fold(0usize, |total, width| {
+                total
+                    .checked_add(*width)
+                    .ok_or_else(|| CoupledLevelPoolError::input("transfer tree width overflows"))
+            })?;
             let mut left = Vec::new();
             let mut right = Vec::new();
             let mut next = Vec::new();

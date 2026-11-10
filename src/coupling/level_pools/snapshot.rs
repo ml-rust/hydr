@@ -1,7 +1,7 @@
-use super::identity::{same_pools, same_setup, same_step};
+use super::identity::same_setup;
 use super::{
     CoupledLevelPoolBatch, CoupledLevelPoolError, CoupledLevelPoolSetup,
-    CoupledLevelPoolStepDiagnostics, trial::StoredStep,
+    CoupledLevelPoolStepDiagnostics, trial::StoredStart,
 };
 use crate::storage::LevelPoolSnapshotData;
 use numr::dtype::DType;
@@ -14,6 +14,15 @@ use numr::runtime::{Runtime, RuntimeClient};
 use solvr::interpolate::Interp1dAlgorithms;
 use std::sync::Arc;
 
+/// One native pool and external ledger frame, without recursive coupled history.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CoupledLevelPoolStartData {
+    /// Complete native storage and source counters at the retained start.
+    pub pools: LevelPoolSnapshotData,
+    /// Complete cumulative external volume and bounds at the same start.
+    pub external_inflows: Vec<super::CoupledPoolInflowLedger>,
+}
+
 /// Complete caller-owned continuation. Preserve every F64 bit when encoding.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoupledLevelPoolSnapshotData {
@@ -24,7 +33,9 @@ pub struct CoupledLevelPoolSnapshotData {
     /// Complete final coupled interval, absent before any accepted step.
     pub last_step: Option<CoupledLevelPoolStepDiagnostics>,
     /// One bounded native start frame, without coupled history.
-    pub start_pools: Option<LevelPoolSnapshotData>,
+    pub start: Option<CoupledLevelPoolStartData>,
+    /// Complete cumulative external ledger in immutable boundary order.
+    pub external_inflows: Vec<super::CoupledPoolInflowLedger>,
 }
 /// Trusted device-resident continuation without a host projection.
 #[derive(Clone, Debug)]
@@ -86,10 +97,19 @@ where
             setup: self.setup().clone(),
             pools: self.pools.snapshot_data()?,
             last_step: self.last_step()?,
-            start_pools: self
+            external_inflows: self.external_inflows()?,
+            start: self
                 .last
                 .as_ref()
-                .map(|s| s.start_pools.data())
+                .map(|step| -> Result<_, CoupledLevelPoolError> {
+                    Ok(CoupledLevelPoolStartData {
+                        pools: step.start_frame.pools.data()?,
+                        external_inflows: self
+                            .context
+                            .inflows
+                            .project_state(&self.context.client, &step.start_frame.external)?,
+                    })
+                })
                 .transpose()?,
         })
     }
@@ -111,169 +131,36 @@ where
         )?;
         let mut pools = self.pools.clone();
         pools.restore(&snapshot.batch.pools.snapshot())?;
+        let external = self.context.inflows.restore_state(
+            &self.context.client,
+            &snapshot.batch.external,
+            pools.accepted_steps(),
+        )?;
         let last = if let Some(step) = &snapshot.batch.last {
             let mut start = self.pools.clone();
-            start.restore(&step.start_pools)?;
+            start.restore(&step.start_frame.pools)?;
+            let start_external = self.context.inflows.restore_state(
+                &self.context.client,
+                &step.start_frame.external,
+                start.accepted_steps(),
+            )?;
             let mut stored = (**step).clone();
-            stored.start_pools = start.snapshot();
+            stored.start_frame = StoredStart {
+                pools: start.snapshot(),
+                external: start_external,
+            };
             Some(Arc::new(stored))
         } else {
             None
         };
         self.pools = pools;
+        self.external = external;
         self.last = last;
         Ok(())
-    }
-    /// Check complete owned state and one retained hydraulic map without replaying root iterations.
-    pub fn restore_data(
-        &mut self,
-        data: &CoupledLevelPoolSnapshotData,
-    ) -> Result<(), CoupledLevelPoolError> {
-        require(
-            same_setup(self.setup(), &data.setup),
-            "immutable setup bits differ from the destination",
-        )?;
-        let mut pools = self.pools.clone();
-        pools.restore_data(&data.pools)?;
-        let last = match (&data.last_step, &data.start_pools) {
-            (None, None) => {
-                require(
-                    pools.accepted_steps() == 0,
-                    "advanced state lacks its final coupled interval",
-                )?;
-                None
-            }
-            (Some(receipt), Some(start_data)) => {
-                require(
-                    pools.accepted_steps() > 0,
-                    "initial state contains an advanced coupled receipt",
-                )?;
-                let mut start = self.pools.clone();
-                start.restore_data(start_data)?;
-                require(
-                    start.accepted_steps().checked_add(1) == Some(pools.accepted_steps()),
-                    "start and accepted step counts are discontinuous",
-                )?;
-                require(
-                    start.time().to_bits() == receipt.start_s.to_bits()
-                        && pools.time().to_bits() == receipt.end_s.to_bits(),
-                    "retained interval endpoints differ from native pool times",
-                )?;
-                self.check_interval(receipt)?;
-                let source_plan = match &receipt.source_interval {
-                    Some(interval) => {
-                        interval.check(
-                            start.time(),
-                            receipt.requested_end_s,
-                            self.context.pool_count(),
-                            start.source_policies().is_some(),
-                        )?;
-                        Some(start.bind_source_rates(&interval.sources)?)
-                    }
-                    None => {
-                        require(
-                            start.source_policies().is_none(),
-                            "source-enabled receipt lacks original forcing",
-                        )?;
-                        None
-                    }
-                };
-                let prepared = source_plan
-                    .as_ref()
-                    .map(|plan| plan.prepare(receipt.end_s))
-                    .transpose()?;
-                let sources = prepared.as_ref().map(|p| p.source_totals()).transpose()?;
-                let input = self.context.import_packet(&receipt.iteration)?;
-                let evaluated =
-                    self.context
-                        .evaluate(&start, receipt.end_s, prepared.as_ref(), &input)?;
-                let (head_residual, transfer_residual, flags) =
-                    self.context.residuals(&input, &evaluated.packet)?;
-                let config = &self.setup().config;
-                require(
-                    flags
-                        && head_residual <= config.head_absolute_m
-                        && transfer_residual <= config.transfer_absolute_m3,
-                    "retained final iterate exceeds its dimensional budgets or changes support",
-                )?;
-                self.context.check_endpoint(&evaluated)?;
-                let mass_residual = self.context.mass_check(
-                    &start,
-                    &evaluated.pools,
-                    evaluated.exchange.aggregation_bound,
-                    sources.as_ref(),
-                )?;
-                require(
-                    same_pools(&evaluated.pools.snapshot_data()?, &data.pools),
-                    "accepted native storage differs from retained hydraulic operands or cumulative additions",
-                )?;
-                let stored = StoredStep {
-                    start_pools: start.snapshot(),
-                    source_interval: receipt.source_interval.clone(),
-                    input,
-                    exchange: evaluated.exchange,
-                    heads: evaluated.heads,
-                    start: receipt.start_s,
-                    end: receipt.end_s,
-                    requested: receipt.requested_end_s,
-                    iterations: receipt.iterations,
-                    retries: receipt.retries,
-                    head_residual,
-                    transfer_residual,
-                    mass_residual,
-                };
-                require(
-                    same_step(&self.context.project(&stored)?, receipt),
-                    "coupled receipt differs from original laws, donor allocation, dimensional residuals, or physical mass checks",
-                )?;
-                Some(Arc::new(stored))
-            }
-            _ => {
-                return Err(CoupledLevelPoolError::input(
-                    "checkpoint requires both final interval and its native start frame",
-                ));
-            }
-        };
-        self.pools = pools;
-        self.last = last;
-        Ok(())
-    }
-    fn check_interval(
-        &self,
-        step: &CoupledLevelPoolStepDiagnostics,
-    ) -> Result<(), CoupledLevelPoolError> {
-        let c = &self.setup().config;
-        require(
-            step.start_s.is_finite()
-                && step.start_s >= 0.0
-                && step.end_s.is_finite()
-                && step.requested_end_s.is_finite()
-                && step.requested_end_s > step.start_s
-                && step.end_s > step.start_s
-                && step.end_s <= step.requested_end_s,
-            "interval contains invalid original or accepted endpoints",
-        )?;
-        require(
-            step.iterations < c.iteration_limit && step.retries <= c.retry_limit,
-            "retained iteration or retry count exceeds original limits",
-        )?;
-        let mut expected = step.requested_end_s.min(step.start_s + c.maximum_step_s);
-        for _ in 0..step.retries {
-            let shorter = step.start_s + (expected - step.start_s) * 0.5;
-            require(
-                shorter > step.start_s && shorter < expected,
-                "retained retry sequence stops making progress",
-            )?;
-            expected = shorter;
-        }
-        require(
-            expected.to_bits() == step.end_s.to_bits()
-                && step.end_s - step.start_s >= c.minimum_step_s,
-            "accepted endpoint differs from bounded retry arithmetic",
-        )
     }
 }
-fn require(condition: bool, message: &str) -> Result<(), CoupledLevelPoolError> {
+
+pub(super) fn require(condition: bool, message: &str) -> Result<(), CoupledLevelPoolError> {
     if condition {
         Ok(())
     } else {

@@ -6,21 +6,21 @@ fn trusted_and_owned_restart_preserve_source_history_and_repeat_continuation() -
     let (setup, initial) = pump_case([4.0, 2.0])?;
     let forcing = interval(vec![rates(1.0, 0.25, 0.5), rates(0.0, 0.0, 0.0)]);
     let mut batch = enabled(setup.clone(), initial.clone())?
-        .trial_with_sources_to(0.25, &forcing)?
+        .trial_with_forcing_to(0.25, &forcing)?
         .into_next();
     let trusted = batch.snapshot();
     let owned = batch.snapshot_data()?;
     assert_eq!(trusted.data()?, owned);
     let expected = batch
-        .trial_with_sources_to(0.5, &forcing)?
+        .trial_with_forcing_to(0.5, &forcing)?
         .into_next()
         .snapshot_data()?;
-    batch = batch.trial_with_sources_to(0.5, &forcing)?.into_next();
+    batch = batch.trial_with_forcing_to(0.5, &forcing)?.into_next();
     batch.restore(&trusted)?;
     assert_eq!(batch.snapshot_data()?, owned);
     assert_eq!(
         batch
-            .trial_with_sources_to(0.5, &forcing)?
+            .trial_with_forcing_to(0.5, &forcing)?
             .into_next()
             .snapshot_data()?,
         expected
@@ -30,7 +30,7 @@ fn trusted_and_owned_restart_preserve_source_history_and_repeat_continuation() -
     cold.restore_data(&owned)?;
     assert_eq!(cold.snapshot_data()?, owned);
     assert_eq!(
-        cold.trial_with_sources_to(0.5, &forcing)?
+        cold.trial_with_forcing_to(0.5, &forcing)?
             .into_next()
             .snapshot_data()?,
         expected
@@ -43,7 +43,7 @@ fn altered_forcing_policies_and_source_accounting_reject_atomically() -> Result 
     let (setup, initial) = pump_case([4.0, 2.0])?;
     let forcing = interval(vec![rates(1.0, 0.25, 0.5), rates(0.0, 0.0, 0.0)]);
     let mut batch = enabled(setup, initial)?
-        .trial_with_sources_to(0.25, &forcing)?
+        .trial_with_forcing_to(0.25, &forcing)?
         .into_next();
     let original = batch.snapshot_data()?;
     for mode in 0..9 {
@@ -54,30 +54,37 @@ fn altered_forcing_policies_and_source_accounting_reject_atomically() -> Result 
                     .last_step
                     .as_mut()
                     .ok_or("Missing coupled receipt")?
-                    .source_interval = None
+                    .forcing_interval = None
             }
             1..=4 => {
                 let interval = altered
                     .last_step
                     .as_mut()
                     .ok_or("Missing coupled receipt")?
-                    .source_interval
+                    .forcing_interval
                     .as_mut()
                     .ok_or("Missing retained source interval")?;
                 match mode {
                     1 => interval.start_s = 0.125,
                     2 => interval.end_s = 0.125,
-                    3 => interval.sources[0].rain_rate_m_per_s = 0.5,
-                    4 => interval.sources.clear(),
+                    3 => {
+                        interval
+                            .sources
+                            .as_mut()
+                            .ok_or("Missing retained source rates")?[0]
+                            .rain_rate_m_per_s = 0.5
+                    }
+                    4 => interval.sources = None,
                     _ => return Err("Unknown interval mutation".into()),
                 }
             }
             5 => altered.pools.source_policies = None,
             6 => {
                 altered
-                    .start_pools
+                    .start
                     .as_mut()
                     .ok_or("Missing native start")?
+                    .pools
                     .source_policies = None
             }
             7 => {

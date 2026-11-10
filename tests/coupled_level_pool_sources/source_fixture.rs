@@ -1,8 +1,8 @@
 use super::fixture::{Result, assemble};
 use super::laws::{passive, pump, running, weir};
 use hydr::coupling::{
-    CoupledLevelPoolBatch, CoupledLevelPoolInitialState, CoupledLevelPoolSetup,
-    CoupledLevelPoolSourceInterval,
+    CoupledLevelPoolBatch, CoupledLevelPoolForcingInterval, CoupledLevelPoolInitialState,
+    CoupledLevelPoolSetup,
 };
 use hydr::storage::{LevelPoolSourcePolicy, LevelPoolSources};
 
@@ -25,25 +25,22 @@ pub fn rates(rain: f64, bottom: f64, evaporation: f64) -> LevelPoolSources {
     }
 }
 
-pub fn interval(sources: Vec<LevelPoolSources>) -> CoupledLevelPoolSourceInterval {
-    CoupledLevelPoolSourceInterval {
+pub fn interval(sources: Vec<LevelPoolSources>) -> CoupledLevelPoolForcingInterval {
+    CoupledLevelPoolForcingInterval {
         start_s: 0.0,
         end_s: 2.0,
-        sources,
+        sources: Some(sources),
+        inflows: vec![],
     }
 }
 
 pub fn enabled(
-    setup: CoupledLevelPoolSetup,
+    mut setup: CoupledLevelPoolSetup,
     initial: CoupledLevelPoolInitialState,
 ) -> Result<Batch> {
     let count = setup.pools.len();
-    Ok(Batch::new_with_sources(
-        crate::runtime::client(),
-        setup,
-        initial,
-        policies(count),
-    )?)
+    setup.source_policies = Some(policies(count));
+    Ok(Batch::new(crate::runtime::client(), setup, initial)?)
 }
 
 pub fn pump_case(

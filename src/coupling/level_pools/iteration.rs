@@ -1,3 +1,4 @@
+use super::inflows::PreparedInflows;
 use super::{
     CoupledLevelPoolError, context::Context, exchange::Exchange, heads::Heads, topology::reject,
 };
@@ -43,6 +44,7 @@ where
         pools: &LevelPoolBatch<R>,
         end: f64,
         prepared: Option<&PreparedLevelPoolInterval<'_, R>>,
+        external: &PreparedInflows<R>,
         x: &Tensor<R>,
     ) -> Result<Evaluation<R>, CoupledLevelPoolError> {
         self.check_packet(x)?;
@@ -61,13 +63,23 @@ where
             &heads.wet_a,
             &heads.wet_b,
         )?;
-        let exchange = self.exchange(
+        let mut exchange = self.exchange(
             self.structures.held_volumes(&result, end - pools.time())?,
             prepared.map_or_else(|| pools.volumes_tensor(), |p| p.available_volume()),
         )?;
+        let incoming = self
+            .inflows
+            .merge_incoming(&self.client, &exchange.incoming, external)?;
+        exchange.aggregation_bound = super::mass::charge(
+            super::mass::charge(
+                exchange.aggregation_bound,
+                external.summary.assembly_bound_m3,
+            )?,
+            incoming.roundoff_bound_m3,
+        )?;
         let next = match prepared {
-            Some(prepared) => prepared.trial_to_tensors(&exchange.incoming, &exchange.outgoing)?,
-            None => pools.trial_to_tensors(end, &exchange.incoming, &exchange.outgoing)?,
+            Some(prepared) => prepared.trial_to_tensors(&incoming.volume, &exchange.outgoing)?,
+            None => pools.trial_to_tensors(end, &incoming.volume, &exchange.outgoing)?,
         }
         .into_next();
         let next_stage = next.stages_tensor()?;
@@ -163,6 +175,7 @@ pub(super) fn solve<R>(
     pools: &LevelPoolBatch<R>,
     end: f64,
     prepared: Option<&PreparedLevelPoolInterval<'_, R>>,
+    external: &PreparedInflows<R>,
 ) -> Result<SolvedInterval<R>, CoupledLevelPoolError>
 where
     R: Runtime<DType = DType>,
@@ -184,7 +197,7 @@ where
 {
     let error = RefCell::new(None);
     let map = |x: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
-        match context.evaluate(pools, end, prepared, x) {
+        match context.evaluate(pools, end, prepared, external, x) {
             Ok(evaluation) => Ok(evaluation.packet),
             Err(e) => {
                 let mut slot =
@@ -252,7 +265,7 @@ where
             config.iteration_limit
         )));
     }
-    let final_evaluation = context.evaluate(pools, end, prepared, &root.x)?;
+    let final_evaluation = context.evaluate(pools, end, prepared, external, &root.x)?;
     let (head, volume, flags) = context.residuals(&root.x, &final_evaluation.packet)?;
     if !flags || head > config.head_absolute_m || volume > config.transfer_absolute_m3 {
         return Err(CoupledLevelPoolError::numerical(

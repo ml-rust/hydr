@@ -1,3 +1,4 @@
+use super::inflows::InflowContext;
 use super::topology::TransferTree;
 use super::{CoupledLevelPoolError, CoupledLevelPoolSetup};
 use crate::structures::{CouplingStructures, DirectionPolicy, StructureLaw};
@@ -13,6 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Debug)]
 pub(super) struct Context<R: Runtime<DType = DType>> {
     pub client: R::Client,
+    pub inflows: InflowContext<R>,
     pub setup: CoupledLevelPoolSetup,
     pub structures: CouplingStructures<R>,
     pub a: Tensor<R>,
@@ -188,7 +190,9 @@ where
             setup.structures.clone(),
             setup.operations.clone(),
         )?;
+        let inflows = InflowContext::<R>::new(&client, &setup.pools, &setup.external_inflows)?;
         Ok(Self {
+            inflows,
             a: ai,
             b: bi,
             bed_a: tensor(&ba)?,

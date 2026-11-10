@@ -1,3 +1,4 @@
+use super::inflows::InflowState;
 use super::{
     CoupledLevelPoolError, CoupledLevelPoolInitialState, CoupledLevelPoolSetup, context::Context,
     trial::StoredStep,
@@ -12,11 +13,12 @@ use numr::runtime::Runtime;
 use solvr::interpolate::Interp1dAlgorithms;
 use std::sync::Arc;
 
-/// Accepted hydraulic storage with explicit physical connections and optional local sources.
+/// Accepted hydraulic storage with explicit physical connections and forcing.
 #[derive(Clone)]
 pub struct CoupledLevelPoolBatch<R: Runtime<DType = DType>> {
     pub(super) context: Arc<Context<R>>,
     pub(super) pools: LevelPoolBatch<R>,
+    pub(super) external: InflowState<R>,
     pub(super) last: Option<Arc<StoredStep<R>>>,
 }
 impl<R: Runtime<DType = DType>> std::fmt::Debug for CoupledLevelPoolBatch<R> {
@@ -50,24 +52,7 @@ where
         setup: CoupledLevelPoolSetup,
         initial: CoupledLevelPoolInitialState,
     ) -> Result<Self, CoupledLevelPoolError> {
-        Self::construct(client, setup, initial, None)
-    }
-    /// Enable declared local sources while retaining the selected runtime client.
-    pub fn new_with_sources(
-        client: R::Client,
-        setup: CoupledLevelPoolSetup,
-        initial: CoupledLevelPoolInitialState,
-        policies: Vec<LevelPoolSourcePolicy>,
-    ) -> Result<Self, CoupledLevelPoolError> {
-        Self::construct(client, setup, initial, Some(policies))
-    }
-    fn construct(
-        client: R::Client,
-        setup: CoupledLevelPoolSetup,
-        initial: CoupledLevelPoolInitialState,
-        policies: Option<Vec<LevelPoolSourcePolicy>>,
-    ) -> Result<Self, CoupledLevelPoolError> {
-        let pools = match policies {
+        let pools = match setup.source_policies.clone() {
             None => LevelPoolBatch::<R>::new(
                 client.clone(),
                 setup.pools.clone(),
@@ -85,15 +70,25 @@ where
             )?,
         };
         let context = Arc::new(Context::<R>::new(client, setup)?);
+        let external = context.inflows.zero_state(&context.client)?;
         Ok(Self {
             context,
             pools,
+            external,
             last: None,
         })
     }
     /// Native immutable source-enabling evidence, absent for exchange-only pools.
     pub fn source_policies(&self) -> Option<&[LevelPoolSourcePolicy]> {
         self.pools.source_policies()
+    }
+    /// Explicitly read cumulative external volume and addition bounds in boundary order.
+    pub fn external_inflows(
+        &self,
+    ) -> Result<Vec<super::CoupledPoolInflowLedger>, CoupledLevelPoolError> {
+        self.context
+            .inflows
+            .project_state(&self.context.client, &self.external)
     }
     /// Accepted time in seconds.
     pub fn time(&self) -> f64 {

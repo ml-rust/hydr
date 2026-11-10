@@ -33,8 +33,10 @@ pub struct CoupledLevelPoolIterationData {
 /// Complete last accepted interval, projected only on explicit request.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoupledLevelPoolStepDiagnostics {
-    /// Original covered source rates. Explicit zero forcing remains present.
-    pub source_interval: Option<super::CoupledLevelPoolSourceInterval>,
+    /// Complete original boundary products and cumulative additions in binding order.
+    pub external_inflows: Vec<super::CoupledPoolInflowReceipt>,
+    /// Original covered source and external rates. Explicit zero forcing remains present.
+    pub forcing_interval: Option<super::CoupledLevelPoolForcingInterval>,
     /// Accepted interval start in seconds.
     pub start_s: f64,
     /// Actual accepted interval end in seconds.
@@ -49,9 +51,9 @@ pub struct CoupledLevelPoolStepDiagnostics {
     pub head_residual_m: f64,
     /// Largest absolute signed-volume iteration residual, in m³.
     pub transfer_residual_m3: f64,
-    /// Accepted storage change after actual rain, bottom loss, and evaporation, in m³.
+    /// Water residual after actual rain, external inflows, bottom loss, and evaporation, in m³.
     pub mass_residual_m3: f64,
-    /// Conservative absolute transfer-assembly rounding bound, in m³.
+    /// Conservative internal/external assembly and incoming-merge rounding bound, in m³.
     pub aggregation_roundoff_bound_m3: f64,
     /// Exact estimate packet used by the final reevaluated hydraulic map.
     pub iteration: CoupledLevelPoolIterationData,

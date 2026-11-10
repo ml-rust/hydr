@@ -1,4 +1,4 @@
-use crate::storage::{LevelPoolConfig, LevelPoolElement, LevelPoolState};
+use crate::storage::{LevelPoolConfig, LevelPoolElement, LevelPoolSourcePolicy, LevelPoolState};
 use crate::structures::{StructureElement, StructureOperation};
 
 /// Physical meaning of a pool's zero-volume curve limit.
@@ -60,6 +60,10 @@ pub struct CoupledLevelPoolConfig {
 /// Immutable physical setup for connected pools.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoupledLevelPoolSetup {
+    /// Native immutable local-source evidence, absent when local sources are disabled.
+    pub source_policies: Option<Vec<LevelPoolSourcePolicy>>,
+    /// Complete prescribed external inflow bindings in immutable boundary order.
+    pub external_inflows: Vec<super::CoupledPoolInflowBinding>,
     /// Complete pool curves and storage assertions in numerical order.
     pub pools: Vec<LevelPoolElement>,
     /// One physical zero-volume declaration per ordered pool.

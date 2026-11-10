@@ -39,7 +39,7 @@ Invalid targets reject before advancement. Numerical errors preserve the last ac
 
 Cancellation or an exhausted step budget returns the time actually reached. Check `AdvanceStatus` before treating the requested horizon as complete.
 
-For connected storage pools, use [coupled level pools](coupled-level-pools.md). `CoupledLevelPoolBatch` advances declared pool transfers with static manual operations and optional explicit local rain and losses. Surface-to-network coupling remains unsupported.
+For connected storage pools, use [coupled level pools](coupled-level-pools.md). `CoupledLevelPoolBatch` advances declared pool transfers with static manual operations, optional local sources, and prescribed external inflows. Supply already-selected inputs and physical ownership evidence. Surface-to-network coupling remains unsupported.
 
 ### 3. Read results and retain checkpoints
 

@@ -83,6 +83,8 @@ pub fn assemble(
         .collect::<Result<Vec<_>>>()?;
     Ok((
         CoupledLevelPoolSetup {
+            source_policies: None,
+            external_inflows: vec![],
             pools: elements,
             pool_support: pools
                 .iter()

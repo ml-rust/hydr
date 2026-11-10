@@ -10,14 +10,14 @@ fn rain_bottom_loss_and_evaporation_precede_shared_pump_withdrawal() -> Result {
     let batch = enabled(setup, initial)?;
     let original = batch.snapshot_data()?;
     let forcing = interval(vec![rates(1.0, 0.25, 0.5), rates(0.0, 0.0, 0.0)]);
-    let next = batch.trial_with_sources_to(1.0, &forcing)?.into_next();
+    let next = batch.trial_with_forcing_to(1.0, &forcing)?.into_next();
     assert_eq!(batch.snapshot_data()?, original);
     assert_eq!(next.time(), 1.0);
     let volumes = next.pools().states()?;
     near(volumes[0].volume_m3, 3.25);
     near(volumes[1].volume_m3, 3.0);
     let step = next.last_step()?.ok_or("Missing source-coupled interval")?;
-    assert_eq!(step.source_interval, Some(forcing));
+    assert_eq!(step.forcing_interval, Some(forcing));
     near(step.transfers[0].signed_volume_m3, 1.0);
     assert!(step.mass_residual_m3.abs() <= 1e-9 + 1e-12 * 6.25);
     let native = next
@@ -36,7 +36,7 @@ fn interval_rain_can_supply_a_structure_withdrawal() -> Result {
     let (setup, initial) = pump_case([0.25, 2.0])?;
     let batch = enabled(setup, initial)?;
     let next = batch
-        .trial_with_sources_to(
+        .trial_with_forcing_to(
             1.0,
             &interval(vec![rates(1.0, 0.0, 0.0), rates(0.0, 0.0, 0.0)]),
         )?
@@ -65,7 +65,7 @@ fn capped_losses_remove_middle_pool_availability_before_incoming_credit() -> Res
     )?;
     let batch = enabled(setup, initial)?;
     let next = batch
-        .trial_with_sources_to(
+        .trial_with_forcing_to(
             1.0,
             &interval(vec![
                 rates(0.0, 0.0, 0.0),
@@ -104,7 +104,7 @@ fn rain_area_uses_the_accepted_right_segment_before_crossing_knots() -> Result {
     )?;
     let batch = enabled(setup, initial)?;
     let next = batch
-        .trial_with_sources_to(
+        .trial_with_forcing_to(
             1.0,
             &interval(vec![rates(1.5, 0.0, 0.0), rates(0.0, 0.0, 0.0)]),
         )?
@@ -131,7 +131,7 @@ fn dry_basal_footprint_accepts_rain_without_inventing_an_initial_stage() -> Resu
     let batch = enabled(setup, initial)?;
     assert_eq!(batch.pools().outputs()?[0].stage_m, None);
     let next = batch
-        .trial_with_sources_to(
+        .trial_with_forcing_to(
             1.0,
             &interval(vec![rates(0.5, 0.0, 0.0), rates(0.0, 0.0, 0.0)]),
         )?
@@ -153,7 +153,7 @@ fn retries_recalculate_rain_and_transfer_from_the_original_accepted_state() -> R
     let batch = enabled(setup, initial)?;
     let original = batch.snapshot_data()?;
     let forcing = interval(vec![rates(0.25, 0.0, 0.0); 2]);
-    let next = batch.trial_with_sources_to(1.0, &forcing)?.into_next();
+    let next = batch.trial_with_forcing_to(1.0, &forcing)?.into_next();
     assert_eq!(batch.snapshot_data()?, original);
     let dt = next.time();
     assert!(dt > 0.0 && dt < 1.0);
@@ -177,7 +177,7 @@ fn retries_recalculate_rain_and_transfer_from_the_original_accepted_state() -> R
         .ok_or("Missing retried native interval")?;
     near(native.rain_volume_m3, 0.5 * dt);
     assert_eq!(next.pools().accepted_steps(), 1);
-    assert_eq!(step.source_interval, Some(forcing));
+    assert_eq!(step.forcing_interval, Some(forcing));
     Ok(())
 }
 
@@ -192,7 +192,7 @@ fn explicit_zero_forcing_retains_closed_hydraulic_bits_and_zero_counters() -> Re
     let enabled = enabled(setup, initial)?;
     let closed = closed.trial_to(0.25)?.into_next();
     let enabled = enabled
-        .trial_with_sources_to(0.25, &interval(vec![rates(0.0, 0.0, 0.0); 2]))?
+        .trial_with_forcing_to(0.25, &interval(vec![rates(0.0, 0.0, 0.0); 2]))?
         .into_next();
     for (a, b) in closed
         .pools()
@@ -206,8 +206,8 @@ fn explicit_zero_forcing_retains_closed_hydraulic_bits_and_zero_counters() -> Re
     let mut enabled_step = enabled
         .last_step()?
         .ok_or("Missing explicit-zero receipt")?;
-    assert!(closed_step.source_interval.take().is_none());
-    assert!(enabled_step.source_interval.take().is_some());
+    assert!(closed_step.forcing_interval.take().is_none());
+    assert!(enabled_step.forcing_interval.take().is_some());
     assert_eq!(closed_step, enabled_step);
     for ledger in enabled.pools().element_ledgers()? {
         let source = ledger.sources.ok_or("Missing enabled source counters")?;

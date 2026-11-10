@@ -86,21 +86,21 @@ fn missing_or_altered_interval_start_frames_reject_atomically() -> Result {
     for mode in 0..6 {
         let mut altered = original.clone();
         match mode {
-            0 => altered.start_pools = None,
+            0 => altered.start = None,
             1 => altered.last_step = None,
             2 => {
-                altered.start_pools = None;
+                altered.start = None;
                 altered.last_step = None;
             }
             3..=5 => {
                 let start = altered
-                    .start_pools
+                    .start
                     .as_mut()
                     .ok_or("Missing retained interval start")?;
                 match mode {
-                    3 => start.time = 0.125,
-                    4 => start.states[0].volume_m3 += 0.25,
-                    5 => start.accepted_steps += 1,
+                    3 => start.pools.time = 0.125,
+                    4 => start.pools.states[0].volume_m3 += 0.25,
+                    5 => start.pools.accepted_steps += 1,
                     _ => return Err("Unknown retained start mutation".into()),
                 }
             }
