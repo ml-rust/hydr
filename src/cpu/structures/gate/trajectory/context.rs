@@ -11,13 +11,14 @@ type CurveGroup = (usize, Vec<usize>);
 pub(crate) struct CpuTrajectoryCurve {
     pub times: CpuTensor,
     pub openings: CpuTensor,
-    pub indices: CpuTensor,
     pub assignment: usize,
     pub count: usize,
 }
 #[derive(Debug)]
 pub(crate) struct CpuTrajectoryContext {
     pub curves: Vec<CpuTrajectoryCurve>,
+    pub combined_indices: CpuTensor,
+    pub assigned_mask: CpuTensor,
     pub absolute_limit: CpuTensor,
     pub relative_limit: CpuTensor,
     pub maximum: CpuTensor,
@@ -32,7 +33,9 @@ impl CpuTrajectoryContext {
         let mut groups: BTreeMap<CurveIdentity, CurveGroup> = BTreeMap::new();
         let n = context.elements.len();
         let (mut absolute, mut relative, mut maximum) = (vec![0.0; n], vec![0.0; n], vec![0.0; n]);
+        let mut assigned = vec![0.0; n];
         for (assignment, (definition, &slot)) in assignments.iter().zip(slots).enumerate() {
+            assigned[slot] = 1.0;
             let knots = definition.trajectory.knots();
             let key = knots
                 .iter()
@@ -60,18 +63,21 @@ impl CpuTrajectoryContext {
         let mut groups = groups.into_values().collect::<Vec<_>>();
         groups.sort_by_key(|(assignment, _)| *assignment);
         let mut curves = Vec::with_capacity(groups.len());
+        let mut combined_slots = Vec::with_capacity(slots.len());
         for (assignment, slots) in groups {
             let knots = assignments[assignment].trajectory.knots();
+            combined_slots.extend_from_slice(&slots);
             curves.push(CpuTrajectoryCurve {
                 times: context.tensor(&knots.iter().map(|k| k.time_s).collect::<Vec<_>>())?,
                 openings: context.tensor(&knots.iter().map(|k| k.opening_m).collect::<Vec<_>>())?,
-                indices: indices(context, &slots)?,
                 assignment,
                 count: slots.len(),
             });
         }
         Ok(Self {
             curves,
+            combined_indices: indices(context, &combined_slots)?,
+            assigned_mask: context.tensor(&assigned)?,
             absolute_limit: context.tensor(&absolute)?,
             relative_limit: context.tensor(&relative)?,
             maximum: context.tensor(&maximum)?,

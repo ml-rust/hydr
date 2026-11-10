@@ -15,3 +15,6 @@ pub(crate) use evaluation::evaluate;
 pub(crate) mod control;
 
 pub(crate) mod actuator;
+
+mod proposal;
+pub(crate) use proposal::evaluate as proposal;

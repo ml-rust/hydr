@@ -35,7 +35,7 @@ pub(super) fn flag(values: &[f64], lane: usize) -> Result<bool, StructureError> 
         )),
     }
 }
-pub(super) fn position(
+pub(crate) fn position(
     v: &CpuActuatorPositionValues,
     i: usize,
 ) -> Result<GateActuatorPosition, StructureError> {
@@ -55,7 +55,7 @@ pub(super) fn anchor(
         position: position(&v.position, i)?,
     })
 }
-pub(super) fn phase(value: f64) -> Result<GateActuatorPhase, StructureError> {
+pub(crate) fn phase(value: f64) -> Result<GateActuatorPhase, StructureError> {
     match value {
         0.0 => Ok(GateActuatorPhase::BeforeWindow),
         1.0 => Ok(GateActuatorPhase::InsideWindow),

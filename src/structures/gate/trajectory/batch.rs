@@ -30,13 +30,28 @@ impl StructureBatch {
             )?),
         })
     }
+    /// Bind a nonempty unique gate subset in complete original structure order.
+    ///
+    /// Unassigned elements retain no prescribed authority. Their point operations remain explicit.
+    /// Closed common support can contain one point. No trajectory extrapolation applies.
+    pub fn with_gate_trajectory_subset(
+        &self,
+        assignments: Vec<GateTrajectoryAssignment>,
+    ) -> Result<GateTrajectoryBatch, StructureError> {
+        Ok(GateTrajectoryBatch {
+            inner: Arc::new(GateTrajectoryData::subset(
+                Arc::clone(&self.context),
+                assignments,
+            )?),
+        })
+    }
 }
 impl GateTrajectoryBatch {
     /// Complete original law definitions.
     pub fn elements(&self) -> &[StructureElement] {
         &self.inner.context.elements
     }
-    /// Complete immutable original gate definitions.
+    /// Immutable definitions for the explicitly assigned original gate subset.
     pub fn assignments(&self) -> &[GateTrajectoryAssignment] {
         &self.inner.assignments
     }
@@ -66,6 +81,9 @@ impl GateTrajectoryBatch {
         })
     }
     /// Propose instantaneous flow. Held volumes retain this sampled opening without trajectory integration.
+    ///
+    /// `other_operations` covers every unassigned element in original subsequence order.
+    /// Assigned gates reject operation overrides.
     pub fn propose_at(
         &self,
         time_s: f64,
@@ -79,11 +97,7 @@ impl GateTrajectoryBatch {
             &evaluation.inner,
             other_operations,
         )?;
-        let passive = crate::numerics::structures::evaluate(&self.inner.context, &input)?;
-        let result =
-            crate::numerics::structures::pump::evaluate(&self.inner.context, &input, passive)?;
-        let result =
-            crate::numerics::structures::gate::evaluate(&self.inner.context, &input, result)?;
+        let result = crate::numerics::structures::proposal(&self.inner.context, &input)?;
         Ok(StructureProposal::from_trajectory(
             Arc::clone(&self.inner.context),
             heads.to_vec(),

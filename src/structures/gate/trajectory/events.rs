@@ -33,6 +33,7 @@ pub struct GateTrajectoryInterval {
 }
 pub(super) fn build(
     assignments: &[GateTrajectoryAssignment],
+    allow_point: bool,
 ) -> Result<(GateTrajectorySupport, Vec<GateTrajectoryEvent>), StructureError> {
     let mut start_s: f64 = 0.0;
     let mut end_s = f64::MAX;
@@ -47,12 +48,18 @@ pub(super) fn build(
         start_s = start_s.max(first.time_s);
         end_s = end_s.min(last.time_s);
     }
-    if end_s <= start_s {
+    if end_s < start_s || (!allow_point && end_s == start_s) {
         return Err(StructureError::input(
             StructureInputErrorKind::Definition,
-            format!(
-                "common support=[{start_s},{end_s}]: supply positive overlapping trajectory duration"
-            ),
+            if allow_point {
+                format!(
+                    "common support=[{start_s},{end_s}]: supply a nonempty closed trajectory intersection"
+                )
+            } else {
+                format!(
+                    "common support=[{start_s},{end_s}]: supply positive overlapping trajectory duration"
+                )
+            },
         ));
     }
     let mut events = std::collections::BTreeMap::<u64, GateTrajectoryEvent>::new();

@@ -16,6 +16,19 @@ pub(crate) struct CpuStructureInput {
     pub bed_b: CpuTensor,
     pub wet_a: CpuTensor,
     pub wet_b: CpuTensor,
+    pub unknown_a: CpuTensor,
+    pub unknown_b: CpuTensor,
+}
+#[derive(Debug)]
+pub(crate) struct CpuStructureHeads {
+    stage_a: CpuTensor,
+    stage_b: CpuTensor,
+    bed_a: CpuTensor,
+    bed_b: CpuTensor,
+    wet_a: CpuTensor,
+    wet_b: CpuTensor,
+    unknown_a: CpuTensor,
+    unknown_b: CpuTensor,
 }
 impl CpuStructureInput {
     pub(crate) fn with_operations(
@@ -23,6 +36,7 @@ impl CpuStructureInput {
         heads: &[StructureHeads],
         operations: &[crate::structures::StructureOperation],
     ) -> Result<Self, StructureError> {
+        let heads = Self::heads(context, heads)?;
         let operations = super::operations::CheckedOperations::new(context, operations)?;
         Self::checked(context, heads, &operations)
     }
@@ -38,17 +52,24 @@ impl CpuStructureInput {
                 "trajectory evaluation belongs to another complete context",
             ));
         }
+        let heads = Self::heads(context, heads)?;
         let operations =
             super::operations::CheckedOperations::trajectory(context, evaluation, other)?;
         Self::checked(context, heads, &operations)
     }
-    fn checked(
+    pub(crate) fn with_derived_heads(
+        context: &CpuStructureContext,
+        heads: CpuStructureHeads,
+        manual: &[crate::structures::StructureOperation],
+        derived: super::operations::DerivedGateOperations<'_>,
+    ) -> Result<Self, StructureError> {
+        let operations = super::operations::CheckedOperations::derived(context, manual, derived)?;
+        Self::checked(context, heads, &operations)
+    }
+    pub(crate) fn heads(
         context: &CpuStructureContext,
         heads: &[StructureHeads],
-        operations: &super::operations::CheckedOperations<'_>,
-    ) -> Result<Self, StructureError> {
-        let pump = super::pump::CpuPumpInput::new(context, operations)?;
-        let gate = super::gate::CpuGateInput::new(context, operations)?;
+    ) -> Result<CpuStructureHeads, StructureError> {
         if heads.len() != context.elements.len() {
             return Err(StructureError::input(
                 StructureInputErrorKind::Identity,
@@ -60,7 +81,18 @@ impl CpuStructureInput {
             ));
         }
         let n = heads.len();
-        let (mut stage_a, mut stage_b, mut bed_a, mut bed_b, mut wet_a, mut wet_b) = (
+        let (
+            mut stage_a,
+            mut stage_b,
+            mut bed_a,
+            mut bed_b,
+            mut wet_a,
+            mut wet_b,
+            mut unknown_a,
+            mut unknown_b,
+        ) = (
+            Vec::with_capacity(n),
+            Vec::with_capacity(n),
             Vec::with_capacity(n),
             Vec::with_capacity(n),
             Vec::with_capacity(n),
@@ -85,41 +117,69 @@ impl CpuStructureInput {
                 )
                 .at(index));
             }
-            let isolated = operations.isolated(index);
-            let (a, ba, wa) =
-                support(&input.endpoint_a.support, isolated).map_err(|e| e.at(index))?;
-            let (b, bb, wb) =
-                support(&input.endpoint_b.support, isolated).map_err(|e| e.at(index))?;
+            let (a, ba, wa, ua) = support(&input.endpoint_a.support).map_err(|e| e.at(index))?;
+            let (b, bb, wb, ub) = support(&input.endpoint_b.support).map_err(|e| e.at(index))?;
             stage_a.push(a);
             stage_b.push(b);
             bed_a.push(ba);
             bed_b.push(bb);
             wet_a.push(wa);
             wet_b.push(wb);
+            unknown_a.push(ua);
+            unknown_b.push(ub);
         }
-        Ok(Self {
-            gate,
-            pump,
+        Ok(CpuStructureHeads {
             stage_a: context.tensor(&stage_a)?,
             stage_b: context.tensor(&stage_b)?,
             bed_a: context.tensor(&bed_a)?,
             bed_b: context.tensor(&bed_b)?,
             wet_a: context.tensor(&wet_a)?,
             wet_b: context.tensor(&wet_b)?,
+            unknown_a: context.tensor(&unknown_a)?,
+            unknown_b: context.tensor(&unknown_b)?,
         })
     }
-}
-fn support(value: &HeadSupport, isolated: bool) -> Result<(f64, f64, f64), StructureError> {
-    match value {
-        HeadSupport::Wet { stage_m } if stage_m.is_finite() => Ok((*stage_m, 0.0, 1.0)),
-        HeadSupport::Dry { bed_elevation_m } if bed_elevation_m.is_finite() => {
-            Ok((0.0, *bed_elevation_m, 0.0))
-        }
-        HeadSupport::Unknown if isolated => Ok((0.0, 0.0, 0.0)),
-        HeadSupport::Unknown => Err(StructureError::input(
+    fn checked(
+        context: &CpuStructureContext,
+        heads: CpuStructureHeads,
+        operations: &super::operations::CheckedOperations<'_>,
+    ) -> Result<Self, StructureError> {
+        let input = Self {
+            gate: super::gate::CpuGateInput::new(context, operations)?,
+            pump: super::pump::CpuPumpInput::new(context, operations)?,
+            stage_a: heads.stage_a,
+            stage_b: heads.stage_b,
+            bed_a: heads.bed_a,
+            bed_b: heads.bed_b,
+            wet_a: heads.wet_a,
+            wet_b: heads.wet_b,
+            unknown_a: heads.unknown_a,
+            unknown_b: heads.unknown_b,
+        };
+        input.check_unknown(context, operations.isolated())?;
+        Ok(input)
+    }
+    fn check_unknown(
+        &self,
+        context: &CpuStructureContext,
+        isolated: &CpuTensor,
+    ) -> Result<(), StructureError> {
+        use numr::ops::BinaryOps;
+        let c = &context.client;
+        context.reject_input(
+            &c.mul(&c.maximum(&self.unknown_a, &self.unknown_b)?, &c.sub(&context.one, isolated)?)?,
             StructureInputErrorKind::UnknownSupport,
             "unknown influential head support cannot become dry or zero. Supply known wet/dry support",
-        )),
+        )
+    }
+}
+fn support(value: &HeadSupport) -> Result<(f64, f64, f64, f64), StructureError> {
+    match value {
+        HeadSupport::Wet { stage_m } if stage_m.is_finite() => Ok((*stage_m, 0.0, 1.0, 0.0)),
+        HeadSupport::Dry { bed_elevation_m } if bed_elevation_m.is_finite() => {
+            Ok((0.0, *bed_elevation_m, 0.0, 0.0))
+        }
+        HeadSupport::Unknown => Ok((0.0, 0.0, 0.0, 1.0)),
         _ => Err(StructureError::input(
             StructureInputErrorKind::NonfiniteInput,
             format!("support={value:?}: supply a finite original stage or dry bed"),

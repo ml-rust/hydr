@@ -45,7 +45,7 @@ Atomic land sources integrate pinned Modified Green–Ampt soil, rain, capped ev
 
 Structure/network coupling and coupled external components remain unsupported. Standalone [structure laws](docs/structures.md) provide checked instantaneous proposals and held-head volumes.
 
-[Sampled controls](docs/operating-controls.md) emit causal commands. [Ideal gate actuators](docs/gate-actuators.md) advance actual opening with explicit directional rates, numerical bounds, events, and complete snapshots. Hydraulic consumption requires a separate operating-source adapter.
+[Sampled controls](docs/operating-controls.md) emit causal commands. [Ideal gate actuators](docs/gate-actuators.md) advance actual opening with explicit directional rates, numerical bounds, events, and complete snapshots. The [operating-source registry](docs/operating-sources.md) binds one writer per structure and retains opening uncertainty beside center-based proposals. Accepted hydraulic transfers remain separate.
 
 Impermeable walls cannot replace unknown outlets or missing terrain.
 Generic numerical operations belong in numr. Generic solving algorithms belong in solvr. Hydraulic equations and acceptance belong in hydr.

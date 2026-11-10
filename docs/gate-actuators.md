@@ -120,4 +120,4 @@ Run `cargo run --quiet --example gate_actuators_reference` for the original-bit 
 
 ## Integration boundary
 
-[Sampled controls](operating-controls.md) emit requested targets. This actuator supplies its separately admitted ideal actual response. An exclusive operating-source adapter must resolve manual, prescribed, and actuator authority before feeding [structure proposals](structures.md). No actuator output alone grants unknown-head isolation, native SWMM actuator behavior, continuous feedback, hydraulic consumption, or coupled accuracy.
+[Sampled controls](operating-controls.md) emit requested targets. This actuator supplies its separately admitted ideal actual response. The [operating-source registry](operating-sources.md) resolves manual, prescribed, and actual-actuated authority before feeding [structure proposals](structures.md). Only certified actual closure grants its unknown-head isolation waiver. Native SWMM actuator behavior, continuous feedback, accepted hydraulic consumption, and coupled accuracy remain unsupported.

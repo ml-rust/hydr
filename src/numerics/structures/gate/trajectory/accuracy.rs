@@ -18,10 +18,11 @@ pub(super) fn check(
     error: &CpuTensor,
 ) -> Result<(), StructureError> {
     let c = &context.client;
-    let gate = context
-        .gate
-        .as_ref()
-        .ok_or_else(|| StructureError::numerical("bound trajectory context lacks gate tensors"))?;
+    if context.gate.is_none() {
+        return Err(StructureError::numerical(
+            "bound trajectory context lacks gate tensors",
+        ));
+    }
     context.finite(opening, "trajectory opening")?;
     context.finite(error, "trajectory absolute opening error receipt")?;
     context.reject(
@@ -36,10 +37,10 @@ pub(super) fn check(
         )?,
     )?;
     context.reject(
-        &c.mul(&gate.mask, &outside)?,
+        &c.mul(&trajectory.assigned_mask, &outside)?,
         "trajectory opening exceeds original segment or gate range",
     )?;
-    let positive = c.sub(&gate.mask, &input.closed)?;
+    let positive = c.sub(&trajectory.assigned_mask, &input.closed)?;
     context.reject(
         &c.mul(&positive, &c.le(opening, &context.zero)?)?,
         "original positive trajectory support returns zero opening",
@@ -71,7 +72,7 @@ pub(super) fn check(
     )?;
     context.reject(
         &c.mul(
-            &gate.mask,
+            &trajectory.assigned_mask,
             &c.sub(&context.one, &c.maximum(&absolute, &relative_admitted)?)?,
         )?,
         "trajectory opening error exceeds both explicit accuracy limits",

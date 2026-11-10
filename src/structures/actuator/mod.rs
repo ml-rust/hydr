@@ -35,3 +35,9 @@ mod projection;
 mod projection_values;
 mod snapshot;
 pub use snapshot::GateActuatorSnapshot;
+
+mod compatibility;
+pub(crate) use compatibility::same_context as same_actuator_context;
+pub(crate) use projection_values::{
+    phase as project_actuator_phase, position as project_actuator_position,
+};

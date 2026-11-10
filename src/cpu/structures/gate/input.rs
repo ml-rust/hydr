@@ -5,6 +5,7 @@ use crate::cpu::{
     structures::{CpuStructureContext, operations::CheckedOperations},
 };
 use crate::structures::{StructureError, StructureOperatingPoint};
+use numr::ops::ConditionalOps;
 
 #[derive(Debug)]
 pub(crate) struct CpuGateInput {
@@ -18,19 +19,18 @@ impl CpuGateInput {
         if context.gate.is_none() {
             return Ok(None);
         }
-        if let Some(opening) = operations.opening() {
-            return Ok(Some(Self {
-                opening: opening.clone(),
-            }));
-        }
         let values = (0..operations.len())
             .map(|index| match operations.supplied(index) {
                 Some(StructureOperatingPoint::GateOpening { opening_m }) => opening_m,
                 _ => 0.0,
             })
             .collect::<Vec<_>>();
-        Ok(Some(Self {
-            opening: context.tensor(&values)?,
-        }))
+        let manual = context.tensor(&values)?;
+        let opening = match operations.derived_opening() {
+            Some((derived, mask)) => context.client.where_cond(mask, derived, &manual)?,
+            None => manual,
+        };
+        context.finite(&opening, "assembled finite actual gate opening")?;
+        Ok(Some(Self { opening }))
     }
 }

@@ -62,3 +62,14 @@ pub use control::{
     OperatingControlDefinition, OperatingControlSnapshot, OperatingControlSnapshotData,
     OperatingControlTrial, SampledControlTiming,
 };
+
+mod operating_source;
+pub use operating_source::{
+    ActuatorSourceFrame, OperatingSourceBatch, OperatingSourceBinding, OperatingSourceDetail,
+    OperatingSourceEvent, OperatingSourceEventKind, OperatingSourceEventOrigin,
+    OperatingSourceOutput, OperatingSourceProposal, OperatingSourceReceipt, OperatingSourceSupport,
+};
+
+pub(crate) use actuator::{
+    project_actuator_phase, project_actuator_position, same_actuator_context,
+};

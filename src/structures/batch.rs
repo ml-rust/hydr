@@ -50,9 +50,7 @@ impl StructureBatch {
         operations: &[super::StructureOperation],
     ) -> Result<StructureProposal, StructureError> {
         let input = CpuStructureInput::with_operations(&self.context, heads, operations)?;
-        let passive = crate::numerics::structures::evaluate(&self.context, &input)?;
-        let result = crate::numerics::structures::pump::evaluate(&self.context, &input, passive)?;
-        let result = crate::numerics::structures::gate::evaluate(&self.context, &input, result)?;
+        let result = crate::numerics::structures::proposal(&self.context, &input)?;
         Ok(StructureProposal::new(
             Arc::clone(&self.context),
             heads.to_vec(),
