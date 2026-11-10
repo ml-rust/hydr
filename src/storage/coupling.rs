@@ -1,4 +1,4 @@
-//! Device-resident access for closed pool coordination.
+//! Device-resident access for coordinated pool exchanges.
 
 use numr::dtype::DType;
 use numr::ops::{
@@ -53,6 +53,16 @@ where
                 "tensor exchange trial has source-enabled pools. Supply exchange-only pools for closed coordination",
             ));
         }
+        self.check_exchange_tensors(incoming, outgoing)?;
+        let steps = super::trial::next_step_count(self.steps)?;
+        self.trial_prepared(end, dt, steps, incoming, outgoing, None)
+    }
+
+    pub(super) fn check_exchange_tensors(
+        &self,
+        incoming: &Tensor<R>,
+        outgoing: &Tensor<R>,
+    ) -> Result<(), LevelPoolError> {
         for (quantity, value) in [("incoming volume", incoming), ("outgoing volume", outgoing)] {
             if value.shape() != [self.elements().len()]
                 || value.dtype() != DType::F64
@@ -66,8 +76,7 @@ where
                 )));
             }
         }
-        let steps = super::trial::next_step_count(self.steps)?;
-        self.trial_prepared(end, dt, steps, incoming, outgoing, None)
+        Ok(())
     }
 }
 

@@ -103,26 +103,33 @@ pub(super) fn same_step(
     a: &CoupledLevelPoolStepDiagnostics,
     b: &CoupledLevelPoolStepDiagnostics,
 ) -> bool {
-    bits(
-        &[
-            a.start_s,
-            a.end_s,
-            a.requested_end_s,
-            a.head_residual_m,
-            a.transfer_residual_m3,
-            a.mass_residual_m3,
-            a.aggregation_roundoff_bound_m3,
-        ],
-        &[
-            b.start_s,
-            b.end_s,
-            b.requested_end_s,
-            b.head_residual_m,
-            b.transfer_residual_m3,
-            b.mass_residual_m3,
-            b.aggregation_roundoff_bound_m3,
-        ],
-    ) && a.iterations == b.iterations
+    let sources = match (&a.source_interval, &b.source_interval) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a.same_bits(b),
+        _ => false,
+    };
+    sources
+        && bits(
+            &[
+                a.start_s,
+                a.end_s,
+                a.requested_end_s,
+                a.head_residual_m,
+                a.transfer_residual_m3,
+                a.mass_residual_m3,
+                a.aggregation_roundoff_bound_m3,
+            ],
+            &[
+                b.start_s,
+                b.end_s,
+                b.requested_end_s,
+                b.head_residual_m,
+                b.transfer_residual_m3,
+                b.mass_residual_m3,
+                b.aggregation_roundoff_bound_m3,
+            ],
+        )
+        && a.iterations == b.iterations
         && a.retries == b.retries
         && bits(&a.iteration.end_stages_m, &b.iteration.end_stages_m)
         && bits(

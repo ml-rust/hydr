@@ -1,7 +1,7 @@
 use super::{
     CoupledLevelPoolError, context::Context, exchange::Exchange, heads::Heads, topology::reject,
 };
-use crate::storage::LevelPoolBatch;
+use crate::storage::{LevelPoolBatch, PreparedLevelPoolInterval};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,
@@ -42,6 +42,7 @@ where
         &self,
         pools: &LevelPoolBatch<R>,
         end: f64,
+        prepared: Option<&PreparedLevelPoolInterval<'_, R>>,
         x: &Tensor<R>,
     ) -> Result<Evaluation<R>, CoupledLevelPoolError> {
         self.check_packet(x)?;
@@ -62,11 +63,13 @@ where
         )?;
         let exchange = self.exchange(
             self.structures.held_volumes(&result, end - pools.time())?,
-            pools.volumes_tensor(),
+            prepared.map_or_else(|| pools.volumes_tensor(), |p| p.available_volume()),
         )?;
-        let next = pools
-            .trial_to_tensors(end, &exchange.incoming, &exchange.outgoing)?
-            .into_next();
+        let next = match prepared {
+            Some(prepared) => prepared.trial_to_tensors(&exchange.incoming, &exchange.outgoing)?,
+            None => pools.trial_to_tensors(end, &exchange.incoming, &exchange.outgoing)?,
+        }
+        .into_next();
         let next_stage = next.stages_tensor()?;
         let next_wet = self.wet(next.volumes_tensor())?;
         let next_heads = self.midpoint_heads(&start, &next_stage, &start_wet, &next_wet)?;
@@ -145,43 +148,6 @@ where
         )?;
         Ok(())
     }
-    pub fn mass_check(
-        &self,
-        before: &LevelPoolBatch<R>,
-        after: &LevelPoolBatch<R>,
-        assembly: f64,
-    ) -> Result<f64, CoupledLevelPoolError> {
-        let old = before.totals()?;
-        let new = after.totals()?;
-        let interval = new.volume_m3 - old.volume_m3;
-        let cumulative = new.volume_m3 - new.initial_volume_m3;
-        let scale = old.physical_scale_m3.max(new.physical_scale_m3);
-        let budget = self.setup.config.mass_absolute_m3 + self.setup.config.mass_relative * scale;
-        let charge = |a, b| {
-            crate::soil::admission::add_adjustment_charge(a, b)
-                .map_err(|e| CoupledLevelPoolError::numerical(e.to_string()))
-        };
-        let interval_charge = charge(
-            charge(
-                charge(interval.abs(), old.reduction_bound_m3)?,
-                new.reduction_bound_m3,
-            )?,
-            assembly,
-        )?;
-        let cumulative_charge =
-            charge(charge(cumulative.abs(), new.reduction_bound_m3)?, assembly)?;
-        if !budget.is_finite()
-            || !interval_charge.is_finite()
-            || !cumulative_charge.is_finite()
-            || interval_charge > budget
-            || cumulative_charge > budget
-        {
-            return Err(CoupledLevelPoolError::numerical(format!(
-                "closed mass drift interval={interval}, cumulative={cumulative}, assembly={assembly}, budget={budget}: shorten the interval or inspect physical scales"
-            )));
-        }
-        Ok(interval)
-    }
 }
 
 pub(super) struct SolvedInterval<R: Runtime<DType = DType>> {
@@ -196,6 +162,7 @@ pub(super) fn solve<R>(
     context: &Context<R>,
     pools: &LevelPoolBatch<R>,
     end: f64,
+    prepared: Option<&PreparedLevelPoolInterval<'_, R>>,
 ) -> Result<SolvedInterval<R>, CoupledLevelPoolError>
 where
     R: Runtime<DType = DType>,
@@ -217,7 +184,7 @@ where
 {
     let error = RefCell::new(None);
     let map = |x: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
-        match context.evaluate(pools, end, x) {
+        match context.evaluate(pools, end, prepared, x) {
             Ok(evaluation) => Ok(evaluation.packet),
             Err(e) => {
                 let mut slot =
@@ -285,7 +252,7 @@ where
             config.iteration_limit
         )));
     }
-    let final_evaluation = context.evaluate(pools, end, &root.x)?;
+    let final_evaluation = context.evaluate(pools, end, prepared, &root.x)?;
     let (head, volume, flags) = context.residuals(&root.x, &final_evaluation.packet)?;
     if !flags || head > config.head_absolute_m || volume > config.transfer_absolute_m3 {
         return Err(CoupledLevelPoolError::numerical(

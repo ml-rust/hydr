@@ -6,12 +6,14 @@ mod coupling;
 mod curve;
 pub(crate) mod definition;
 mod error;
+mod prepared_interval;
 mod projection;
 mod receipt;
 mod snapshot;
 mod source_policy;
 mod source_projection;
 mod source_receipt;
+mod source_summary;
 mod trial;
 
 pub use batch::{LevelPoolBatch, LevelPoolTrial};
@@ -28,3 +30,6 @@ pub use source_receipt::{
     LevelPoolCounterReceipt, LevelPoolDemandCapReceipt, LevelPoolSourceCounterReceipt,
     LevelPoolSourceLedger, LevelPoolSourceReceipt,
 };
+
+pub(crate) use prepared_interval::{LevelPoolSourcePlan, PreparedLevelPoolInterval};
+pub(crate) use source_summary::LevelPoolIntervalSources;

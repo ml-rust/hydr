@@ -12,4 +12,5 @@ mod trial;
 
 pub(crate) use admission::check_step;
 pub(crate) use trial::advance;
+pub(crate) use trial::advance_prepared;
 pub(crate) use trial::advance_with_sources;

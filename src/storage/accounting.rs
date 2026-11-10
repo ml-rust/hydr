@@ -12,7 +12,7 @@ use solvr::interpolate::Interp1dAlgorithms;
 use super::{LevelPoolError, LevelPoolTotals};
 use crate::tensor::level_pool::{TensorPoolContext, TensorPoolState, TensorPoolStep};
 
-fn outward_add(a: f64, b: f64) -> Result<f64, LevelPoolError> {
+pub(super) fn outward_add(a: f64, b: f64) -> Result<f64, LevelPoolError> {
     if a == 0.0 {
         return Ok(b);
     }
@@ -22,7 +22,10 @@ fn outward_add(a: f64, b: f64) -> Result<f64, LevelPoolError> {
     crate::soil::admission::upward_add(a, b).map_err(|e| LevelPoolError::numerical(e.to_string()))
 }
 
-fn reduction_bound<R>(context: &TensorPoolContext<R>, sums: &[f64]) -> Result<f64, LevelPoolError>
+pub(super) fn reduction_bound<R>(
+    context: &TensorPoolContext<R>,
+    sums: &[f64],
+) -> Result<f64, LevelPoolError>
 where
     R: Runtime<DType = DType>,
     R::Client: BinaryOps<R>

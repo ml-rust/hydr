@@ -11,8 +11,7 @@ use solvr::interpolate::Interp1dAlgorithms;
 
 use crate::storage::LevelPoolError;
 use crate::tensor::level_pool::{
-    TensorPoolContext, TensorPoolSourceInput, TensorPoolSourceState, TensorPoolSourceStep,
-    TensorPoolState, TensorPoolStep,
+    TensorPoolContext, TensorPoolSourceInput, TensorPoolState, TensorPoolStep,
 };
 
 pub(crate) fn exact_zero_add<R>(
@@ -99,16 +98,16 @@ where
         + Interp1dAlgorithms<R>,
 {
     let prepared = super::sources::prepare(context, state, dt, input)?;
-    advance_prepared(context, state, incoming, outgoing, steps, prepared)
+    advance_prepared(context, state, incoming, outgoing, steps, prepared.as_ref())
 }
 
-fn advance_prepared<R>(
+pub(crate) fn advance_prepared<R>(
     context: &TensorPoolContext<R>,
     state: &TensorPoolState<R>,
     incoming: &Tensor<R>,
     outgoing: &Tensor<R>,
     steps: usize,
-    prepared: Option<(TensorPoolSourceStep<R>, TensorPoolSourceState<R>)>,
+    prepared: Option<&super::sources::PreparedSources<R>>,
 ) -> Result<(TensorPoolState<R>, TensorPoolStep<R>), LevelPoolError>
 where
     R: Runtime<DType = DType>,
@@ -126,9 +125,7 @@ where
         + Interp1dAlgorithms<R>,
 {
     let c = &context.client;
-    let base = prepared
-        .as_ref()
-        .map_or(&state.volume_m3, |(s, _)| &s.post_source_volume_m3);
+    let base = prepared.map_or(&state.volume_m3, |(s, _)| &s.post_source_volume_m3);
     context.nonnegative(incoming, "original incoming volume")?;
     context.nonnegative(outgoing, "original outgoing volume")?;
     context.reject(
@@ -178,7 +175,7 @@ where
         bound,
         scale,
     };
-    let checked = if let Some((s, _)) = &prepared {
+    let checked = if let Some((s, _)) = prepared {
         super::source_accounting::interval(
             context,
             s,
@@ -209,7 +206,6 @@ where
     )?;
     let next = TensorPoolState {
         sources: prepared
-            .as_ref()
             .map(|(_, state)| state.clone())
             .or_else(|| state.sources.clone()),
         volume_m3: volume.clone(),
@@ -221,7 +217,7 @@ where
     };
     super::accounting::check_state(context, &next, steps)?;
     let step = TensorPoolStep {
-        source: prepared.map(|(step, _)| step),
+        source: prepared.map(|(step, _)| step.clone()),
         old_volume_m3: state.volume_m3.clone(),
         incoming_volume_m3: incoming.clone(),
         outgoing_volume_m3: outgoing.clone(),

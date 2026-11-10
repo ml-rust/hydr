@@ -136,16 +136,11 @@ where
     let Some(s) = source else {
         return Ok(SourceTotals::default());
     };
+    let physical = physical_totals(context, Some(s))?;
     Ok(SourceTotals {
-        rain_volume_m3: context.sum(&s.rain_volume_m3, "aggregate interval rain_volume_m3")?,
-        evaporation_volume_m3: context.sum(
-            &s.evaporation_cap.actual_volume_m3,
-            "aggregate interval evaporation_volume_m3",
-        )?,
-        bottom_loss_volume_m3: context.sum(
-            &s.bottom_loss_cap.actual_volume_m3,
-            "aggregate interval bottom_loss_volume_m3",
-        )?,
+        rain_volume_m3: physical.rain_volume_m3,
+        evaporation_volume_m3: physical.evaporation_volume_m3,
+        bottom_loss_volume_m3: physical.bottom_loss_volume_m3,
         bottom_loss_demand_m3: context.sum(
             &s.bottom_loss_cap.potential_volume_m3,
             "aggregate interval bottom_loss_demand_m3",
@@ -161,6 +156,47 @@ where
         unmet_evaporation_volume_m3: context.sum(
             &s.evaporation_cap.unmet_volume_m3,
             "aggregate interval unmet_evaporation_volume_m3",
+        )?,
+    })
+}
+
+#[derive(Default)]
+pub(crate) struct PhysicalSourceTotals {
+    pub rain_volume_m3: f64,
+    pub evaporation_volume_m3: f64,
+    pub bottom_loss_volume_m3: f64,
+}
+pub(crate) fn physical_totals<R>(
+    context: &TensorPoolContext<R>,
+    source: Option<&TensorPoolSourceStep<R>>,
+) -> Result<PhysicalSourceTotals, LevelPoolError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
+    let Some(s) = source else {
+        return Ok(PhysicalSourceTotals::default());
+    };
+    Ok(PhysicalSourceTotals {
+        rain_volume_m3: context.sum(&s.rain_volume_m3, "aggregate interval rain_volume_m3")?,
+        evaporation_volume_m3: context.sum(
+            &s.evaporation_cap.actual_volume_m3,
+            "aggregate interval evaporation_volume_m3",
+        )?,
+        bottom_loss_volume_m3: context.sum(
+            &s.bottom_loss_cap.actual_volume_m3,
+            "aggregate interval bottom_loss_volume_m3",
         )?,
     })
 }

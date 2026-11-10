@@ -195,6 +195,78 @@ fn selected_cuda_client_executes_coupled_pool_exchange_and_trusted_restart() -> 
     Ok(())
 }
 
+macro_rules! coupled_pool_source_execution {
+    ($runtime:ty, $client:expr) => {{
+        use hydr::coupling::{CoupledLevelPoolBatch, CoupledLevelPoolSourceInterval};
+        use hydr::storage::{LevelPoolSourcePolicy, LevelPoolSources};
+
+        let (setup, initial) = coupled_pool_fixture::orifice_case([4.0, 2.0])?;
+        let policies = vec![
+            LevelPoolSourcePolicy {
+                dry_basal_footprint_assertion:
+                    "Synthetic first segment is the rain-receiving basal footprint".into(),
+                bottom_loss_provenance: "Explicit zero bottom demand without inferred soil state"
+                    .into(),
+            };
+            2
+        ];
+        let forcing = CoupledLevelPoolSourceInterval {
+            start_s: 0.0,
+            end_s: 1.0,
+            sources: vec![
+                LevelPoolSources {
+                    rain_rate_m_per_s: 0.25,
+                    potential_evaporation_rate_m_per_s: 0.0,
+                    bottom_loss_rate_m3_per_s: 0.0,
+                };
+                2
+            ],
+        };
+        let batch =
+            CoupledLevelPoolBatch::<$runtime>::new_with_sources($client, setup, initial, policies)?;
+        let original = batch.snapshot_data()?;
+        let mut next = batch.trial_with_sources_to(0.25, &forcing)?.into_next();
+        assert_eq!(batch.snapshot_data()?, original);
+        assert_eq!(next.time(), 0.25);
+        let dt: f64 = 0.25;
+        let transfer = dt * 0.5 * ((dt * dt + 8.0).sqrt() - dt);
+        let states = next.pools().states()?;
+        coupled_pool_fixture::near(states[0].volume_m3, 4.0 + 0.25 * dt - transfer);
+        coupled_pool_fixture::near(states[1].volume_m3, 2.0 + 0.25 * dt + transfer);
+        let checkpoint = next.snapshot();
+        let checkpoint_data = checkpoint.data()?;
+        next = next.trial_with_sources_to(0.5, &forcing)?.into_next();
+        let continued = next.snapshot_data()?;
+        let totals = next.pools().totals()?;
+        coupled_pool_fixture::near(totals.volume_m3, 6.25);
+        coupled_pool_fixture::near(
+            totals
+                .sources
+                .ok_or("Missing runtime source counters")?
+                .cumulative_rain_volume_m3,
+            0.25,
+        );
+        next.restore(&checkpoint)?;
+        assert_eq!(next.snapshot_data()?, checkpoint_data);
+        next = next.trial_with_sources_to(0.5, &forcing)?.into_next();
+        assert_eq!(next.snapshot_data()?, continued);
+    }};
+}
+
+#[test]
+fn selected_cpu_client_executes_coupled_sources_and_trusted_restart() -> Result {
+    coupled_pool_source_execution!(runtime::Runtime, runtime::client());
+    Ok(())
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn selected_cuda_client_executes_coupled_sources_and_trusted_restart() -> Result {
+    use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+    coupled_pool_source_execution!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?);
+    Ok(())
+}
+
 #[cfg(feature = "cuda")]
 #[test]
 fn cuda_actuator_rejects_backend_defined_fused_arithmetic() -> Result {

@@ -33,6 +33,8 @@ pub struct CoupledLevelPoolIterationData {
 /// Complete last accepted interval, projected only on explicit request.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoupledLevelPoolStepDiagnostics {
+    /// Original covered source rates. Explicit zero forcing remains present.
+    pub source_interval: Option<super::CoupledLevelPoolSourceInterval>,
     /// Accepted interval start in seconds.
     pub start_s: f64,
     /// Actual accepted interval end in seconds.
@@ -47,7 +49,7 @@ pub struct CoupledLevelPoolStepDiagnostics {
     pub head_residual_m: f64,
     /// Largest absolute signed-volume iteration residual, in m³.
     pub transfer_residual_m3: f64,
-    /// Accepted closed-system storage change, in m³.
+    /// Accepted storage change after actual rain, bottom loss, and evaporation, in m³.
     pub mass_residual_m3: f64,
     /// Conservative absolute transfer-assembly rounding bound, in m³.
     pub aggregation_roundoff_bound_m3: f64,

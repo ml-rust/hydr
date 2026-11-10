@@ -10,6 +10,7 @@ cargo test --test analytical_cases -- --nocapture
 cargo test --test radial_shoreline --test transverse_transport --test terrain_envelope -- --nocapture
 cargo test --features numr/rayon --test engine_contract --test checkpoint_package --test definition_identity
 cargo test --test coupled_level_pools
+cargo test --test coupled_level_pool_sources
 ```
 
 Use the numr source revision recorded in [Contributing](../CONTRIBUTING.md).
@@ -120,6 +121,14 @@ These tests establish selected boundary behaviour. They establish no finite exte
 The refinement case holds the endpoint at `0.5 s` and halves intervals from `0.5` through `0.03125 s`. Its finest continuous transfer error must remain below `1e-4 m³`.
 
 The orifice and gate fixtures explicitly use artificial gravity `0.5 m/s²` for exact algebraic references. These checks cover closed exchange-only pools with static manual operations. They establish no surface-to-network coupling or measured-event accuracy.
+
+`tests/coupled_level_pool_sources.rs` separately checks explicit local sources with static structure operations. Cases check source order, rain-funded withdrawal, capped losses without incoming credit, accepted-start area, and a dry rainfall footprint.
+
+Retry checks compare recalculated sources and transfers against an independent formula at the actual accepted duration. Exact-zero forcing retains common hydraulic bits and zero source counters.
+
+Invalid forcing and forged source packages reject atomically. Trusted and owned restart repeat complete continuation.
+
+These source fixtures establish no runoff attachment, external-inflow coupling, or field accuracy.
 
 ## Gate status
 

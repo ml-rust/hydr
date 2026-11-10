@@ -77,6 +77,16 @@ where
                 steps,
             )?
         };
+        self.complete_trial(end, steps, state, step)
+    }
+
+    pub(super) fn complete_trial(
+        &self,
+        end: f64,
+        steps: usize,
+        state: crate::tensor::level_pool::TensorPoolState<R>,
+        step: crate::tensor::level_pool::TensorPoolStep<R>,
+    ) -> Result<LevelPoolTrial<R>, LevelPoolError> {
         crate::numerics::storage::check_step(&self.context, &step)?;
         super::accounting::step_totals(&self.context, &step)?;
         super::accounting::totals(&self.context, &state)?;

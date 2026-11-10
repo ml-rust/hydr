@@ -107,6 +107,7 @@ where
             })
             .collect();
         Ok(CoupledLevelPoolStepDiagnostics {
+            source_interval: step.source_interval.clone(),
             start_s: step.start,
             end_s: step.end,
             requested_end_s: step.requested,

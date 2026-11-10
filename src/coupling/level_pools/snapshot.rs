@@ -160,8 +160,33 @@ where
                     "retained interval endpoints differ from native pool times",
                 )?;
                 self.check_interval(receipt)?;
+                let source_plan = match &receipt.source_interval {
+                    Some(interval) => {
+                        interval.check(
+                            start.time(),
+                            receipt.requested_end_s,
+                            self.context.pool_count(),
+                            start.source_policies().is_some(),
+                        )?;
+                        Some(start.bind_source_rates(&interval.sources)?)
+                    }
+                    None => {
+                        require(
+                            start.source_policies().is_none(),
+                            "source-enabled receipt lacks original forcing",
+                        )?;
+                        None
+                    }
+                };
+                let prepared = source_plan
+                    .as_ref()
+                    .map(|plan| plan.prepare(receipt.end_s))
+                    .transpose()?;
+                let sources = prepared.as_ref().map(|p| p.source_totals()).transpose()?;
                 let input = self.context.import_packet(&receipt.iteration)?;
-                let evaluated = self.context.evaluate(&start, receipt.end_s, &input)?;
+                let evaluated =
+                    self.context
+                        .evaluate(&start, receipt.end_s, prepared.as_ref(), &input)?;
                 let (head_residual, transfer_residual, flags) =
                     self.context.residuals(&input, &evaluated.packet)?;
                 let config = &self.setup().config;
@@ -176,6 +201,7 @@ where
                     &start,
                     &evaluated.pools,
                     evaluated.exchange.aggregation_bound,
+                    sources.as_ref(),
                 )?;
                 require(
                     same_pools(&evaluated.pools.snapshot_data()?, &data.pools),
@@ -183,6 +209,7 @@ where
                 )?;
                 let stored = StoredStep {
                     start_pools: start.snapshot(),
+                    source_interval: receipt.source_interval.clone(),
                     input,
                     exchange: evaluated.exchange,
                     heads: evaluated.heads,

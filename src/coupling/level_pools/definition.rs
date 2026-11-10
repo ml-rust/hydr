@@ -43,9 +43,9 @@ pub struct CoupledLevelPoolConfig {
     pub head_absolute_m: f64,
     /// Maximum absolute signed-transfer iteration residual, in m³.
     pub transfer_absolute_m3: f64,
-    /// Absolute closed-system water-residual budget, in m³.
+    /// Absolute source-adjusted water-residual budget, in m³.
     pub mass_absolute_m3: f64,
-    /// Relative closed-system water-residual budget against actual storage and throughput.
+    /// Relative source-adjusted water-residual budget against actual storage and throughput.
     pub mass_relative: f64,
     /// Smallest admitted trial duration, in seconds.
     pub minimum_step_s: f64,
@@ -57,7 +57,7 @@ pub struct CoupledLevelPoolConfig {
     pub retry_limit: usize,
 }
 
-/// Immutable physical setup for a closed coupled pool system.
+/// Immutable physical setup for connected pools.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoupledLevelPoolSetup {
     /// Complete pool curves and storage assertions in numerical order.

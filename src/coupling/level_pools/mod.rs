@@ -1,4 +1,4 @@
-//! Closed level pools connected through checked structure laws.
+//! Connected level pools with checked structure laws and optional explicit local sources.
 
 mod batch;
 mod context;
@@ -8,9 +8,11 @@ mod exchange;
 mod heads;
 mod identity;
 mod iteration;
+mod mass;
 mod output;
 mod projection;
 mod snapshot;
+mod sources;
 mod topology;
 mod trial;
 
@@ -25,3 +27,5 @@ pub use output::{
 };
 pub use snapshot::{CoupledLevelPoolSnapshot, CoupledLevelPoolSnapshotData};
 pub use trial::CoupledLevelPoolTrial;
+
+pub use sources::CoupledLevelPoolSourceInterval;

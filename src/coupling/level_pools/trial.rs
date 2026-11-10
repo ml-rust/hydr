@@ -1,8 +1,8 @@
 use super::{
-    CoupledLevelPoolBatch, CoupledLevelPoolError, CoupledLevelPoolStepDiagnostics,
-    exchange::Exchange, heads::Heads,
+    CoupledLevelPoolBatch, CoupledLevelPoolError, CoupledLevelPoolSourceInterval,
+    CoupledLevelPoolStepDiagnostics, exchange::Exchange, heads::Heads,
 };
-use crate::storage::{LevelPoolBatch, LevelPoolError, LevelPoolSnapshot};
+use crate::storage::{LevelPoolBatch, LevelPoolError, LevelPoolSnapshot, LevelPoolSourcePlan};
 use crate::structures::{StructureError, StructureInputErrorKind};
 use numr::dtype::DType;
 use numr::ops::{
@@ -18,6 +18,7 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub start_pools: LevelPoolSnapshot<R>,
+    pub source_interval: Option<CoupledLevelPoolSourceInterval>,
     pub input: Tensor<R>,
     pub exchange: Exchange<R>,
     pub heads: Heads<R>,
@@ -59,6 +60,34 @@ where
         &self,
         requested_end: f64,
     ) -> Result<CoupledLevelPoolTrial<R>, CoupledLevelPoolError> {
+        if self.source_policies().is_some() {
+            return Err(CoupledLevelPoolError::input(
+                "source-enabled trial lacks forcing. Supply trial_with_sources_to with complete interval coverage",
+            ));
+        }
+        self.trial_interval(requested_end, None, None)
+    }
+    /// Solve with complete covered local rates, preparing sources again after each shortening.
+    pub fn trial_with_sources_to(
+        &self,
+        requested_end: f64,
+        interval: &CoupledLevelPoolSourceInterval,
+    ) -> Result<CoupledLevelPoolTrial<R>, CoupledLevelPoolError> {
+        interval.check(
+            self.time(),
+            requested_end,
+            self.context.pool_count(),
+            self.source_policies().is_some(),
+        )?;
+        let plan = self.pools.bind_source_rates(&interval.sources)?;
+        self.trial_interval(requested_end, Some(interval), Some(&plan))
+    }
+    fn trial_interval(
+        &self,
+        requested_end: f64,
+        source_interval: Option<&CoupledLevelPoolSourceInterval>,
+        source_plan: Option<&LevelPoolSourcePlan<'_, R>>,
+    ) -> Result<CoupledLevelPoolTrial<R>, CoupledLevelPoolError> {
         let start = self.time();
         let config = &self.context.setup.config;
         if !requested_end.is_finite() || requested_end <= start {
@@ -89,7 +118,7 @@ where
                     reason: "requested interval cannot represent an admitted minimum step".into(),
                 });
             }
-            match self.attempt(end, requested_end, retries) {
+            match self.attempt(end, requested_end, retries, source_interval, source_plan) {
                 Ok(next) => return Ok(CoupledLevelPoolTrial { next }),
                 Err(error) => {
                     if !retryable(&error) {
@@ -118,21 +147,27 @@ where
         end: f64,
         requested: f64,
         retries: usize,
+        source_interval: Option<&CoupledLevelPoolSourceInterval>,
+        source_plan: Option<&LevelPoolSourcePlan<'_, R>>,
     ) -> Result<Self, CoupledLevelPoolError> {
+        let prepared = source_plan.map(|plan| plan.prepare(end)).transpose()?;
+        let sources = prepared.as_ref().map(|p| p.source_totals()).transpose()?;
         let super::iteration::SolvedInterval {
             input,
             evaluation,
             iterations,
             head_residual,
             transfer_residual,
-        } = super::iteration::solve(&self.context, &self.pools, end)?;
+        } = super::iteration::solve(&self.context, &self.pools, end, prepared.as_ref())?;
         let mass_residual = self.context.mass_check(
             &self.pools,
             &evaluation.pools,
             evaluation.exchange.aggregation_bound,
+            sources.as_ref(),
         )?;
         let step = StoredStep {
             start_pools: self.pools.snapshot(),
+            source_interval: source_interval.cloned(),
             input,
             exchange: evaluation.exchange,
             heads: evaluation.heads,

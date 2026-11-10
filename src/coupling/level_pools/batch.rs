@@ -2,7 +2,7 @@ use super::{
     CoupledLevelPoolError, CoupledLevelPoolInitialState, CoupledLevelPoolSetup, context::Context,
     trial::StoredStep,
 };
-use crate::storage::LevelPoolBatch;
+use crate::storage::{LevelPoolBatch, LevelPoolSourcePolicy};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,
@@ -12,7 +12,7 @@ use numr::runtime::Runtime;
 use solvr::interpolate::Interp1dAlgorithms;
 use std::sync::Arc;
 
-/// Accepted closed hydraulic storage with explicit physical connections.
+/// Accepted hydraulic storage with explicit physical connections and optional local sources.
 #[derive(Clone)]
 pub struct CoupledLevelPoolBatch<R: Runtime<DType = DType>> {
     pub(super) context: Arc<Context<R>>,
@@ -50,19 +50,50 @@ where
         setup: CoupledLevelPoolSetup,
         initial: CoupledLevelPoolInitialState,
     ) -> Result<Self, CoupledLevelPoolError> {
-        let pools = LevelPoolBatch::<R>::new(
-            client.clone(),
-            setup.pools.clone(),
-            initial.states,
-            initial.time_s,
-            setup.config.storage.clone(),
-        )?;
+        Self::construct(client, setup, initial, None)
+    }
+    /// Enable declared local sources while retaining the selected runtime client.
+    pub fn new_with_sources(
+        client: R::Client,
+        setup: CoupledLevelPoolSetup,
+        initial: CoupledLevelPoolInitialState,
+        policies: Vec<LevelPoolSourcePolicy>,
+    ) -> Result<Self, CoupledLevelPoolError> {
+        Self::construct(client, setup, initial, Some(policies))
+    }
+    fn construct(
+        client: R::Client,
+        setup: CoupledLevelPoolSetup,
+        initial: CoupledLevelPoolInitialState,
+        policies: Option<Vec<LevelPoolSourcePolicy>>,
+    ) -> Result<Self, CoupledLevelPoolError> {
+        let pools = match policies {
+            None => LevelPoolBatch::<R>::new(
+                client.clone(),
+                setup.pools.clone(),
+                initial.states,
+                initial.time_s,
+                setup.config.storage.clone(),
+            )?,
+            Some(policies) => LevelPoolBatch::<R>::new_with_sources(
+                client.clone(),
+                setup.pools.clone(),
+                initial.states,
+                initial.time_s,
+                setup.config.storage.clone(),
+                policies,
+            )?,
+        };
         let context = Arc::new(Context::<R>::new(client, setup)?);
         Ok(Self {
             context,
             pools,
             last: None,
         })
+    }
+    /// Native immutable source-enabling evidence, absent for exchange-only pools.
+    pub fn source_policies(&self) -> Option<&[LevelPoolSourcePolicy]> {
+        self.pools.source_policies()
     }
     /// Accepted time in seconds.
     pub fn time(&self) -> f64 {
