@@ -1,4 +1,4 @@
-//! Original admitted gate openings uploaded once per immutable proposal.
+//! Supplied opening upload or retained trajectory tensors for immutable proposals.
 
 use crate::cpu::{
     CpuTensor,
@@ -18,11 +18,14 @@ impl CpuGateInput {
         if context.gate.is_none() {
             return Ok(None);
         }
-        let values = operations
-            .packets()
-            .iter()
-            .map(|operation| match operation.operating_point {
-                StructureOperatingPoint::GateOpening { opening_m } => opening_m,
+        if let Some(opening) = operations.opening() {
+            return Ok(Some(Self {
+                opening: opening.clone(),
+            }));
+        }
+        let values = (0..operations.len())
+            .map(|index| match operations.supplied(index) {
+                Some(StructureOperatingPoint::GateOpening { opening_m }) => opening_m,
                 _ => 0.0,
             })
             .collect::<Vec<_>>();

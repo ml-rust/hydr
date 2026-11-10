@@ -9,7 +9,7 @@ pub(super) struct ProposalData {
     pub context: Arc<CpuStructureContext>,
     pub heads: Vec<StructureHeads>,
     pub result: CpuStructureResult,
-    pub operations: Vec<super::StructureOperation>,
+    pub operations: super::operation_projection::ProposalOperations,
 }
 
 /// Immutable constitutive proposals. No donor availability or paired exchange acceptance follows.
@@ -29,9 +29,32 @@ impl StructureProposal {
                 context,
                 heads,
                 result,
-                operations,
+                operations: super::operation_projection::ProposalOperations::Supplied(operations),
             }),
         }
+    }
+    pub(crate) fn from_trajectory(
+        context: Arc<CpuStructureContext>,
+        heads: Vec<StructureHeads>,
+        evaluation: Arc<super::GateTrajectoryEvaluationData>,
+        other: Vec<super::StructureOperation>,
+        result: CpuStructureResult,
+    ) -> Self {
+        Self {
+            inner: Arc::new(ProposalData {
+                context,
+                heads,
+                result,
+                operations: super::operation_projection::ProposalOperations::Trajectory {
+                    evaluation,
+                    other,
+                },
+            }),
+        }
+    }
+    /// Project complete ordered operations without repeating trajectory evaluation.
+    pub fn operations(&self) -> Result<Vec<super::StructureOperation>, StructureError> {
+        super::operation_projection::project(&self.inner.operations)
     }
     /// Project original support, physical regime, ideal-flap status, and active law operands.
     pub fn outputs(&self) -> Result<Vec<StructureOutput>, StructureError> {

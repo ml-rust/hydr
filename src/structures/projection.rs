@@ -18,6 +18,7 @@ pub(super) fn read(tensor: &CpuTensor, n: usize) -> Result<Vec<f64>, StructureEr
 }
 
 pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, StructureError> {
+    let operations = super::operation_projection::project(&data.operations)?;
     let n = data.context.elements.len();
     let r = &data.result;
     let discharge = read(&r.discharge, n)?;
@@ -65,7 +66,7 @@ pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, Struc
                         .at(element)
                 })?;
                 Some(StructureHydraulicOperands::Pump(
-                    operands.at(element, data.operations[element].operating_point)?,
+                    operands.at(element, operations[element].operating_point)?,
                 ))
             } else if status == StructureStatus::Active {
                 Some(match regime {
@@ -79,7 +80,7 @@ pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, Struc
                             .at(element)
                         })?;
                         StructureHydraulicOperands::HydrostaticRectangularGate(
-                            operands.at(element, data.operations[element].operating_point)?,
+                            operands.at(element, operations[element].operating_point)?,
                         )
                     }
                     StructureRegime::SubmergedOrifice => {
@@ -113,7 +114,7 @@ pub(super) fn outputs(data: &ProposalData) -> Result<Vec<StructureOutput>, Struc
                 None
             };
             Ok(StructureOutput {
-                operation: data.operations[element].operating_point,
+                operation: operations[element].operating_point,
                 element,
                 input: data.heads[element].clone(),
                 law: match &definition.law {

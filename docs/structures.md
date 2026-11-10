@@ -272,11 +272,42 @@ cargo run --example gate_laws_reference
 
 The observer includes original input bits, signed discharge, held volume, geometry witnesses, and closure receipts. Log-discharge error remains diagnostic because the frozen acceptance gates bound discharge. No universal pre-exponential log-error bound follows from those gates. Numerical agreement establishes no calibrated gate coefficient, field accuracy, control behavior, or accepted coupling.
 
+## Prescribed gate trajectories
+
+`GateOpeningTrajectory` supplies immutable continuous piecewise-linear openings through explicit original SI knots.
+
+| Input | Contract |
+| --- | --- |
+| Knots | At least two finite nonnegative times and openings. Original times strictly increase |
+| Motion limits | Explicit finite nonnegative opening/closing speeds. Zero prohibits motion in that direction |
+| Accuracy | Explicit finite nonnegative absolute-metre and relative opening-error limits. No defaults apply |
+| Provenance | Nonempty source and operating-envelope evidence without control characters |
+| Binding | Every gate appears exactly once in its original subsequence order |
+| Gate range | Every original opening lies within its actual bound gate maximum |
+
+`StructureBatch::with_gate_trajectories` retains the complete original structure context. Same IDs never substitute different geometry or applicability. `GateTrajectoryBatch::propose_at` requires complete ordered heads and explicit original-order non-gate operations. Passive packets remain explicit. Pump operation never defaults to stopped.
+
+Numr TwoSum retains both duration and displacement lows for motion admission. Power-of-two duration metadata remains advisory until its high witness matches Numr. Exact speed certificates require both lows to vanish. Exact positive subnormal quotients use a finite upward back-product when required. Other segments require conservative upper-speed acceptance or lower-speed excess certificates. Unresolved limit overlap rejects numerically.
+
+Solvr supplies matching F64 Linear values and independent absolute-error receipts. Hydr admits a receipt when its absolute bound fits the declared metre budget. Otherwise, positive lanes require an outward relative bound within the declared relative limit. Either branch suffices. No additive budget or unit-scale floor applies. Both-zero policies require zero receipts. Conservative positive receipts reject some mathematically exact interior evaluations.
+
+Original positive support always requires positive represented opening, regardless accuracy budgets. An original zero knot or zero plateau requires exact zero opening and receipt. Values remain inside original segment bounds and the actual gate maximum. No clipping applies. Tolerances establish numerical opening admission, never coefficient accuracy or physical motion-limit exceptions.
+
+The closed common support is the intersection of original trajectory domains. No extrapolation or implicit last hold applies. Events retain every original knot inside common support, including both boundaries. Only exactly equal original times merge. `next_event_after` returns strictly later events. `check_interval` reports internal events and exact terminal events without integrating or advancing.
+
+Point outputs retain original-time knot equality and right-sided segment metadata. The terminal knot uses the last segment. Rounded opening never establishes arrival or closed support. Repeated, shuffled, or rejected queries mutate no trajectory cursor, state, or previous evaluation.
+
+`evaluate` and `propose_at` retain derived openings as Numr tensors. Explicit `outputs()` and `operations()` project them. Existing diagnostic rejection masks remain distinct from numerical state projection. Proposal held volumes retain the sampled opening and never integrate motion over the requested interval.
+
+Actuator response, acceleration, inertia, controls, timers, hysteresis, storage advancement, and paired coupling remain separate mechanisms.
+
+Run `cargo run --example gate_trajectories_reference` for original-bit opening and error-receipt observations.
+
 ## Errors and remaining mechanisms
 
 `StructureError` separates typed input categories, numerical representation errors, and runtime errors. Input categories distinguish definition, identity, datum, head convention, operating point, unknown support, unsupported regime, and nonfinite original data. Ordered element indices remain available without parsing diagnostic strings.
 
-The component supplies no donor storage, outlet integration, storage snapshots, controls, network solve, moving geometry, or hydraulic coupling. A future coordinator owns synchronized head provenance and paired shared-volume admission.
+The component supplies no donor storage, outlet integration, storage snapshots, controls, network solve, bed or sill changes, or hydraulic coupling. A future coordinator owns synchronized head provenance and paired shared-volume admission.
 
 ## Applicability references
 

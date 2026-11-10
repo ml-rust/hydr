@@ -5,6 +5,7 @@ mod context;
 pub(crate) mod gate;
 mod input;
 mod operations;
+pub(crate) mod power_metadata;
 mod proposal;
 pub(crate) mod pump;
 

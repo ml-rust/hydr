@@ -6,3 +6,5 @@ mod geometry;
 mod geometry_bounds;
 
 pub(crate) use evaluation::evaluate;
+
+pub(crate) mod trajectory;

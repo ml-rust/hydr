@@ -1,0 +1,85 @@
+//! Original gate-subsequence assignments and immutable context ownership.
+
+use super::{GateOpeningTrajectory, GateTrajectoryEvent, GateTrajectorySupport};
+use crate::cpu::structures::{CpuStructureContext, gate::trajectory::CpuTrajectoryContext};
+use crate::structures::{StructureError, StructureInputErrorKind, StructureLaw};
+use std::sync::Arc;
+
+/// One exact original gate identity and its complete prescribed definition.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GateTrajectoryAssignment {
+    /// Identity in the original gate subsequence.
+    pub structure_id: String,
+    /// Complete immutable operating trajectory.
+    pub trajectory: GateOpeningTrajectory,
+}
+#[derive(Debug)]
+pub(crate) struct GateTrajectoryData {
+    pub context: Arc<CpuStructureContext>,
+    pub assignments: Vec<GateTrajectoryAssignment>,
+    pub slots: Vec<usize>,
+    pub support: GateTrajectorySupport,
+    pub events: Vec<GateTrajectoryEvent>,
+    pub tensors: CpuTrajectoryContext,
+}
+impl GateTrajectoryData {
+    pub(super) fn new(
+        context: Arc<CpuStructureContext>,
+        assignments: Vec<GateTrajectoryAssignment>,
+    ) -> Result<Self, StructureError> {
+        let slots: Vec<_> = context
+            .elements
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| {
+                matches!(e.law, StructureLaw::HydrostaticRectangularGate(_)).then_some(i)
+            })
+            .collect();
+        if slots.is_empty() {
+            return Err(StructureError::input(
+                StructureInputErrorKind::Definition,
+                "gate trajectory batch has no gates: supply an actual gate law",
+            ));
+        }
+        if assignments.len() != slots.len() {
+            return Err(StructureError::input(
+                StructureInputErrorKind::Identity,
+                format!(
+                    "gate assignments={},expected={}: supply every gate in original subsequence order",
+                    assignments.len(),
+                    slots.len()
+                ),
+            ));
+        }
+        for (assignment, &slot) in assignments.iter().zip(&slots) {
+            let element = &context.elements[slot];
+            if assignment.structure_id != element.id {
+                return Err(StructureError::input(
+                    StructureInputErrorKind::Identity,
+                    format!(
+                        "gate assignment={:?},expected={:?}: match original gate subsequence",
+                        assignment.structure_id, element.id
+                    ),
+                )
+                .at(slot));
+            }
+            if let StructureLaw::HydrostaticRectangularGate(parameters) = &element.law {
+                for (knot_index, knot) in assignment.trajectory.knots().iter().enumerate() {
+                    if knot.opening_m > parameters.maximum_opening_m() {
+                        return Err(StructureError::input(StructureInputErrorKind::Definition,format!("gate knot={knot_index},opening_m={},maximum={}: supply opening within actual gate range",knot.opening_m,parameters.maximum_opening_m())).at(slot));
+                    }
+                }
+            }
+        }
+        let (support, events) = super::events::build(&assignments)?;
+        let tensors = CpuTrajectoryContext::new(&context, &assignments, &slots)?;
+        Ok(Self {
+            context,
+            assignments,
+            slots,
+            support,
+            events,
+            tensors,
+        })
+    }
+}

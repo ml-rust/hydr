@@ -19,7 +19,7 @@ pub enum StructureInputErrorKind {
     UnknownSupport,
     /// Known support lies outside the declared law's admitted regime.
     UnsupportedRegime,
-    /// Original head input is nonfinite.
+    /// Original head or trajectory query input is nonfinite.
     NonfiniteInput,
 }
 
@@ -35,7 +35,7 @@ pub enum StructureError {
         /// Offending input and corrective action.
         context: String,
     },
-    /// The active law or held-volume product is unrepresentable.
+    /// Active law, trajectory admission, or held-volume arithmetic cannot meet its numerical contract.
     Numerical {
         /// Ordered element index when known.
         element: Option<usize>,

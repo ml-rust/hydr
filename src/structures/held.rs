@@ -15,6 +15,7 @@ pub struct HeldHeadProposal {
 }
 impl StructureProposal {
     /// Multiply original signed discharge by one exact held duration, without storage advancement.
+    /// A trajectory proposal retains its sampled opening and never integrates prescribed motion.
     pub fn held_volumes(
         &self,
         interval: HeldHeadInterval,

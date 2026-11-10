@@ -8,6 +8,7 @@ mod gate;
 mod heads;
 mod held;
 mod operation;
+mod operation_projection;
 mod output;
 mod parameters;
 mod projection;
@@ -18,7 +19,13 @@ pub use applicability::{OrificeApplicability, WeirApplicability};
 pub use batch::StructureBatch;
 pub use definition::{DirectionPolicy, FlowDirection, StructureElement, StructureLaw};
 pub use error::{StructureError, StructureInputErrorKind};
-pub use gate::{GateApplicability, GateHydraulicOperands, GateParameters};
+pub(crate) use gate::GateTrajectoryEvaluationData;
+pub use gate::{
+    GateApplicability, GateHydraulicOperands, GateMotionLimits, GateOpeningKnot,
+    GateOpeningTrajectory, GateParameters, GateTrajectoryAccuracy, GateTrajectoryAssignment,
+    GateTrajectoryBatch, GateTrajectoryEvaluation, GateTrajectoryEvent, GateTrajectoryInterval,
+    GateTrajectoryOutput, GateTrajectorySupport,
+};
 pub use heads::{EndpointHead, HeadConvention, HeadSupport, StructureHeads};
 pub use held::HeldHeadProposal;
 pub use operation::{StructureOperatingPoint, StructureOperation};

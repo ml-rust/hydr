@@ -7,3 +7,5 @@ mod proposal;
 pub(crate) use context::CpuGateContext;
 pub(crate) use input::CpuGateInput;
 pub(crate) use proposal::{CpuGateGeometry, CpuGateResult};
+
+pub(crate) mod trajectory;

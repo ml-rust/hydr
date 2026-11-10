@@ -24,8 +24,31 @@ impl CpuStructureInput {
         operations: &[crate::structures::StructureOperation],
     ) -> Result<Self, StructureError> {
         let operations = super::operations::CheckedOperations::new(context, operations)?;
-        let pump = super::pump::CpuPumpInput::new(context, &operations)?;
-        let gate = super::gate::CpuGateInput::new(context, &operations)?;
+        Self::checked(context, heads, &operations)
+    }
+    pub(crate) fn with_trajectory(
+        context: &CpuStructureContext,
+        heads: &[StructureHeads],
+        evaluation: &crate::structures::GateTrajectoryEvaluationData,
+        other: &[crate::structures::StructureOperation],
+    ) -> Result<Self, StructureError> {
+        if !std::ptr::eq(context, evaluation.binding.context.as_ref()) {
+            return Err(StructureError::input(
+                StructureInputErrorKind::Identity,
+                "trajectory evaluation belongs to another complete context",
+            ));
+        }
+        let operations =
+            super::operations::CheckedOperations::trajectory(context, evaluation, other)?;
+        Self::checked(context, heads, &operations)
+    }
+    fn checked(
+        context: &CpuStructureContext,
+        heads: &[StructureHeads],
+        operations: &super::operations::CheckedOperations<'_>,
+    ) -> Result<Self, StructureError> {
+        let pump = super::pump::CpuPumpInput::new(context, operations)?;
+        let gate = super::gate::CpuGateInput::new(context, operations)?;
         if heads.len() != context.elements.len() {
             return Err(StructureError::input(
                 StructureInputErrorKind::Identity,
