@@ -21,7 +21,10 @@ where
     pub fn any(&self, mask: &Tensor<R>) -> Result<bool, CrossSectionError> {
         Ok(self.client.any(mask, &[], false)?.item::<f64>()? != 0.0)
     }
-    fn rejected_lane(&self, mask: &Tensor<R>) -> Result<Option<usize>, CrossSectionError> {
+    pub(super) fn rejected_lane(
+        &self,
+        mask: &Tensor<R>,
+    ) -> Result<Option<usize>, CrossSectionError> {
         if !self.any(mask)? {
             return Ok(None);
         }
@@ -41,7 +44,7 @@ where
         }
         Ok(Some(lane))
     }
-    fn invalid(&self, value: &Tensor<R>) -> Result<Tensor<R>, CrossSectionError> {
+    pub(super) fn invalid(&self, value: &Tensor<R>) -> Result<Tensor<R>, CrossSectionError> {
         Ok(self.client.maximum(
             &self.client.cast(&self.client.isnan(value)?, DType::F64)?,
             &self.client.cast(&self.client.isinf(value)?, DType::F64)?,

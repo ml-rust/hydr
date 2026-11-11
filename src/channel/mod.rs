@@ -13,5 +13,6 @@ pub use flow::{
 };
 pub use section::{
     CrossSectionBatch, CrossSectionDefinition, CrossSectionError, CrossSectionPoint,
-    CrossSectionProperties, CrossSectionQuery,
+    CrossSectionProperties, CrossSectionQuery, CrossSectionRecoveredProperties,
+    CrossSectionRecovery, CrossSectionRecoveryConfig,
 };

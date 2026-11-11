@@ -1,6 +1,8 @@
-# Evaluate channel cross-section geometry
+# Evaluate channel cross-sections and recover stages
 
 Use `CrossSectionBatch<R>` to calculate submerged geometry at supplied water levels. Start with an ordered station/elevation profile and an explicit supported stage limit.
+
+Use `recover_stages` when submerged areas are known and water levels are needed.
 
 A stage is a water-surface elevation. This component calculates geometry only. It does not advance flow or establish a hydraulic connection.
 
@@ -50,6 +52,64 @@ The stage count must exactly equal the definition count. `definitions()` exposes
 Evaluation retains result tensors on the selected runtime and avoids full-array copies to the host. Scalar admission checks still read selected values.
 
 `properties()` explicitly copies ordered results and can return an error. F64 means 64-bit floating-point arithmetic. Unsupported arithmetic returns an error without changing the selected runtime.
+
+## Recover stages from submerged areas
+
+1. Create a `CrossSectionRecoveryConfig`, or use `CrossSectionRecoveryConfig::default()`.
+2. Supply one area per ordered definition to `batch.recover_stages(&areas_m2, &config)`.
+3. Call the returned recovery's `properties()` to copy owned results to the host.
+
+Each `CrossSectionRecoveredProperties` retains the original target bits in `requested_area_m2`. Its `geometry` field contains the recovered `CrossSectionProperties`, including `query_stage_m`.
+
+Targets must be finite and nonnegative. Each target must lie within its profile's area at `maximum_stage_m`.
+
+| Target | Recovered stage |
+| --- | --- |
+| Positive or negative zero | Original minimum bed elevation |
+| Exact area at the supported cap | Original `maximum_stage_m` |
+| Positive interior area | Represented wet stage within the declared support |
+| Any area above capacity | Input error, including the next represented area above capacity |
+
+Zero targets retain their sign in `requested_area_m2`. Their geometry reports the bed elevation. Zero area cannot identify an original level below the bed.
+
+### Set stage and area tolerances
+
+Solvr repeatedly halves a height interval above the bed to find the requested area. Recovery never searches above the supported cap.
+
+| Config field | Default | Meaning |
+| --- | --- | --- |
+| `height_atol_m` | `1e-14` | Absolute local-height tolerance in metres |
+| `height_rtol` | `1e-14` | Relative local-height tolerance |
+| `area_atol_m2` | `1e-12` | Absolute area residual tolerance in m² |
+| `area_rtol` | `1e-12` | Relative area residual tolerance |
+| `max_iter` | `256` | Maximum bisection iterations |
+
+Tolerance values must be finite and nonnegative. Each absolute/relative pair needs at least one positive value. `max_iter` must be positive.
+
+A narrow height interval alone cannot establish an acceptable result. Recovery checks the resulting area against the original target.
+
+The area residual must satisfy:
+
+```text
+abs(recovered_area_m2 - requested_area_m2)
+    <= area_atol_m2 + area_rtol * abs(requested_area_m2)
+```
+
+A positive target always requires represented wet geometry, even when the absolute area tolerance exceeds that target.
+
+### Account for benches and arithmetic limits
+
+An exact recovered bench elevation uses the existing left-limit width and perimeter convention. Nearby accepted stages can lie across the bench.
+
+Stage and area tolerances do not bound discontinuous top width or wetted perimeter near benches.
+
+Recovery checks full geometry at every trial stage, including the pressure integral. It rejects unresolved positive integrals even when area alone remains representable.
+
+Extreme coordinate scales can therefore reject an intermediate stage before the area solver converges. Recovery does not replace unresolved geometry with dry zero.
+
+Large datum offsets can prevent a positive local height from producing a distinct represented stage. Recovery rejects when no represented stage meets the area tolerance.
+
+An exhausted iteration budget or inadequate final area residual returns `Numerical`. Earlier query and recovery results remain usable after rejection.
 
 ## Read the geometric properties
 
@@ -131,6 +191,7 @@ This component supplies static geometry only. It provides no:
 - Flow advancement, discharge, roughness, or conveyance calculation.
 - Hydraulic connectivity decision for separated wet portions.
 - Extrapolated bank geometry or above-limit stage support.
+- Dynamic profiles or recovery coupled to flow state.
 - Proven error bounds for individual results.
 
 Extreme coordinate scales can reject even when the geometry is mathematically valid. Store the immutable definitions to reconstruct this static component. It has no timestep or water-ledger continuation state.

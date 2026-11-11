@@ -2,7 +2,7 @@ use super::{Result, cross_section_profiles::*, runtime};
 
 macro_rules! cross_section_execution {
     ($runtime:ty, $client:expr) => {{
-        use hydr::channel::{CrossSectionBatch, CrossSectionError};
+        use hydr::channel::{CrossSectionBatch, CrossSectionError, CrossSectionRecoveryConfig};
 
         let client = $client;
         let definitions = all();
@@ -19,6 +19,16 @@ macro_rules! cross_section_execution {
         for ((actual, expected), definition) in original.iter().zip(expected).zip(&definitions) {
             assert_eq!(actual.section_id, definition.id);
             assert_wet(actual, expected)?;
+        }
+        let areas = expected.map(|row| row.area);
+        let recovered = batch
+            .recover_stages(&areas, &CrossSectionRecoveryConfig::default())?
+            .properties()?;
+        for (index, row) in recovered.iter().enumerate() {
+            assert_eq!(row.requested_area_m2.to_bits(), areas[index].to_bits());
+            assert_eq!(row.geometry.section_id, definitions[index].id);
+            near(row.geometry.query_stage_m, stages[index]);
+            assert_wet(&row.geometry, expected[index])?;
         }
         let unsupported = batch
             .evaluate(&[4.125, 1.0, 1.0, 1.5])

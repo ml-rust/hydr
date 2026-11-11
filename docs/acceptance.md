@@ -193,6 +193,17 @@ Scaled profiles compare quantities after removing their expected geometric scale
 
 Additional cases check vertical walls, exact bench levels, dry results, separated wet portions, profile subdivision, ordering, and admission errors. Unresolved positive geometry must reject instead of returning dry zero.
 
+[Area-to-stage recovery cases](../tests/cross_sections/recovery.rs) check the inverse calculation against independently calculated areas.
+
+| Check | Required result |
+| --- | --- |
+| Analytical shapes | Recovered stages and areas meet the same dimensional allowances |
+| Geometric scales | Normalized geometry meets `1e-12` at scales `2^-100` and `2^100` |
+| Bank limits | Capacity returns the original cap. Every area above capacity rejects. |
+| Positive water | A positive target never returns dry geometry, even under loose area tolerances |
+| Root termination | Height convergence cannot bypass the independent area check |
+| Runtime | CPU and CUDA preserve original strided targets and the configured client |
+
 These geometry checks establish no dynamic flow, hydraulic connectivity, or measured-event accuracy.
 
 ## Rectangular channel-flow checks

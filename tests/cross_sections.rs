@@ -8,6 +8,8 @@ mod analytical;
 mod layouts;
 #[path = "cross_sections/profiles.rs"]
 mod profiles;
+#[path = "cross_sections/recovery.rs"]
+mod recovery;
 #[path = "support/runtime.rs"]
 mod runtime;
 
