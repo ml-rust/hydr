@@ -4,6 +4,8 @@ Use `CrossSectionBatch<R>` to calculate submerged geometry at supplied water lev
 
 Use `recover_stages` when submerged areas are known and water levels are needed.
 
+For lower and upper geometry bounds, use [certified depth and area queries](prismatic-sections.md).
+
 A stage is a water-surface elevation. This component calculates geometry only. It does not advance flow or establish a hydraulic connection.
 
 ## Supply the surveyed profile
@@ -186,12 +188,14 @@ Unresolved positive wet geometry returns a `Numerical` error. Hydr does not repo
 
 ## Current limits
 
-This component supplies static geometry only. It provides no:
+These stage-based methods supply static point results. They provide no:
 
 - Flow advancement, discharge, roughness, or conveyance calculation.
 - Hydraulic connectivity decision for separated wet portions.
 - Extrapolated bank geometry or above-limit stage support.
 - Dynamic profiles or recovery coupled to flow state.
 - Proven error bounds for individual results.
+
+[Certified depth and area queries](prismatic-sections.md) provide bounds for admitted connected profiles.
 
 Extreme coordinate scales can reject even when the geometry is mathematically valid. Store the immutable definitions to reconstruct this static component. It has no timestep or water-ledger continuation state.

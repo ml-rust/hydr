@@ -7,6 +7,7 @@ mod definition;
 mod error;
 mod evaluation;
 mod output;
+mod prismatic;
 mod query;
 mod recovery;
 mod recovery_config;
@@ -22,6 +23,11 @@ pub use batch::CrossSectionBatch;
 pub use definition::{CrossSectionDefinition, CrossSectionPoint};
 pub use error::CrossSectionError;
 pub use output::CrossSectionProperties;
+pub use prismatic::{
+    PRISMATIC_BAND_WORK_LIMIT, PrismaticRecoveredProperties, PrismaticRecoveryConfig,
+    PrismaticSectionBatch, PrismaticSectionProperties, PrismaticSectionQuery,
+    PrismaticSectionRecovery,
+};
 pub use query::CrossSectionQuery;
 pub use recovery_config::CrossSectionRecoveryConfig;
 pub use recovery_query::{CrossSectionRecoveredProperties, CrossSectionRecovery};

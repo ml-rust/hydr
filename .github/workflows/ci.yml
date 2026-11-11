@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ml-rust/solvr
-          ref: e4f8cbd9c62fb405d2910d05ac3c04e7fbedcd91
+          ref: 94c825de94fc52e9a0ba2ed42f0fa95068455bb6
           path: .ci-dependencies/solvr
       - name: Configure checked numerical dependency
         run: |

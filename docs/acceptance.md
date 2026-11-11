@@ -207,6 +207,25 @@ Additional cases check vertical walls, exact bench levels, dry results, separate
 
 These geometry checks establish no dynamic flow, hydraulic connectivity, or measured-event accuracy.
 
+### Certified surveyed-section bounds
+
+Read [the certified-geometry guide](prismatic-sections.md) for depth and conserved-area queries.
+
+[Forward cases](../tests/prismatic_geometry/forward.rs) check 79 original-operand queries. [Inverse cases](../tests/prismatic_geometry/recovery.rs) check 86 conserved-area queries against independent geometry references.
+
+| Check | Required result |
+| --- | --- |
+| Reference containment | Bounds contain exact original-coordinate geometry and independent inverse brackets |
+| Geometry interval width | At most `1e-10 × max(1, abs(exact truth))` in the quantity's SI units |
+| Inverse depth width | At most `1e-10 × max(1, cap depth)` metres |
+| Coordinate conditioning | Original decimal operands and uncertain band boundaries remain enclosed. Tiny depth remains positive at an elevation offset of `2^40 m`. |
+| Capacity | Exact canonical cap areas and their preceding values admit. Their succeeding values reject. |
+| Ownership | Repeated owners and strided inputs preserve original operands. Result mutation cannot modify compiled geometry. |
+
+[Admission cases](../tests/prismatic_geometry/admission.rs) cover 90 rejected queries and six rejected definitions. They also check dry results and unresolved positive water. [Allocation checks](../tests/prismatic_geometry/budget.rs) enforce the padded table and query limits.
+
+CPU and CUDA cases use the same references and both input layouts. These checks establish geometry bounds only, without surveyed-profile flow or measured-event accuracy.
+
 ## Rectangular channel-flow checks
 
 Read [the channel guide](channels.md) for supported geometry and endpoint conditions. [Channel cases](../tests/channel_flow.rs) check first-order flow independently of static cross-section queries.

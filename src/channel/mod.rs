@@ -17,7 +17,9 @@ pub use flow::{
 pub use section::{
     CrossSectionBatch, CrossSectionDefinition, CrossSectionError, CrossSectionPoint,
     CrossSectionProperties, CrossSectionQuery, CrossSectionRecoveredProperties,
-    CrossSectionRecovery, CrossSectionRecoveryConfig,
+    CrossSectionRecovery, CrossSectionRecoveryConfig, PRISMATIC_BAND_WORK_LIMIT,
+    PrismaticRecoveredProperties, PrismaticRecoveryConfig, PrismaticSectionBatch,
+    PrismaticSectionProperties, PrismaticSectionQuery, PrismaticSectionRecovery,
 };
 
 pub(crate) use flow::{ChannelCouplingForcing, ChannelCouplingTrial, ChannelReservoirOperands};
