@@ -226,6 +226,22 @@ Read [the certified-geometry guide](prismatic-sections.md) for depth and conserv
 
 CPU and CUDA cases use the same references and both input layouts. These checks establish geometry bounds only, without surveyed-profile flow or measured-event accuracy.
 
+### Surveyed wetted-perimeter and hydraulic-radius bounds
+
+Read [the perimeter guide](prismatic-sections.md#add-wetted-perimeter-and-hydraulic-radius-bounds) for opt-in queries and dry-radius handling.
+
+The [perimeter cases](../tests/prismatic_perimeter.rs) check nine profiles against 58 depth references and 27 inverse references. Inverse references retain the original F64 conserved areas. CPU and CUDA check both contiguous and strided layouts.
+
+| Check | Established behavior |
+| --- | --- |
+| Reference containment | Perimeter and radius enclose independent references. Widths stay within `1e-9 m + 1e-10 * max(abs(lower), abs(upper))` in these cases. |
+| Contact geometry | Dry plateau bottoms return zero perimeter. Cap benches add no contact. Matching areas can have different asymmetric bank contact. |
+| Radius | Recovery retains conserved area in the numerator. Radius can decrease as depth increases. |
+| Ownership and admission | Input snapshots survive source mutation. Result aliases cannot modify compiled geometry. Invalid operands and unsupported native bounds return errors. |
+| Arithmetic limits | Unsupported bank-length arithmetic rejects perimeter certification while existing certified geometry remains usable. |
+
+These checks establish geometry bounds for the supplied profiles. They establish neither surveyed Manning resistance nor reach advancement or measured-event accuracy.
+
 ### Surveyed interface-flux bounds
 
 Read [the surveyed-flux guide](prismatic-fluxes.md) for supplied states, returned bounds, and rejection actions.

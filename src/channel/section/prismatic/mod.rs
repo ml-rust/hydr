@@ -10,6 +10,7 @@ mod evaluation;
 mod inputs;
 mod inverse_bands;
 mod output;
+mod perimeter;
 mod projection;
 mod query;
 mod query_input;
@@ -19,6 +20,10 @@ mod topology;
 pub use batch::PrismaticSectionBatch;
 pub use config::{PRISMATIC_BAND_WORK_LIMIT, PrismaticRecoveryConfig};
 pub use output::{PrismaticRecoveredProperties, PrismaticSectionProperties};
+pub use perimeter::{
+    PrismaticPerimeterBatch, PrismaticPerimeterProperties, PrismaticPerimeterQuery,
+    PrismaticPerimeterRecoveredProperties, PrismaticPerimeterRecovery,
+};
 pub use query::{PrismaticSectionQuery, PrismaticSectionRecovery};
 
 mod hydraulic_evaluation;

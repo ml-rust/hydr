@@ -59,7 +59,30 @@ The native `dry_mask()` contains F64 `1` for dry rows and `0` for wet rows. Dry 
 
 Recovery retains the exact original area through `requested_areas_m2()` and `requested_area_m2`. Keep that original area as the conserved value. `forward_area_m2` bounds geometry across the recovered depth interval.
 
-Wetted-perimeter and hydraulic-radius bounds are outside this API. The [stage-based methods](cross-sections.md) supply point estimates of those quantities.
+## Add wetted-perimeter and hydraulic-radius bounds
+
+Call `certify_perimeter()` on your `PrismaticSectionBatch<R>` to obtain a `PrismaticPerimeterBatch<R>`. This opt-in batch retains your configured client and existing geometry.
+
+Use the same owner and value tensors described above. Call `evaluate_depths_tensor(&owners, &depths_m)` for known depths. Call `recover_depths_tensor(&owners, &areas_m2, &config)` for conserved areas.
+
+Depth queries return `PrismaticPerimeterQuery<R>`. Recovery returns `PrismaticPerimeterRecovery<R>`. Both expose these methods:
+
+| Method | Returned quantity |
+| --- | --- |
+| `geometry()` | Existing native geometry result, including original inputs and the dry mask |
+| `wetted_perimeter_m()` | Interval bounding submerged bed and bank contact, in metres |
+| `hydraulic_radius_m()` | Interval bounding area divided by wetted perimeter, in metres |
+| `properties()` | Owned host rows containing `geometry`, `wetted_perimeter_m`, and `hydraulic_radius_m` |
+
+Host `geometry` contains the existing geometry properties for the selected query. Perimeter uses `[lower, upper]`. Radius uses `Option<[f64; 2]>`. Host copies return errors when device reads fail. Keep native tensors and their aliases read-only.
+
+Perimeter uses each bank's surveyed contact length separately. Profiles with asymmetric banks can have different perimeter despite matching area and water-surface width.
+
+Positive depth includes contact with a plateau bottom. Horizontal benches at `maximum_stage_m` contribute no contact. Exactly dry results return zero perimeter. Dry radius is undefined, with a native zero placeholder and host `None`.
+
+Depth queries calculate radius from their forward area bounds. Recovery calculates radius from the original conserved area. Hydraulic radius can decrease as depth increases. Do not assume monotonic radius when interpreting bounds.
+
+If bounds cannot establish positive wet perimeter, the query returns `Numerical`. Perimeter certification leaves existing geometry and flux admission unchanged. This geometry prerequisite adds neither Manning resistance nor surveyed reach advancement.
 
 ## Set the recovery tolerance
 
