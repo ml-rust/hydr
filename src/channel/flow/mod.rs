@@ -28,7 +28,7 @@ mod triangle_reconstruction;
 mod triangular;
 
 pub use boundary_config::ChannelBoundaryConfig;
-pub use boundary_trace::ChannelBoundaryTrace;
+pub use boundary_trace::{ChannelBoundaryTrace, ChannelReservoirTrace};
 pub use config::{ChannelConfig, ChannelTriangularReconstruction};
 pub use definition::{
     ChannelBoundary, ChannelForcingInterval, ChannelGeometry, ChannelInitialState,

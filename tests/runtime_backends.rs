@@ -2,6 +2,8 @@
 
 #[path = "runtime_backends/channel_boundaries.rs"]
 mod channel_boundaries;
+#[path = "runtime_backends/channel_reservoir.rs"]
+mod channel_reservoir;
 #[path = "runtime_backends/channel_tensor_forcing.rs"]
 mod channel_tensor_forcing;
 #[path = "runtime_backends/channels.rs"]

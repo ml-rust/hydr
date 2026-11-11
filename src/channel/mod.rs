@@ -8,11 +8,11 @@ pub use flow::{
     ChannelError, ChannelForcingInterval, ChannelGeometry, ChannelInitialState,
     ChannelIntervalSnapshotData, ChannelLateralBinding, ChannelLateralDirection,
     ChannelLateralInput, ChannelLateralLedger, ChannelLateralReceipt, ChannelLateralStateData,
-    ChannelReach, ChannelReachDefinition, ChannelRiemannDiagnostics, ChannelSnapshot,
-    ChannelSnapshotData, ChannelStep, ChannelStepDiagnostics, ChannelTensorBoundary,
-    ChannelTensorForcingInterval, ChannelTensorLateralInput, ChannelTensorWaterAmount,
-    ChannelTriangularReconstruction, ChannelWaterLedger, RectangularChannelCell,
-    TriangularChannelCell,
+    ChannelReach, ChannelReachDefinition, ChannelReservoirTrace, ChannelRiemannDiagnostics,
+    ChannelSnapshot, ChannelSnapshotData, ChannelStep, ChannelStepDiagnostics,
+    ChannelTensorBoundary, ChannelTensorForcingInterval, ChannelTensorLateralInput,
+    ChannelTensorWaterAmount, ChannelTriangularReconstruction, ChannelWaterLedger,
+    RectangularChannelCell, TriangularChannelCell,
 };
 pub use section::{
     CrossSectionBatch, CrossSectionDefinition, CrossSectionError, CrossSectionPoint,

@@ -17,6 +17,13 @@ impl<R: Runtime<DType = DType>> ChannelTensorBoundary<R> {
             ChannelBoundary::Stage { elevation_m } => Self::Stage {
                 elevation_m: make(*elevation_m)?,
             },
+            ChannelBoundary::QuiescentReservoir {
+                elevation_m,
+                entrance_loss_coefficient,
+            } => Self::QuiescentReservoir {
+                elevation_m: make(*elevation_m)?,
+                entrance_loss_coefficient: make(*entrance_loss_coefficient)?,
+            },
             ChannelBoundary::Discharge { discharge_m3_per_s } => Self::Discharge {
                 discharge_m3_per_s: make(*discharge_m3_per_s)?,
             },
@@ -35,6 +42,13 @@ impl<R: Runtime<DType = DType>> ChannelTensorBoundary<R> {
             Self::Wall => ChannelBoundary::Wall,
             Self::Stage { elevation_m } => ChannelBoundary::Stage {
                 elevation_m: elevation_m.item::<f64>()?,
+            },
+            Self::QuiescentReservoir {
+                elevation_m,
+                entrance_loss_coefficient,
+            } => ChannelBoundary::QuiescentReservoir {
+                elevation_m: elevation_m.item::<f64>()?,
+                entrance_loss_coefficient: entrance_loss_coefficient.item::<f64>()?,
             },
             Self::Discharge { discharge_m3_per_s } => ChannelBoundary::Discharge {
                 discharge_m3_per_s: discharge_m3_per_s.item::<f64>()?,
@@ -69,6 +83,31 @@ where
                 if !finite(c, elevation_m)? {
                     return Err(reject(
                         "stage elevation: supply a finite elevation in the reach datum",
+                    ));
+                }
+                Ok(())
+            }
+            Self::QuiescentReservoir {
+                elevation_m,
+                entrance_loss_coefficient,
+            } => {
+                check_scalar(c, elevation_m, "reservoir elevation")?;
+                check_scalar(
+                    c,
+                    entrance_loss_coefficient,
+                    "reservoir entrance loss coefficient",
+                )?;
+                if !finite(c, elevation_m)? {
+                    return Err(reject(
+                        "reservoir elevation: supply a finite elevation in the reach datum",
+                    ));
+                }
+                let zero = Tensor::zeros(&[1], DType::F64, c.device())?;
+                if !finite(c, entrance_loss_coefficient)?
+                    || !all(c, &c.ge(entrance_loss_coefficient, &zero)?)?
+                {
+                    return Err(reject(
+                        "reservoir entrance loss coefficient: supply a finite nonnegative dimensionless value",
                     ));
                 }
                 Ok(())

@@ -59,6 +59,16 @@ pub enum ChannelBoundary {
         /// Original discharge operand in m³/s.
         discharge_m3_per_s: f64,
     },
+    /// Held quiescent reservoir with complete exit mixing and explicit entrance loss.
+    ///
+    /// The interior and delivered trace remain strictly wet and subcritical.
+    /// Zero entrance loss selects an ideal entrance. This policy supplies no finite reservoir storage.
+    QuiescentReservoir {
+        /// Finite reservoir water elevation in metres in the reach datum.
+        elevation_m: f64,
+        /// Finite nonnegative dimensionless entrance loss referenced to incoming channel velocity head.
+        entrance_loss_coefficient: f64,
+    },
     /// Genuine impermeable wall, implemented by reflecting longitudinal velocity.
     Wall,
     /// Held exterior reservoir state, without prescribing achieved discharge.

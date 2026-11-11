@@ -77,8 +77,7 @@ fn measure(
     Ok(errors)
 }
 
-#[test]
-fn stage_and_discharge_propagate_exact_incoming_waves_under_refinement() -> TestResult {
+fn check_refinement(policies: impl Fn(Shape, Geometry, f64) -> Vec<Policy>) -> TestResult {
     for (shape, geometry) in [
         (
             Shape::Rectangle {
@@ -100,7 +99,7 @@ fn stage_and_discharge_propagate_exact_incoming_waves_under_refinement() -> Test
                 .ok_or("Missing physical signal")?;
             assert!(signal.0.is_finite() && signal.0 > 0.0);
             assert!(signal.1.is_finite() && signal.1 > 0.0);
-            for policy in [Policy::Stage, Policy::Discharge] {
+            for policy in policies(shape, geometry, depth) {
                 for side in [Side::Left, Side::Right] {
                     let mut errors = Vec::new();
                     for count in [50, 100, 200] {
@@ -132,4 +131,24 @@ fn stage_and_discharge_propagate_exact_incoming_waves_under_refinement() -> Test
         }
     }
     Ok(())
+}
+
+#[test]
+fn stage_and_discharge_propagate_exact_incoming_waves_under_refinement() -> TestResult {
+    check_refinement(|_, _, _| vec![Policy::Stage, Policy::Discharge])
+}
+
+#[test]
+fn reservoir_propagates_exact_incoming_waves_under_refinement() -> TestResult {
+    check_refinement(|shape, geometry, depth| {
+        let entrance_loss_coefficient = 1.0;
+        let incoming_speed = (-trace(geometry, depth).outward_velocity).max(0.0);
+        let elevation_m = depth
+            + (1.0 + entrance_loss_coefficient) * incoming_speed * incoming_speed
+                / (2.0 * shape.gravity());
+        vec![Policy::Reservoir {
+            elevation_m,
+            entrance_loss_coefficient,
+        }]
+    })
 }

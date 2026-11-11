@@ -72,6 +72,10 @@ impl Side {
 pub enum Policy {
     Stage,
     Discharge,
+    Reservoir {
+        elevation_m: f64,
+        entrance_loss_coefficient: f64,
+    },
 }
 impl Policy {
     pub fn boundary(self, side: Side, depth: f64, outward_q: f64) -> ChannelBoundary {
@@ -79,6 +83,13 @@ impl Policy {
             Self::Stage => ChannelBoundary::Stage { elevation_m: depth },
             Self::Discharge => ChannelBoundary::Discharge {
                 discharge_m3_per_s: side.sign() * outward_q,
+            },
+            Self::Reservoir {
+                elevation_m,
+                entrance_loss_coefficient,
+            } => ChannelBoundary::QuiescentReservoir {
+                elevation_m,
+                entrance_loss_coefficient,
             },
         }
     }

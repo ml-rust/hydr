@@ -211,6 +211,7 @@ fn trace() -> crate::channel::ChannelBoundaryTrace {
         water_flux_width_m3_per_s: 0.0,
         momentum_flux_width_m4_per_s2: 0.0,
         cap_compatibility_approximation: false,
+        reservoir: None,
         root_iterations: 3,
     }
 }
@@ -277,6 +278,66 @@ fn scalar_forcing_identity_retains_policy_target_bits() {
             }
             _ => changed.right = ChannelBoundary::Stage { elevation_m: 0.0 },
         }
+        assert!(!super::check::forcing(&forcing, &changed));
+    }
+}
+
+#[test]
+fn reservoir_receipts_retain_each_bound_bit_and_policy_presence() -> Result<(), ChannelError> {
+    use crate::channel::ChannelReservoirTrace;
+    let mut original = trace();
+    original.reservoir = Some(ChannelReservoirTrace {
+        depth_lower_m: 0.0,
+        depth_upper_m: 0.0,
+        head_compatibility_abs_bound_m: 0.0,
+        dissipation_head_lower_m: 0.0,
+        dissipation_head_upper_m: 0.0,
+    });
+    assert!(original.same_bits(&original));
+    assert!(!original.same_bits(&trace()));
+    for index in 0..5 {
+        let mut changed = original.clone();
+        let receipt = changed.reservoir.as_mut().ok_or_else(|| {
+            ChannelError::input("test reservoir receipt absent: retain the original certificate")
+        })?;
+        match index {
+            0 => receipt.depth_lower_m = -0.0,
+            1 => receipt.depth_upper_m = -0.0,
+            2 => receipt.head_compatibility_abs_bound_m = -0.0,
+            3 => receipt.dissipation_head_lower_m = -0.0,
+            _ => receipt.dissipation_head_upper_m = -0.0,
+        }
+        assert!(!original.same_bits(&changed));
+    }
+    Ok(())
+}
+
+#[test]
+fn reservoir_forcing_identity_retains_head_coefficient_and_policy_bits() {
+    let forcing = ChannelForcingInterval {
+        start_s: 0.0,
+        end_s: 1.0,
+        left: ChannelBoundary::QuiescentReservoir {
+            elevation_m: 0.0,
+            entrance_loss_coefficient: 0.0,
+        },
+        right: ChannelBoundary::Wall,
+        lateral_inputs: vec![],
+    };
+    assert!(super::check::forcing(&forcing, &forcing));
+    for index in 0..3 {
+        let mut changed = forcing.clone();
+        changed.left = match index {
+            0 => ChannelBoundary::QuiescentReservoir {
+                elevation_m: -0.0,
+                entrance_loss_coefficient: 0.0,
+            },
+            1 => ChannelBoundary::QuiescentReservoir {
+                elevation_m: 0.0,
+                entrance_loss_coefficient: -0.0,
+            },
+            _ => ChannelBoundary::Stage { elevation_m: 0.0 },
+        };
         assert!(!super::check::forcing(&forcing, &changed));
     }
 }

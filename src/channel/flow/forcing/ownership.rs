@@ -31,6 +31,17 @@ where
             Self::Stage { elevation_m } => Self::Stage {
                 elevation_m: detach_scalar(client, &elevation_m, "stage elevation")?,
             },
+            Self::QuiescentReservoir {
+                elevation_m,
+                entrance_loss_coefficient,
+            } => Self::QuiescentReservoir {
+                elevation_m: detach_scalar(client, &elevation_m, "reservoir elevation")?,
+                entrance_loss_coefficient: detach_scalar(
+                    client,
+                    &entrance_loss_coefficient,
+                    "reservoir entrance loss coefficient",
+                )?,
+            },
             Self::Discharge { discharge_m3_per_s } => Self::Discharge {
                 discharge_m3_per_s: detach_scalar(
                     client,

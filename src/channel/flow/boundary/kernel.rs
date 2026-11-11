@@ -1,7 +1,7 @@
 use super::{
     EndpointInterior, NativeBoundaryTraces, ScalarBoundaryFrame,
     algebra::{Bounds, Interior},
-    discharge::{Depth, DepthRequest},
+    depth::{Depth, DepthRequest},
 };
 use crate::channel::flow::{
     ChannelError, ChannelTensorBoundary, context::Context, geometry::TensorGeometry,
@@ -30,6 +30,7 @@ struct Pending<R: Runtime<DType = DType>> {
     cap: Tensor<R>,
     depth: DepthRequest<R>,
     target: Option<(Tensor<R>, Tensor<R>)>,
+    reservoir: Option<super::reservoir::Reservoir<R>>,
 }
 impl<R: Runtime<DType = DType>> Context<R>
 where
@@ -67,16 +68,33 @@ where
         let roots: Vec<_> = pending
             .iter()
             .filter_map(|lane| match &lane.depth {
-                DepthRequest::Root(root) => Some(root.as_ref()),
-                DepthRequest::Known(_) => None,
+                DepthRequest::Discharge(root) => Some(root.as_ref()),
+                DepthRequest::Known(_) | DepthRequest::Reservoir(_) => None,
             })
             .collect();
         let mut solved = self.boundary_discharge_solve(&roots)?.into_iter();
+        let reservoir_roots: Vec<_> = pending
+            .iter()
+            .filter_map(|lane| match &lane.depth {
+                DepthRequest::Reservoir(root) => Some(root.as_ref()),
+                _ => None,
+            })
+            .collect();
+        let mut reservoir_solved = self.boundary_reservoir_solve(&reservoir_roots)?.into_iter();
         let mut lanes = Vec::with_capacity(pending.len());
         for lane in pending {
-            let depth=match lane.depth {
-                DepthRequest::Known(depth)=>*depth,
-                DepthRequest::Root(_)=>solved.next().ok_or_else(||ChannelError::numerical("scalar discharge root mapping is incomplete: inspect packed root endpoint metadata"))?,
+            let depth = match lane.depth {
+                DepthRequest::Known(depth) => *depth,
+                DepthRequest::Reservoir(_) => reservoir_solved.next().ok_or_else(|| {
+                    ChannelError::numerical(
+                        "scalar reservoir root mapping is incomplete: inspect packed endpoint metadata",
+                    )
+                })?,
+                DepthRequest::Discharge(_) => solved.next().ok_or_else(|| {
+                    ChannelError::numerical(
+                        "scalar discharge root mapping is incomplete: inspect packed root endpoint metadata",
+                    )
+                })?,
             };
             let zero = self.constant(&depth.value, 0.0)?;
             self.boundary_require(
@@ -87,13 +105,18 @@ where
                 &self.client.le(&depth.bounds.hi, &lane.cap)?,
                 "trace depth exceeds the geometric cap",
             )?;
-            lanes.push(self.boundary_evaluate(
+            let bounds = depth.bounds.clone();
+            let mut evaluated = self.boundary_evaluate(
                 lane.endpoint,
                 &lane.interior,
                 &lane.coefficient,
                 depth,
                 lane.target,
-            )?);
+            )?;
+            if let Some(reservoir) = lane.reservoir {
+                self.boundary_reservoir_receipt(&mut evaluated, &reservoir, &bounds)?;
+            }
+            lanes.push(evaluated);
         }
         let c = &self.client;
         macro_rules! pack {
@@ -102,6 +125,31 @@ where
                 c.cat(&refs, 0)?
             }};
         }
+        let reservoirs: Vec<_> = lanes
+            .iter()
+            .filter_map(|lane| lane.trace.reservoir.as_ref())
+            .collect();
+        let reservoir = if reservoirs.is_empty() {
+            None
+        } else {
+            macro_rules! reservoir_pack {
+                ($field:ident) => {{
+                    let refs: Vec<_> = reservoirs.iter().map(|r| &r.$field).collect();
+                    c.cat(&refs, 0)?
+                }};
+            }
+            Some(super::types::NativeReservoirTraces {
+                depth_lower_m: reservoir_pack!(depth_lower_m),
+                depth_upper_m: reservoir_pack!(depth_upper_m),
+                head_compatibility_abs_bound_m: reservoir_pack!(head_compatibility_abs_bound_m),
+                dissipation_head_lower_m: reservoir_pack!(dissipation_head_lower_m),
+                dissipation_head_upper_m: reservoir_pack!(dissipation_head_upper_m),
+                endpoints: reservoirs
+                    .iter()
+                    .flat_map(|r| r.endpoints.iter().copied())
+                    .collect(),
+            })
+        };
         let traces = NativeBoundaryTraces {
             depth_m: pack!(depth_m),
             area_m2: pack!(area_m2),
@@ -119,6 +167,7 @@ where
             water_flux_width_m3_per_s: pack!(water_flux_width_m3_per_s),
             momentum_flux_width_m4_per_s2: pack!(momentum_flux_width_m4_per_s2),
             cap_compatibility_approximation: pack!(cap_compatibility_approximation),
+            reservoir,
             endpoints: lanes
                 .iter()
                 .flat_map(|l| l.trace.endpoints.iter().copied())
@@ -190,6 +239,7 @@ where
         };
         self.boundary_subcritical(&state.depth_bounds, &state.velocity_bounds)?;
         let cap = self.cap.narrow(0, index, 1)?;
+        let mut reservoir = None;
         let (depth, target) = match request {
             ChannelTensorBoundary::Stage { elevation_m } => {
                 let stage = elevation_m;
@@ -217,6 +267,21 @@ where
                     None,
                 )
             }
+            ChannelTensorBoundary::QuiescentReservoir {
+                elevation_m,
+                entrance_loss_coefficient,
+            } => {
+                let bed = self.bed.narrow(0, index, 1)?;
+                let (depth, input) = self.boundary_reservoir_prepare(
+                    &state,
+                    &cap,
+                    elevation_m,
+                    &bed,
+                    entrance_loss_coefficient,
+                )?;
+                reservoir = Some(input);
+                (depth, None)
+            }
             ChannelTensorBoundary::Discharge { discharge_m3_per_s } => {
                 let longitudinal = discharge_m3_per_s.clone();
                 let outward = c.mul_scalar(&longitudinal, normal)?;
@@ -238,6 +303,7 @@ where
             cap,
             depth,
             target,
+            reservoir,
         })
     }
 }

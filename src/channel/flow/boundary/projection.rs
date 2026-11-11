@@ -1,4 +1,4 @@
-use super::super::{ChannelBoundaryTrace, ChannelError};
+use super::super::{ChannelBoundaryTrace, ChannelError, ChannelReservoirTrace};
 use super::types::NativeBoundaryTraces;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
@@ -37,6 +37,47 @@ impl<R: Runtime<DType = DType>> NativeBoundaryTraces<R> {
         let water_flux_width_m3_per_s = read(&self.water_flux_width_m3_per_s)?;
         let momentum_flux_width_m4_per_s2 = read(&self.momentum_flux_width_m4_per_s2)?;
         let cap = read(&self.cap_compatibility_approximation)?;
+        let mut reservoir_receipts = [None, None];
+        if let Some(reservoir) = &self.reservoir {
+            let count = reservoir.endpoints.len();
+            if !(1..=2).contains(&count) {
+                return Err(ChannelError::numerical(
+                    "reservoir endpoint count is invalid: retain actual reservoir endpoints",
+                ));
+            }
+            let read = |tensor: &numr::tensor::Tensor<R>| -> Result<Vec<f64>, ChannelError> {
+                if tensor.shape() != [count] || tensor.dtype() != DType::F64 {
+                    return Err(ChannelError::numerical(
+                        "reservoir receipt metadata is invalid: retain packed F64 actual endpoints",
+                    ));
+                }
+                Ok(tensor.try_to_vec::<f64>()?)
+            };
+            let lower = read(&reservoir.depth_lower_m)?;
+            let upper = read(&reservoir.depth_upper_m)?;
+            let residual = read(&reservoir.head_compatibility_abs_bound_m)?;
+            let dissipation_lower = read(&reservoir.dissipation_head_lower_m)?;
+            let dissipation_upper = read(&reservoir.dissipation_head_upper_m)?;
+            for (index, &endpoint) in reservoir.endpoints.iter().enumerate() {
+                let slot = reservoir_receipts.get_mut(endpoint).ok_or_else(|| {
+                    ChannelError::numerical(
+                        "reservoir endpoint is invalid: retain left/right indices zero or one",
+                    )
+                })?;
+                if slot.is_some() || !self.endpoints.contains(&endpoint) {
+                    return Err(ChannelError::numerical(
+                        "reservoir endpoint mapping is invalid: retain unique actual scalar endpoints",
+                    ));
+                }
+                *slot = Some(ChannelReservoirTrace {
+                    depth_lower_m: lower[index],
+                    depth_upper_m: upper[index],
+                    head_compatibility_abs_bound_m: residual[index],
+                    dissipation_head_lower_m: dissipation_lower[index],
+                    dissipation_head_upper_m: dissipation_upper[index],
+                });
+            }
+        }
         let mut result = [None, None];
         for (index, &endpoint) in self.endpoints.iter().enumerate() {
             let slot = result.get_mut(endpoint).ok_or_else(|| {
@@ -67,6 +108,7 @@ impl<R: Runtime<DType = DType>> NativeBoundaryTraces<R> {
                 momentum_flux_width_m4_per_s2: momentum_flux_width_m4_per_s2[index],
                 cap_compatibility_approximation: cap[index] == 1.0,
                 root_iterations: self.root_iterations[index],
+                reservoir: reservoir_receipts[endpoint].take(),
             });
         }
         Ok(result)
@@ -104,6 +146,7 @@ mod tests {
                 &[2],
                 client.device(),
             )?,
+            reservoir: None,
             endpoints: vec![1, 0],
             root_iterations: vec![3, 7],
         })
@@ -128,6 +171,33 @@ mod tests {
         assert!(!right.cap_compatibility_approximation);
         assert_eq!(left.root_iterations, 7);
         assert_eq!(right.root_iterations, 3);
+        Ok(())
+    }
+
+    #[test]
+    fn reservoir_projection_retains_only_actual_endpoint_bounds() -> Result<(), ChannelError> {
+        let mut native = traces()?;
+        let value = native.depth_m.narrow(0, 1, 1)?;
+        native.reservoir = Some(super::super::types::NativeReservoirTraces {
+            depth_lower_m: value.clone(),
+            depth_upper_m: value.clone(),
+            head_compatibility_abs_bound_m: value.clone(),
+            dissipation_head_lower_m: value.clone(),
+            dissipation_head_upper_m: value,
+            endpoints: vec![0],
+        });
+        let projected = native.project()?;
+        let left = projected[0]
+            .as_ref()
+            .and_then(|trace| trace.reservoir.as_ref())
+            .ok_or_else(|| ChannelError::numerical("left reservoir trace absent"))?;
+        assert_eq!(left.depth_lower_m.to_bits(), 2.0f64.to_bits());
+        assert_eq!(left.dissipation_head_upper_m.to_bits(), 2.0f64.to_bits());
+        assert!(
+            projected[1]
+                .as_ref()
+                .is_some_and(|trace| trace.reservoir.is_none())
+        );
         Ok(())
     }
 

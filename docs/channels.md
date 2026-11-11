@@ -49,12 +49,15 @@ Supply both endpoints through `ChannelForcingInterval`. Keep the supplied values
 
 A boundary trace gives the depth and velocity used to calculate flow across an endpoint.
 
+Scalar policies prescribe one hydraulic quantity and solve for the remaining trace state.
+
 | Policy | Required input | Meaning |
 | --- | --- | --- |
 | `Wall` | A genuine impermeable end | Reflects flow and transfers no water across that end |
 | `Exterior` | Depth and longitudinal velocity | Describes exterior water using the declared endpoint section and bed |
 | `Stage { elevation_m }` | Water-surface elevation in the reach datum | Solves a compatible wet-subcritical trace velocity |
 | `Discharge { discharge_m3_per_s }` | Full-section longitudinal discharge in m³/s | Solves compatible wet-subcritical depth and velocity |
+| `QuiescentReservoir` | Reservoir elevation and explicit entrance-loss coefficient | Includes entrance velocity head and complete exit mixing |
 
 Exterior depth uses metres above the local bed. Exterior velocity uses m/s in the channel's positive direction.
 
@@ -85,6 +88,31 @@ Fresh scalar traces participate in every retry and the final state check after f
 
 Discharge accepts held rates. Integrated endpoint volumes remain unsupported.
 
+### Use a quiescent reservoir
+
+Choose `QuiescentReservoir { elevation_m, entrance_loss_coefficient }` when reservoir velocity is negligible. Supply elevation in the reach datum.
+
+The entrance-loss coefficient `K` must be finite and nonnegative. It refers to channel trace velocity. `K=0` explicitly selects an ideal entrance without entrance loss.
+
+Velocity head, `u²/(2g)`, expresses kinetic energy as an equivalent water height. The relation assumes a uniform section velocity profile (`α=1`).
+
+| Flow direction | Head relation | Physical assumption |
+| --- | --- | --- |
+| Reservoir into channel | Reservoir elevation equals trace elevation plus `(1+K)` times velocity head | Reservoir head supplies acceleration and entrance loss |
+| Channel into reservoir | Reservoir elevation equals trace elevation | Complete mixing dissipates incoming kinetic energy |
+
+Here `u` is outward channel velocity and `g` is gravity. Hydr retains the complete channel momentum and pressure flux in both directions.
+
+This model applies the [energy equation](https://www.hec.usace.army.mil/confluence/rasdocs/ras1dtechref/6.1/theoretical-basis-for-one-dimensional-and-two-dimensional-hydrodynamic-calculations/1d-steady-flow-water-surface-profiles/equations-for-basic-profile-calculations) with [entrance losses and exit mixing](https://www.hec.usace.army.mil/confluence/hmsdocs/hmsum/4.7.1/reservoir-elements/outflow-structures-routing).
+
+Interior water and the boundary trace must remain wet and strictly subcritical. Resolved reversal follows the same continuous head law.
+
+This policy holds the supplied reservoir elevation over its forcing interval. It does not advance finite reservoir storage.
+
+Use this approximation only where rapid reservoir mixing is appropriate. Jets, seiches, dry connections, and critical transitions remain unsupported.
+
+Hydr rejects a result when it cannot establish whether the depth exceeds the declared maximum. Reservoir boundaries do not use the Discharge cap approximation.
+
 ### Read scalar compatibility controls
 
 `ChannelConfig.boundary` contains `ChannelBoundaryConfig`. These controls limit mismatches between the computed trace and the interior wave relation. Conservation allowances and flux-width budgets remain separate.
@@ -97,10 +125,14 @@ Discharge accepts held rates. Integrated endpoint volumes remain unsupported.
 | `momentum_relative` | `1e-12` | Relative momentum-flux mismatch allowance |
 | `velocity_relative` | `1e-12` | Relative velocity mismatch allowance |
 | `critical_relative` | `64 × f64::EPSILON` | Minimum relative gap between flow speed and wave speed |
+| `reservoir_head_absolute_m` | `1e-12 m` | Absolute reservoir-head mismatch allowance |
+| `reservoir_head_relative` | `1e-12` | Relative reservoir-head mismatch allowance |
 
 Each discharge or momentum budget adds absolute and relative allowances at the corresponding physical scale. The velocity allowance uses the largest flow or gravity-wave speed magnitude at either state. No absolute velocity floor applies.
 
 Controls must be finite and nonnegative. Each discharge/momentum pair requires a positive value. Velocity tolerance remains positive. Critical separation lies strictly between zero and one.
+
+The reservoir-head pair also requires a positive allowance. Its relative scale uses local depths and velocity/loss heads. Absolute datum elevation never increases the allowance.
 
 ## Declare lateral water inputs
 
@@ -214,7 +246,7 @@ A zero withdrawal from a dry cell has no applied velocity.
 
 ### Inspect scalar endpoint receipts
 
-`ChannelStepDiagnostics.boundary_traces` contains left/right optional `ChannelBoundaryTrace` values. Stage and Discharge produce traces. Wall and Exterior entries remain absent.
+`ChannelStepDiagnostics.boundary_traces` contains left/right optional `ChannelBoundaryTrace` values. Scalar policies produce traces. Wall and Exterior entries remain absent.
 
 These traces describe the accepted interval's flux calculation.
 
@@ -230,6 +262,10 @@ Receipt discharge uses the outward sign. This differs from the longitudinal sign
 A rounded discharge can fall inside a certified uncertainty band at the original geometry cap. Approximate admission keeps the original discharge and reports bounded compatibility mismatches. Both delivered and compatible velocities must remain strictly subcritical.
 
 An approximate cap trace does not establish an exact cap root. Certified targets outside the cap range reject. Compatibility bounds never enlarge conservation allowances.
+
+Reservoir traces additionally contain `reservoir: Some(ChannelReservoirTrace)`. Its depth bounds contain the solution of the reservoir head relation. The head-mismatch bound measures disagreement with that law.
+
+`dissipation_head_lower_m` and `dissipation_head_upper_m` bound the head lost through entrance resistance or exit mixing. These local bounds establish no energy guarantee for a complete finite-storage calculation.
 
 ### Read flux accuracy
 
@@ -355,7 +391,7 @@ The solver represents hydrostatic, one-dimensional shallow-water flow. It exclud
 
 - Geometry: Rectangular width and bed can vary between cells. Triangles require one common bed and bank slopes.
 - Profiles: Trapezoids, mixed shapes, and varying longitudinal triangular profiles remain unsupported. Surveyed profiles support [static queries](cross-sections.md) only.
-- Boundaries: Stage and Discharge require resolved wet-subcritical traces. Complete exterior data supports other flow regimes. Use walls only for physical closures. Transmissive policies remain unsupported.
+- Boundaries: Scalar policies require resolved wet-subcritical traces. Complete exterior data supports other flow regimes. Use walls only for physical closures. Transmissive policies remain unsupported.
 - Connections: Junctions, structures, and coordinated exchange with other components remain unsupported.
 - Losses: Separate abrupt contraction and expansion losses remain unsupported.
 - Drainage: This solver supplies no SWMM drainage, surcharge, or pressurized-pipe model.

@@ -1,4 +1,5 @@
 use super::algebra::{Bounds, Interior};
+use super::depth::{Depth, DepthRequest};
 use crate::channel::flow::{
     ChannelError,
     context::Context,
@@ -13,23 +14,12 @@ use numr::{
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedBisectionOptions};
 use std::cell::RefCell;
 
-pub(super) struct Depth<R: Runtime<DType = DType>> {
-    pub value: Tensor<R>,
-    pub bounds: Bounds<R>,
-    pub approximate: bool,
-    pub iterations: usize,
-}
 pub(super) struct RootInput<R: Runtime<DType = DType>> {
     pub interior: Interior<R>,
     pub coefficient: Tensor<R>,
     pub target: Tensor<R>,
     pub lower: Tensor<R>,
     pub upper: Tensor<R>,
-}
-
-pub(super) enum DepthRequest<R: Runtime<DType = DType>> {
-    Known(Box<Depth<R>>),
-    Root(Box<RootInput<R>>),
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -129,7 +119,7 @@ where
                 iterations: 0,
             })));
         }
-        Ok(DepthRequest::Root(Box::new(RootInput {
+        Ok(DepthRequest::Discharge(Box::new(RootInput {
             interior: interior.clone(),
             coefficient: coefficient.clone(),
             target: target.clone(),

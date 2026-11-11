@@ -130,9 +130,9 @@ where
         let area = area_field.narrow(0, index, 1)?;
         let discharge = discharge_field.narrow(0, index, 1)?;
         match boundary {
-            ChannelTensorBoundary::Stage { .. } | ChannelTensorBoundary::Discharge { .. } => {
-                Ok((area, discharge))
-            }
+            ChannelTensorBoundary::Stage { .. }
+            | ChannelTensorBoundary::Discharge { .. }
+            | ChannelTensorBoundary::QuiescentReservoir { .. } => Ok((area, discharge)),
             ChannelTensorBoundary::Wall => Ok((area, self.client.neg(&discharge)?)),
             ChannelTensorBoundary::Exterior {
                 depth_m,

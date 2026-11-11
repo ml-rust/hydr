@@ -22,6 +22,7 @@ pub(in crate::channel::flow) struct NativeBoundaryTraces<R: Runtime<DType = DTyp
     pub water_flux_width_m3_per_s: Tensor<R>,
     pub momentum_flux_width_m4_per_s2: Tensor<R>,
     pub cap_compatibility_approximation: Tensor<R>,
+    pub reservoir: Option<NativeReservoirTraces<R>>,
     pub endpoints: Vec<usize>,
     pub root_iterations: Vec<usize>,
 }
@@ -31,4 +32,14 @@ pub(in crate::channel::flow) struct ScalarBoundaryFrame<R: Runtime<DType = DType
     pub water_underflow_bound: Tensor<R>,
     pub momentum_underflow_bound: Tensor<R>,
     pub traces: Arc<NativeBoundaryTraces<R>>,
+}
+
+#[derive(Clone, Debug)]
+pub(in crate::channel::flow) struct NativeReservoirTraces<R: Runtime<DType = DType>> {
+    pub depth_lower_m: Tensor<R>,
+    pub depth_upper_m: Tensor<R>,
+    pub head_compatibility_abs_bound_m: Tensor<R>,
+    pub dissipation_head_lower_m: Tensor<R>,
+    pub dissipation_head_upper_m: Tensor<R>,
+    pub endpoints: Vec<usize>,
 }

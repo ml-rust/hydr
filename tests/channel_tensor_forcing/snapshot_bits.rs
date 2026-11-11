@@ -98,6 +98,8 @@ fields!(
     momentum_relative,
     velocity_relative,
     critical_relative,
+    reservoir_head_absolute_m,
+    reservoir_head_relative,
 );
 
 fields!(
@@ -113,6 +115,16 @@ fields!(
     momentum_compatibility_abs_bound_m4_per_s2,
     water_flux_width_m3_per_s,
     momentum_flux_width_m4_per_s2,
+    reservoir,
+);
+
+fields!(
+    ChannelReservoirTrace,
+    depth_lower_m,
+    depth_upper_m,
+    head_compatibility_abs_bound_m,
+    dissipation_head_lower_m,
+    dissipation_head_upper_m,
 );
 
 fields!(
@@ -257,6 +269,13 @@ impl FloatBits for ChannelBoundary {
         match self {
             Self::Wall => {}
             Self::Stage { elevation_m } => elevation_m.append_bits(bits),
+            Self::QuiescentReservoir {
+                elevation_m,
+                entrance_loss_coefficient,
+            } => {
+                elevation_m.append_bits(bits);
+                entrance_loss_coefficient.append_bits(bits);
+            }
             Self::Discharge { discharge_m3_per_s } => discharge_m3_per_s.append_bits(bits),
             Self::Exterior {
                 depth_m,

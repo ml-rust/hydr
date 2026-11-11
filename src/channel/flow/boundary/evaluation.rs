@@ -1,7 +1,7 @@
 use super::{
     NativeBoundaryTraces,
     algebra::{Bounds, Interior},
-    discharge::Depth,
+    depth::Depth,
     kernel::Lane,
 };
 use crate::channel::flow::{ChannelError, context::Context, triangular::envelope::upper};
@@ -210,6 +210,7 @@ where
                 momentum_flux_width_m4_per_s2: momentum_width,
                 cap_compatibility_approximation: self
                     .constant(&zero, if depth.approximate { 1.0 } else { 0.0 })?,
+                reservoir: None,
                 endpoints: vec![endpoint],
                 root_iterations: vec![depth.iterations],
             },

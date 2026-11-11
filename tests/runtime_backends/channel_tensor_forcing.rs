@@ -3,11 +3,11 @@ use super::Result;
 
 #[allow(dead_code)]
 #[path = "../channel_boundaries/common.rs"]
-mod boundary_common;
+pub(super) mod boundary_common;
 #[path = "../channel_tensor_forcing/snapshot_bits.rs"]
-mod snapshot_bits;
+pub(super) mod snapshot_bits;
 #[path = "../channel_tensor_forcing/transport.rs"]
-mod transport;
+pub(super) mod transport;
 
 #[cfg(feature = "cuda")]
 #[test]

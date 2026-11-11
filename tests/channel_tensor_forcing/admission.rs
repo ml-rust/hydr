@@ -63,11 +63,23 @@ fn replace_parameter(forcing: &mut Native, slot: usize, value: Operand) -> TestR
                 },
             }
         }
-        _ => {
+        8 => {
             forcing.lateral_inputs[1] = ChannelTensorLateralInput::Withdrawal {
                 boundary_id: "outgoing".into(),
                 amount: ChannelTensorWaterAmount::IntervalVolume { volume_m3: value },
             }
+        }
+        9 => {
+            forcing.left = ChannelTensorBoundary::QuiescentReservoir {
+                elevation_m: value,
+                entrance_loss_coefficient: operand(&client, 0.0, 0)?,
+            };
+        }
+        _ => {
+            forcing.left = ChannelTensorBoundary::QuiescentReservoir {
+                elevation_m: operand(&client, 1.0, 0)?,
+                entrance_loss_coefficient: value,
+            };
         }
     }
     Ok(())
@@ -99,7 +111,7 @@ fn every_native_operand_rejects_invalid_layout_and_nonfinite_values_atomically()
         operand(&client, f64::INFINITY, 1)?,
         operand(&client, f64::NEG_INFINITY, 2)?,
     ];
-    for slot in 0..9 {
+    for slot in 0..11 {
         for value in &malformed {
             let mut tensor_forcing = native(&client, &forcing(end, end * 2.0, 2), 0)?;
             replace_parameter(&mut tensor_forcing, slot, value.clone())?;

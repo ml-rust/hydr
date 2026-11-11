@@ -109,6 +109,16 @@ pub enum ChannelTensorBoundary<R: Runtime<DType = DType>> {
         /// Water elevation in metres in the reach datum.
         elevation_m: Tensor<R>,
     },
+    /// Quiescent reservoir with complete exit mixing and explicit entrance loss, held over the interval.
+    ///
+    /// The interior and delivered trace remain strictly wet and subcritical.
+    /// Zero entrance loss selects an ideal entrance. This policy supplies no finite reservoir storage.
+    QuiescentReservoir {
+        /// Finite reservoir water elevation in metres in the reach datum.
+        elevation_m: Tensor<R>,
+        /// Finite nonnegative dimensionless entrance loss referenced to incoming channel velocity head.
+        entrance_loss_coefficient: Tensor<R>,
+    },
     /// Original longitudinal full-section discharge in cubic metres per second.
     Discharge {
         /// Original full-section discharge along the increasing reach coordinate, in cubic metres per second.
@@ -118,7 +128,10 @@ pub enum ChannelTensorBoundary<R: Runtime<DType = DType>> {
 
 impl<R: Runtime<DType = DType>> ChannelTensorBoundary<R> {
     pub(in crate::channel::flow) fn is_scalar(&self) -> bool {
-        matches!(self, Self::Stage { .. } | Self::Discharge { .. })
+        matches!(
+            self,
+            Self::Stage { .. } | Self::Discharge { .. } | Self::QuiescentReservoir { .. }
+        )
     }
 }
 

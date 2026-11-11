@@ -55,6 +55,16 @@ fn boundary(a: &ChannelBoundary, b: &ChannelBoundary) -> bool {
             a.to_bits() == b.to_bits()
         }
         (
+            ChannelBoundary::QuiescentReservoir {
+                elevation_m: ah,
+                entrance_loss_coefficient: ak,
+            },
+            ChannelBoundary::QuiescentReservoir {
+                elevation_m: bh,
+                entrance_loss_coefficient: bk,
+            },
+        ) => values(&[*ah, *ak], &[*bh, *bk]),
+        (
             ChannelBoundary::Discharge {
                 discharge_m3_per_s: a,
             },

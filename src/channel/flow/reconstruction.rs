@@ -167,9 +167,9 @@ where
     ) -> Result<Tensor<R>, ChannelError> {
         let endpoint = field.narrow(0, index, 1)?;
         match boundary {
-            ChannelTensorBoundary::Stage { .. } | ChannelTensorBoundary::Discharge { .. } => {
-                Ok(endpoint)
-            }
+            ChannelTensorBoundary::Stage { .. }
+            | ChannelTensorBoundary::Discharge { .. }
+            | ChannelTensorBoundary::QuiescentReservoir { .. } => Ok(endpoint),
             ChannelTensorBoundary::Wall => {
                 if velocity {
                     Ok(self.client.neg(&endpoint)?)

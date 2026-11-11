@@ -50,6 +50,13 @@ pub fn native<R: Runtime<DType = DType>>(
             ChannelBoundary::Stage { elevation_m } => ChannelTensorBoundary::Stage {
                 elevation_m: value(*elevation_m)?,
             },
+            ChannelBoundary::QuiescentReservoir {
+                elevation_m,
+                entrance_loss_coefficient,
+            } => ChannelTensorBoundary::QuiescentReservoir {
+                elevation_m: value(*elevation_m)?,
+                entrance_loss_coefficient: value(*entrance_loss_coefficient)?,
+            },
             ChannelBoundary::Discharge { discharge_m3_per_s } => ChannelTensorBoundary::Discharge {
                 discharge_m3_per_s: value(*discharge_m3_per_s)?,
             },
@@ -160,7 +167,10 @@ pub fn forcing(start_s: f64, end_s: f64, policy: usize) -> ChannelForcingInterva
     }
 }
 
-fn overwrite_aliases<R>(client: &R::Client, forcing: &ChannelTensorForcingInterval<R>) -> TestResult
+pub fn overwrite_aliases<R>(
+    client: &R::Client,
+    forcing: &ChannelTensorForcingInterval<R>,
+) -> TestResult
 where
     R: Runtime<DType = DType>,
     R::Client: BinaryOps<R>,
@@ -178,6 +188,13 @@ where
             }
             ChannelTensorBoundary::Stage { elevation_m } => {
                 client.copy_into(elevation_m, &replacement)?
+            }
+            ChannelTensorBoundary::QuiescentReservoir {
+                elevation_m,
+                entrance_loss_coefficient,
+            } => {
+                client.copy_into(elevation_m, &replacement)?;
+                client.copy_into(entrance_loss_coefficient, &replacement)?;
             }
             ChannelTensorBoundary::Discharge { discharge_m3_per_s } => {
                 client.copy_into(discharge_m3_per_s, &replacement)?;

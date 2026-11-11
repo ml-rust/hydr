@@ -373,6 +373,39 @@ Each finest-grid error must also stay below `25%` of the nonzero analytical chan
 
 Discharge inputs remain longitudinal-positive. Trace receipts use outward discharge. Read [the channel guide](channels.md) before selecting signs or compatibility controls.
 
+## Quiescent-reservoir boundary checks
+
+[Reservoir cases](../tests/channel_reservoir.rs) check the entrance-energy and exit-mixing assumptions described in [the channel guide](channels.md#use-a-quiescent-reservoir).
+
+Six independent trace fixtures cover both geometries and flow directions. Incoming fixtures use these reservoir elevations:
+
+| Section | Elevation with `K=0`, m | Elevation with `K=1`, m | Expected trace depth, m |
+| --- | --- | --- | --- |
+| Rectangle, `g=1`, width `1 m` | `19/8` | `11/4` | `2` |
+| Triangle, `g=8`, `k=1` | `743/432` | `419/216` | Approximately `1.5` |
+
+Initial depth is `1 m`, initial velocity is zero, and bed elevation is zero. Outflow fixtures use reservoir elevation `0.81 m`.
+
+The reference uses 150-digit arithmetic on the actual binary64 inputs. Depth, velocity, discharge, and momentum comparisons require absolute-plus-relative agreement within `1e-12`.
+
+Each absolute allowance uses that quantity's SI units. Dissipation comparisons use mechanical power divided by water density, in m⁵/s³.
+
+Reported depth intervals must contain the independently calculated solution. Computed traces must also meet the separate reservoir-head allowance.
+
+| Check | Required behavior |
+| --- | --- |
+| Passive loss | Dissipation agrees within `1e-10 m⁵/s³ + 1e-12 × reference magnitude` |
+| Still water | Equal levels preserve the existing rest-state error limits for both geometries and endpoint orientations |
+| Wave propagation | `K=1` reservoir cases meet the same grids, spatial-refinement criteria, and physical-signal limits described above |
+| Extreme head arithmetic | Large entrance losses retain amplified tiny heads. Overflow-prone input expressions still produce finite certified heads when representable. |
+| Regime and capacity | Unsupported flow and invalid loss coefficients reject without changing state. Uncertain results at the maximum depth also reject. |
+| Continuation | Native inputs retain original bits and resist caller-buffer mutation. Trusted/cold replay checks every reservoir receipt bound. |
+| Runtime | Actual CPU/CUDA clients execute reservoir roots, mixed endpoint policies, dissipation checks, and complete restart |
+
+Across reservoir grids, maximum mean errors remain below `0.006146 m` for depth and `0.02084 m³/s` for discharge.
+
+These are local boundary checks. They establish no energy theorem for a complete finite-storage calculation. Finite channel/pool coordination remains unsupported.
+
 ## Connected-pool checks
 
 Read [coupled level pools](coupled-level-pools.md) before selecting this component.
