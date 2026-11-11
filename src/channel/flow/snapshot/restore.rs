@@ -3,7 +3,8 @@ use super::{ChannelSnapshot, ChannelSnapshotData};
 use crate::channel::flow::{ChannelError, ChannelInitialState, ChannelReach};
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, MidpointOps, ReduceOps, ScalarOps, ShapeOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
+    ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::{Device, Runtime, RuntimeClient};
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
@@ -15,10 +16,12 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + ShapeOps<R>
+        + TwoSumOps<R>
         + UnaryOps<R>
         + BatchedBisectionAlgorithms<R>,
 {
@@ -71,10 +74,17 @@ where
                     ),
                 "zero-step state differs from the original epoch",
             )?;
-            let original = self.checked_start(data.initial.clone())?;
+            let original = self.checked_start(&data.initial)?;
             require(
-                check::ledger(&original.accepted.ledger, &data.ledger),
-                "zero-step ledger differs from original storage and zero counters",
+                check::ledger(&original.accepted.ledger, &data.ledger)
+                    && check::lateral_state(
+                        &original
+                            .context
+                            .lateral
+                            .state_data(&original.context.client, &original.accepted.lateral)?,
+                        &data.lateral,
+                    ),
+                "zero-step ledger or lateral counters differ from the original zero history",
             )?;
             return Ok(original);
         }
@@ -98,7 +108,36 @@ where
                 .clone(),
         };
         let starts_at_origin = check::initial(&data.initial, &previous_initial);
-        let mut previous = self.checked_start(previous_initial)?;
+        let mut previous = self.checked_start(&previous_initial)?;
+        let initial_lateral = self
+            .context
+            .lateral
+            .state_data(&self.context.client, &previous.accepted.lateral)?;
+        previous.accepted.lateral = self
+            .context
+            .lateral
+            .restore_state(&self.context.client, &interval.previous_lateral)?;
+        let totals = self
+            .context
+            .lateral
+            .totals(&self.context.client, &previous.accepted.lateral)?;
+        require(
+            check::values(
+                &[
+                    totals.incoming_m3,
+                    totals.withdrawal_m3,
+                    totals.counter_abs_bound_m3,
+                    totals.assembly_abs_bound_m3,
+                ],
+                &[
+                    interval.previous_ledger.lateral_in_m3,
+                    interval.previous_ledger.lateral_out_m3,
+                    interval.previous_ledger.lateral_counter_abs_bound_m3,
+                    interval.previous_ledger.lateral_assembly_abs_bound_m3,
+                ],
+            ),
+            "previous lateral totals differ from the authoritative boundary counters",
+        )?;
         check::ledger_admission(
             &interval.previous_ledger,
             previous.accepted.ledger.storage_m3,
@@ -108,7 +147,8 @@ where
         if interval.previous_accepted_steps == 0 {
             require(
                 starts_at_origin
-                    && check::ledger(&previous.accepted.ledger, &interval.previous_ledger),
+                    && check::ledger(&previous.accepted.ledger, &interval.previous_ledger)
+                    && check::lateral_state(&initial_lateral, &interval.previous_lateral),
                 "first interval does not start from the original state and zero counters",
             )?;
         } else {
@@ -136,25 +176,45 @@ where
                 && check::ledger(&replayed.accepted.ledger, &data.ledger),
             "accepted state or cumulative accounting differs from the replayed final interval",
         )?;
+        require(
+            check::lateral_state(
+                &self
+                    .context
+                    .lateral
+                    .state_data(&self.context.client, &replayed.accepted.lateral)?,
+                &data.lateral,
+            ),
+            "accepted lateral counters or bounds differ from the replayed interval",
+        )?;
         let diagnostics = replayed.last_step()?.ok_or_else(|| {
             ChannelError::input(
                 "replayed channel interval lacks a receipt: inspect continuation arithmetic",
             )
         })?;
+        if interval.forcing.lateral_inputs.iter().any(|input| {
+            matches!(
+                input.amount(),
+                crate::forcing::WaterAmount::IntervalVolume { .. }
+            )
+        }) {
+            require(
+                replayed.time().to_bits() == interval.requested_end_s.to_bits()
+                    && interval.forcing.end_s.to_bits() == interval.requested_end_s.to_bits()
+                    && diagnostics.retries == 0,
+                "exact lateral volumes do not retain their requested span without internal retries",
+            )?;
+        }
         require(
-            check::diagnostics(&diagnostics, &interval.diagnostics),
+            check::diagnostics(&diagnostics, &interval.diagnostics)
+                && check::forcing(&replayed.accepted.last.as_ref().ok_or_else(|| {
+                    ChannelError::input("replayed channel interval lacks original forcing: inspect continuation state")
+                })?.forcing.project(&self.context.client)?, &interval.forcing),
             "final receipt operands or numerical bounds differ from the replayed interval",
         )?;
         Ok(replayed)
     }
 
-    fn checked_start(&self, initial: ChannelInitialState) -> Result<Self, ChannelError> {
-        let mut result = Self::new(
-            self.context.client.clone(),
-            self.definition().clone(),
-            initial,
-        )?;
-        result.context = Arc::clone(&self.context);
-        Ok(result)
+    fn checked_start(&self, initial: &ChannelInitialState) -> Result<Self, ChannelError> {
+        Self::from_context(Arc::clone(&self.context), initial)
     }
 }

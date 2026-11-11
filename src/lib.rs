@@ -15,6 +15,7 @@
 pub mod channel;
 pub mod coupling;
 pub mod error;
+pub mod forcing;
 pub mod grid;
 pub mod model;
 mod numerics;

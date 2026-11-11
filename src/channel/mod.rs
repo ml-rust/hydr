@@ -4,9 +4,11 @@ mod flow;
 mod section;
 
 pub use flow::{
-    ChannelBoundary, ChannelBoundaryInterval, ChannelCellResult, ChannelConfig, ChannelError,
-    ChannelInitialState, ChannelIntervalSnapshotData, ChannelReach, ChannelReachDefinition,
-    ChannelSnapshot, ChannelSnapshotData, ChannelStep, ChannelStepDiagnostics, ChannelWaterLedger,
+    ChannelBoundary, ChannelCellResult, ChannelConfig, ChannelError, ChannelForcingInterval,
+    ChannelInitialState, ChannelIntervalSnapshotData, ChannelLateralBinding,
+    ChannelLateralDirection, ChannelLateralInput, ChannelLateralLedger, ChannelLateralReceipt,
+    ChannelLateralStateData, ChannelReach, ChannelReachDefinition, ChannelSnapshot,
+    ChannelSnapshotData, ChannelStep, ChannelStepDiagnostics, ChannelWaterLedger,
     RectangularChannelCell,
 };
 pub use section::{

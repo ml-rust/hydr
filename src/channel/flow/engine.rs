@@ -1,10 +1,12 @@
 use super::{
-    ChannelCellResult, ChannelConfig, ChannelError, ChannelInitialState, ChannelReachDefinition,
-    ChannelStepDiagnostics, ChannelWaterLedger, context::Context, receipt::LastInterval,
+    ChannelCellResult, ChannelConfig, ChannelError, ChannelInitialState, ChannelLateralLedger,
+    ChannelReachDefinition, ChannelStepDiagnostics, ChannelWaterLedger, context::Context,
+    receipt::LastInterval, sources::LateralState,
 };
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, MidpointOps, ReduceOps, ScalarOps, ShapeOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
+    ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -21,6 +23,7 @@ pub struct ChannelReach<R: Runtime<DType = DType>> {
 pub(super) struct Accepted<R: Runtime<DType = DType>> {
     pub volume: Tensor<R>,
     pub momentum: Tensor<R>,
+    pub lateral: LateralState<R>,
     pub time: f64,
     pub ledger: ChannelWaterLedger,
     pub steps: usize,
@@ -71,10 +74,12 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + ShapeOps<R>
+        + TwoSumOps<R>
         + UnaryOps<R>,
 {
     /// Construct explicit rectangular cells and conservative state without a default runtime.
@@ -84,7 +89,13 @@ where
         initial: ChannelInitialState,
     ) -> Result<Self, ChannelError> {
         let context = Arc::new(Context::new(client, definition, initial)?);
-        let initial = &context.original_initial;
+        Self::from_context(Arc::clone(&context), &context.original_initial)
+    }
+
+    pub(super) fn from_context(
+        context: Arc<Context<R>>,
+        initial: &ChannelInitialState,
+    ) -> Result<Self, ChannelError> {
         if !initial.time_s.is_finite()
             || initial.volume_m3.len() != context.count()
             || initial.longitudinal_momentum_m4_per_s.len() != context.count()
@@ -102,17 +113,23 @@ where
         context.fields(&volume, &momentum)?;
         let storage = context.total(&volume)?;
         let time = initial.time_s;
+        let lateral = context.lateral.initial_state(&context.client)?;
         Ok(Self {
             context,
             accepted: Accepted {
                 volume,
                 momentum,
+                lateral,
                 time,
                 ledger: ChannelWaterLedger {
                     initial_storage_m3: storage,
                     storage_m3: storage,
                     boundary_in_m3: 0.0,
                     boundary_out_m3: 0.0,
+                    lateral_in_m3: 0.0,
+                    lateral_out_m3: 0.0,
+                    lateral_counter_abs_bound_m3: 0.0,
+                    lateral_assembly_abs_bound_m3: 0.0,
                     residual_m3: 0.0,
                     numerical_transfer_underflow_bound_m3: 0.0,
                 },
@@ -148,12 +165,19 @@ where
             .collect())
     }
 
+    /// Copy per-binding cumulative lateral volumes and their rounding bounds.
+    pub fn lateral_ledgers(&self) -> Result<Vec<ChannelLateralLedger>, ChannelError> {
+        self.context
+            .lateral
+            .project_ledgers(&self.context.client, &self.accepted.lateral)
+    }
+
     /// Copy the bounded final interval receipt from the selected device.
     pub fn last_step(&self) -> Result<Option<ChannelStepDiagnostics>, ChannelError> {
         self.accepted
             .last
             .as_ref()
-            .map(|last| last.project())
+            .map(|last| last.project(&self.context.client, &self.context.lateral))
             .transpose()
     }
 }

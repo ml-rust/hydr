@@ -1,11 +1,14 @@
 use super::{Result, runtime};
 use hydr::channel::{
-    ChannelBoundary, ChannelBoundaryInterval, ChannelConfig, ChannelInitialState, ChannelReach,
+    ChannelBoundary, ChannelConfig, ChannelError, ChannelForcingInterval, ChannelInitialState,
+    ChannelLateralBinding, ChannelLateralDirection, ChannelLateralInput, ChannelReach,
     ChannelReachDefinition, RectangularChannelCell,
 };
+use hydr::forcing::WaterAmount;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, MidpointOps, ReduceOps, ScalarOps, ShapeOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
+    ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
@@ -29,6 +32,7 @@ fn reach_definition(widths: &[f64], beds: &[f64]) -> ChannelReachDefinition {
                 },
             )
             .collect(),
+        lateral_bindings: Vec::new(),
         config: ChannelConfig::default(),
     }
 }
@@ -56,12 +60,13 @@ fn initial_state(
     }
 }
 
-fn forcing(start_s: f64, end_s: f64) -> ChannelBoundaryInterval {
-    ChannelBoundaryInterval {
+fn forcing(start_s: f64, end_s: f64) -> ChannelForcingInterval {
+    ChannelForcingInterval {
         start_s,
         end_s,
         left: ChannelBoundary::Wall,
         right: ChannelBoundary::Wall,
+        lateral_inputs: Vec::new(),
     }
 }
 
@@ -78,10 +83,12 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + ShapeOps<R>
+        + TwoSumOps<R>
         + UnaryOps<R>
         + BatchedBisectionAlgorithms<R>,
 {
@@ -94,7 +101,7 @@ where
             depth_m: 1.0,
             velocity_m_per_s: velocity,
         };
-        let interval = ChannelBoundaryInterval {
+        let interval = ChannelForcingInterval {
             left: exterior.clone(),
             right: exterior,
             ..forcing(0.0, 0.01)
@@ -216,7 +223,7 @@ where
     let initial = initial_state(&definition, &[1e-200], &[1e-200]);
     assert_eq!(initial.volume_m3, vec![1.0]);
     assert_eq!(initial.longitudinal_momentum_m4_per_s, vec![1e-200]);
-    let reach = ChannelReach::<R>::new(client, definition, initial)?;
+    let reach = ChannelReach::<R>::new(client.clone(), definition, initial)?;
     let original = reach.snapshot_data()?;
     let error = reach
         .step(1.0, &forcing(0.0, 1.0))
@@ -227,6 +234,139 @@ where
         hydr::channel::ChannelError::Numerical { .. }
     ));
     assert_eq!(reach.snapshot_data()?, original);
+    lateral_execution::<R>(client)?;
+    Ok(())
+}
+
+fn lateral_execution<R>(client: R::Client) -> Result
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + IndexingOps<R>
+        + MidpointOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
+    let binding = |id: &str, direction| ChannelLateralBinding {
+        boundary_id: id.into(),
+        cell_id: "cell-0".into(),
+        direction,
+        ownership_assertion: format!("Independent synthetic runtime source {id}"),
+    };
+    let input = |amount| ChannelLateralInput::Inflow {
+        boundary_id: "in".into(),
+        amount,
+        longitudinal_velocity_m_per_s: -1.0,
+    };
+    let mut definition = reach_definition(&[2.0], &[0.0]);
+    definition.cells[0].length_m = 4.0;
+    definition.lateral_bindings = vec![
+        binding("in", ChannelLateralDirection::Inflow),
+        binding("out", ChannelLateralDirection::Withdrawal),
+    ];
+    let initial = initial_state(&definition, &[1.0], &[3.0]);
+    let destination = ChannelReach::<R>::new(client.clone(), definition, initial)?;
+    let exterior = ChannelBoundary::Exterior {
+        depth_m: 1.0,
+        velocity_m_per_s: 3.0,
+    };
+    let interval = ChannelForcingInterval {
+        start_s: 0.0,
+        end_s: 0.01,
+        left: exterior.clone(),
+        right: exterior,
+        lateral_inputs: vec![
+            input(WaterAmount::IntervalVolume { volume_m3: 2.0 }),
+            ChannelLateralInput::Withdrawal {
+                boundary_id: "out".into(),
+                amount: WaterAmount::Rate {
+                    rate_m3_per_s: 200.0,
+                },
+            },
+        ],
+    };
+    let first = destination.step(0.01, &interval)?.next;
+    let state = first.state()?;
+    assert!((state[0].volume_m3 - 8.0).abs() <= 1e-12);
+    assert!((state[0].longitudinal_momentum_m4_per_s - 16.0).abs() <= 1e-12);
+    let receipt = first
+        .last_step()?
+        .ok_or("Missing lateral runtime receipt")?;
+    assert_eq!(receipt.retries, 0);
+    assert_eq!(receipt.lateral_receipts.len(), 2);
+    assert_eq!(
+        receipt.lateral_receipts[0].input,
+        interval.lateral_inputs[0]
+    );
+    let checkpoint = first.snapshot();
+    let data = first.snapshot_data()?;
+    let continuation = ChannelForcingInterval {
+        start_s: 0.01,
+        end_s: 0.02,
+        ..interval.clone()
+    };
+    let expected = first.step(0.02, &continuation)?.next.snapshot_data()?;
+    assert_eq!(
+        destination
+            .restore(&checkpoint)?
+            .step(0.02, &continuation)?
+            .next
+            .snapshot_data()?,
+        expected
+    );
+    assert_eq!(
+        destination
+            .import_snapshot(&data)?
+            .step(0.02, &continuation)?
+            .next
+            .snapshot_data()?,
+        expected
+    );
+    assert_eq!(first.snapshot_data()?, data);
+
+    let mut definition = reach_definition(&[2.0], &[0.0]);
+    definition.cells[0].maximum_depth_m = 10.0;
+    definition.lateral_bindings = vec![binding("in", ChannelLateralDirection::Inflow)];
+    let initial = initial_state(&definition, &[0.0], &[0.0]);
+    let dry = ChannelReach::<R>::new(client, definition, initial)?;
+    let before = dry.snapshot_data()?;
+    let injection = |amount| ChannelForcingInterval {
+        lateral_inputs: vec![ChannelLateralInput::Inflow {
+            boundary_id: "in".into(),
+            amount,
+            longitudinal_velocity_m_per_s: 20.0,
+        }],
+        ..forcing(0.0, 1.0)
+    };
+    let next = dry
+        .step(1.0, &injection(WaterAmount::Rate { rate_m3_per_s: 2.0 }))?
+        .next;
+    assert!(next.time() > 0.0 && next.time() < 0.02);
+    let receipt = next
+        .last_step()?
+        .ok_or("Missing candidate-CFL runtime receipt")?;
+    assert_eq!(receipt.accepted_start_cfl_limit_s, f64::INFINITY);
+    assert!(
+        next.time()
+            <= receipt
+                .candidate_cfl_limit_s
+                .ok_or("Missing source-created wave limit")?
+    );
+    let error = dry
+        .step(
+            1.0,
+            &injection(WaterAmount::IntervalVolume { volume_m3: 2.0 }),
+        )
+        .err()
+        .ok_or("Exact runtime injection silently shortened")?;
+    assert!(matches!(error, ChannelError::RecomputeInterval { .. }));
+    assert_eq!(dry.snapshot_data()?, before);
     Ok(())
 }
 

@@ -23,6 +23,7 @@ cargo test --test coupled_pool_inflows
 cargo test --test runoff_pools
 cargo test --test cross_sections
 cargo test --test channel_flow --test channel_restart -- --nocapture
+cargo test --test channel_lateral -- --nocapture
 ```
 
 The fixtures need no external datasets or random inputs. [Analytical cases](../tests/analytical_cases.rs) use formulas from [the analytical helpers](../tests/support/analytic.rs), independently of the production tensor kernel.
@@ -228,7 +229,50 @@ Ritter timestep refinement keeps 400 cells and halves the maximum interval throu
 
 Analytical depth error increases slightly at fixed spacing. Smaller timesteps do not remove first-order spatial diffusion. Combined space/time refinement reduces both depth and discharge errors.
 
-These checks cover rectangular reaches only. Arbitrary-profile dynamics, lateral momentum exchange, junctions, contraction losses, and drainage remain unsupported.
+### Lateral inflows and withdrawals
+
+[Lateral-source cases](../tests/channel_lateral.rs) check both water and longitudinal momentum. Inputs supply complete named sources over one interval.
+
+The following cases start with `8 m³` of water and `24 m⁴/s` of longitudinal momentum. Matching exterior states cancel native transport changes.
+
+| Input over 0.01 s | Final water, m³ | Final momentum, m⁴/s |
+| --- | --- | --- |
+| Inflow `2 m³` at `-1 m/s` | 10 | 22 |
+| Withdrawal `2 m³` at donor velocity `3 m/s` | 6 | 18 |
+| Both inputs | 8 | 16 |
+
+Each result must agree within `1e-12` in its SI units. Separate cases cover dry inflow, complete drainage, grouped inputs, and signed momentum cancellation.
+
+| Admission check | Required behavior |
+| --- | --- |
+| Donor water | Native face export and withdrawals reserve original water, without incoming credit |
+| Rounding near depletion | Grouped withdrawals and face-integral rounding cannot hide an overdraft |
+| Integrated inputs | Preserve original operands and variants; request fresh inputs before any shortening, including integrated zero |
+| Smallest exact input | Adding the smallest positive `f64` volume to the same stored volume preserves both |
+| Strong dry injection | Source-created wave speeds shorten the rate interval; equivalent exact forcing requests recomputation |
+| Continuation | Rate, exact, and mixed restart retain source counters, witnesses, original inputs, and configured clients |
+
+### Distributed-source refinement
+
+The manufactured solution has increasing depth and a longitudinal velocity gradient. Its lateral water and momentum inputs satisfy both equations independently.
+
+The case starts dry in a flat, `100 m` channel of width `2 m`. It runs to `0.1 s` without friction. Inputs and exterior states remain fixed during each accepted interval.
+
+| Cells | Mean depth error, m | Mean discharge error, m³/s |
+| --- | --- | --- |
+| 50 | 0.00000982 | 0.00157 |
+| 100 | 0.00000491 | 0.000785 |
+| 200 | 0.00000245 | 0.000393 |
+
+Maximum step is `0.0005 s`. Both errors must decrease, with depth below `0.01 m` and discharge below `0.1 m³/s`.
+
+Timestep refinement keeps 200 cells and halves maximum intervals through `0.002`, `0.001`, and `0.0005 s`. Successive normalized differences decrease from `9.37e-7` to `4.66e-7`.
+
+Normalization divides depth differences by `0.1 m` and discharge differences by `8 m³/s` before adding them. This compares unlike units without mixing dimensions.
+
+The source-created wave check covers accepted-start and prefriction endpoint states. It establishes no continuous source-path stability proof.
+
+These checks cover prescribed inputs to rectangular reaches. Arbitrary-profile dynamics, junctions, finite-component exchange, contraction losses, and drainage remain unsupported.
 
 ## Connected-pool checks
 
@@ -325,7 +369,7 @@ These cases establish no downstream feedback, geometric nonoverlap proof, dynami
 | Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
 | Independent engine | Nine matched wet-bed/dry-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Analytical front accuracy, independent terrain/transverse-flow comparisons, and broader hydraulic regimes |
-| Extensions | Land sources, coupled pools, free runoff outlets, and rectangular reaches have separate checks | General channel profiles, lateral momentum exchange, wider networks, and dynamic coupled controls require separate acceptance |
+| Extensions | Land sources, coupled pools, free runoff outlets, and rectangular reaches with lateral inputs have separate checks | General channel profiles, wider networks, finite-component exchanges, and dynamic coupled controls require separate acceptance |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 
 ### Numerical limits retained by the checks

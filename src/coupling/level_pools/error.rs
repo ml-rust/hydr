@@ -98,3 +98,14 @@ impl From<numr::error::Error> for CoupledLevelPoolError {
         Self::Runtime(error)
     }
 }
+
+impl From<crate::numerics::water_transfers::WaterTransferError> for CoupledLevelPoolError {
+    fn from(error: crate::numerics::water_transfers::WaterTransferError) -> Self {
+        use crate::numerics::water_transfers::WaterTransferError;
+        match error {
+            WaterTransferError::Input(message) => Self::Input(message),
+            WaterTransferError::Numerical(message) => Self::Numerical(message),
+            WaterTransferError::Runtime(error) => Self::Runtime(error),
+        }
+    }
+}

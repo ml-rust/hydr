@@ -1,5 +1,6 @@
 use super::super::{
-    ChannelError, ChannelInitialState, ChannelReachDefinition, ChannelStepDiagnostics,
+    ChannelBoundary, ChannelError, ChannelForcingInterval, ChannelInitialState,
+    ChannelLateralReceipt, ChannelLateralStateData, ChannelReachDefinition, ChannelStepDiagnostics,
     ChannelWaterLedger,
 };
 
@@ -27,56 +28,76 @@ pub(super) fn initial(a: &ChannelInitialState, b: &ChannelInitialState) -> bool 
 }
 
 pub(super) fn definition(a: &ChannelReachDefinition, b: &ChannelReachDefinition) -> bool {
-    let ac = &a.config;
-    let bc = &b.config;
-    a.vertical_datum == b.vertical_datum
-        && a.provenance == b.provenance
-        && a.cells.len() == b.cells.len()
-        && a.cells.iter().zip(&b.cells).all(|(a, b)| {
-            a.id == b.id
-                && values(
-                    &[
-                        a.length_m,
-                        a.width_m,
-                        a.bed_elevation_m,
-                        a.maximum_depth_m,
-                        a.manning_n,
-                    ],
-                    &[
-                        b.length_m,
-                        b.width_m,
-                        b.bed_elevation_m,
-                        b.maximum_depth_m,
-                        b.manning_n,
-                    ],
-                )
-        })
-        && ac.max_retries == bc.max_retries
-        && ac.root_iterations == bc.root_iterations
+    a.same_bits(b)
+}
+
+pub(super) fn lateral_state(a: &ChannelLateralStateData, b: &ChannelLateralStateData) -> bool {
+    values(&a.cumulative_volume_m3, &b.cumulative_volume_m3)
+        && values(&a.counter_roundoff_bound_m3, &b.counter_roundoff_bound_m3)
+        && a.cumulative_assembly_bound_m3.to_bits() == b.cumulative_assembly_bound_m3.to_bits()
+}
+
+pub(super) fn forcing(a: &ChannelForcingInterval, b: &ChannelForcingInterval) -> bool {
+    values(&[a.start_s, a.end_s], &[b.start_s, b.end_s])
+        && boundary(&a.left, &b.left)
+        && boundary(&a.right, &b.right)
+        && a.lateral_inputs.len() == b.lateral_inputs.len()
+        && a.lateral_inputs
+            .iter()
+            .zip(&b.lateral_inputs)
+            .all(|(a, b)| a.same_bits(b))
+}
+
+fn boundary(a: &ChannelBoundary, b: &ChannelBoundary) -> bool {
+    match (a, b) {
+        (ChannelBoundary::Wall, ChannelBoundary::Wall) => true,
+        (
+            ChannelBoundary::Exterior {
+                depth_m: ah,
+                velocity_m_per_s: au,
+            },
+            ChannelBoundary::Exterior {
+                depth_m: bh,
+                velocity_m_per_s: bu,
+            },
+        ) => values(&[*ah, *au], &[*bh, *bu]),
+        _ => false,
+    }
+}
+
+fn optional(a: Option<f64>, b: Option<f64>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => a.to_bits() == b.to_bits(),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn source_receipt(a: &ChannelLateralReceipt, b: &ChannelLateralReceipt) -> bool {
+    a.input.same_bits(&b.input)
+        && a.cell_id == b.cell_id
+        && optional(
+            a.applied_longitudinal_velocity_m_per_s,
+            b.applied_longitudinal_velocity_m_per_s,
+        )
         && values(
             &[
-                ac.gravity,
-                ac.cfl,
-                ac.max_step,
-                ac.min_step,
-                ac.root_absolute_depth,
-                ac.root_relative_depth,
-                ac.volume_absolute,
-                ac.volume_relative,
-                ac.momentum_absolute,
-                ac.momentum_relative,
+                a.volume_m3,
+                a.momentum_m4_per_s,
+                a.cumulative_volume_before_m3,
+                a.cumulative_volume_after_m3,
+                a.counter_addition_low_m3,
+                a.counter_bound_before_m3,
+                a.counter_bound_after_m3,
             ],
             &[
-                bc.gravity,
-                bc.cfl,
-                bc.max_step,
-                bc.min_step,
-                bc.root_absolute_depth,
-                bc.root_relative_depth,
-                bc.volume_absolute,
-                bc.volume_relative,
-                bc.momentum_absolute,
-                bc.momentum_relative,
+                b.volume_m3,
+                b.momentum_m4_per_s,
+                b.cumulative_volume_before_m3,
+                b.cumulative_volume_after_m3,
+                b.counter_addition_low_m3,
+                b.counter_bound_before_m3,
+                b.counter_bound_after_m3,
             ],
         )
 }
@@ -88,6 +109,10 @@ pub(super) fn ledger(a: &ChannelWaterLedger, b: &ChannelWaterLedger) -> bool {
             a.storage_m3,
             a.boundary_in_m3,
             a.boundary_out_m3,
+            a.lateral_in_m3,
+            a.lateral_out_m3,
+            a.lateral_counter_abs_bound_m3,
+            a.lateral_assembly_abs_bound_m3,
             a.residual_m3,
             a.numerical_transfer_underflow_bound_m3,
         ],
@@ -96,6 +121,10 @@ pub(super) fn ledger(a: &ChannelWaterLedger, b: &ChannelWaterLedger) -> bool {
             b.storage_m3,
             b.boundary_in_m3,
             b.boundary_out_m3,
+            b.lateral_in_m3,
+            b.lateral_out_m3,
+            b.lateral_counter_abs_bound_m3,
+            b.lateral_assembly_abs_bound_m3,
             b.residual_m3,
             b.numerical_transfer_underflow_bound_m3,
         ],
@@ -104,16 +133,22 @@ pub(super) fn ledger(a: &ChannelWaterLedger, b: &ChannelWaterLedger) -> bool {
 
 pub(super) fn diagnostics(a: &ChannelStepDiagnostics, b: &ChannelStepDiagnostics) -> bool {
     a.retries == b.retries
+        && optional(a.candidate_cfl_limit_s, b.candidate_cfl_limit_s)
         && values(
             &[
                 a.start_s,
                 a.end_s,
                 a.cfl_limit_s,
+                a.accepted_start_cfl_limit_s,
                 a.depletion_limit_s,
                 a.storage_before_m3,
                 a.storage_after_m3,
                 a.boundary_in_m3,
                 a.boundary_out_m3,
+                a.lateral_in_m3,
+                a.lateral_out_m3,
+                a.lateral_assembly_abs_bound_m3,
+                a.lateral_counter_addition_abs_bound_m3,
                 a.residual_m3,
                 a.max_local_residual_m3,
                 a.max_local_momentum_residual_m4_per_s,
@@ -124,11 +159,16 @@ pub(super) fn diagnostics(a: &ChannelStepDiagnostics, b: &ChannelStepDiagnostics
                 b.start_s,
                 b.end_s,
                 b.cfl_limit_s,
+                b.accepted_start_cfl_limit_s,
                 b.depletion_limit_s,
                 b.storage_before_m3,
                 b.storage_after_m3,
                 b.boundary_in_m3,
                 b.boundary_out_m3,
+                b.lateral_in_m3,
+                b.lateral_out_m3,
+                b.lateral_assembly_abs_bound_m3,
+                b.lateral_counter_addition_abs_bound_m3,
                 b.residual_m3,
                 b.max_local_residual_m3,
                 b.max_local_momentum_residual_m4_per_s,
@@ -155,6 +195,15 @@ pub(super) fn diagnostics(a: &ChannelStepDiagnostics, b: &ChannelStepDiagnostics
             &a.momentum_underflow_bound_m4_per_s,
             &b.momentum_underflow_bound_m4_per_s,
         )
+        && values(
+            &a.lateral_momentum_abs_bound_m4_per_s,
+            &b.lateral_momentum_abs_bound_m4_per_s,
+        )
+        && a.lateral_receipts.len() == b.lateral_receipts.len()
+        && a.lateral_receipts
+            .iter()
+            .zip(&b.lateral_receipts)
+            .all(|(a, b)| source_receipt(a, b))
 }
 
 pub(super) fn ledger_admission(
@@ -169,6 +218,10 @@ pub(super) fn ledger_admission(
             ledger.storage_m3,
             ledger.boundary_in_m3,
             ledger.boundary_out_m3,
+            ledger.lateral_in_m3,
+            ledger.lateral_out_m3,
+            ledger.lateral_counter_abs_bound_m3,
+            ledger.lateral_assembly_abs_bound_m3,
             ledger.residual_m3,
             ledger.numerical_transfer_underflow_bound_m3,
         ]
@@ -178,24 +231,34 @@ pub(super) fn ledger_admission(
             && ledger.storage_m3.to_bits() == storage.to_bits()
             && ledger.boundary_in_m3 >= 0.0
             && ledger.boundary_out_m3 >= 0.0
+            && ledger.lateral_in_m3 >= 0.0
+            && ledger.lateral_out_m3 >= 0.0
+            && ledger.lateral_counter_abs_bound_m3 >= 0.0
+            && ledger.lateral_assembly_abs_bound_m3 >= 0.0
             && ledger.numerical_transfer_underflow_bound_m3 >= 0.0,
         "ledger storage, original epoch, or external counters disagree",
     )?;
-    let residual = (storage - original_storage) - (ledger.boundary_in_m3 - ledger.boundary_out_m3);
+    let residual = (storage - original_storage)
+        - ((ledger.boundary_in_m3 - ledger.boundary_out_m3)
+            + (ledger.lateral_in_m3 - ledger.lateral_out_m3));
     let scale = original_storage
         .max(storage)
         .max(ledger.boundary_in_m3)
-        .max(ledger.boundary_out_m3);
+        .max(ledger.boundary_out_m3)
+        .max(ledger.lateral_in_m3)
+        .max(ledger.lateral_out_m3);
     let tolerance = definition.config.volume_absolute + definition.config.volume_relative * scale;
-    let charged_residual = crate::soil::admission::add_adjustment_charge(
-        residual.abs(),
+    let mut charged_residual = residual.abs();
+    for charge in [
         ledger.numerical_transfer_underflow_bound_m3,
-    )
-    .map_err(|error| {
-        ChannelError::input(format!(
-            "channel checkpoint charged water residual rejects: {error}. Supply an unchanged complete same-build package"
-        ))
-    })?;
+        ledger.lateral_counter_abs_bound_m3,
+        ledger.lateral_assembly_abs_bound_m3,
+    ] {
+        charged_residual = crate::soil::admission::add_adjustment_charge(charged_residual, charge)
+            .map_err(|error| ChannelError::input(format!(
+                "channel checkpoint charged water residual rejects: {error}. Supply an unchanged complete same-build package"
+            )))?;
+    }
     require(
         residual.to_bits() == ledger.residual_m3.to_bits()
             && tolerance.is_finite()

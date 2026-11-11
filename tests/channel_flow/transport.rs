@@ -1,5 +1,5 @@
 use super::common::{TestResult, advance, cell, check_water, definition, exterior, reach, walls};
-use hydr::channel::ChannelBoundaryInterval;
+use hydr::channel::ChannelForcingInterval;
 
 #[test]
 fn uniform_flow_preserves_depth_and_discharge_in_both_directions() -> TestResult {
@@ -97,11 +97,12 @@ fn large_width_ratios_shorten_steps_before_depleting_narrow_cells() -> TestResul
         cell(2, 1.0, 1e-3, 0.0),
     ];
     let initial = reach(definition(cells, 1.0), &[1.0, 0.5, 1.0], &[0.0; 3])?;
-    let forcing = ChannelBoundaryInterval {
+    let forcing = ChannelForcingInterval {
         start_s: 0.0,
         end_s: 0.1,
         left: walls()[0].clone(),
         right: walls()[1].clone(),
+        lateral_inputs: Vec::new(),
     };
     let next = initial.step(0.1, &forcing)?.next;
     assert!(next.time() < 0.1);

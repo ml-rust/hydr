@@ -23,6 +23,7 @@ fn rounded_numerical_transfers_preserve_water_and_consume_tolerance()
                 manning_n: 0.0,
             })
             .collect(),
+        lateral_bindings: vec![],
         config: ChannelConfig::default(),
     };
     let reach = ChannelReach::<CpuRuntime>::new(
@@ -34,16 +35,17 @@ fn rounded_numerical_transfers_preserve_water_and_consume_tolerance()
             longitudinal_momentum_m4_per_s: vec![0.0; 2],
         },
     )?;
-    let forcing = ChannelBoundaryInterval {
+    let forcing = ChannelForcingInterval {
         start_s: 0.0,
         end_s: 1e-200,
         left: ChannelBoundary::Wall,
         right: ChannelBoundary::Wall,
+        lateral_inputs: vec![],
     };
     let fields = reach
         .context
         .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
-    let flux = reach.context.flux(&fields, &forcing)?;
+    let flux = reach.context.flux(&fields, &forcing.left, &forcing.right)?;
     let original_rate = flux.water.narrow(0, 1, 1)?.item::<f64>()?;
     assert!(original_rate > 0.0);
     assert_eq!(original_rate * forcing.end_s, 0.0);
@@ -93,6 +95,7 @@ fn positive_channel_motion_cannot_disappear_in_per_width_reconstruction()
                 maximum_depth_m: 1.0,
                 manning_n: 0.0,
             }],
+            lateral_bindings: vec![],
             config: ChannelConfig::default(),
         },
         ChannelInitialState {
@@ -106,11 +109,12 @@ fn positive_channel_motion_cannot_disappear_in_per_width_reconstruction()
     assert!(state[0].depth_m > 0.0);
     assert!(state[0].velocity_m_per_s.is_some_and(|u| u > 0.0));
     assert!(state[0].discharge_m3_per_s > 0.0);
-    let forcing = ChannelBoundaryInterval {
+    let forcing = ChannelForcingInterval {
         start_s: 0.0,
         end_s: 0.1,
         left: ChannelBoundary::Wall,
         right: ChannelBoundary::Wall,
+        lateral_inputs: vec![],
     };
     assert!(matches!(
         reach.step(forcing.end_s, &forcing),
@@ -140,6 +144,7 @@ fn rounded_pressure_impulses_consume_the_configured_momentum_tolerance()
                     manning_n: 0.0,
                 })
                 .collect(),
+            lateral_bindings: vec![],
             config: ChannelConfig::default(),
         },
         ChannelInitialState {
@@ -148,16 +153,17 @@ fn rounded_pressure_impulses_consume_the_configured_momentum_tolerance()
             longitudinal_momentum_m4_per_s: vec![0.0; 2],
         },
     )?;
-    let forcing = ChannelBoundaryInterval {
+    let forcing = ChannelForcingInterval {
         start_s: 0.0,
         end_s: 1e-150,
         left: ChannelBoundary::Wall,
         right: ChannelBoundary::Wall,
+        lateral_inputs: vec![],
     };
     let fields = reach
         .context
         .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
-    let flux = reach.context.flux(&fields, &forcing)?;
+    let flux = reach.context.flux(&fields, &forcing.left, &forcing.right)?;
     assert!(flux.water.narrow(0, 1, 1)?.item::<f64>()? * forcing.end_s > 0.0);
     let original_pressure = flux.momentum.narrow(0, 1, 1)?.item::<f64>()?;
     assert!(original_pressure > 0.0);
@@ -210,6 +216,7 @@ fn positive_wave_speed_cannot_disappear_during_width_weighting()
                 maximum_depth_m: 1e201,
                 manning_n: 0.0,
             }],
+            lateral_bindings: vec![],
             config: ChannelConfig {
                 gravity: 1e-300,
                 ..ChannelConfig::default()
@@ -221,16 +228,17 @@ fn positive_wave_speed_cannot_disappear_during_width_weighting()
             longitudinal_momentum_m4_per_s: vec![0.0],
         },
     )?;
-    let forcing = ChannelBoundaryInterval {
+    let forcing = ChannelForcingInterval {
         start_s: 0.0,
         end_s: 0.1,
         left: ChannelBoundary::Wall,
         right: ChannelBoundary::Wall,
+        lateral_inputs: vec![],
     };
     let fields = reach
         .context
         .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
-    let flux = reach.context.flux(&fields, &forcing)?;
+    let flux = reach.context.flux(&fields, &forcing.left, &forcing.right)?;
     let speed = flux.speed.narrow(0, 0, 1)?.item::<f64>()?;
     assert!(speed > 0.0);
     assert_eq!(speed * reach.definition().cells[0].width_m, 0.0);

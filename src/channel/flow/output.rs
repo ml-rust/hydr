@@ -1,3 +1,5 @@
+use super::ChannelLateralInput;
+
 /// Explicit host projection of one accepted rectangular channel cell.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChannelCellResult {
@@ -28,6 +30,14 @@ pub struct ChannelWaterLedger {
     pub boundary_in_m3: f64,
     /// Cumulative outgoing endpoint volume in m³.
     pub boundary_out_m3: f64,
+    /// Cumulative incoming lateral volume in m³, derived from boundary counters.
+    pub lateral_in_m3: f64,
+    /// Cumulative withdrawn lateral volume in m³, derived from boundary counters.
+    pub lateral_out_m3: f64,
+    /// Conservative cumulative lateral-counter rounding bound in m³.
+    pub lateral_counter_abs_bound_m3: f64,
+    /// Conservative cumulative lateral assembly bound in m³.
+    pub lateral_assembly_abs_bound_m3: f64,
     /// Storage change minus net external inflow in m³.
     pub residual_m3: f64,
     /// Cumulative cellwise charge for detected numerical flux-integral underflow, in m³.
@@ -44,8 +54,12 @@ pub struct ChannelStepDiagnostics {
     pub end_s: f64,
     /// Number of complete trial recalculations before acceptance.
     pub retries: usize,
-    /// Width-aware Courant interval bound in seconds, including positive infinity.
+    /// Effective minimum width-aware Courant interval bound in seconds, including positive infinity.
     pub cfl_limit_s: f64,
+    /// Courant interval bound from the accepted-start state in seconds.
+    pub accepted_start_cfl_limit_s: f64,
+    /// Prefriction candidate Courant interval bound in seconds; absent without nonzero lateral exchange.
+    pub candidate_cfl_limit_s: Option<f64>,
     /// All-outgoing donor interval bound in seconds, including positive infinity.
     pub depletion_limit_s: f64,
     /// Total storage at the accepted start in m³.
@@ -56,7 +70,15 @@ pub struct ChannelStepDiagnostics {
     pub boundary_in_m3: f64,
     /// Outgoing endpoint volume during this interval in m³.
     pub boundary_out_m3: f64,
-    /// Storage change minus net endpoint inflow in m³.
+    /// Incoming lateral volume during this interval in m³.
+    pub lateral_in_m3: f64,
+    /// Withdrawn lateral volume during this interval in m³.
+    pub lateral_out_m3: f64,
+    /// Conservative source assembly charge within the existing interval water tolerance, in m³.
+    pub lateral_assembly_abs_bound_m3: f64,
+    /// Conservative counter-addition charge within the existing lifetime water tolerance, in m³.
+    pub lateral_counter_addition_abs_bound_m3: f64,
+    /// Storage change minus net endpoint and lateral inflow in m³.
     pub residual_m3: f64,
     /// Largest absolute cell water residual in m³.
     pub max_local_residual_m3: f64,
@@ -83,4 +105,55 @@ pub struct ChannelStepDiagnostics {
     /// Cell bounds on observed erased pressure/momentum products in the final interval, in m⁴/s.
     /// These exclude other rounding and truncation errors.
     pub momentum_underflow_bound_m4_per_s: Vec<f64>,
+    /// Conservative lateral momentum assembly bounds in m⁴/s, one per ordered cell.
+    pub lateral_momentum_abs_bound_m4_per_s: Vec<f64>,
+    /// Original accepted inputs and counter witnesses, one per declared lateral binding.
+    pub lateral_receipts: Vec<ChannelLateralReceipt>,
+}
+
+/// Explicit cumulative accounting for one declared lateral boundary.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChannelLateralLedger {
+    /// Exact declared lateral boundary identity.
+    pub boundary_id: String,
+    /// Cumulative accepted volume magnitude in m³.
+    pub cumulative_volume_m3: f64,
+    /// Conservative cumulative addition bound in m³.
+    pub roundoff_bound_m3: f64,
+}
+
+/// Complete caller-owned lateral continuation values in definition-binding order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChannelLateralStateData {
+    /// Authoritative cumulative volume magnitudes in m³, one per binding.
+    pub cumulative_volume_m3: Vec<f64>,
+    /// Conservative cumulative counter-addition bounds in m³, one per binding.
+    pub counter_roundoff_bound_m3: Vec<f64>,
+    /// Conservative cumulative water assembly charge in m³.
+    pub cumulative_assembly_bound_m3: f64,
+}
+
+/// Original accepted lateral input, signed source change, and cumulative addition witnesses.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChannelLateralReceipt {
+    /// Original supplied identity, amount variant, operand bits, and inflow velocity.
+    pub input: ChannelLateralInput,
+    /// Exact receiving or donating cell identity.
+    pub cell_id: String,
+    /// Applied longitudinal velocity in m/s; absent for zero withdrawals from dry donors.
+    pub applied_longitudinal_velocity_m_per_s: Option<f64>,
+    /// Accepted original integrated volume or represented rate-times-duration magnitude in m³.
+    pub volume_m3: f64,
+    /// Signed longitudinal momentum source change in m⁴/s, including the withdrawal's negative sign.
+    pub momentum_m4_per_s: f64,
+    /// Original cumulative accepted volume magnitude in m³.
+    pub cumulative_volume_before_m3: f64,
+    /// New cumulative accepted volume magnitude in m³.
+    pub cumulative_volume_after_m3: f64,
+    /// Signed TwoSum low component for this counter addition in m³.
+    pub counter_addition_low_m3: f64,
+    /// Original conservative cumulative counter bound in m³.
+    pub counter_bound_before_m3: f64,
+    /// New conservative cumulative counter bound in m³.
+    pub counter_bound_after_m3: f64,
 }

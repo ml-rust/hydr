@@ -1,4 +1,5 @@
 use super::{ChannelConfig, ChannelError};
+use crate::forcing::WaterAmount;
 use std::collections::BTreeSet;
 
 /// One constant rectangular cell, ordered along the reach's increasing longitudinal coordinate.
@@ -27,6 +28,8 @@ pub struct ChannelReachDefinition {
     pub provenance: String,
     /// Nonempty connected cells in increasing longitudinal order.
     pub cells: Vec<RectangularChannelCell>,
+    /// Selected lateral sources and withdrawals; empty explicitly selects an unforced reach.
+    pub lateral_bindings: Vec<ChannelLateralBinding>,
     /// Dimensional numerical controls.
     pub config: ChannelConfig,
 }
@@ -56,9 +59,52 @@ pub enum ChannelBoundary {
     },
 }
 
-/// Complete held endpoint states over one bounded interval, without lateral sources.
+/// Fixed physical direction of a declared lateral boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChannelLateralDirection {
+    /// Supplied water enters the receiving cell with explicit longitudinal velocity.
+    Inflow,
+    /// Water leaves the donating cell at its accepted-start longitudinal velocity.
+    Withdrawal,
+}
+
+/// One selected, nonduplicated lateral input attached to an existing reach cell.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChannelLateralBinding {
+    /// Unique stable lateral boundary identity.
+    pub boundary_id: String,
+    /// Exact receiving or donating cell identity.
+    pub cell_id: String,
+    /// Fixed direction accepted at this boundary.
+    pub direction: ChannelLateralDirection,
+    /// Evidence excluding duplicate supplied water; this establishes no geographic ownership proof.
+    pub ownership_assertion: String,
+}
+
+/// Original lateral water input with direction-specific momentum semantics.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ChannelBoundaryInterval {
+pub enum ChannelLateralInput {
+    /// Water enters with the caller's explicitly supplied longitudinal velocity.
+    Inflow {
+        /// Exact declared lateral boundary identity.
+        boundary_id: String,
+        /// Original nonnegative rate or integrated volume, retaining its variant and bits.
+        amount: WaterAmount,
+        /// Incoming longitudinal velocity in the reach's increasing direction, in m/s.
+        longitudinal_velocity_m_per_s: f64,
+    },
+    /// Water leaves at the accepted-start donor velocity, without a caller velocity.
+    Withdrawal {
+        /// Exact declared lateral boundary identity.
+        boundary_id: String,
+        /// Original nonnegative rate or integrated volume, retaining its variant and bits.
+        amount: WaterAmount,
+    },
+}
+
+/// Complete held endpoint states and lateral inputs over one bounded interval.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChannelForcingInterval {
     /// Exact accepted start time in seconds.
     pub start_s: f64,
     /// End of endpoint-state support in seconds.
@@ -67,9 +113,74 @@ pub struct ChannelBoundaryInterval {
     pub left: ChannelBoundary,
     /// Policy at the downstream longitudinal endpoint.
     pub right: ChannelBoundary,
+    /// One explicit input per declared lateral binding, including zeros.
+    pub lateral_inputs: Vec<ChannelLateralInput>,
 }
 
 impl ChannelReachDefinition {
+    pub(super) fn same_bits(&self, other: &Self) -> bool {
+        let same_values = |left: &[f64], right: &[f64]| {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|(left, right)| left.to_bits() == right.to_bits())
+        };
+        let left = &self.config;
+        let right = &other.config;
+        self.vertical_datum == other.vertical_datum
+            && self.provenance == other.provenance
+            && self.cells.len() == other.cells.len()
+            && self.cells.iter().zip(&other.cells).all(|(left, right)| {
+                left.id == right.id
+                    && same_values(
+                        &[
+                            left.length_m,
+                            left.width_m,
+                            left.bed_elevation_m,
+                            left.maximum_depth_m,
+                            left.manning_n,
+                        ],
+                        &[
+                            right.length_m,
+                            right.width_m,
+                            right.bed_elevation_m,
+                            right.maximum_depth_m,
+                            right.manning_n,
+                        ],
+                    )
+            })
+            && left.max_retries == right.max_retries
+            && left.root_iterations == right.root_iterations
+            && same_values(
+                &[
+                    left.gravity,
+                    left.cfl,
+                    left.max_step,
+                    left.min_step,
+                    left.root_absolute_depth,
+                    left.root_relative_depth,
+                    left.volume_absolute,
+                    left.volume_relative,
+                    left.momentum_absolute,
+                    left.momentum_relative,
+                ],
+                &[
+                    right.gravity,
+                    right.cfl,
+                    right.max_step,
+                    right.min_step,
+                    right.root_absolute_depth,
+                    right.root_relative_depth,
+                    right.volume_absolute,
+                    right.volume_relative,
+                    right.momentum_absolute,
+                    right.momentum_relative,
+                ],
+            )
+            && self.lateral_bindings == other.lateral_bindings
+    }
+
     pub(super) fn check(&self) -> Result<(), ChannelError> {
         self.config.check()?;
         for (name, value) in [
@@ -87,7 +198,7 @@ impl ChannelReachDefinition {
         let mut length = 0.0;
         for (index, cell) in self.cells.iter().enumerate() {
             check_text("id", &cell.id).map_err(|error| error.at(index))?;
-            if !ids.insert(&cell.id) {
+            if !ids.insert(cell.id.as_str()) {
                 return Err(ChannelError::input(format!(
                     "id={:?}: supply a unique cell identity",
                     cell.id
@@ -130,61 +241,112 @@ impl ChannelReachDefinition {
             }
             length = next_length;
         }
+        let mut boundaries = BTreeSet::new();
+        for binding in &self.lateral_bindings {
+            check_text("boundary_id", &binding.boundary_id)?;
+            check_text("cell_id", &binding.cell_id)?;
+            check_text("ownership_assertion", &binding.ownership_assertion)?;
+            if !boundaries.insert(binding.boundary_id.as_str()) {
+                return Err(ChannelError::input(format!(
+                    "boundary_id={:?}: supply a unique lateral boundary identity",
+                    binding.boundary_id
+                )));
+            }
+            if !ids.contains(binding.cell_id.as_str()) {
+                return Err(ChannelError::input(format!(
+                    "boundary_id={:?}, cell_id={:?}: attach the lateral boundary to an existing cell",
+                    binding.boundary_id, binding.cell_id
+                )));
+            }
+        }
         Ok(())
     }
 }
 
-impl ChannelBoundaryInterval {
-    pub(super) fn check(
-        &self,
-        time_s: f64,
-        requested_end_s: f64,
-        definition: &ChannelReachDefinition,
-    ) -> Result<(), ChannelError> {
-        if self.start_s.to_bits() != time_s.to_bits()
-            || !self.end_s.is_finite()
-            || self.end_s <= self.start_s
-            || !requested_end_s.is_finite()
-            || requested_end_s <= time_s
-            || requested_end_s > self.end_s
+pub(super) fn check_endpoint_interval(
+    time_s: f64,
+    requested_end_s: f64,
+    start_s: f64,
+    end_s: f64,
+    left: &ChannelBoundary,
+    right: &ChannelBoundary,
+    definition: &ChannelReachDefinition,
+) -> Result<(), ChannelError> {
+    if start_s.to_bits() != time_s.to_bits()
+        || !end_s.is_finite()
+        || end_s <= start_s
+        || !requested_end_s.is_finite()
+        || requested_end_s <= time_s
+        || requested_end_s > end_s
+    {
+        return Err(ChannelError::input(format!(
+            "accepted_time={time_s}, forcing_span=[{start_s},{end_s}], requested_end={requested_end_s}: supply the exact accepted start and a later endpoint within forcing support"
+        )));
+    }
+    let last = definition.cells.len().checked_sub(1).ok_or_else(|| {
+        ChannelError::input("cell count=0: construct a nonempty rectangular reach")
+    })?;
+    for (boundary, index) in [(left, 0), (right, last)] {
+        let cell = &definition.cells[index];
+        if let ChannelBoundary::Exterior {
+            depth_m,
+            velocity_m_per_s,
+        } = boundary
         {
-            return Err(ChannelError::input(format!(
-                "accepted_time={time_s}, forcing_span=[{},{}], requested_end={requested_end_s}: supply the exact accepted start and a later endpoint within forcing support",
-                self.start_s, self.end_s
-            )));
-        }
-        let last = definition.cells.len().checked_sub(1).ok_or_else(|| {
-            ChannelError::input("cell count=0: construct a nonempty rectangular reach")
-        })?;
-        for (boundary, index) in [(&self.left, 0), (&self.right, last)] {
-            let cell = &definition.cells[index];
-            if let ChannelBoundary::Exterior {
-                depth_m,
-                velocity_m_per_s,
-            } = boundary
+            let unit_discharge = depth_m * velocity_m_per_s;
+            let discharge = unit_discharge * cell.width_m;
+            if !depth_m.is_finite()
+                || *depth_m < 0.0
+                || *depth_m > cell.maximum_depth_m
+                || !velocity_m_per_s.is_finite()
+                || (*depth_m == 0.0 && *velocity_m_per_s != 0.0)
+                || !unit_discharge.is_finite()
+                || !discharge.is_finite()
+                || (*depth_m > 0.0
+                    && *velocity_m_per_s != 0.0
+                    && (unit_discharge == 0.0 || discharge == 0.0))
             {
-                let unit_discharge = depth_m * velocity_m_per_s;
-                let discharge = unit_discharge * cell.width_m;
-                if !depth_m.is_finite()
-                    || *depth_m < 0.0
-                    || *depth_m > cell.maximum_depth_m
-                    || !velocity_m_per_s.is_finite()
-                    || (*depth_m == 0.0 && *velocity_m_per_s != 0.0)
-                    || !unit_discharge.is_finite()
-                    || !discharge.is_finite()
-                    || (*depth_m > 0.0
-                        && *velocity_m_per_s != 0.0
-                        && (unit_discharge == 0.0 || discharge == 0.0))
-                {
-                    return Err(ChannelError::input(format!(
-                        "exterior depth={depth_m}, velocity={velocity_m_per_s}, maximum_depth={}: supply supported finite depth and velocity, with zero velocity when dry",
-                        cell.maximum_depth_m
-                    ))
-                    .at(index));
-                }
+                return Err(ChannelError::input(format!(
+                    "exterior depth={depth_m}, velocity={velocity_m_per_s}, maximum_depth={}: supply supported finite depth and velocity, with zero velocity when dry",
+                    cell.maximum_depth_m
+                ))
+                .at(index));
             }
         }
-        Ok(())
+    }
+    Ok(())
+}
+
+impl ChannelLateralInput {
+    pub(crate) fn boundary_id(&self) -> &str {
+        match self {
+            Self::Inflow { boundary_id, .. } | Self::Withdrawal { boundary_id, .. } => boundary_id,
+        }
+    }
+
+    pub(crate) fn amount(&self) -> WaterAmount {
+        match self {
+            Self::Inflow { amount, .. } | Self::Withdrawal { amount, .. } => *amount,
+        }
+    }
+
+    pub(crate) fn same_bits(&self, other: &Self) -> bool {
+        self.boundary_id() == other.boundary_id()
+            && self.amount().same_bits(&other.amount())
+            && match (self, other) {
+                (
+                    Self::Inflow {
+                        longitudinal_velocity_m_per_s: left,
+                        ..
+                    },
+                    Self::Inflow {
+                        longitudinal_velocity_m_per_s: right,
+                        ..
+                    },
+                ) => left.to_bits() == right.to_bits(),
+                (Self::Withdrawal { .. }, Self::Withdrawal { .. }) => true,
+                _ => false,
+            }
     }
 }
 

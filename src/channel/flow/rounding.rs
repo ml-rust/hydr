@@ -160,6 +160,7 @@ mod tests {
                     maximum_depth_m: 2.0,
                     manning_n: 0.0,
                 }],
+                lateral_bindings: vec![],
                 config: ChannelConfig::default(),
             },
             ChannelInitialState {

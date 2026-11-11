@@ -1,10 +1,11 @@
 use super::super::{
-    ChannelBoundaryInterval, ChannelError, ChannelInitialState, ChannelReach,
-    ChannelReachDefinition, ChannelStepDiagnostics, ChannelWaterLedger,
+    ChannelError, ChannelForcingInterval, ChannelInitialState, ChannelLateralStateData,
+    ChannelReach, ChannelReachDefinition, ChannelStepDiagnostics, ChannelWaterLedger,
 };
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, MidpointOps, ReduceOps, ScalarOps, ShapeOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
+    ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
@@ -24,6 +25,8 @@ pub struct ChannelSnapshotData {
     pub longitudinal_momentum_m4_per_s: Vec<f64>,
     /// Cumulative external-water accounting.
     pub ledger: ChannelWaterLedger,
+    /// Authoritative lateral counters and their conservative numerical bounds.
+    pub lateral: ChannelLateralStateData,
     /// Number of accepted intervals since the original epoch.
     pub accepted_steps: usize,
     /// Complete bounded final interval, absent before any accepted step.
@@ -41,10 +44,12 @@ pub struct ChannelIntervalSnapshotData {
     pub previous_longitudinal_momentum_m4_per_s: Vec<f64>,
     /// Previous cumulative external-water accounting.
     pub previous_ledger: ChannelWaterLedger,
+    /// Previous authoritative lateral counters and numerical bounds.
+    pub previous_lateral: ChannelLateralStateData,
     /// Accepted count before this interval.
     pub previous_accepted_steps: usize,
     /// Original held endpoint conditions and their exact time support.
-    pub forcing: ChannelBoundaryInterval,
+    pub forcing: ChannelForcingInterval,
     /// Original requested endpoint before automatic interval shortening, in seconds.
     pub requested_end_s: f64,
     /// Accepted scalar diagnostics and original integrated face and source operands.
@@ -63,10 +68,12 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + ShapeOps<R>
+        + TwoSumOps<R>
         + UnaryOps<R>
         + BatchedBisectionAlgorithms<R>,
 {
@@ -87,10 +94,12 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + ShapeOps<R>
+        + TwoSumOps<R>
         + UnaryOps<R>
         + BatchedBisectionAlgorithms<R>,
 {
@@ -111,10 +120,18 @@ where
                     .previous_momentum
                     .try_to_vec::<f64>()?,
                 previous_ledger: last.previous_ledger.clone(),
+                previous_lateral: self
+                    .context
+                    .lateral
+                    .state_data(&self.context.client, &last.previous_lateral)?,
                 previous_accepted_steps: last.previous_steps,
-                forcing: last.forcing.clone(),
+                forcing: last.forcing.project(&self.context.client)?,
                 requested_end_s: last.requested_end,
-                diagnostics: last.project()?,
+                diagnostics: self.last_step()?.ok_or_else(|| {
+                    ChannelError::input(
+                        "channel checkpoint lacks its final receipt: inspect accepted state",
+                    )
+                })?,
             })
         } else {
             None
@@ -126,6 +143,10 @@ where
             volume_m3: self.accepted.volume.try_to_vec::<f64>()?,
             longitudinal_momentum_m4_per_s: self.accepted.momentum.try_to_vec::<f64>()?,
             ledger: self.accepted.ledger.clone(),
+            lateral: self
+                .context
+                .lateral
+                .state_data(&self.context.client, &self.accepted.lateral)?,
             accepted_steps: self.accepted.steps,
             last_interval,
         })

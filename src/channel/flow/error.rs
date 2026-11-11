@@ -24,6 +24,26 @@ pub enum ChannelError {
         /// Original runtime diagnostic.
         context: String,
     },
+    /// Integrated inputs require recomputation over a smaller interval before acceptance.
+    RecomputeInterval {
+        /// Unchanged accepted start time in seconds.
+        start_s: f64,
+        /// Original requested endpoint in seconds.
+        requested_end_s: f64,
+        /// Smaller endpoint requiring newly integrated inputs.
+        suggested_end_s: f64,
+        /// Original numerical rejection or timestep restriction.
+        reason: String,
+    },
+    /// Retry limits or represented time prevent an admissible interval.
+    Unresolved {
+        /// Last attempted duration in seconds.
+        dt_s: f64,
+        /// Number of completed recalculations.
+        retries: usize,
+        /// Last actionable numerical rejection.
+        reason: String,
+    },
 }
 
 impl ChannelError {
@@ -33,6 +53,7 @@ impl ChannelError {
             Self::InvalidInput { cell, .. }
             | Self::Numerical { cell, .. }
             | Self::Runtime { cell, .. } => *cell,
+            Self::RecomputeInterval { .. } | Self::Unresolved { .. } => None,
         }
     }
 
@@ -55,6 +76,7 @@ impl ChannelError {
             Self::InvalidInput { cell, .. }
             | Self::Numerical { cell, .. }
             | Self::Runtime { cell, .. } => *cell = Some(index),
+            Self::RecomputeInterval { .. } | Self::Unresolved { .. } => {}
         }
         self
     }
@@ -62,12 +84,34 @@ impl ChannelError {
 
 impl fmt::Display for ChannelError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (kind, cell, context) = match self {
-            Self::InvalidInput { cell, context } => ("input", cell, context),
-            Self::Numerical { cell, context } => ("numerical", cell, context),
-            Self::Runtime { cell, context } => ("runtime", cell, context),
-        };
-        write!(f, "channel {kind}, cell={cell:?}: {context}")
+        match self {
+            Self::InvalidInput { cell, context } => {
+                write!(f, "channel input, cell={cell:?}: {context}")
+            }
+            Self::Numerical { cell, context } => {
+                write!(f, "channel numerical, cell={cell:?}: {context}")
+            }
+            Self::Runtime { cell, context } => {
+                write!(f, "channel runtime, cell={cell:?}: {context}")
+            }
+            Self::RecomputeInterval {
+                start_s,
+                requested_end_s,
+                suggested_end_s,
+                reason,
+            } => write!(
+                f,
+                "channel integrated interval [{start_s},{requested_end_s}] requires endpoint {suggested_end_s}: {reason}. Recompute every input for the suggested span"
+            ),
+            Self::Unresolved {
+                dt_s,
+                retries,
+                reason,
+            } => write!(
+                f,
+                "channel interval dt={dt_s}, retries={retries}: {reason}. Inspect physical support, accuracy budgets, and interval limits"
+            ),
+        }
     }
 }
 
@@ -85,5 +129,16 @@ impl From<numr::error::Error> for ChannelError {
 impl From<crate::solver::EngineError> for ChannelError {
     fn from(error: crate::solver::EngineError) -> Self {
         Self::numerical(error.to_string())
+    }
+}
+
+impl From<crate::numerics::water_transfers::WaterTransferError> for ChannelError {
+    fn from(error: crate::numerics::water_transfers::WaterTransferError) -> Self {
+        use crate::numerics::water_transfers::WaterTransferError;
+        match error {
+            WaterTransferError::Input(context) => Self::input(context),
+            WaterTransferError::Numerical(context) => Self::numerical(context),
+            WaterTransferError::Runtime(error) => Self::from(error),
+        }
     }
 }

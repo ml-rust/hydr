@@ -1,5 +1,5 @@
 use super::common::{TestResult, cell, definition, exterior, reach, walls};
-use hydr::channel::{ChannelBoundaryInterval, ChannelInitialState, ChannelReach};
+use hydr::channel::{ChannelForcingInterval, ChannelInitialState, ChannelReach};
 
 #[test]
 fn rectangular_definitions_reject_unresolved_or_incomplete_geometry() -> TestResult {
@@ -95,20 +95,22 @@ fn rejected_boundary_intervals_preserve_complete_accepted_state() -> TestResult 
     let accepted = initial
         .step(
             0.01,
-            &ChannelBoundaryInterval {
+            &ChannelForcingInterval {
                 start_s: 0.0,
                 end_s: 0.01,
                 left: walls()[0].clone(),
                 right: walls()[1].clone(),
+                lateral_inputs: Vec::new(),
             },
         )?
         .next;
     let before = accepted.snapshot_data()?;
-    let valid = ChannelBoundaryInterval {
+    let valid = ChannelForcingInterval {
         start_s: accepted.time(),
         end_s: 1.0,
         left: walls()[0].clone(),
         right: walls()[1].clone(),
+        lateral_inputs: Vec::new(),
     };
     let mut cases = Vec::new();
     let mut forcing = valid.clone();

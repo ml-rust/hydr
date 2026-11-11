@@ -42,6 +42,32 @@ where
     Ok(result)
 }
 
+/// Calculate checked HLL signal magnitudes without calculating unused fluxes.
+pub(crate) fn homogeneous_wave_speed_tensor<R, C>(
+    client: &C,
+    left: &TensorFaceState<R>,
+    right: &TensorFaceState<R>,
+    gravity: f64,
+    config: &SolverConfig,
+) -> Result<Tensor<R>, EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
+{
+    check_inputs(client, left, right, gravity, config)?;
+    let (left_speed, right_speed) = tensor_wave::bounds(client, left, right, gravity, config)?;
+    let speed = client.maximum(&client.abs(&left_speed)?, &client.abs(&right_speed)?)?;
+    check_finite(client, &speed, "face speed")?;
+    Ok(speed)
+}
+
 pub(super) fn check_inputs<R, C>(
     client: &C,
     left: &TensorFaceState<R>,

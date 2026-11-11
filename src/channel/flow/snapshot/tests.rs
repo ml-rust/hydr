@@ -1,7 +1,9 @@
 use crate::channel::{
-    ChannelBoundary, ChannelBoundaryInterval, ChannelConfig, ChannelError, ChannelInitialState,
-    ChannelReach, ChannelReachDefinition, RectangularChannelCell,
+    ChannelBoundary, ChannelConfig, ChannelError, ChannelForcingInterval, ChannelInitialState,
+    ChannelLateralBinding, ChannelLateralDirection, ChannelLateralInput, ChannelReach,
+    ChannelReachDefinition, RectangularChannelCell,
 };
+use crate::forcing::WaterAmount;
 use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 use std::sync::Arc;
 
@@ -11,6 +13,12 @@ fn restoration_retains_the_destination_configured_client() -> Result<(), Channel
     let definition = ChannelReachDefinition {
         vertical_datum: "synthetic datum".into(),
         provenance: "exact rectangular client fixture".into(),
+        lateral_bindings: vec![ChannelLateralBinding {
+            boundary_id: "inlet".into(),
+            cell_id: "cell".into(),
+            direction: ChannelLateralDirection::Inflow,
+            ownership_assertion: "independent exact client fixture input".into(),
+        }],
         cells: vec![RectangularChannelCell {
             id: "cell".into(),
             length_m: 1.0,
@@ -40,11 +48,16 @@ fn restoration_retains_the_destination_configured_client() -> Result<(), Channel
     )?
     .step(
         0.01,
-        &ChannelBoundaryInterval {
+        &ChannelForcingInterval {
             start_s: 0.0,
-            end_s: 1.0,
+            end_s: 0.01,
             left: ChannelBoundary::Wall,
             right: ChannelBoundary::Wall,
+            lateral_inputs: vec![ChannelLateralInput::Inflow {
+                boundary_id: "inlet".into(),
+                amount: WaterAmount::IntervalVolume { volume_m3: 0.001 },
+                longitudinal_velocity_m_per_s: 0.0,
+            }],
         },
     )?
     .next;
@@ -64,6 +77,7 @@ fn cold_restore_uploads_with_a_separately_constructed_cpu_client() -> Result<(),
     let definition = ChannelReachDefinition {
         vertical_datum: "synthetic datum".into(),
         provenance: "exact rectangular device fixture".into(),
+        lateral_bindings: Vec::new(),
         cells: vec![RectangularChannelCell {
             id: "cell".into(),
             length_m: 1.0,

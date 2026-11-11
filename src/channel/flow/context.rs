@@ -1,6 +1,9 @@
 use super::{ChannelError, ChannelInitialState, ChannelReachDefinition};
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, MidpointOps, ScalarOps, ShapeOps};
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
+    ShapeOps, TwoSumOps, UnaryOps,
+};
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use std::sync::Arc;
@@ -16,11 +19,21 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub manning: Tensor<R>,
     pub face_width: Tensor<R>,
     pub charge_reduction: crate::soil::admission::AdjustmentReduction,
+    pub lateral: super::sources::LateralContext<R>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
 where
-    R::Client: BinaryOps<R> + ScalarOps<R> + ShapeOps<R> + MidpointOps<R>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + IndexingOps<R>
+        + MidpointOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + UnaryOps<R>,
 {
     pub fn new(
         client: R::Client,
@@ -52,9 +65,11 @@ where
             )?;
             client.cat(&[&first, &middle, &last], 0)?
         };
+        let definition = Arc::new(definition);
+        let lateral = super::sources::LateralContext::new(&client, Arc::clone(&definition))?;
         Ok(Self {
             client,
-            definition: Arc::new(definition),
+            definition,
             original_initial,
             length,
             width,
@@ -63,6 +78,7 @@ where
             manning,
             face_width,
             charge_reduction,
+            lateral,
         })
     }
 }

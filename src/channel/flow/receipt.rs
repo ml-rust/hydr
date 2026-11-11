@@ -1,5 +1,13 @@
-use super::{ChannelBoundaryInterval, ChannelError, ChannelStepDiagnostics, ChannelWaterLedger};
+use super::{
+    ChannelError, ChannelStepDiagnostics, ChannelWaterLedger,
+    forcing::BoundChannelForcing,
+    sources::{LateralContext, LateralReceipt, LateralState},
+};
 use numr::dtype::DType;
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    UnaryOps,
+};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
@@ -7,10 +15,13 @@ use numr::tensor::Tensor;
 pub(super) struct LastInterval<R: Runtime<DType = DType>> {
     pub previous_volume: Tensor<R>,
     pub previous_momentum: Tensor<R>,
+    pub previous_lateral: LateralState<R>,
     pub previous_ledger: ChannelWaterLedger,
     pub previous_time: f64,
     pub previous_steps: usize,
-    pub forcing: ChannelBoundaryInterval,
+    pub forcing: BoundChannelForcing<R>,
+    pub lateral_receipt: LateralReceipt<R>,
+    pub lateral_momentum_bound: Tensor<R>,
     pub requested_end: f64,
     pub scalar: ChannelStepDiagnostics,
     pub face_volume: Tensor<R>,
@@ -22,8 +33,23 @@ pub(super) struct LastInterval<R: Runtime<DType = DType>> {
     pub transfer_underflow_bound: Tensor<R>,
 }
 
-impl<R: Runtime<DType = DType>> LastInterval<R> {
-    pub fn project(&self) -> Result<ChannelStepDiagnostics, ChannelError> {
+impl<R: Runtime<DType = DType>> LastInterval<R>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + IndexingOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + UnaryOps<R>,
+{
+    pub fn project(
+        &self,
+        client: &R::Client,
+        lateral: &LateralContext<R>,
+    ) -> Result<ChannelStepDiagnostics, ChannelError> {
         let mut result = self.scalar.clone();
         result.face_volume_m3 = self.face_volume.try_to_vec::<f64>()?;
         result.face_momentum_m4_per_s = self.face_momentum.try_to_vec::<f64>()?;
@@ -34,6 +60,14 @@ impl<R: Runtime<DType = DType>> LastInterval<R> {
             self.momentum_underflow_bound.try_to_vec::<f64>()?;
         result.face_transfer_underflow_bound_m3 =
             self.transfer_underflow_bound.try_to_vec::<f64>()?;
+        result.lateral_momentum_abs_bound_m4_per_s =
+            self.lateral_momentum_bound.try_to_vec::<f64>()?;
+        result.lateral_receipts = lateral.project_receipts(
+            client,
+            &self.forcing.lateral,
+            &self.previous_lateral,
+            &self.lateral_receipt,
+        )?;
         Ok(result)
     }
 }

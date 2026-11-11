@@ -1,5 +1,5 @@
 use hydr::channel::{
-    ChannelBoundary, ChannelBoundaryInterval, ChannelConfig, ChannelInitialState, ChannelReach,
+    ChannelBoundary, ChannelConfig, ChannelForcingInterval, ChannelInitialState, ChannelReach,
     ChannelReachDefinition, RectangularChannelCell,
 };
 
@@ -24,6 +24,7 @@ pub fn definition(cells: Vec<RectangularChannelCell>, max_step: f64) -> ChannelR
         vertical_datum: "synthetic SI datum".into(),
         provenance: "Explicit analytical rectangular channel fixture".into(),
         cells,
+        lateral_bindings: Vec::new(),
         config: ChannelConfig {
             max_step,
             ..ChannelConfig::default()
@@ -80,11 +81,12 @@ pub fn advance(
     let mut steps = 0usize;
     while reach.time() < target {
         let start = reach.time();
-        let forcing = ChannelBoundaryInterval {
+        let forcing = ChannelForcingInterval {
             start_s: start,
             end_s: target,
             left: boundaries[0].clone(),
             right: boundaries[1].clone(),
+            lateral_inputs: Vec::new(),
         };
         let next = reach.step(target, &forcing)?.next;
         assert!(next.time() > start);
@@ -105,11 +107,23 @@ pub fn check_water(reach: &Reach) -> TestResult {
         .max(ledger.storage_m3)
         .max(ledger.boundary_in_m3)
         .max(ledger.boundary_out_m3)
+        .max(ledger.lateral_in_m3)
+        .max(ledger.lateral_out_m3)
         .max(1.0);
     let tolerance = 1e-9 + 1e-12 * scale;
     assert!(ledger.numerical_transfer_underflow_bound_m3.is_finite());
     assert!(ledger.numerical_transfer_underflow_bound_m3 >= 0.0);
-    assert!(ledger.residual_m3.abs() + ledger.numerical_transfer_underflow_bound_m3 <= tolerance);
+    assert!(ledger.lateral_counter_abs_bound_m3.is_finite());
+    assert!(ledger.lateral_counter_abs_bound_m3 >= 0.0);
+    assert!(ledger.lateral_assembly_abs_bound_m3.is_finite());
+    assert!(ledger.lateral_assembly_abs_bound_m3 >= 0.0);
+    assert!(
+        ledger.residual_m3.abs()
+            + ledger.numerical_transfer_underflow_bound_m3
+            + ledger.lateral_counter_abs_bound_m3
+            + ledger.lateral_assembly_abs_bound_m3
+            <= tolerance
+    );
     let state = reach.state()?;
     for cell in &state {
         assert!(cell.volume_m3 >= 0.0);
@@ -127,11 +141,22 @@ pub fn check_water(reach: &Reach) -> TestResult {
             .max(step.storage_after_m3)
             .max(step.boundary_in_m3)
             .max(step.boundary_out_m3)
+            .max(step.lateral_in_m3)
+            .max(step.lateral_out_m3)
             .max(1.0);
         let tolerance = 1e-9 + 1e-12 * scale;
         assert!(step.transfer_underflow_bound_m3.is_finite());
         assert!(step.transfer_underflow_bound_m3 >= 0.0);
-        assert!(step.residual_m3.abs() + step.transfer_underflow_bound_m3 <= tolerance);
+        assert!(step.lateral_assembly_abs_bound_m3.is_finite());
+        assert!(step.lateral_assembly_abs_bound_m3 >= 0.0);
+        assert!(step.lateral_counter_addition_abs_bound_m3.is_finite());
+        assert!(step.lateral_counter_addition_abs_bound_m3 >= 0.0);
+        assert!(
+            step.residual_m3.abs()
+                + step.transfer_underflow_bound_m3
+                + step.lateral_assembly_abs_bound_m3
+                <= tolerance
+        );
         assert_eq!(step.face_transfer_underflow_bound_m3.len(), state.len() + 1);
         for bound in &step.face_transfer_underflow_bound_m3 {
             assert!(bound.is_finite());
@@ -177,9 +202,19 @@ pub fn check_water(reach: &Reach) -> TestResult {
             step.max_momentum_underflow_bound_m4_per_s,
             maximum_underflow_bound
         );
+        assert_eq!(step.lateral_momentum_abs_bound_m4_per_s.len(), state.len());
+        for bound in &step.lateral_momentum_abs_bound_m4_per_s {
+            assert!(bound.is_finite());
+            assert!(*bound >= 0.0);
+            assert!(*bound <= momentum_tolerance);
+        }
         let dt = step.end_s - step.start_s;
         assert!(dt <= step.cfl_limit_s);
         assert!(dt <= step.depletion_limit_s);
+        assert!(dt <= step.accepted_start_cfl_limit_s);
+        if let Some(candidate_limit) = step.candidate_cfl_limit_s {
+            assert!(dt <= candidate_limit);
+        }
     }
     Ok(())
 }

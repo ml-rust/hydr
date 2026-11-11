@@ -1,6 +1,14 @@
-use super::{ChannelError, ChannelWaterLedger, context::Context, engine::Accepted};
+use super::{
+    ChannelError, ChannelWaterLedger,
+    context::Context,
+    engine::Accepted,
+    sources::{LateralState, PreparedLateral, SourceApplication},
+};
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
+    UnaryOps,
+};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
@@ -22,6 +30,9 @@ pub(super) struct Impulses<'a, R: Runtime<DType = DType>> {
     pub friction: &'a Tensor<R>,
     pub momentum_underflow_bound: &'a Tensor<R>,
     pub transfer_underflow_bound: &'a Tensor<R>,
+    pub lateral: &'a PreparedLateral<R>,
+    pub application: &'a SourceApplication<R>,
+    pub next_lateral: &'a LateralState<R>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -29,8 +40,11 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + IndexingOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
         + UnaryOps<R>,
 {
     pub fn balance(
@@ -48,6 +62,17 @@ where
             &c.sub(volume, &previous.volume)?,
             &c.sub(&left_volume, &right_volume)?,
         )?;
+        let local = if impulses.lateral.has_nonzero_values {
+            c.sub(
+                &local,
+                &c.sub(
+                    &impulses.lateral.incoming_volume,
+                    &impulses.lateral.withdrawal_volume,
+                )?,
+            )?
+        } else {
+            local
+        };
         self.finite(&local, "local water residual")?;
         let max_local = c.max(&c.abs(&local)?, &[0], false)?.item::<f64>()?;
         let local_transfer_bound = self.bound_add(
@@ -83,6 +108,17 @@ where
             )?,
             impulses.friction,
         )?;
+        let local_momentum = if impulses.lateral.has_nonzero_values {
+            c.sub(
+                &local_momentum,
+                &c.sub(
+                    &impulses.lateral.incoming_momentum,
+                    &impulses.lateral.withdrawal_momentum,
+                )?,
+            )?
+        } else {
+            local_momentum
+        };
         self.finite(&local_momentum, "local momentum residual")?;
         let max_momentum = c
             .max(&c.abs(&local_momentum)?, &[0], false)?
@@ -91,6 +127,14 @@ where
         let scale = c.maximum(&scale, &c.abs(&left_momentum)?)?;
         let scale = c.maximum(&scale, &c.abs(&right_momentum)?)?;
         let scale = c.maximum(&scale, &c.abs(impulses.friction)?)?;
+        let scale = if impulses.lateral.has_nonzero_values {
+            c.maximum(
+                &c.maximum(&scale, &c.abs(&impulses.lateral.incoming_momentum)?)?,
+                &c.abs(&impulses.lateral.withdrawal_momentum)?,
+            )?
+        } else {
+            scale
+        };
         let tolerance = c.add_scalar(
             &c.mul_scalar(&scale, self.definition.config.momentum_relative)?,
             self.definition.config.momentum_absolute,
@@ -98,6 +142,10 @@ where
         self.finite(&tolerance, "momentum tolerance")?;
         let charged_momentum =
             self.bound_add(&c.abs(&local_momentum)?, impulses.momentum_underflow_bound)?;
+        let charged_momentum = self.bound_add(
+            &charged_momentum,
+            &impulses.application.momentum_assembly_bound,
+        )?;
         if !self.all(&c.le(&charged_momentum, &tolerance)?)? {
             return Err(ChannelError::numerical(format!(
                 "local momentum residual={max_momentum} plus detected underflow bound exceeds tolerance: rescale inputs or use a representable interval"
@@ -108,34 +156,64 @@ where
         let incoming = left.max(0.0) + (-right).max(0.0);
         let outgoing = (-left).max(0.0) + right.max(0.0);
         let storage = self.total(volume)?;
-        let residual = (storage - previous.ledger.storage_m3) - (incoming - outgoing);
+        let lateral = &impulses.lateral.summary;
+        let residual = if impulses.lateral.has_nonzero_values {
+            (storage - previous.ledger.storage_m3)
+                - ((incoming - outgoing) + (lateral.incoming_m3 - lateral.withdrawal_m3))
+        } else {
+            (storage - previous.ledger.storage_m3) - (incoming - outgoing)
+        };
+        let totals = self.lateral.totals(c, impulses.next_lateral)?;
         let ledger = ChannelWaterLedger {
             initial_storage_m3: previous.ledger.initial_storage_m3,
             storage_m3: storage,
             boundary_in_m3: previous.ledger.boundary_in_m3 + incoming,
             boundary_out_m3: previous.ledger.boundary_out_m3 + outgoing,
-            residual_m3: (storage - previous.ledger.initial_storage_m3)
-                - ((previous.ledger.boundary_in_m3 + incoming)
-                    - (previous.ledger.boundary_out_m3 + outgoing)),
+            lateral_in_m3: totals.incoming_m3,
+            lateral_out_m3: totals.withdrawal_m3,
+            lateral_counter_abs_bound_m3: totals.counter_abs_bound_m3,
+            lateral_assembly_abs_bound_m3: totals.assembly_abs_bound_m3,
+            residual_m3: if totals.incoming_m3 != 0.0 || totals.withdrawal_m3 != 0.0 {
+                (storage - previous.ledger.initial_storage_m3)
+                    - (((previous.ledger.boundary_in_m3 + incoming)
+                        - (previous.ledger.boundary_out_m3 + outgoing))
+                        + (totals.incoming_m3 - totals.withdrawal_m3))
+            } else {
+                (storage - previous.ledger.initial_storage_m3)
+                    - ((previous.ledger.boundary_in_m3 + incoming)
+                        - (previous.ledger.boundary_out_m3 + outgoing))
+            },
             numerical_transfer_underflow_bound_m3: cumulative_transfer_charge,
         };
         let interval_scale = storage
             .max(previous.ledger.storage_m3)
             .max(incoming)
-            .max(outgoing);
+            .max(outgoing)
+            .max(lateral.incoming_m3)
+            .max(lateral.withdrawal_m3);
         let lifetime_scale = storage
             .max(ledger.initial_storage_m3)
             .max(ledger.boundary_in_m3)
-            .max(ledger.boundary_out_m3);
+            .max(ledger.boundary_out_m3)
+            .max(ledger.lateral_in_m3)
+            .max(ledger.lateral_out_m3);
         let interval_tolerance = self.definition.config.volume_absolute
             + self.definition.config.volume_relative * interval_scale;
         let lifetime_tolerance = self.definition.config.volume_absolute
             + self.definition.config.volume_relative * lifetime_scale;
         let charged_local = self.bound_add(&c.abs(&local)?, &local_transfer_bound)?;
+        let charged_local =
+            self.bound_add(&charged_local, &impulses.application.water_assembly_bound)?;
         let charged_local_admitted =
             self.all(&c.le(&charged_local, &self.constant(&local, interval_tolerance)?)?)?;
         let charged_interval = charge_add(residual.abs(), transfer_charge)?;
+        let charged_interval = charge_add(
+            charged_interval,
+            impulses.application.water_assembly_charge_m3,
+        )?;
         let charged_lifetime = charge_add(ledger.residual_m3.abs(), cumulative_transfer_charge)?;
+        let charged_lifetime = charge_add(charged_lifetime, ledger.lateral_counter_abs_bound_m3)?;
+        let charged_lifetime = charge_add(charged_lifetime, ledger.lateral_assembly_abs_bound_m3)?;
         if ![
             incoming,
             outgoing,
@@ -143,6 +221,10 @@ where
             ledger.boundary_in_m3,
             ledger.boundary_out_m3,
             ledger.residual_m3,
+            ledger.lateral_in_m3,
+            ledger.lateral_out_m3,
+            ledger.lateral_counter_abs_bound_m3,
+            ledger.lateral_assembly_abs_bound_m3,
             interval_tolerance,
             lifetime_tolerance,
             transfer_charge,

@@ -92,6 +92,7 @@ mod tests {
         ChannelReach::new(
             client,
             ChannelReachDefinition {
+                lateral_bindings: Vec::new(),
                 vertical_datum: "synthetic datum".into(),
                 provenance: "exact rectangular fixed-area resistance fixture".into(),
                 cells: vec![RectangularChannelCell {
