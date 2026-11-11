@@ -23,6 +23,7 @@ pub(super) struct LastInterval<R: Runtime<DType = DType>> {
     pub forcing: BoundChannelForcing<R>,
     pub lateral_receipt: LateralReceipt<R>,
     pub lateral_momentum_bound: Tensor<R>,
+    pub lateral_water_assembly_bound: Tensor<R>,
     pub requested_end: f64,
     pub scalar: ChannelStepDiagnostics,
     pub riemann: Option<RiemannDiagnosticState<R>>,

@@ -109,6 +109,8 @@ Interior water and the boundary trace must remain wet and strictly subcritical. 
 
 This policy holds the supplied reservoir elevation over its forcing interval. It does not advance finite reservoir storage.
 
+For a pool whose level responds to channel transfers, use [channel-to-pool connections](channel-pools.md).
+
 Use this approximation only where rapid reservoir mixing is appropriate. Jets, seiches, dry connections, and critical transitions remain unsupported.
 
 Hydr rejects a result when it cannot establish whether the depth exceeds the declared maximum. Reservoir boundaries do not use the Discharge cap approximation.
@@ -211,7 +213,7 @@ Hydr copies tensor inputs into private device storage. Reusing caller buffers af
 
 The host `step()` interface uploads its operands once into this shared path. Explicit checkpoint-data calls copy retained operands to host values.
 
-Native forcing does not coordinate exchanges between finite channel and storage components. Those connections remain unsupported.
+For coordinated transfers with finite storage, use [channel-to-pool connections](channel-pools.md).
 
 The [native-forcing checks](../tests/channel_tensor_forcing.rs) compare complete host and tensor continuation.
 
@@ -392,7 +394,7 @@ The solver represents hydrostatic, one-dimensional shallow-water flow. It exclud
 - Geometry: Rectangular width and bed can vary between cells. Triangles require one common bed and bank slopes.
 - Profiles: Trapezoids, mixed shapes, and varying longitudinal triangular profiles remain unsupported. Surveyed profiles support [static queries](cross-sections.md) only.
 - Boundaries: Scalar policies require resolved wet-subcritical traces. Complete exterior data supports other flow regimes. Use walls only for physical closures. Transmissive policies remain unsupported.
-- Connections: Junctions, structures, and coordinated exchange with other components remain unsupported.
+- Connections: [Channel-to-pool connections](channel-pools.md) coordinate finite pool storage. General junctions, structures, and surface exchange remain unsupported.
 - Losses: Separate abrupt contraction and expansion losses remain unsupported.
 - Drainage: This solver supplies no SWMM drainage, surcharge, or pressurized-pipe model.
 - Accuracy: Read [acceptance coverage](acceptance.md) for numerical cases and limits. Numerical agreement establishes no measured-event accuracy.

@@ -37,7 +37,7 @@ impl<R: Runtime<DType = DType>> ChannelTensorBoundary<R> {
         })
     }
 
-    pub(super) fn project(&self) -> Result<ChannelBoundary, ChannelError> {
+    pub(in crate::channel::flow) fn project(&self) -> Result<ChannelBoundary, ChannelError> {
         Ok(match self {
             Self::Wall => ChannelBoundary::Wall,
             Self::Stage { elevation_m } => ChannelBoundary::Stage {

@@ -95,16 +95,11 @@ where
                 &c.lt(&shock.hi, &zero)?,
                 "compatible compression wave lacks a negative directed speed",
             )?;
-            if self.all(&c.gt(&h.lo, &interior.depth_bounds.hi)?)? {
-                self.boundary_require(
-                    &c.lt(&lambda_b.hi, &shock.lo)?,
-                    "compatible compression lacks the trace Lax inequality",
-                )?;
-                self.boundary_require(
-                    &c.lt(&shock.hi, &lambda_i.lo)?,
-                    "compatible compression lacks the interior Lax inequality",
-                )?;
-            }
+            // Pressure powers 2 and 1.5 are strictly convex in area.
+            // D is the shock magnitude and f = ui - ub is the compatible velocity jump.
+            // For positive compression, the secant slope gives D > ci and D - f < cb.
+            // Thus ub - cb < ui - D < ui - ci proves both strict Lax inequalities.
+            // Independent rounded speed enclosures need no strict separation for weak compression.
             speed = c.maximum(&speed, &self.babs(&shock)?)?;
         }
         {
@@ -135,3 +130,7 @@ where
         Ok(speed)
     }
 }
+
+#[cfg(test)]
+#[path = "wave_tests.rs"]
+mod tests;

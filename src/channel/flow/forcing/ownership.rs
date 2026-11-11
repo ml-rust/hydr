@@ -25,7 +25,10 @@ impl<R: Runtime<DType = DType>> ChannelTensorBoundary<R>
 where
     R::Client: BinaryOps<R>,
 {
-    pub(super) fn into_owned(self, client: &R::Client) -> Result<Self, ChannelError> {
+    pub(in crate::channel::flow) fn into_owned(
+        self,
+        client: &R::Client,
+    ) -> Result<Self, ChannelError> {
         Ok(match self {
             Self::Wall => Self::Wall,
             Self::Stage { elevation_m } => Self::Stage {
@@ -79,7 +82,10 @@ impl<R: Runtime<DType = DType>> ChannelTensorLateralInput<R>
 where
     R::Client: BinaryOps<R>,
 {
-    pub(super) fn into_owned(self, client: &R::Client) -> Result<Self, ChannelError> {
+    pub(in crate::channel::flow) fn into_owned(
+        self,
+        client: &R::Client,
+    ) -> Result<Self, ChannelError> {
         Ok(match self {
             Self::Inflow {
                 boundary_id,

@@ -34,9 +34,25 @@ where
         client: &R::Client,
         forcing: &ChannelForcingInterval,
     ) -> Result<BoundChannelForcing<R>, ChannelError> {
+        let inputs = self.host_inputs(client, &forcing.lateral_inputs)?;
+        self.bind_owned(
+            client,
+            forcing.start_s,
+            forcing.end_s,
+            ChannelTensorBoundary::from_host(client, &forcing.left)?,
+            ChannelTensorBoundary::from_host(client, &forcing.right)?,
+            inputs,
+        )
+    }
+
+    pub(in crate::channel::flow) fn host_inputs(
+        &self,
+        client: &R::Client,
+        lateral_inputs: &[ChannelLateralInput],
+    ) -> Result<Vec<ChannelTensorLateralInput<R>>, ChannelError> {
         let make = |value| Tensor::<R>::from_slice(&[value], &[1], client.device());
-        let mut inputs = Vec::with_capacity(forcing.lateral_inputs.len());
-        for input in &forcing.lateral_inputs {
+        let mut inputs = Vec::with_capacity(lateral_inputs.len());
+        for input in lateral_inputs {
             let amount = match input.amount() {
                 WaterAmount::Rate { rate_m3_per_s } => ChannelTensorWaterAmount::Rate {
                     rate_m3_per_s: make(rate_m3_per_s)?,
@@ -65,14 +81,7 @@ where
                 }
             });
         }
-        self.bind_owned(
-            client,
-            forcing.start_s,
-            forcing.end_s,
-            ChannelTensorBoundary::from_host(client, &forcing.left)?,
-            ChannelTensorBoundary::from_host(client, &forcing.right)?,
-            inputs,
-        )
+        Ok(inputs)
     }
 
     pub fn bind_native(
@@ -102,7 +111,28 @@ where
         right: ChannelTensorBoundary<R>,
         inputs: Vec<ChannelTensorLateralInput<R>>,
     ) -> Result<BoundChannelForcing<R>, ChannelError> {
-        if (left.is_scalar() || right.is_scalar())
+        self.check_endpoints(client, start_s, end_s, Some(&left), Some(&right))?;
+        let lateral = self.bind_lateral_owned(client, inputs)?;
+        Ok(BoundChannelForcing {
+            definition: Arc::clone(&self.definition),
+            start_s,
+            end_s,
+            left,
+            right,
+            lateral,
+        })
+    }
+
+    pub(in crate::channel::flow) fn check_endpoints(
+        &self,
+        client: &R::Client,
+        start_s: f64,
+        end_s: f64,
+        left: Option<&ChannelTensorBoundary<R>>,
+        right: Option<&ChannelTensorBoundary<R>>,
+    ) -> Result<(), ChannelError> {
+        if (left.is_some_and(ChannelTensorBoundary::is_scalar)
+            || right.is_some_and(ChannelTensorBoundary::is_scalar))
             && (R::float_arithmetic_contract(DType::F64)
                 != numr::runtime::FloatArithmeticContract::Ieee754Basic
                 || R::square_root_contract(DType::F64)
@@ -120,7 +150,9 @@ where
             )));
         }
         super::super::definition::check_forcing_interval(start_s, end_s, start_s, end_s)?;
-        left.check(client, &self.definition, 0)?;
+        if let Some(left) = left {
+            left.check(client, &self.definition, 0)?;
+        }
         let last = self
             .definition
             .geometry
@@ -129,7 +161,17 @@ where
             .ok_or_else(|| {
                 ChannelError::input("cell count=0: construct a nonempty channel reach")
             })?;
-        right.check(client, &self.definition, last)?;
+        if let Some(right) = right {
+            right.check(client, &self.definition, last)?;
+        }
+        Ok(())
+    }
+
+    pub(in crate::channel::flow) fn bind_lateral_owned(
+        &self,
+        client: &R::Client,
+        inputs: Vec<ChannelTensorLateralInput<R>>,
+    ) -> Result<BoundLateralInputs<R>, ChannelError> {
         if inputs.len() != self.count() {
             return Err(ChannelError::input(format!(
                 "lateral input count={}, bindings={}: supply every binding exactly once",
@@ -220,13 +262,6 @@ where
             has_interval_volumes,
             has_nonzero_values,
         };
-        Ok(BoundChannelForcing {
-            definition: Arc::clone(&self.definition),
-            start_s,
-            end_s,
-            left,
-            right,
-            lateral,
-        })
+        Ok(lateral)
     }
 }

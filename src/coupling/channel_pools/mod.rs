@@ -1,0 +1,50 @@
+//! Advance channel reaches and finite level pools through common, conservatively paired intervals.
+
+mod accounting;
+mod accounting_lateral;
+mod accounting_math;
+mod accounting_physical;
+mod batch;
+mod boundary_history;
+mod context;
+mod context_types;
+mod counters;
+mod definition;
+mod donors;
+mod error;
+mod exchange;
+mod forcing;
+mod forcing_definition;
+mod identity;
+mod iteration;
+mod output;
+mod packets;
+mod projection;
+mod reductions;
+mod restoration;
+mod snapshot;
+mod snapshot_values;
+mod state;
+mod topology;
+mod trial;
+
+pub use batch::ChannelPoolBatch;
+pub use definition::{
+    ChannelPoolConfig, ChannelPoolConnection, ChannelPoolEndpoint, ChannelPoolInitialState,
+    ChannelPoolReach, ChannelPoolSetup,
+};
+pub use error::ChannelPoolError;
+pub use forcing_definition::{
+    ChannelPoolForcingInterval, ChannelPoolReachForcing, ChannelPoolTensorForcingInterval,
+    ChannelPoolTensorReachForcing,
+};
+pub use output::{
+    ChannelPoolConnectionLedger, ChannelPoolDonorCut, ChannelPoolIterationData,
+    ChannelPoolStepDiagnostics, ChannelPoolTransfer, ChannelPoolWaterBalance,
+};
+pub use snapshot::{
+    ChannelPoolCounterData, ChannelPoolIntervalAccountingData, ChannelPoolIntervalSnapshotData,
+    ChannelPoolNativeIntervalData, ChannelPoolPreviousData, ChannelPoolSnapshot,
+    ChannelPoolSnapshotData,
+};
+pub use trial::ChannelPoolTrial;

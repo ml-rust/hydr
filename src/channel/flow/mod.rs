@@ -7,6 +7,7 @@ mod boundary_config;
 mod boundary_trace;
 mod config;
 mod context;
+mod coupling;
 mod definition;
 mod engine;
 mod error;
@@ -47,3 +48,5 @@ pub use forcing::{
     ChannelTensorBoundary, ChannelTensorForcingInterval, ChannelTensorLateralInput,
     ChannelTensorWaterAmount,
 };
+
+pub(crate) use coupling::{ChannelCouplingForcing, ChannelCouplingTrial, ChannelReservoirOperands};

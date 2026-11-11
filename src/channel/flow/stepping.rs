@@ -66,6 +66,15 @@ where
         requested_end_s: f64,
         forcing: &BoundChannelForcing<R>,
     ) -> Result<ChannelStep<R>, ChannelError> {
+        self.step_bound_policy(requested_end_s, forcing, false)
+    }
+
+    pub(super) fn step_bound_policy(
+        &self,
+        requested_end_s: f64,
+        forcing: &BoundChannelForcing<R>,
+        exact_endpoint: bool,
+    ) -> Result<ChannelStep<R>, ChannelError> {
         if !Arc::ptr_eq(&self.context.definition, &forcing.definition)
             && !self.definition().same_bits(&forcing.definition)
         {
@@ -93,10 +102,10 @@ where
             start: self.time(),
             requested_end: requested_end_s,
             minimum: config.min_step,
-            exact,
+            exact: exact || exact_endpoint,
         };
         let endpoint = requested_end_s.min(self.time() + config.max_step);
-        if exact && endpoint < requested_end_s {
+        if (exact || exact_endpoint) && endpoint < requested_end_s {
             control.shorten(
                 requested_end_s - self.time(),
                 endpoint - self.time(),
@@ -344,6 +353,7 @@ where
                 transfer_underflow_bound: transport.transfer_underflow_bound,
                 lateral_receipt: prepared.receipt,
                 lateral_momentum_bound: application.momentum_assembly_bound,
+                lateral_water_assembly_bound: application.water_assembly_bound,
             };
             return Ok(ChannelStep {
                 next: Self {

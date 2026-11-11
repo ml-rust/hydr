@@ -1,5 +1,17 @@
 //! Conservative water exchange between hydraulic components.
 
+pub mod channel_pools;
+pub use channel_pools::{
+    ChannelPoolBatch, ChannelPoolConfig, ChannelPoolConnection, ChannelPoolConnectionLedger,
+    ChannelPoolCounterData, ChannelPoolDonorCut, ChannelPoolEndpoint, ChannelPoolError,
+    ChannelPoolForcingInterval, ChannelPoolInitialState, ChannelPoolIntervalAccountingData,
+    ChannelPoolIntervalSnapshotData, ChannelPoolIterationData, ChannelPoolNativeIntervalData,
+    ChannelPoolPreviousData, ChannelPoolReach, ChannelPoolReachForcing, ChannelPoolSetup,
+    ChannelPoolSnapshot, ChannelPoolSnapshotData, ChannelPoolStepDiagnostics,
+    ChannelPoolTensorForcingInterval, ChannelPoolTensorReachForcing, ChannelPoolTransfer,
+    ChannelPoolTrial, ChannelPoolWaterBalance,
+};
+
 pub mod level_pools;
 
 pub use level_pools::{

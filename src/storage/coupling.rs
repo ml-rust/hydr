@@ -11,9 +11,54 @@ use solvr::interpolate::Interp1dAlgorithms;
 
 use super::{LevelPoolBatch, LevelPoolError, LevelPoolTrial};
 
+/// Borrowed native counters retain each pool's original arithmetic operands.
+pub(crate) struct LevelPoolNativeAccounting<'a, R: Runtime<DType = DType>> {
+    pub volume_m3: &'a Tensor<R>,
+    pub cumulative_incoming_volume_m3: &'a Tensor<R>,
+    pub cumulative_outgoing_volume_m3: &'a Tensor<R>,
+    pub incoming_roundoff_bound_m3: &'a Tensor<R>,
+    pub outgoing_roundoff_bound_m3: &'a Tensor<R>,
+}
+
+pub(crate) struct LevelPoolNativeInterval<'a, R: Runtime<DType = DType>> {
+    pub old_volume_m3: &'a Tensor<R>,
+    pub volume_m3: &'a Tensor<R>,
+    pub incoming_volume_m3: &'a Tensor<R>,
+    pub outgoing_volume_m3: &'a Tensor<R>,
+    pub outgoing_witness_m3: &'a Tensor<R>,
+    pub incoming_witness_m3: &'a Tensor<R>,
+    pub witness_consistency_bound_m3: &'a Tensor<R>,
+}
+
 impl<R: Runtime<DType = DType>> LevelPoolBatch<R> {
     pub(crate) fn volumes_tensor(&self) -> &Tensor<R> {
         &self.state.volume_m3
+    }
+
+    pub(crate) fn coupling_native_accounting(&self) -> LevelPoolNativeAccounting<'_, R> {
+        let state = &self.state;
+        LevelPoolNativeAccounting {
+            volume_m3: &state.volume_m3,
+            cumulative_incoming_volume_m3: &state.cumulative_incoming_volume_m3,
+            cumulative_outgoing_volume_m3: &state.cumulative_outgoing_volume_m3,
+            incoming_roundoff_bound_m3: &state.incoming_roundoff_bound_m3,
+            outgoing_roundoff_bound_m3: &state.outgoing_roundoff_bound_m3,
+        }
+    }
+
+    pub(crate) fn coupling_native_interval(&self) -> Option<LevelPoolNativeInterval<'_, R>> {
+        self.last.as_ref().map(|last| {
+            let step = &last.step;
+            LevelPoolNativeInterval {
+                old_volume_m3: &step.old_volume_m3,
+                volume_m3: &step.volume_m3,
+                incoming_volume_m3: &step.incoming_volume_m3,
+                outgoing_volume_m3: &step.outgoing_volume_m3,
+                outgoing_witness_m3: &step.outgoing_witness_m3,
+                incoming_witness_m3: &step.incoming_witness_m3,
+                witness_consistency_bound_m3: &step.witness_consistency_bound_m3,
+            }
+        })
     }
 }
 

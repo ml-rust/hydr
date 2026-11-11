@@ -24,6 +24,7 @@ cargo test --test runoff_pools
 cargo test --test cross_sections
 cargo test --test channel_flow --test channel_restart -- --nocapture
 cargo test --test channel_lateral -- --nocapture
+cargo test --test channel_pools -- --nocapture
 ```
 
 The fixtures need no external datasets or random inputs. [Analytical cases](../tests/analytical_cases.rs) use formulas from [the analytical helpers](../tests/support/analytic.rs), independently of the production tensor kernel.
@@ -404,7 +405,47 @@ Reported depth intervals must contain the independently calculated solution. Com
 
 Across reservoir grids, maximum mean errors remain below `0.006146 m` for depth and `0.02084 m³/s` for discharge.
 
-These are local boundary checks. They establish no energy theorem for a complete finite-storage calculation. Finite channel/pool coordination remains unsupported.
+These are local boundary checks. Finite-storage feedback has separate checks below.
+
+## Finite channel/pool checks
+
+Read [channel-to-pool connections](channel-pools.md) before constructing a connected system. [Coordinator cases](../tests/channel_pools.rs) check common accepted intervals.
+
+### Finite-storage feedback
+
+Eighteen independent feedback fixtures run at both reach ends, producing 36 cases. Comparisons include momentum and the pool's changing level.
+
+Each quantity requires `1e-10` absolute allowance in its SI units, plus `1e-10 × reference magnitude`.
+
+| Check | Required behavior |
+| --- | --- |
+| Still water and topology | Preserve rest, multiple endpoint connections, and results under declaration-order changes. |
+| Reversal | Retain paired transfers when flow changes direction within the supported regime. |
+| Donor water and connection beds | Use original donor water and preserve wet support at raised connections. |
+| External inputs | Preserve exact integrated zero inputs and resist caller-buffer mutation. |
+| Recalculation and restart | Recalculate complete shorter intervals and replay the composite final interval. |
+
+### Coupled oscillation
+
+An independent rectangular channel/pool mode runs on 50, 100, and 200 cells. Samples occur at approximately `7.743 s` and `15.485 s`, one-quarter and one-half period.
+
+Errors use fixed peak amplitudes, including when instantaneous discharge vanishes. The largest normalized errors across both samples on 200 cells are:
+
+| Quantity | Error measure | Largest error |
+| --- | --- | --- |
+| Channel depth | Root-mean-square field error | 0.81% |
+| Channel discharge | Root-mean-square field error | 0.50% |
+| Pool level | Absolute scalar error | 1.30% |
+
+Every finest-grid error remains below 5%. Refinement requires at least 20% reduction unless normalized error is below `1e-7`.
+
+| Runtime | Checked scope |
+| --- | --- |
+| CPU | Feedback, oscillation refinement, donor limits, and complete continuation |
+| CUDA | Both shapes at both reach ends. Mixed connections, non-knot cuts, native input ownership, and restart also pass. |
+| WGPU | Required F64 precision rejects without CPU fallback |
+
+These cases retain the [connection limits](channel-pools.md#understand-connection-limits), including first-order time integration. They establish no global energy theorem or measured-event accuracy.
 
 ## Connected-pool checks
 
@@ -501,7 +542,7 @@ These cases establish no downstream feedback, geometric nonoverlap proof, dynami
 | Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
 | Independent engine | Nine matched wet-bed/dry-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Analytical front accuracy, independent terrain/transverse-flow comparisons, and broader hydraulic regimes |
-| Extensions | Land sources, coupled pools, free runoff outlets, and rectangular/triangular reaches with lateral inputs have separate checks | General channel profiles, wider networks, finite-component exchanges, and dynamic coupled controls require separate acceptance |
+| Extensions | Land sources, coupled pools, free runoff outlets, and finite channel/pool connections have separate checks | General channel profiles, wider networks, surface/network exchanges, and dynamic coupled controls require separate acceptance |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 
 ### Numerical limits retained by the checks

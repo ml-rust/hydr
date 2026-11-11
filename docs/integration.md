@@ -69,7 +69,11 @@ Surface-to-network coupling remains unsupported.
 
 Use [cross-section geometry](cross-sections.md) to evaluate supplied channel profiles at declared water levels. This static component provides no dynamic river or drainage flow.
 
-Use [rectangular channel flow](channels.md) to advance an unbranched reach with explicit rectangular cells and endpoint conditions. Its restart and water accounting remain separate from surface and pool components.
+Use [channel flow](channels.md) to advance an unbranched rectangular or prismatic triangular reach with explicit endpoint conditions.
+
+Use [channel-to-pool connections](channel-pools.md) when finite pool levels respond to channel transfers. `ChannelPoolBatch` accepts both components together and retains their combined restart data.
+
+Surface state remains separate from these channel/pool calculations.
 
 ## Runtime selection and admission
 

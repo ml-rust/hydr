@@ -56,6 +56,41 @@ pub struct ChannelIntervalSnapshotData {
     pub diagnostics: ChannelStepDiagnostics,
 }
 
+impl ChannelSnapshotData {
+    pub(crate) fn same_bits(&self, other: &Self) -> bool {
+        let interval = match (&self.last_interval, &other.last_interval) {
+            (None, None) => true,
+            (Some(a), Some(b)) => {
+                a.previous_time_s.to_bits() == b.previous_time_s.to_bits()
+                    && super::check::values(&a.previous_volume_m3, &b.previous_volume_m3)
+                    && super::check::values(
+                        &a.previous_longitudinal_momentum_m4_per_s,
+                        &b.previous_longitudinal_momentum_m4_per_s,
+                    )
+                    && super::check::ledger(&a.previous_ledger, &b.previous_ledger)
+                    && super::check::lateral_state(&a.previous_lateral, &b.previous_lateral)
+                    && a.previous_accepted_steps == b.previous_accepted_steps
+                    && super::check::forcing(&a.forcing, &b.forcing)
+                    && a.requested_end_s.to_bits() == b.requested_end_s.to_bits()
+                    && super::check::diagnostics(&a.diagnostics, &b.diagnostics)
+            }
+            _ => false,
+        };
+        interval
+            && super::check::definition(&self.definition, &other.definition)
+            && super::check::initial(&self.initial, &other.initial)
+            && self.time_s.to_bits() == other.time_s.to_bits()
+            && super::check::values(&self.volume_m3, &other.volume_m3)
+            && super::check::values(
+                &self.longitudinal_momentum_m4_per_s,
+                &other.longitudinal_momentum_m4_per_s,
+            )
+            && super::check::ledger(&self.ledger, &other.ledger)
+            && super::check::lateral_state(&self.lateral, &other.lateral)
+            && self.accepted_steps == other.accepted_steps
+    }
+}
+
 /// Trusted complete continuation clone without host projection.
 #[derive(Clone)]
 pub struct ChannelSnapshot<R: Runtime<DType = DType>> {

@@ -19,3 +19,5 @@ pub use section::{
     CrossSectionProperties, CrossSectionQuery, CrossSectionRecoveredProperties,
     CrossSectionRecovery, CrossSectionRecoveryConfig,
 };
+
+pub(crate) use flow::{ChannelCouplingForcing, ChannelCouplingTrial, ChannelReservoirOperands};

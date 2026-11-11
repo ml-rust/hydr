@@ -38,6 +38,29 @@ pub struct LevelPoolTrial<R: Runtime<DType = DType>> {
     pub(super) next: LevelPoolBatch<R>,
 }
 
+impl<R: Runtime<DType = DType>> LevelPoolBatch<R> {
+    /// Complete immutable physical definitions in numerical order.
+    pub fn elements(&self) -> &[LevelPoolElement] {
+        &self.context.elements
+    }
+    /// Independent dimensional controls.
+    pub fn config(&self) -> &LevelPoolConfig {
+        &self.context.config
+    }
+    /// Immutable source-enabling evidence, absent for exchange-only batches.
+    pub fn source_policies(&self) -> Option<&[super::LevelPoolSourcePolicy]> {
+        self.context.source_policies.as_deref()
+    }
+    /// Accepted elapsed time in seconds.
+    pub fn time(&self) -> f64 {
+        self.time
+    }
+    /// Number of accepted exchange intervals.
+    pub fn accepted_steps(&self) -> usize {
+        self.steps
+    }
+}
+
 impl<R> LevelPoolBatch<R>
 where
     R: Runtime<DType = DType>,
@@ -112,26 +135,6 @@ where
             steps: 0,
             last: None,
         })
-    }
-    /// Complete immutable physical definitions in numerical order.
-    pub fn elements(&self) -> &[LevelPoolElement] {
-        &self.context.elements
-    }
-    /// Independent dimensional controls.
-    pub fn config(&self) -> &LevelPoolConfig {
-        &self.context.config
-    }
-    /// Immutable source-enabling evidence, absent for exchange-only batches.
-    pub fn source_policies(&self) -> Option<&[super::LevelPoolSourcePolicy]> {
-        self.context.source_policies.as_deref()
-    }
-    /// Accepted elapsed time in seconds.
-    pub fn time(&self) -> f64 {
-        self.time
-    }
-    /// Number of accepted exchange intervals.
-    pub fn accepted_steps(&self) -> usize {
-        self.steps
     }
     /// Explicitly project authoritative accepted element volumes.
     pub fn states(&self) -> Result<Vec<LevelPoolState>, LevelPoolError> {

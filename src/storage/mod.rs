@@ -3,6 +3,8 @@
 mod accounting;
 mod batch;
 mod coupling;
+mod coupling_cut_bounds;
+mod coupling_cuts;
 mod curve;
 pub(crate) mod definition;
 mod error;
@@ -33,3 +35,5 @@ pub use source_receipt::{
 
 pub(crate) use prepared_interval::{LevelPoolSourcePlan, PreparedLevelPoolInterval};
 pub(crate) use source_summary::LevelPoolIntervalSources;
+
+pub(crate) use coupling_cuts::{LevelPoolCut, LevelPoolCutPlan};

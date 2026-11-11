@@ -81,6 +81,38 @@ where
                 ));
             }
         }
+        if self.all(&c.eq(&interior.velocity, &z)?)?
+            && self.all(&c.eq(&interior.discharge, &z)?)?
+            && self.all(&c.eq(&reservoir.bounds.lo, &interior.depth)?)?
+            && self.all(&c.eq(&reservoir.bounds.hi, &interior.depth)?)?
+        {
+            // At rest, the head and interior-depth hull encloses the unique physical root.
+            // Retain section-recovery uncertainty while evaluating the original nominal depth.
+            let bounds = Bounds {
+                lo: c.minimum(&reservoir.bounds.lo, &interior.depth_bounds.lo)?,
+                hi: c.maximum(&reservoir.bounds.hi, &interior.depth_bounds.hi)?,
+            };
+            let width = upper::<R>(c, &c.sub(&bounds.hi, &bounds.lo)?)?;
+            let tolerance = c.add_scalar(
+                &c.mul_scalar(&bounds.hi, self.definition.config.root_relative_depth)?,
+                self.definition.config.root_absolute_depth,
+            )?;
+            self.finite(&width, "reservoir rest depth enclosure width")?;
+            self.finite(&tolerance, "reservoir rest depth tolerance")?;
+            self.boundary_require(
+                &c.le(&width, &tolerance)?,
+                "certified reservoir bracket exceeds depth controls",
+            )?;
+            return Ok((
+                DepthRequest::Known(Box::new(Depth {
+                    value: interior.depth.clone(),
+                    bounds,
+                    approximate: false,
+                    iterations: 0,
+                })),
+                reservoir,
+            ));
+        }
         let count = if self.boundary_triangle() { 4.0 } else { 2.0 };
         let sonic = self.bdiv(
             &self.badd(
@@ -283,3 +315,7 @@ where
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "reservoir_root_tests.rs"]
+mod tests;

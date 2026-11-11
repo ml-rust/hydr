@@ -139,7 +139,7 @@ pub struct ChannelForcingInterval {
 }
 
 impl ChannelReachDefinition {
-    pub(super) fn same_bits(&self, other: &Self) -> bool {
+    pub(crate) fn same_bits(&self, other: &Self) -> bool {
         let same_values = |left: &[f64], right: &[f64]| {
             left.len() == right.len()
                 && left
