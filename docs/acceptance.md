@@ -283,7 +283,53 @@ Normalization divides depth differences by `0.1 m` and discharge differences by 
 
 The source-created wave check covers accepted-start and prefriction endpoint states. It establishes no continuous source-path stability proof.
 
-These checks cover prescribed inputs to rectangular reaches. Arbitrary-profile dynamics, junctions, finite-component exchange, contraction losses, and drainage remain unsupported.
+These checks cover prescribed inputs to rectangular reaches. Separate triangular checks follow below. Arbitrary-profile dynamics, junctions, finite-component exchange, contraction losses, and drainage remain unsupported.
+
+## Prismatic triangular channel checks
+
+[Triangular cases](../tests/channel_triangular.rs) advance actual triangular reaches through the public channel lifecycle. The independent scalar reference integrates conserved cell averages before recovering represented depth.
+
+These cases use gravity `9.81 m/s²`, bank slopes `(1, 1)`, and the existing accounting tolerances. Asymmetry cases also use `(0, 2)`.
+
+Triangular transport uses complete barotropic Godunov sampling. Dry, vacuum, and two-rarefaction cases use analytical samples. Mixed waves and shocks use Solvr brackets. Proved enclosing waves determine CFL limits separately.
+
+The production physical gates select `LimitedLinear`, the default reconstruction. `FirstOrderReference` retains piecewise constant reconstruction for explicit comparisons. Its vacuum comparison requires decreasing depth and discharge errors under the same analytical norm, without claiming the production error ceiling.
+
+| Case | Inputs | Required gate |
+| --- | --- | --- |
+| Uniform motion | Depth `1 m`, velocity `±1 m/s`, twenty `5 m` cells, matching exteriors, time `5 s` | Depth drift ≤`1e-12 m`, discharge drift ≤`1e-11 m³/s` |
+| Closed rest | Unequal cell lengths, depth `1 m`, walls, time `2 s` | Same drift limits, each face water transfer ≤`1e-11 m³` |
+| Dry release | Depth-one water released onto dry bed, domain `[-100, 100] m`, time `4 s` | Mean depth error <`0.06 m`, discharge error <`0.3 m³/s`, both strictly decreasing |
+| Wet shock | Left/right areas `4/1 m²`, left velocity `sqrt(7g/4)`, right velocity zero, time `4 s` | Same analytical ceilings and strict spatial decrease |
+| Two-fan vacuum | Depth `1 m`, separating velocities `±5sqrt(g/2)`, time `1 s` | Independently integrated fans meet the same ceilings and strict spatial decrease |
+| Manning decay | Depth `1 m`, roughness `0.03`, velocity `±1 m/s`, interval `0.1 s` | Exact fixed-area decay within `1e-12 m³/s`, unchanged stored volume |
+| Bank asymmetry | Slopes `(0, 2)` and `(1, 1)` | Equal inviscid law, distinct independently calculated resistance |
+| Reference positive films | `FirstOrderReference`, right depth `10^-j m`, `j = 1..150`, beside depth-one water | CFL within 1% of `0.45 / (5cL - 3cR)`, retained positive water |
+| Production positive films | `LimitedLinear`, the same 150 positive depths | Positive advancement respects reported reconstructed half-cell CFL limits |
+
+### Separate spatial and temporal refinement
+
+Spatial checks use 100, 200, and 400 cells with a common maximum interval of `0.002 s`. References split every wave segment and discontinuity before integration. Cell-centre sampling does not define these error norms.
+
+| Refinement | Cells | Maximum intervals, s | Required behavior |
+| --- | --- | --- | --- |
+| Temporal dry release | 50 throughout | `0.02 / 0.01 / 0.005` | Successive depth and discharge differences strictly decrease |
+| Combined dry release | `100 / 200 / 400` | `0.02 / 0.01 / 0.005` | Analytical errors and successive differences strictly decrease |
+
+Both refinement paths retain the analytical ceilings. Combined differences first restrict fine conserved averages to coarse cells, then recover depth.
+
+### Sources, restart, and runtimes
+
+| Check | Required behavior |
+| --- | --- |
+| Lateral inputs | Incoming momentum follows supplied velocity. Withdrawals use original donor velocity. Incoming water supplies no donor credit. |
+| Exact volumes | Shortening requests recomputed forcing. The rejected interval preserves accepted state. |
+| Restart | Trusted and cold restart retain flux certificates and reproduce complete sourced continuation. Altered sources or certificates reject. |
+| Flux accuracy | Every triangular interval supplies finite face-width certificates within separate water/momentum flux budgets. |
+| Geometry identity | Changed slope bits, changed bed bits, and cross-geometry restoration reject. |
+| Runtime | Configured CPU and CUDA clients execute production advance, sources, and restart. WGPU rejects F64 without fallback. |
+
+These checks cover prismatic triangular reaches only. They establish no general-profile dynamics, network coupling, SWMM equivalence, or measured-event accuracy.
 
 ## Connected-pool checks
 
@@ -380,7 +426,7 @@ These cases establish no downstream feedback, geometric nonoverlap proof, dynami
 | Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
 | Independent engine | Nine matched wet-bed/dry-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Analytical front accuracy, independent terrain/transverse-flow comparisons, and broader hydraulic regimes |
-| Extensions | Land sources, coupled pools, free runoff outlets, and rectangular reaches with lateral inputs have separate checks | General channel profiles, wider networks, finite-component exchanges, and dynamic coupled controls require separate acceptance |
+| Extensions | Land sources, coupled pools, free runoff outlets, and rectangular/triangular reaches with lateral inputs have separate checks | General channel profiles, wider networks, finite-component exchanges, and dynamic coupled controls require separate acceptance |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 
 ### Numerical limits retained by the checks

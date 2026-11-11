@@ -1,3 +1,4 @@
+pub use super::geometry::{ChannelGeometry, TriangularChannelCell};
 use super::{ChannelConfig, ChannelError};
 use crate::forcing::WaterAmount;
 use std::collections::BTreeSet;
@@ -19,15 +20,15 @@ pub struct RectangularChannelCell {
     pub manning_n: f64,
 }
 
-/// Explicit rectangular geometry and numerical controls for one unbranched reach.
+/// Declared geometry and numerical controls for one unbranched reach.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChannelReachDefinition {
     /// Common vertical reference for every bed and returned water stage.
     pub vertical_datum: String,
-    /// Evidence supporting the geometry and rectangular-flow assumptions.
+    /// Evidence supporting the geometry and flow assumptions.
     pub provenance: String,
     /// Nonempty connected cells in increasing longitudinal order.
-    pub cells: Vec<RectangularChannelCell>,
+    pub geometry: ChannelGeometry,
     /// Selected lateral sources and withdrawals; empty explicitly selects an unforced reach.
     pub lateral_bindings: Vec<ChannelLateralBinding>,
     /// Dimensional numerical controls.
@@ -45,7 +46,7 @@ pub struct ChannelInitialState {
     pub longitudinal_momentum_m4_per_s: Vec<f64>,
 }
 
-/// Endpoint policy using the adjacent endpoint cell's width and bed elevation.
+/// Endpoint policy using the declared section and adjacent bed elevation.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ChannelBoundary {
     /// Genuine impermeable wall, implemented by reflecting longitudinal velocity.
@@ -130,28 +131,10 @@ impl ChannelReachDefinition {
         let right = &other.config;
         self.vertical_datum == other.vertical_datum
             && self.provenance == other.provenance
-            && self.cells.len() == other.cells.len()
-            && self.cells.iter().zip(&other.cells).all(|(left, right)| {
-                left.id == right.id
-                    && same_values(
-                        &[
-                            left.length_m,
-                            left.width_m,
-                            left.bed_elevation_m,
-                            left.maximum_depth_m,
-                            left.manning_n,
-                        ],
-                        &[
-                            right.length_m,
-                            right.width_m,
-                            right.bed_elevation_m,
-                            right.maximum_depth_m,
-                            right.manning_n,
-                        ],
-                    )
-            })
+            && self.geometry.same_bits(&other.geometry)
             && left.max_retries == right.max_retries
             && left.root_iterations == right.root_iterations
+            && left.triangular_reconstruction == right.triangular_reconstruction
             && same_values(
                 &[
                     left.gravity,
@@ -160,6 +143,9 @@ impl ChannelReachDefinition {
                     left.min_step,
                     left.root_absolute_depth,
                     left.root_relative_depth,
+                    left.riemann_water_flux_absolute_m3_per_s,
+                    left.riemann_momentum_flux_absolute_m4_per_s2,
+                    left.riemann_flux_relative,
                     left.volume_absolute,
                     left.volume_relative,
                     left.momentum_absolute,
@@ -172,6 +158,9 @@ impl ChannelReachDefinition {
                     right.min_step,
                     right.root_absolute_depth,
                     right.root_relative_depth,
+                    right.riemann_water_flux_absolute_m3_per_s,
+                    right.riemann_momentum_flux_absolute_m4_per_s2,
+                    right.riemann_flux_relative,
                     right.volume_absolute,
                     right.volume_relative,
                     right.momentum_absolute,
@@ -189,16 +178,17 @@ impl ChannelReachDefinition {
         ] {
             check_text(name, value)?;
         }
-        if self.cells.is_empty() {
+        if self.geometry.len() == 0 {
             return Err(ChannelError::input(
-                "cell count=0: supply at least one explicit rectangular cell",
+                "cell count=0: supply at least one explicit channel cell",
             ));
         }
+        self.geometry.check()?;
         let mut ids = BTreeSet::new();
         let mut length = 0.0;
-        for (index, cell) in self.cells.iter().enumerate() {
-            check_text("id", &cell.id).map_err(|error| error.at(index))?;
-            if !ids.insert(cell.id.as_str()) {
+        for (index, cell) in self.geometry.cells().enumerate() {
+            check_text("id", cell.id).map_err(|error| error.at(index))?;
+            if !ids.insert(cell.id) {
                 return Err(ChannelError::input(format!(
                     "id={:?}: supply a unique cell identity",
                     cell.id
@@ -207,7 +197,6 @@ impl ChannelReachDefinition {
             }
             for (name, value) in [
                 ("length_m", cell.length_m),
-                ("width_m", cell.width_m),
                 ("maximum_depth_m", cell.maximum_depth_m),
             ] {
                 if !value.is_finite() || value <= 0.0 {
@@ -218,14 +207,11 @@ impl ChannelReachDefinition {
                 }
             }
             let maximum_stage = cell.bed_elevation_m + cell.maximum_depth_m;
-            let plan_area = cell.width_m * cell.length_m;
-            let maximum_volume = plan_area * cell.maximum_depth_m;
+            let maximum_volume = self.geometry.maximum_volume(index);
             let next_length = length + cell.length_m;
             if !cell.bed_elevation_m.is_finite()
                 || !maximum_stage.is_finite()
                 || maximum_stage <= cell.bed_elevation_m
-                || !plan_area.is_finite()
-                || plan_area <= 0.0
                 || !maximum_volume.is_finite()
                 || maximum_volume <= 0.0
                 || !next_length.is_finite()
@@ -234,7 +220,7 @@ impl ChannelReachDefinition {
                 || cell.manning_n < 0.0
             {
                 return Err(ChannelError::input(format!(
-                    "id={:?}, bed={}, maximum_stage={maximum_stage}, plan_area={plan_area}, maximum_volume={maximum_volume}, reach_length={next_length}, manning_n={}: supply representable geometry and finite nonnegative roughness",
+                    "id={:?}, bed={}, maximum_stage={maximum_stage}, maximum_volume={maximum_volume}, reach_length={next_length}, manning_n={}: supply representable geometry and finite nonnegative roughness",
                     cell.id, cell.bed_elevation_m, cell.manning_n
                 ))
                 .at(index));
@@ -283,28 +269,35 @@ pub(super) fn check_endpoint_interval(
             "accepted_time={time_s}, forcing_span=[{start_s},{end_s}], requested_end={requested_end_s}: supply the exact accepted start and a later endpoint within forcing support"
         )));
     }
-    let last = definition.cells.len().checked_sub(1).ok_or_else(|| {
-        ChannelError::input("cell count=0: construct a nonempty rectangular reach")
-    })?;
+    let last =
+        definition.geometry.len().checked_sub(1).ok_or_else(|| {
+            ChannelError::input("cell count=0: construct a nonempty channel reach")
+        })?;
     for (boundary, index) in [(left, 0), (right, last)] {
-        let cell = &definition.cells[index];
+        let cell = definition.geometry.cell(index);
         if let ChannelBoundary::Exterior {
             depth_m,
             velocity_m_per_s,
         } = boundary
         {
-            let unit_discharge = depth_m * velocity_m_per_s;
-            let discharge = unit_discharge * cell.width_m;
+            let unit_discharge = match &definition.geometry {
+                ChannelGeometry::Rectangular { .. } => Some(depth_m * velocity_m_per_s),
+                ChannelGeometry::PrismaticTriangular { .. } => None,
+            };
+            let discharge =
+                definition
+                    .geometry
+                    .exterior_discharge(index, *depth_m, *velocity_m_per_s);
             if !depth_m.is_finite()
                 || *depth_m < 0.0
                 || *depth_m > cell.maximum_depth_m
                 || !velocity_m_per_s.is_finite()
                 || (*depth_m == 0.0 && *velocity_m_per_s != 0.0)
-                || !unit_discharge.is_finite()
+                || unit_discharge.is_some_and(|value| !value.is_finite())
                 || !discharge.is_finite()
                 || (*depth_m > 0.0
                     && *velocity_m_per_s != 0.0
-                    && (unit_discharge == 0.0 || discharge == 0.0))
+                    && (unit_discharge == Some(0.0) || discharge == 0.0))
             {
                 return Err(ChannelError::input(format!(
                     "exterior depth={depth_m}, velocity={velocity_m_per_s}, maximum_depth={}: supply supported finite depth and velocity, with zero velocity when dry",

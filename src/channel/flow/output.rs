@@ -1,6 +1,6 @@
 use super::ChannelLateralInput;
 
-/// Explicit host projection of one accepted rectangular channel cell.
+/// Explicit host projection of one accepted channel cell.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChannelCellResult {
     /// Authoritative stored water volume in m³.
@@ -48,13 +48,15 @@ pub struct ChannelWaterLedger {
 /// Explicit host projection of the last accepted interval's bounded receipts.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChannelStepDiagnostics {
+    /// Final triangular Riemann flux brackets, absent for rectangular HLL intervals.
+    pub riemann: Option<ChannelRiemannDiagnostics>,
     /// Accepted interval start in seconds.
     pub start_s: f64,
     /// Accepted interval end in seconds.
     pub end_s: f64,
     /// Number of complete trial recalculations before acceptance.
     pub retries: usize,
-    /// Effective minimum width-aware Courant interval bound in seconds, including positive infinity.
+    /// Effective minimum section-aware Courant interval bound in seconds, including positive infinity.
     pub cfl_limit_s: f64,
     /// Courant interval bound from the accepted-start state in seconds.
     pub accepted_start_cfl_limit_s: f64,
@@ -156,4 +158,19 @@ pub struct ChannelLateralReceipt {
     pub counter_bound_before_m3: f64,
     /// New conservative cumulative counter bound in m³.
     pub counter_bound_after_m3: f64,
+}
+
+/// Explicit flux-bracket diagnostics, excluded from conservation error charges.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChannelRiemannDiagnostics {
+    /// Water-flux bracket widths in m³/s, ordered by face.
+    pub water_flux_width_m3_per_s: Vec<f64>,
+    /// Momentum-flux bracket widths in m⁴/s², ordered by face.
+    pub momentum_flux_width_m4_per_s2: Vec<f64>,
+    /// Largest water-flux bracket width in m³/s.
+    pub max_water_flux_width_m3_per_s: f64,
+    /// Largest momentum-flux bracket width in m⁴/s².
+    pub max_momentum_flux_width_m4_per_s2: f64,
+    /// Maximum root iterations across faces, zero for analytical fluxes.
+    pub root_iterations: usize,
 }

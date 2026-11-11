@@ -27,7 +27,7 @@ impl<R: Runtime<DType = DType>> LateralContext<R> {
         self.definition.lateral_bindings.len()
     }
     pub fn cells(&self) -> usize {
-        self.definition.cells.len()
+        self.definition.geometry.len()
     }
 }
 
@@ -48,15 +48,15 @@ where
         definition: Arc<ChannelReachDefinition>,
     ) -> Result<Self, ChannelError> {
         let count = definition.lateral_bindings.len();
-        let cells = definition.cells.len();
+        let cells = definition.geometry.len();
         let group_count = cells.checked_mul(2).ok_or_else(|| {
             ChannelError::input("lateral group count overflows: reduce the reach size")
         })?;
         let lookup: BTreeMap<_, _> = definition
-            .cells
-            .iter()
+            .geometry
+            .cells()
             .enumerate()
-            .map(|(i, c)| (c.id.as_str(), i))
+            .map(|(i, c)| (c.id, i))
             .collect();
         let mut cell_indices = Vec::with_capacity(count);
         let mut inflow_indices = Vec::new();

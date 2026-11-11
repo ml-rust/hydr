@@ -1,14 +1,14 @@
 use super::{Result, runtime};
 use hydr::channel::{
-    ChannelBoundary, ChannelConfig, ChannelError, ChannelForcingInterval, ChannelInitialState,
-    ChannelLateralBinding, ChannelLateralDirection, ChannelLateralInput, ChannelReach,
-    ChannelReachDefinition, RectangularChannelCell,
+    ChannelBoundary, ChannelConfig, ChannelError, ChannelForcingInterval, ChannelGeometry,
+    ChannelInitialState, ChannelLateralBinding, ChannelLateralDirection, ChannelLateralInput,
+    ChannelReach, ChannelReachDefinition, RectangularChannelCell,
 };
 use hydr::forcing::WaterAmount;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
-    ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
+    ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
@@ -17,21 +17,23 @@ fn reach_definition(widths: &[f64], beds: &[f64]) -> ChannelReachDefinition {
     ChannelReachDefinition {
         vertical_datum: "Synthetic runtime datum".into(),
         provenance: "Explicit rectangular hydraulic runtime fixture".into(),
-        cells: widths
-            .iter()
-            .zip(beds)
-            .enumerate()
-            .map(
-                |(index, (&width_m, &bed_elevation_m))| RectangularChannelCell {
-                    id: format!("cell-{index}"),
-                    length_m: 1.0,
-                    width_m,
-                    bed_elevation_m,
-                    maximum_depth_m: 8.0,
-                    manning_n: 0.0,
-                },
-            )
-            .collect(),
+        geometry: ChannelGeometry::Rectangular {
+            cells: widths
+                .iter()
+                .zip(beds)
+                .enumerate()
+                .map(
+                    |(index, (&width_m, &bed_elevation_m))| RectangularChannelCell {
+                        id: format!("cell-{index}"),
+                        length_m: 1.0,
+                        width_m,
+                        bed_elevation_m,
+                        maximum_depth_m: 8.0,
+                        manning_n: 0.0,
+                    },
+                )
+                .collect(),
+        },
         lateral_bindings: Vec::new(),
         config: ChannelConfig::default(),
     }
@@ -42,8 +44,10 @@ fn initial_state(
     depths: &[f64],
     velocities: &[f64],
 ) -> ChannelInitialState {
-    let volume_m3: Vec<_> = definition
-        .cells
+    let ChannelGeometry::Rectangular { cells } = &definition.geometry else {
+        unreachable!()
+    };
+    let volume_m3: Vec<_> = cells
         .iter()
         .zip(depths)
         .map(|(cell, depth)| cell.width_m * cell.length_m * depth)
@@ -83,6 +87,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + HypotOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>
@@ -160,7 +165,10 @@ where
     near(next.ledger().residual_m3, 0.0);
 
     let mut definition = reach_definition(&[2.0; 4], &[0.0; 4]);
-    for cell in &mut definition.cells {
+    let ChannelGeometry::Rectangular { cells } = &mut definition.geometry else {
+        unreachable!()
+    };
+    for cell in cells {
         cell.manning_n = 0.03;
     }
     let initial = initial_state(&definition, &[1.0, 0.5, 0.25, 0.75], &[0.2, -0.1, 0.0, 0.1]);
@@ -244,6 +252,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + HypotOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>
@@ -265,7 +274,10 @@ where
         longitudinal_velocity_m_per_s: -1.0,
     };
     let mut definition = reach_definition(&[2.0], &[0.0]);
-    definition.cells[0].length_m = 4.0;
+    let ChannelGeometry::Rectangular { cells } = &mut definition.geometry else {
+        unreachable!()
+    };
+    cells[0].length_m = 4.0;
     definition.lateral_bindings = vec![
         binding("in", ChannelLateralDirection::Inflow),
         binding("out", ChannelLateralDirection::Withdrawal),
@@ -331,7 +343,10 @@ where
     assert_eq!(first.snapshot_data()?, data);
 
     let mut definition = reach_definition(&[2.0], &[0.0]);
-    definition.cells[0].maximum_depth_m = 10.0;
+    let ChannelGeometry::Rectangular { cells } = &mut definition.geometry else {
+        unreachable!()
+    };
+    cells[0].maximum_depth_m = 10.0;
     definition.lateral_bindings = vec![binding("in", ChannelLateralDirection::Inflow)];
     let initial = initial_state(&definition, &[0.0], &[0.0]);
     let dry = ChannelReach::<R>::new(client, definition, initial)?;

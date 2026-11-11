@@ -5,14 +5,14 @@ use super::{
 };
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
-    ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
+    ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use std::sync::Arc;
 
-/// Accepted one-dimensional rectangular-channel state on the caller's runtime.
+/// Accepted one-dimensional channel state on the caller's runtime.
 #[derive(Debug)]
 pub struct ChannelReach<R: Runtime<DType = DType>> {
     pub(super) context: Arc<Context<R>>,
@@ -82,12 +82,15 @@ where
         + TwoSumOps<R>
         + UnaryOps<R>,
 {
-    /// Construct explicit rectangular cells and conservative state without a default runtime.
+    /// Construct explicit channel cells and conservative state without a default runtime.
     pub fn new(
         client: R::Client,
         definition: ChannelReachDefinition,
         initial: ChannelInitialState,
-    ) -> Result<Self, ChannelError> {
+    ) -> Result<Self, ChannelError>
+    where
+        R::Client: HypotOps<R>,
+    {
         let context = Arc::new(Context::new(client, definition, initial)?);
         Self::from_context(Arc::clone(&context), &context.original_initial)
     }
@@ -156,7 +159,8 @@ where
                     volume_m3: volume[i],
                     longitudinal_momentum_m4_per_s: momentum[i],
                     depth_m: depth[i],
-                    stage_m: wet.then_some(self.definition().cells[i].bed_elevation_m + depth[i]),
+                    stage_m: wet
+                        .then_some(self.definition().geometry.cell(i).bed_elevation_m + depth[i]),
                     velocity_m_per_s: wet.then_some(velocity[i]),
                     discharge_m3_per_s: discharge[i],
                     dry: !wet,

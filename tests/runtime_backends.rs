@@ -18,6 +18,8 @@ mod interval_volumes;
 mod runoff_pools;
 #[path = "support/runtime.rs"]
 mod runtime;
+#[path = "runtime_backends/triangular_channels.rs"]
+mod triangular_channels;
 
 use hydr::soil::{
     ModifiedGreenAmptBatch, ModifiedGreenAmptParameters, NativeSoilInput, NativeSoilState,

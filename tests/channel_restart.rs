@@ -4,7 +4,7 @@
 mod runtime;
 
 use hydr::channel::{
-    ChannelBoundary, ChannelConfig, ChannelForcingInterval, ChannelInitialState,
+    ChannelBoundary, ChannelConfig, ChannelForcingInterval, ChannelGeometry, ChannelInitialState,
     ChannelLateralBinding, ChannelLateralDirection, ChannelLateralInput, ChannelReach,
     ChannelReachDefinition, RectangularChannelCell,
 };
@@ -19,16 +19,18 @@ fn reach() -> Result<ChannelReach<runtime::Runtime>, Box<dyn std::error::Error>>
             vertical_datum: "synthetic metres".into(),
             provenance: "rectangular restart fixture".into(),
             lateral_bindings: Vec::new(),
-            cells: (0..3)
-                .map(|i| RectangularChannelCell {
-                    id: format!("cell-{i}"),
-                    length_m: 2.0,
-                    width_m: 2.0,
-                    bed_elevation_m: 0.0,
-                    maximum_depth_m: 4.0,
-                    manning_n: 0.03,
-                })
-                .collect(),
+            geometry: ChannelGeometry::Rectangular {
+                cells: (0..3)
+                    .map(|i| RectangularChannelCell {
+                        id: format!("cell-{i}"),
+                        length_m: 2.0,
+                        width_m: 2.0,
+                        bed_elevation_m: 0.0,
+                        maximum_depth_m: 4.0,
+                        manning_n: 0.03,
+                    })
+                    .collect(),
+            },
             config: ChannelConfig::default(),
         },
         ChannelInitialState {
@@ -166,7 +168,10 @@ fn cold_import_rejects_altered_bounded_continuation_fields() -> TestResult {
 fn snapshot_identity_preserves_signed_zero_geometry_and_epoch() -> TestResult {
     let origin = reach()?;
     let mut altered = origin.snapshot_data()?;
-    altered.definition.cells[0].bed_elevation_m = -0.0;
+    let ChannelGeometry::Rectangular { cells } = &mut altered.definition.geometry else {
+        unreachable!()
+    };
+    cells[0].bed_elevation_m = -0.0;
     assert!(origin.import_snapshot(&altered).is_err());
     altered = origin.snapshot_data()?;
     altered.initial.time_s = -0.0;
@@ -183,14 +188,16 @@ fn sourced_reach() -> Result<ChannelReach<runtime::Runtime>, Box<dyn std::error:
         ChannelReachDefinition {
             vertical_datum: "synthetic metres".into(),
             provenance: "rectangular lateral restart fixture".into(),
-            cells: vec![RectangularChannelCell {
-                id: "cell".into(),
-                length_m: 4.0,
-                width_m: 2.0,
-                bed_elevation_m: 0.0,
-                maximum_depth_m: 10.0,
-                manning_n: 0.0,
-            }],
+            geometry: ChannelGeometry::Rectangular {
+                cells: vec![RectangularChannelCell {
+                    id: "cell".into(),
+                    length_m: 4.0,
+                    width_m: 2.0,
+                    bed_elevation_m: 0.0,
+                    maximum_depth_m: 10.0,
+                    manning_n: 0.0,
+                }],
+            },
             lateral_bindings: [
                 ("inlet", ChannelLateralDirection::Inflow),
                 ("outlet", ChannelLateralDirection::Withdrawal),

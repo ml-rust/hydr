@@ -108,7 +108,7 @@ where
             }
             let fields = context.fields(&self.accepted.volume, &self.accepted.momentum)?;
             let flux = context.flux(&fields, &forcing.left, &forcing.right)?;
-            let start_cfl = context.cfl_limit(&flux.speed)?;
+            let start_cfl = context.cfl_limit(&flux.speed, flux.internal_speed.as_ref())?;
             let prepared = context.lateral.prepare(
                 c,
                 &forcing.lateral,
@@ -192,7 +192,7 @@ where
                         }
                         Err(error) => return Err(error),
                     };
-                let limit = context.cfl_limit(&speed)?;
+                let limit = context.cfl_limit(&speed.outer, speed.internal.as_ref())?;
                 if dt > limit {
                     reason = format!("prefriction candidate CFL={limit} is below duration={dt}");
                     dt = control.shorten(dt, 0.95 * limit, retries, reason.clone())?;
@@ -245,6 +245,7 @@ where
                 ChannelError::numerical("channel accepted count overflows: start another run")
             })?;
             let scalar = ChannelStepDiagnostics {
+                riemann: None,
                 start_s: self.time(),
                 end_s: end,
                 retries,
@@ -285,6 +286,7 @@ where
                 forcing: forcing.clone(),
                 requested_end: requested_end_s,
                 scalar,
+                riemann: flux.riemann,
                 face_volume: transport.face_volume,
                 face_momentum: transport.face_momentum,
                 left_pressure: transport.left_pressure,

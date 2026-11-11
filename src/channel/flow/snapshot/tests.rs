@@ -19,14 +19,16 @@ fn restoration_retains_the_destination_configured_client() -> Result<(), Channel
             direction: ChannelLateralDirection::Inflow,
             ownership_assertion: "independent exact client fixture input".into(),
         }],
-        cells: vec![RectangularChannelCell {
-            id: "cell".into(),
-            length_m: 1.0,
-            width_m: 2.0,
-            bed_elevation_m: 0.0,
-            maximum_depth_m: 4.0,
-            manning_n: 0.0,
-        }],
+        geometry: crate::channel::ChannelGeometry::Rectangular {
+            cells: vec![RectangularChannelCell {
+                id: "cell".into(),
+                length_m: 1.0,
+                width_m: 2.0,
+                bed_elevation_m: 0.0,
+                maximum_depth_m: 4.0,
+                manning_n: 0.0,
+            }],
+        },
         config: ChannelConfig::default(),
     };
     let initial = ChannelInitialState {
@@ -78,14 +80,16 @@ fn cold_restore_uploads_with_a_separately_constructed_cpu_client() -> Result<(),
         vertical_datum: "synthetic datum".into(),
         provenance: "exact rectangular device fixture".into(),
         lateral_bindings: Vec::new(),
-        cells: vec![RectangularChannelCell {
-            id: "cell".into(),
-            length_m: 1.0,
-            width_m: 2.0,
-            bed_elevation_m: 0.0,
-            maximum_depth_m: 4.0,
-            manning_n: 0.0,
-        }],
+        geometry: crate::channel::ChannelGeometry::Rectangular {
+            cells: vec![RectangularChannelCell {
+                id: "cell".into(),
+                length_m: 1.0,
+                width_m: 2.0,
+                bed_elevation_m: 0.0,
+                maximum_depth_m: 4.0,
+                manning_n: 0.0,
+            }],
+        },
         config: ChannelConfig::default(),
     };
     let initial = ChannelInitialState {
@@ -104,5 +108,80 @@ fn cold_restore_uploads_with_a_separately_constructed_cpu_client() -> Result<(),
     let restored = destination.import_snapshot(&source.snapshot_data()?)?;
     assert!(Arc::ptr_eq(&restored.context, &context));
     assert_eq!(restored.snapshot_data()?, source.snapshot_data()?);
+    Ok(())
+}
+
+#[test]
+fn riemann_diagnostics_retain_every_projected_bit() {
+    use crate::channel::ChannelRiemannDiagnostics;
+    let original = ChannelRiemannDiagnostics {
+        water_flux_width_m3_per_s: vec![0.0, 1e-12],
+        momentum_flux_width_m4_per_s2: vec![2e-12, 0.0],
+        max_water_flux_width_m3_per_s: 1e-12,
+        max_momentum_flux_width_m4_per_s2: 2e-12,
+        root_iterations: 7,
+    };
+    assert!(super::check::riemann(None, None));
+    assert!(!super::check::riemann(Some(&original), None));
+    assert!(!super::check::riemann(None, Some(&original)));
+    assert!(super::check::riemann(Some(&original), Some(&original)));
+    for index in 0..5 {
+        let mut changed = original.clone();
+        match index {
+            0 => changed.water_flux_width_m3_per_s[0] = -0.0,
+            1 => changed.momentum_flux_width_m4_per_s2[1] = -0.0,
+            2 => changed.max_water_flux_width_m3_per_s = 0.0,
+            3 => changed.max_momentum_flux_width_m4_per_s2 = 0.0,
+            _ => changed.root_iterations += 1,
+        }
+        assert!(!super::check::riemann(Some(&original), Some(&changed)));
+    }
+}
+
+#[test]
+fn triangular_restoration_rejects_a_different_reconstruction() -> Result<(), ChannelError> {
+    use crate::channel::{ChannelGeometry, ChannelTriangularReconstruction, TriangularChannelCell};
+    let client =
+        CpuClient::new(CpuDevice::new()).with_parallelism(ParallelismConfig::new(Some(1), None));
+    let definition = ChannelReachDefinition {
+        vertical_datum: "synthetic datum".into(),
+        provenance: "triangular reconstruction continuation".into(),
+        geometry: ChannelGeometry::PrismaticTriangular {
+            left_bank_slope_h_per_v: 1.0,
+            right_bank_slope_h_per_v: 1.0,
+            bed_elevation_m: 0.0,
+            cells: vec![TriangularChannelCell {
+                id: "cell".into(),
+                length_m: 2.0,
+                maximum_depth_m: 3.0,
+                manning_n: 0.0,
+            }],
+        },
+        lateral_bindings: vec![],
+        config: ChannelConfig::default(),
+    };
+    let initial = ChannelInitialState {
+        time_s: 0.0,
+        volume_m3: vec![2.0],
+        longitudinal_momentum_m4_per_s: vec![0.0],
+    };
+    let source =
+        ChannelReach::<CpuRuntime>::new(client.clone(), definition.clone(), initial.clone())?;
+    let mut changed = definition;
+    changed.config.triangular_reconstruction = ChannelTriangularReconstruction::FirstOrderReference;
+    assert!(!source.definition().same_bits(&changed));
+    let destination = ChannelReach::<CpuRuntime>::new(client, changed, initial)?;
+    assert!(destination.restore(&source.snapshot()).is_err());
+    assert!(
+        destination
+            .import_snapshot(&source.snapshot_data()?)
+            .is_err()
+    );
+    assert!(source.restore(&destination.snapshot()).is_err());
+    assert!(
+        source
+            .import_snapshot(&destination.snapshot_data()?)
+            .is_err()
+    );
     Ok(())
 }

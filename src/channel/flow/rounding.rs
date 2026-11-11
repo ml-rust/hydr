@@ -137,7 +137,7 @@ where
 mod tests {
     use super::*;
     use crate::channel::{
-        ChannelConfig, ChannelInitialState, ChannelReach, ChannelReachDefinition,
+        ChannelConfig, ChannelGeometry, ChannelInitialState, ChannelReach, ChannelReachDefinition,
         RectangularChannelCell,
     };
     use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
@@ -152,14 +152,16 @@ mod tests {
             ChannelReachDefinition {
                 vertical_datum: "synthetic datum".into(),
                 provenance: "detected pressure underflow bound arithmetic fixture".into(),
-                cells: vec![RectangularChannelCell {
-                    id: "cell".into(),
-                    length_m: 1.0,
-                    width_m: 1.0,
-                    bed_elevation_m: 0.0,
-                    maximum_depth_m: 2.0,
-                    manning_n: 0.0,
-                }],
+                geometry: ChannelGeometry::Rectangular {
+                    cells: vec![RectangularChannelCell {
+                        id: "cell".into(),
+                        length_m: 1.0,
+                        width_m: 1.0,
+                        bed_elevation_m: 0.0,
+                        maximum_depth_m: 2.0,
+                        manning_n: 0.0,
+                    }],
+                },
                 lateral_bindings: vec![],
                 config: ChannelConfig::default(),
             },

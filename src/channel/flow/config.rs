@@ -1,12 +1,23 @@
 use super::ChannelError;
 use crate::solver::SolverConfig;
 
-/// Numerical controls for a first-order rectangular channel reach.
+/// Spatial reconstruction for triangular channel cells.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChannelTriangularReconstruction {
+    /// Piecewise constant reference method.
+    FirstOrderReference,
+    /// Slope-limited piecewise linear production method.
+    LimitedLinear,
+}
+
+/// Numerical controls for a channel reach.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChannelConfig {
+    /// Triangular spatial reconstruction. Rectangular reaches retain their existing method.
+    pub triangular_reconstruction: ChannelTriangularReconstruction,
     /// Gravity in m/s².
     pub gravity: f64,
-    /// Width-aware Courant ceiling, greater than zero and at most 0.45.
+    /// Courant ceiling, greater than zero and at most 0.45.
     pub cfl: f64,
     /// Maximum accepted interval in seconds.
     pub max_step: f64,
@@ -20,6 +31,12 @@ pub struct ChannelConfig {
     pub root_relative_depth: f64,
     /// Maximum bracket expansions and bisections per Riemann calculation.
     pub root_iterations: usize,
+    /// Absolute water-flux bracket width tolerance in m³/s, separate from conservation tolerances.
+    pub riemann_water_flux_absolute_m3_per_s: f64,
+    /// Absolute momentum-flux bracket width tolerance in m⁴/s², separate from conservation tolerances.
+    pub riemann_momentum_flux_absolute_m4_per_s2: f64,
+    /// Relative flux bracket width tolerance for both conserved quantities.
+    pub riemann_flux_relative: f64,
     /// Absolute water residual tolerance in m³.
     pub volume_absolute: f64,
     /// Relative water residual tolerance.
@@ -34,6 +51,7 @@ impl Default for ChannelConfig {
     fn default() -> Self {
         let config = SolverConfig::default();
         Self {
+            triangular_reconstruction: ChannelTriangularReconstruction::LimitedLinear,
             gravity: config.gravity,
             cfl: config.cfl,
             max_step: config.max_step,
@@ -42,6 +60,9 @@ impl Default for ChannelConfig {
             root_absolute_depth: config.root_absolute_depth,
             root_relative_depth: config.root_relative_depth,
             root_iterations: config.root_iterations,
+            riemann_water_flux_absolute_m3_per_s: 1e-12,
+            riemann_momentum_flux_absolute_m4_per_s2: 1e-12,
+            riemann_flux_relative: 1e-12,
             volume_absolute: config.volume_absolute,
             volume_relative: config.volume_relative,
             momentum_absolute: 1e-9,
@@ -69,12 +90,38 @@ impl ChannelConfig {
         }
         for (name, value) in [
             ("root_relative_depth", self.root_relative_depth),
+            (
+                "riemann_water_flux_absolute_m3_per_s",
+                self.riemann_water_flux_absolute_m3_per_s,
+            ),
+            (
+                "riemann_momentum_flux_absolute_m4_per_s2",
+                self.riemann_momentum_flux_absolute_m4_per_s2,
+            ),
+            ("riemann_flux_relative", self.riemann_flux_relative),
             ("volume_relative", self.volume_relative),
             ("momentum_relative", self.momentum_relative),
         ] {
             if !value.is_finite() || value < 0.0 {
                 return Err(ChannelError::input(format!(
                     "{name}={value}: supply a finite nonnegative tolerance"
+                )));
+            }
+        }
+        for (name, absolute) in [
+            (
+                "riemann_water_flux_absolute_m3_per_s",
+                self.riemann_water_flux_absolute_m3_per_s,
+            ),
+            (
+                "riemann_momentum_flux_absolute_m4_per_s2",
+                self.riemann_momentum_flux_absolute_m4_per_s2,
+            ),
+        ] {
+            if absolute == 0.0 && self.riemann_flux_relative == 0.0 {
+                return Err(ChannelError::input(format!(
+                    "{name}={absolute}, riemann_flux_relative={}: supply at least one positive flux tolerance",
+                    self.riemann_flux_relative
                 )));
             }
         }
@@ -101,5 +148,44 @@ impl ChannelConfig {
             volume_relative: self.volume_relative,
             ..SolverConfig::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ChannelConfig, ChannelTriangularReconstruction};
+
+    #[test]
+    fn flux_tolerances_require_finite_nonnegative_values_and_positive_pairs() {
+        let defaults = ChannelConfig::default();
+        assert_eq!(
+            defaults.triangular_reconstruction,
+            ChannelTriangularReconstruction::LimitedLinear
+        );
+        assert_eq!(defaults.riemann_water_flux_absolute_m3_per_s, 1e-12);
+        assert_eq!(defaults.riemann_momentum_flux_absolute_m4_per_s2, 1e-12);
+        assert_eq!(defaults.riemann_flux_relative, 1e-12);
+        for invalid in [-1.0, f64::INFINITY, f64::NAN] {
+            for index in 0..3 {
+                let mut config = defaults.clone();
+                match index {
+                    0 => config.riemann_water_flux_absolute_m3_per_s = invalid,
+                    1 => config.riemann_momentum_flux_absolute_m4_per_s2 = invalid,
+                    _ => config.riemann_flux_relative = invalid,
+                }
+                assert!(config.check().is_err());
+            }
+        }
+        let mut config = defaults;
+        config.riemann_flux_relative = 0.0;
+        assert!(config.check().is_ok());
+        config.riemann_water_flux_absolute_m3_per_s = 0.0;
+        assert!(config.check().is_err());
+        config.riemann_water_flux_absolute_m3_per_s = 1e-12;
+        config.riemann_momentum_flux_absolute_m4_per_s2 = 0.0;
+        assert!(config.check().is_err());
+        config.riemann_flux_relative = 1e-12;
+        config.riemann_water_flux_absolute_m3_per_s = 0.0;
+        assert!(config.check().is_ok());
     }
 }

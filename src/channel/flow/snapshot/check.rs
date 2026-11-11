@@ -133,6 +133,7 @@ pub(super) fn ledger(a: &ChannelWaterLedger, b: &ChannelWaterLedger) -> bool {
 
 pub(super) fn diagnostics(a: &ChannelStepDiagnostics, b: &ChannelStepDiagnostics) -> bool {
     a.retries == b.retries
+        && riemann(a.riemann.as_ref(), b.riemann.as_ref())
         && optional(a.candidate_cfl_limit_s, b.candidate_cfl_limit_s)
         && values(
             &[
@@ -265,4 +266,32 @@ pub(super) fn ledger_admission(
             && charged_residual <= tolerance,
         "cumulative residual differs from physical water accounting",
     )
+}
+
+pub(super) fn riemann(
+    a: Option<&super::super::ChannelRiemannDiagnostics>,
+    b: Option<&super::super::ChannelRiemannDiagnostics>,
+) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => {
+            a.root_iterations == b.root_iterations
+                && values(&a.water_flux_width_m3_per_s, &b.water_flux_width_m3_per_s)
+                && values(
+                    &a.momentum_flux_width_m4_per_s2,
+                    &b.momentum_flux_width_m4_per_s2,
+                )
+                && values(
+                    &[
+                        a.max_water_flux_width_m3_per_s,
+                        a.max_momentum_flux_width_m4_per_s2,
+                    ],
+                    &[
+                        b.max_water_flux_width_m3_per_s,
+                        b.max_momentum_flux_width_m4_per_s2,
+                    ],
+                )
+        }
+        _ => false,
+    }
 }

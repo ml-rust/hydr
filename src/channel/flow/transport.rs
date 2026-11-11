@@ -1,4 +1,4 @@
-use super::{ChannelError, context::Context, flux::Flux};
+use super::{ChannelError, context::Context, flux::Flux, geometry::TensorGeometry};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
 use numr::runtime::Runtime;
@@ -35,7 +35,7 @@ where
         let face_volume = c.mul_scalar(&flux.water, dt)?;
         let transfer_underflow_bound = self.product_bound(
             &flux.water,
-            &self.constant(&flux.water, 0.0)?,
+            &flux.water_bound,
             &self.constant(&flux.water, dt)?,
             &face_volume,
             "shared numerical face volume",
@@ -46,6 +46,36 @@ where
             dt,
             "shared face momentum",
         )?;
+        if matches!(&self.geometry, TensorGeometry::Triangular(_)) {
+            let left_pressure = self.constant(&face_momentum, 0.0)?;
+            let right_pressure = left_pressure.clone();
+            let water_delta = c.sub(
+                &face_volume.narrow(0, 0, count)?,
+                &face_volume.narrow(0, 1, count)?,
+            )?;
+            let momentum_delta = c.sub(
+                &face_momentum.narrow(0, 0, count)?,
+                &face_momentum.narrow(0, 1, count)?,
+            )?;
+            let momentum_underflow_bound = self.bound_add(
+                &face_momentum_bound.narrow(0, 0, count)?,
+                &face_momentum_bound.narrow(0, 1, count)?,
+            )?;
+            let max_momentum_underflow_bound = c
+                .max(&momentum_underflow_bound, &[0], false)?
+                .item::<f64>()?;
+            return Ok(Transport {
+                face_volume,
+                face_momentum,
+                left_pressure,
+                right_pressure,
+                water_delta,
+                momentum_delta,
+                momentum_underflow_bound,
+                transfer_underflow_bound,
+                max_momentum_underflow_bound,
+            });
+        }
         let (left_pressure, left_pressure_bound) = self.integrate_momentum(
             &flux.left_pressure,
             &flux.left_pressure_bound,

@@ -1,6 +1,6 @@
 use hydr::channel::{
-    ChannelBoundary, ChannelConfig, ChannelForcingInterval, ChannelInitialState, ChannelReach,
-    ChannelReachDefinition, RectangularChannelCell,
+    ChannelBoundary, ChannelConfig, ChannelForcingInterval, ChannelGeometry, ChannelInitialState,
+    ChannelReach, ChannelReachDefinition, RectangularChannelCell,
 };
 
 pub type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -23,7 +23,7 @@ pub fn definition(cells: Vec<RectangularChannelCell>, max_step: f64) -> ChannelR
     ChannelReachDefinition {
         vertical_datum: "synthetic SI datum".into(),
         provenance: "Explicit analytical rectangular channel fixture".into(),
-        cells,
+        geometry: ChannelGeometry::Rectangular { cells },
         lateral_bindings: Vec::new(),
         config: ChannelConfig {
             max_step,
@@ -32,21 +32,31 @@ pub fn definition(cells: Vec<RectangularChannelCell>, max_step: f64) -> ChannelR
     }
 }
 
+pub fn rectangular_cells_mut(
+    definition: &mut ChannelReachDefinition,
+) -> &mut Vec<RectangularChannelCell> {
+    match &mut definition.geometry {
+        ChannelGeometry::Rectangular { cells } => cells,
+        ChannelGeometry::PrismaticTriangular { .. } => unreachable!(),
+    }
+}
+
 pub fn reach(
     definition: ChannelReachDefinition,
     depths: &[f64],
     discharges: &[f64],
 ) -> Result<Reach, Box<dyn std::error::Error>> {
-    assert_eq!(depths.len(), definition.cells.len());
-    assert_eq!(discharges.len(), definition.cells.len());
-    let volume_m3 = definition
-        .cells
+    let ChannelGeometry::Rectangular { cells } = &definition.geometry else {
+        unreachable!()
+    };
+    assert_eq!(depths.len(), cells.len());
+    assert_eq!(discharges.len(), cells.len());
+    let volume_m3 = cells
         .iter()
         .zip(depths)
         .map(|(cell, depth)| cell.length_m * cell.width_m * depth)
         .collect();
-    let longitudinal_momentum_m4_per_s = definition
-        .cells
+    let longitudinal_momentum_m4_per_s = cells
         .iter()
         .zip(discharges)
         .map(|(cell, discharge)| cell.length_m * discharge)

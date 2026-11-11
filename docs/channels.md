@@ -1,24 +1,43 @@
-# Rectangular channel flow
+# Channel flow
 
-Use `ChannelReach<R>` to advance flow along an unbranched rectangular channel. Start with explicit cell geometry and endpoint conditions.
+Use `ChannelReach<R>` to advance an unbranched rectangular or prismatic triangular reach with explicit geometry and endpoint conditions.
 
 ## Construct a reach
 
 Import these types from `hydr::channel`.
 
-1. Order `RectangularChannelCell` values along the channel's positive direction.
-2. Supply each cell's length, width, bed elevation, maximum supported depth, and Manning roughness.
-3. Create `ChannelReachDefinition` with a common datum, geometry evidence, `lateral_bindings`, and `ChannelConfig`.
+1. Select one `ChannelGeometry` variant for the whole reach.
+2. Order its cells along the channel's positive direction.
+3. Create `ChannelReachDefinition` with `geometry`, a common datum, geometry evidence, `lateral_bindings`, and `ChannelConfig`.
 4. Supply `ChannelInitialState`, then call `ChannelReach::new(client, definition, initial)` with your configured Numr client.
 
-The geometry describes physical rectangles. The solver does not convert surveyed profiles into rectangles.
+| Geometry | Reach input | Cell input |
+| --- | --- | --- |
+| `Rectangular { cells }` | Ordered `RectangularChannelCell` values | Identity, length, width, bed elevation, maximum depth, and Manning roughness |
+| `PrismaticTriangular` | Left/right bank slopes, common bed elevation, and ordered `TriangularChannelCell` values | Identity, length, maximum depth, and Manning roughness |
+
+The solver uses the declared physical sections. It does not infer dynamic geometry from surveyed profiles.
+
+### Supply triangular bank slopes
+
+Set `left_bank_slope_h_per_v` and `right_bank_slope_h_per_v` in horizontal metres per vertical metre. Both slopes are nonnegative. At least one slope must be positive.
+
+Set `bed_elevation_m` once for the entire triangular reach. Every triangular cell shares this bed and both slopes. Length, maximum depth, and roughness can differ between cells.
+
+For depth `h`, define `k = (left_bank_slope_h_per_v + right_bank_slope_h_per_v) / 2`. The submerged area is `A = k h²`. Slopes `(0, 2)` and `(1, 1)` give equal areas at equal depths. Their wetted perimeters differ, so Manning resistance differs.
+
+A triangular reach requires a runtime that declares correctly rounded F64 square roots. Unsupported arithmetic rejects construction without fallback.
 
 Initial arrays contain one value per ordered cell:
 
 | Quantity | Input | From depth and velocity |
 | --- | --- | --- |
-| Water volume | `volume_m3`, in m³ | Width × length × depth |
+| Water volume | `volume_m3`, in m³ | Submerged area × cell length |
 | Longitudinal momentum divided by water density | `longitudinal_momentum_m4_per_s`, in m⁴/s | Water volume × velocity |
+
+For rectangles, submerged area is width × depth. For triangles, submerged area is `k h²`.
+
+Stored volume and momentum remain authoritative. Depth recovery never replaces stored water with a reconstructed volume.
 
 Velocity is positive along the cell order. A dry cell requires zero volume and zero momentum.
 
@@ -31,7 +50,7 @@ Supply both ends through `ChannelForcingInterval`. Its endpoint states remain co
 | Policy | Required input | Meaning |
 | --- | --- | --- |
 | `Wall` | A genuine impermeable end | Reflects flow and transfers no water across that end |
-| `Exterior` | Depth and longitudinal velocity | Describes exterior water using the endpoint cell's width and bed |
+| `Exterior` | Depth and longitudinal velocity | Describes exterior water using the declared endpoint section and bed |
 
 Exterior depth uses metres above the local bed. Exterior velocity uses m/s in the channel's positive direction.
 
@@ -127,6 +146,30 @@ Lateral receipts retain original inputs and accepted volumes. They report applie
 
 A zero withdrawal from a dry cell has no applied velocity.
 
+### Read triangular flux accuracy
+
+The accepted interval's `ChannelStepDiagnostics.riemann` contains `Some(ChannelRiemannDiagnostics)` for triangular intervals. Rectangular HLL intervals return `None`.
+
+| Diagnostic | Meaning |
+| --- | --- |
+| `water_flux_width_m3_per_s` | Water-flux bracket width at each face, in m³/s |
+| `momentum_flux_width_m4_per_s2` | Momentum-flux bracket width at each face, in m⁴/s² |
+| `max_water_flux_width_m3_per_s` | Largest water-flux width across faces |
+| `max_momentum_flux_width_m4_per_s2` | Largest momentum-flux width across faces |
+| `root_iterations` | Maximum root iterations across faces, zero for analytical samples |
+
+A bracket encloses the possible physical flux while accounting for numerical uncertainty. Hydr accepts a sample only when both widths meet their configured accuracy budgets.
+
+| `ChannelConfig` field | Default | Purpose |
+| --- | --- | --- |
+| `riemann_water_flux_absolute_m3_per_s` | `1e-12 m³/s` | Absolute water-flux width allowance |
+| `riemann_momentum_flux_absolute_m4_per_s2` | `1e-12 m⁴/s²` | Absolute momentum-flux width allowance |
+| `riemann_flux_relative` | `1e-12` | Relative width allowance for both fluxes |
+
+Each budget adds its absolute allowance to the relative allowance times the largest absolute bracket endpoint. Values must be finite and nonnegative. Each absolute/relative pair requires at least one positive value.
+
+These controls are separate from water and momentum conservation tolerances. They do not enlarge conservation allowances or bound total solution error.
+
 ### Read water and momentum limits
 
 Water balances include lateral inflow and withdrawal. Lateral totals derive from per-binding counters, without competing copies of physical water.
@@ -155,7 +198,9 @@ Construct the destination with the same definition, config, and original initial
 | In-memory checkpoint on the same device | `snapshot()` | `restore(&snapshot)` |
 | Application-owned persistence | `snapshot_data()?` | `import_snapshot(&data)?` |
 
-Both restoration paths retain the destination's configured client. Importing saved data recalculates the complete last interval, including lateral inputs and counters.
+Both restoration paths retain the destination's configured client. Importing saved data recalculates the complete last interval, including lateral inputs, counters, and triangular flux certificates.
+
+Geometry variants and original geometry bits bind both restart paths. Changed triangular slopes or bed bits reject restoration. Equal area laws do not make different bank declarations interchangeable.
 
 Persistence must preserve every floating-point bit. Step bounds can contain positive infinity, which ordinary JSON numbers cannot represent.
 
@@ -165,21 +210,64 @@ Import checks continuation consistency. The application owns content hashes and 
 
 ## Understand the numerical method
 
-The solver uses first-order finite volumes and forward Euler time integration. It represents one depth-averaged longitudinal velocity.
+The solver uses finite volumes and forward Euler time integration. It represents one depth-averaged longitudinal velocity.
 
-- Pressure: [Roberts–Wilson reconstruction](https://journal.austms.org.au/ojs/index.php/ANZIAMJ/article/view/3948/1542) balances bed and width forces for stationary water.
-- Transport: Hydr's existing HLL calculation supplies one shared flux per face, including dry fronts.
-- Momentum: The velocity profile is uniform across each section (`β = 1`).
-- Step size: Wave limits include changing widths. A separate donor limit counts every outgoing water rate.
-- Friction: Split Manning resistance uses water area divided by wetted perimeter, including the rectangular side walls.
+| Part | Rectangular reach | Prismatic triangular reach |
+| --- | --- | --- |
+| Pressure | [Roberts–Wilson reconstruction](https://journal.austms.org.au/ojs/index.php/ANZIAMJ/article/view/3948/1542) balances bed and width forces at rest | Hydrostatic pressure is `p = g A h / 3` on the common bed |
+| Transport | Width-aware HLL with bracketed wave bounds | Complete barotropic Godunov sampling at the stationary interface |
+| Step size | Width-aware wave limit | Reconstructed half-cell CFL for `LimitedLinear`, full-cell CFL for `FirstOrderReference` |
+| Friction | Wetted perimeter includes the bed and both vertical sides | Wetted perimeter uses both declared bank slopes |
 
-Numr supplies runtime storage and tensor operations. Solvr supplies generic root solving within the reused HLL calculation.
+Each face supplies one shared flux, including dry fronts. Both geometries use a separate donor limit for outgoing water.
+
+The velocity profile is uniform across each section (`β = 1`). Split Manning resistance holds area fixed during decay.
+
+### Select triangular reconstruction
+
+Set `ChannelConfig.triangular_reconstruction` with `ChannelTriangularReconstruction`. Rectangular reaches retain their existing method.
+
+| Variant | Spatial representation | Use |
+| --- | --- | --- |
+| `LimitedLinear` | Slope-limited piecewise linear reconstruction | Production default and triangular physical acceptance gates |
+| `FirstOrderReference` | Piecewise constant cell states | Explicit reference calculations and the full-cell film CFL comparison |
+
+Both variants use the same Godunov sampler and flux-width budgets. Forward Euler remains first order in time. Selecting linear reconstruction does not establish second-order accuracy for complete wet/dry calculations.
+
+Reconstruction selection binds restart identity. Restore with the same selection used for the saved run.
+
+### Sample triangular flow at each face
+
+Godunov sampling uses the local Riemann solution: the waves produced when two neighboring constant states meet. Hydr samples that solution at the stationary interface to calculate water and momentum fluxes.
+
+| Local wave pattern | Calculation |
+| --- | --- |
+| Dry states, vacuum, or two rarefactions | Analytical wave classification and interface sampling |
+| Mixed shock/rarefaction or two shocks | Solvr brackets the intermediate depth, then Hydr samples the admitted wave region |
+| Uncertain classification | Flux brackets cover every possible region before acceptance |
+
+A vacuum sample supplies zero water and momentum flux together. No depth threshold, stored-state reset, or individual flux scaling occurs.
+
+Numr supplies runtime storage and tensor operations. Solvr supplies generic root solving for triangular shock patterns and rectangular wave bounds. Root convergence alone cannot bypass the separate triangular flux-width budgets.
+
+### Bound the triangular timestep
+
+Sound speed is `c = sqrt(g h / 2)`. Hydr encloses wave speeds using invariant-region bounds and a lower sound-speed floor. Certified expanding states use their outer rarefaction heads.
+
+These proved wave bounds determine CFL limits only. The Godunov sample determines the triangular flux.
+
+`LimitedLinear` checks actual reconstructed half-cell wave limits. Those limits can be stricter than the full-cell reference rule. Read the accepted interval's reported CFL limits when advancing either variant.
+
+The primary basis is [Jiang–Liu](https://faculty.sites.iastate.edu/hliu/files/inline-files/JL_JCP_v373_2018.pdf), Example 1 and section 3.1, for invariant regions. [Chen–Liu](https://faculty.sites.iastate.edu/hliu/files/inline-files/Chen-Liu_SIMA01.pdf), section 2.2, supplies barotropic shock and rarefaction curves. Hydr derives its triangular specialization and directed arithmetic from that basis.
+
+Positive triangular films retain positive water without a dry threshold. Their wave bounds stay finite near dry fronts.
 
 ## Understand the physical limits
 
 The solver represents hydrostatic, one-dimensional shallow-water flow. It excludes transverse jets and strong channel curvature.
 
-- Geometry: Width and bed can vary between rectangular cells. General surveyed profiles currently support [static queries](cross-sections.md) only.
+- Geometry: Rectangular width and bed can vary between cells. Triangles require one common bed and bank slopes.
+- Profiles: Trapezoids, mixed shapes, and varying longitudinal triangular profiles remain unsupported. Surveyed profiles support [static queries](cross-sections.md) only.
 - Boundaries: Only walls and complete exterior states are supported. Scalar stage/discharge and transmissive channel policies remain unsupported.
 - Connections: Junctions, structures, and coordinated exchange with other components remain unsupported.
 - Losses: Separate abrupt contraction and expansion losses remain unsupported.

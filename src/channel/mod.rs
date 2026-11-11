@@ -1,15 +1,16 @@
-//! Declared channel geometry and rectangular reach flow for hydraulic applications.
+//! Declared channel geometry and reach flow for hydraulic applications.
 
 mod flow;
 mod section;
 
 pub use flow::{
     ChannelBoundary, ChannelCellResult, ChannelConfig, ChannelError, ChannelForcingInterval,
-    ChannelInitialState, ChannelIntervalSnapshotData, ChannelLateralBinding,
+    ChannelGeometry, ChannelInitialState, ChannelIntervalSnapshotData, ChannelLateralBinding,
     ChannelLateralDirection, ChannelLateralInput, ChannelLateralLedger, ChannelLateralReceipt,
-    ChannelLateralStateData, ChannelReach, ChannelReachDefinition, ChannelSnapshot,
-    ChannelSnapshotData, ChannelStep, ChannelStepDiagnostics, ChannelWaterLedger,
-    RectangularChannelCell,
+    ChannelLateralStateData, ChannelReach, ChannelReachDefinition, ChannelRiemannDiagnostics,
+    ChannelSnapshot, ChannelSnapshotData, ChannelStep, ChannelStepDiagnostics,
+    ChannelTriangularReconstruction, ChannelWaterLedger, RectangularChannelCell,
+    TriangularChannelCell,
 };
 pub use section::{
     CrossSectionBatch, CrossSectionDefinition, CrossSectionError, CrossSectionPoint,

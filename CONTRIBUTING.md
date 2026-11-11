@@ -83,6 +83,17 @@ Tests and reference executables share `tests/support/runtime.rs` for explicit se
 
 The `cuda` and `wgpu` features forward backend support into numr and solvr. WGPU rejects the current `f64` profile. CUDA admission retains its algorithm-specific arithmetic restrictions.
 
+### Checked dependency sources
+
+The current numerical checks use these local source commits. Match them when reproducing the recorded results.
+
+| Dependency | Version | Source commit |
+| --- | --- | --- |
+| numr | `0.15.2` | `7fd34487712290b071660e040bc819b474952869` |
+| solvr | `0.3.1` | `02216a782c0dfeb557ecc17fe01028c451446736` |
+
+Numr declares the square-root rounding needed by triangular flow. Package versions remain unchanged during this unpublished work.
+
 ### Local dependency overrides
 
 The current local overrides use the sibling numr and solvr checkouts:

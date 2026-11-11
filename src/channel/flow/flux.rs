@@ -1,13 +1,19 @@
-use super::{ChannelBoundary, ChannelError, admission::Fields, context::Context};
+use super::{
+    ChannelBoundary, ChannelError, admission::Fields, context::Context, geometry::TensorGeometry,
+};
 use crate::numerics::homogeneous_hll_tensor;
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, ShapeOps, UnaryOps};
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
+};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
 pub(super) struct Flux<R: Runtime<DType = DType>> {
     pub water: Tensor<R>,
+    pub water_bound: Tensor<R>,
+    pub riemann: Option<super::riemann_diagnostics::RiemannDiagnosticState<R>>,
     pub momentum: Tensor<R>,
     pub left_pressure: Tensor<R>,
     pub right_pressure: Tensor<R>,
@@ -19,6 +25,7 @@ pub(super) struct Flux<R: Runtime<DType = DType>> {
     pub left_reconstructed_pressure_bound: Tensor<R>,
     pub right_reconstructed_pressure_bound: Tensor<R>,
     pub speed: Tensor<R>,
+    pub internal_speed: Option<Tensor<R>>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -29,6 +36,7 @@ where
         + ReduceOps<R>
         + ScalarOps<R>
         + ShapeOps<R>
+        + TwoSumOps<R>
         + UnaryOps<R>
         + BatchedBisectionAlgorithms<R>,
 {
@@ -38,6 +46,12 @@ where
         left_boundary: &ChannelBoundary,
         right_boundary: &ChannelBoundary,
     ) -> Result<Flux<R>, ChannelError> {
+        let face_width = match &self.geometry {
+            TensorGeometry::Rectangular(section) => &section.face_width,
+            TensorGeometry::Triangular(geometry) => {
+                return self.triangular_flux(geometry, fields, left_boundary, right_boundary);
+            }
+        };
         let c = &self.client;
         let count = self.count();
         let reconstructed = self.reconstruct(fields, left_boundary, right_boundary)?;
@@ -52,15 +66,15 @@ where
             self.definition.config.gravity,
             &self.definition.config.wave_config(),
         )?;
-        let water = c.mul(&homogeneous.shared[0], &self.face_width)?;
-        let momentum = c.mul(&homogeneous.shared[1], &self.face_width)?;
+        let water = c.mul(&homogeneous.shared[0], face_width)?;
+        let momentum = c.mul(&homogeneous.shared[1], face_width)?;
         let required = c.gt(
             &c.abs(&homogeneous.shared[0])?,
             &self.constant(&water, 0.0)?,
         )?;
         self.represented(&required, &water, "full-width shared water rate")?;
-        let left_reconstructed = self.pressure(left_h, &self.face_width)?;
-        let right_reconstructed = self.pressure(right_h, &self.face_width)?;
+        let left_reconstructed = self.pressure(left_h, face_width)?;
+        let right_reconstructed = self.pressure(right_h, face_width)?;
         let pressure_bound = c.maximum(
             &left_reconstructed.unit_bound,
             &right_reconstructed.unit_bound,
@@ -68,7 +82,7 @@ where
         let momentum_bound = self.product_bound(
             &homogeneous.shared[1],
             &pressure_bound,
-            &self.face_width,
+            face_width,
             &momentum,
             "full-width shared momentum rate",
         )?;
@@ -101,6 +115,8 @@ where
             }
         }
         Ok(Flux {
+            water_bound: self.constant(&water, 0.0)?,
+            riemann: None,
             water,
             momentum,
             left_pressure,
@@ -113,6 +129,7 @@ where
             left_reconstructed_pressure_bound: left_reconstructed.bound,
             right_reconstructed_pressure_bound: right_reconstructed.bound,
             speed: homogeneous.speed,
+            internal_speed: None,
         })
     }
 }

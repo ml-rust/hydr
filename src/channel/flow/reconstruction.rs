@@ -1,10 +1,19 @@
-use super::{ChannelBoundary, ChannelError, admission::Fields, context::Context};
+use super::{
+    ChannelBoundary, ChannelError, admission::Fields, context::Context, geometry::TensorGeometry,
+};
 use crate::numerics::{TensorFaceState, homogeneous_wave_speed_tensor};
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, ShapeOps, UnaryOps};
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
+};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
+
+pub(super) struct CflSpeeds<R: Runtime<DType = DType>> {
+    pub outer: Tensor<R>,
+    pub internal: Option<Tensor<R>>,
+}
 
 pub(super) struct ReconstructedFaces<R: Runtime<DType = DType>> {
     pub left: TensorFaceState<R>,
@@ -31,6 +40,12 @@ where
         left_boundary: &ChannelBoundary,
         right_boundary: &ChannelBoundary,
     ) -> Result<ReconstructedFaces<R>, ChannelError> {
+        let TensorGeometry::Rectangular(section) = &self.geometry else {
+            return Err(ChannelError::numerical(
+                "rectangular reconstruction requires rectangular geometry: select the triangular face method",
+            ));
+        };
+        let width = &section.width;
         let c = &self.client;
         let count = self.count();
         let left_h = self.exterior(&fields.depth, left_boundary, 0, false)?;
@@ -43,8 +58,8 @@ where
         let right_velocity = c.cat(&[&fields.velocity, &right_u], 0)?;
         let left_bed = c.cat(&[&self.bed.narrow(0, 0, 1)?, &self.bed], 0)?;
         let right_bed = c.cat(&[&self.bed, &self.bed.narrow(0, count - 1, 1)?], 0)?;
-        let left_width = c.cat(&[&self.width.narrow(0, 0, 1)?, &self.width], 0)?;
-        let right_width = c.cat(&[&self.width, &self.width.narrow(0, count - 1, 1)?], 0)?;
+        let left_width = c.cat(&[&width.narrow(0, 0, 1)?, width], 0)?;
+        let right_width = c.cat(&[width, &width.narrow(0, count - 1, 1)?], 0)?;
         let common_bed = c.maximum(&left_bed, &right_bed)?;
         let zero = self.constant(&left_depth, 0.0)?;
         let left_step = c.sub(&common_bed, &left_bed)?;
@@ -135,6 +150,7 @@ where
         + ReduceOps<R>
         + ScalarOps<R>
         + ShapeOps<R>
+        + TwoSumOps<R>
         + UnaryOps<R>
         + BatchedBisectionAlgorithms<R>,
 {
@@ -143,14 +159,20 @@ where
         fields: &Fields<R>,
         left: &ChannelBoundary,
         right: &ChannelBoundary,
-    ) -> Result<Tensor<R>, ChannelError> {
+    ) -> Result<CflSpeeds<R>, ChannelError> {
+        if let TensorGeometry::Triangular(geometry) = &self.geometry {
+            return self.triangular_speed(geometry, fields, left, right);
+        }
         let reconstructed = self.reconstruct(fields, left, right)?;
-        Ok(homogeneous_wave_speed_tensor(
-            &self.client,
-            &reconstructed.left,
-            &reconstructed.right,
-            self.definition.config.gravity,
-            &self.definition.config.wave_config(),
-        )?)
+        Ok(CflSpeeds {
+            outer: homogeneous_wave_speed_tensor(
+                &self.client,
+                &reconstructed.left,
+                &reconstructed.right,
+                self.definition.config.gravity,
+                &self.definition.config.wave_config(),
+            )?,
+            internal: None,
+        })
     }
 }

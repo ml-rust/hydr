@@ -1,6 +1,7 @@
 use super::{
     ChannelError, ChannelStepDiagnostics, ChannelWaterLedger,
     forcing::BoundChannelForcing,
+    riemann_diagnostics::RiemannDiagnosticState,
     sources::{LateralContext, LateralReceipt, LateralState},
 };
 use numr::dtype::DType;
@@ -24,6 +25,7 @@ pub(super) struct LastInterval<R: Runtime<DType = DType>> {
     pub lateral_momentum_bound: Tensor<R>,
     pub requested_end: f64,
     pub scalar: ChannelStepDiagnostics,
+    pub riemann: Option<RiemannDiagnosticState<R>>,
     pub face_volume: Tensor<R>,
     pub face_momentum: Tensor<R>,
     pub left_pressure: Tensor<R>,
@@ -51,6 +53,11 @@ where
         lateral: &LateralContext<R>,
     ) -> Result<ChannelStepDiagnostics, ChannelError> {
         let mut result = self.scalar.clone();
+        result.riemann = self
+            .riemann
+            .as_ref()
+            .map(|state| state.project(client))
+            .transpose()?;
         result.face_volume_m3 = self.face_volume.try_to_vec::<f64>()?;
         result.face_momentum_m4_per_s = self.face_momentum.try_to_vec::<f64>()?;
         result.left_pressure_impulse_m4_per_s = self.left_pressure.try_to_vec::<f64>()?;

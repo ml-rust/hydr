@@ -100,7 +100,7 @@ where
         let one = self.constant(volume, 1.0)?;
         let wet = c.gt(volume, &zero)?;
         let area = c.div(volume, &self.length)?;
-        let depth = c.div(&area, &self.width)?;
+        let depth = self.section_depth(&area)?;
         let safe_volume = c.where_cond(&wet, volume, &one)?;
         let velocity = c.div(momentum, &safe_volume)?;
         let discharge = c.div(momentum, &self.length)?;

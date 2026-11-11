@@ -1,8 +1,8 @@
 use super::{ChannelError, ChannelInitialState, ChannelReachDefinition};
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
-    ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
+    ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -13,11 +13,10 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub definition: Arc<ChannelReachDefinition>,
     pub original_initial: ChannelInitialState,
     pub length: Tensor<R>,
-    pub width: Tensor<R>,
+    pub geometry: super::geometry::TensorGeometry<R>,
     pub bed: Tensor<R>,
     pub cap: Tensor<R>,
     pub manning: Tensor<R>,
-    pub face_width: Tensor<R>,
     pub charge_reduction: crate::soil::admission::AdjustmentReduction,
     pub lateral: super::sources::LateralContext<R>,
 }
@@ -27,6 +26,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + HypotOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>
@@ -40,31 +40,42 @@ where
         definition: ChannelReachDefinition,
         original_initial: ChannelInitialState,
     ) -> Result<Self, ChannelError> {
+        if matches!(
+            &definition.geometry,
+            super::ChannelGeometry::PrismaticTriangular { .. }
+        ) && R::square_root_contract(DType::F64)
+            != numr::runtime::SquareRootContract::Ieee754RoundToNearest
+        {
+            return Err(ChannelError::input(
+                "triangular F64 square roots lack round-to-nearest guarantees: select an admitted runtime",
+            ));
+        }
         definition.check()?;
         if let Some(error) = crate::tensor::probe_f64::<R, _>(&client)? {
             return Err(ChannelError::input(error.message("channel reach")));
         }
         let device = client.device();
         let make = |values: Vec<f64>| Tensor::<R>::from_slice(&values, &[values.len()], device);
-        let length = make(definition.cells.iter().map(|c| c.length_m).collect())?;
-        let width = make(definition.cells.iter().map(|c| c.width_m).collect())?;
-        let bed = make(definition.cells.iter().map(|c| c.bed_elevation_m).collect())?;
-        let cap = make(definition.cells.iter().map(|c| c.maximum_depth_m).collect())?;
-        let manning = make(definition.cells.iter().map(|c| c.manning_n).collect())?;
-        let count = definition.cells.len();
+        let length = make(definition.geometry.cells().map(|c| c.length_m).collect())?;
+        let bed = make(
+            definition
+                .geometry
+                .cells()
+                .map(|c| c.bed_elevation_m)
+                .collect(),
+        )?;
+        let cap = make(
+            definition
+                .geometry
+                .cells()
+                .map(|c| c.maximum_depth_m)
+                .collect(),
+        )?;
+        let manning = make(definition.geometry.cells().map(|c| c.manning_n).collect())?;
+        let count = definition.geometry.len();
         let charge_reduction = crate::soil::admission::AdjustmentReduction::new(count)
             .map_err(|error| ChannelError::numerical(error.to_string()))?;
-        let first = width.narrow(0, 0, 1)?;
-        let last = width.narrow(0, count - 1, 1)?;
-        let face_width = if count == 1 {
-            client.cat(&[&first, &last], 0)?
-        } else {
-            let middle = client.midpoint(
-                &width.narrow(0, 0, count - 1)?,
-                &width.narrow(0, 1, count - 1)?,
-            )?;
-            client.cat(&[&first, &middle, &last], 0)?
-        };
+        let geometry = super::geometry::TensorGeometry::new(&client, &definition, &cap, &length)?;
         let definition = Arc::new(definition);
         let lateral = super::sources::LateralContext::new(&client, Arc::clone(&definition))?;
         Ok(Self {
@@ -72,11 +83,10 @@ where
             definition,
             original_initial,
             length,
-            width,
+            geometry,
             bed,
             cap,
             manning,
-            face_width,
             charge_reduction,
             lateral,
         })
@@ -85,7 +95,7 @@ where
 
 impl<R: Runtime<DType = DType>> Context<R> {
     pub fn count(&self) -> usize {
-        self.definition.cells.len()
+        self.definition.geometry.len()
     }
 
     pub fn tensor(&self, values: &[f64]) -> Result<Tensor<R>, ChannelError> {

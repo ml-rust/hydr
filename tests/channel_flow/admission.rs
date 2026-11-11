@@ -1,4 +1,4 @@
-use super::common::{TestResult, cell, definition, exterior, reach, walls};
+use super::common::{TestResult, cell, definition, exterior, reach, rectangular_cells_mut, walls};
 use hydr::channel::{ChannelForcingInterval, ChannelInitialState, ChannelReach};
 
 #[test]
@@ -6,7 +6,7 @@ fn rectangular_definitions_reject_unresolved_or_incomplete_geometry() -> TestRes
     let valid = definition(vec![cell(0, 1.0, 2.0, 0.0)], 1.0);
     let mut cases = Vec::new();
     let mut candidate = valid.clone();
-    candidate.cells.clear();
+    rectangular_cells_mut(&mut candidate).clear();
     cases.push(candidate);
     let mut candidate = valid.clone();
     candidate.vertical_datum.clear();
@@ -15,30 +15,31 @@ fn rectangular_definitions_reject_unresolved_or_incomplete_geometry() -> TestRes
     candidate.provenance.clear();
     cases.push(candidate);
     let mut candidate = valid.clone();
-    candidate.cells.push(candidate.cells[0].clone());
+    let cells = rectangular_cells_mut(&mut candidate);
+    cells.push(cells[0].clone());
     cases.push(candidate);
     for width in [0.0, -1.0, f64::NAN, f64::INFINITY] {
         let mut candidate = valid.clone();
-        candidate.cells[0].width_m = width;
+        rectangular_cells_mut(&mut candidate)[0].width_m = width;
         cases.push(candidate);
     }
     for length in [0.0, -1.0, f64::NAN, f64::INFINITY] {
         let mut candidate = valid.clone();
-        candidate.cells[0].length_m = length;
+        rectangular_cells_mut(&mut candidate)[0].length_m = length;
         cases.push(candidate);
     }
     let mut candidate = valid.clone();
-    candidate.cells[0].maximum_depth_m = 0.0;
+    rectangular_cells_mut(&mut candidate)[0].maximum_depth_m = 0.0;
     cases.push(candidate);
     let mut candidate = valid.clone();
-    candidate.cells[0].manning_n = -0.01;
+    rectangular_cells_mut(&mut candidate)[0].manning_n = -0.01;
     cases.push(candidate);
     let mut candidate = valid.clone();
-    candidate.cells[0].bed_elevation_m = f64::INFINITY;
+    rectangular_cells_mut(&mut candidate)[0].bed_elevation_m = f64::INFINITY;
     cases.push(candidate);
     let mut candidate = valid.clone();
-    candidate.cells[0].width_m = f64::MIN_POSITIVE;
-    candidate.cells[0].length_m = f64::MIN_POSITIVE;
+    rectangular_cells_mut(&mut candidate)[0].width_m = f64::MIN_POSITIVE;
+    rectangular_cells_mut(&mut candidate)[0].length_m = f64::MIN_POSITIVE;
     cases.push(candidate);
     for candidate in cases {
         assert!(
