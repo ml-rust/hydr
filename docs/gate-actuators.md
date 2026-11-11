@@ -218,6 +218,8 @@ The CPU F64 reference covers 16 original-bit histories, two supplemental closure
 
 Six layouts cover scalar, vector, and tail widths. Exact rational replay uses no enclosure slack.
 
+[Runtime checks](../tests/runtime_backends/gate_actuators.rs) run analytical opening, reversal, and nonbinary closure on CPU and CUDA. Both runtimes check discarded trials and complete restart at batch widths 1 and 33. These cases check runtime execution separately from the larger CPU reference below.
+
 | Checked quantity | Coverage |
 | --- | --- |
 | Physical response | Position enclosures and fused-stage errors |

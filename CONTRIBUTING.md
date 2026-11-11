@@ -89,10 +89,10 @@ The current numerical checks use these local source commits. Match them when rep
 
 | Dependency | Version | Source commit |
 | --- | --- | --- |
-| numr | `0.15.2` | `7fd34487712290b071660e040bc819b474952869` |
-| solvr | `0.3.1` | `02216a782c0dfeb557ecc17fe01028c451446736` |
+| numr | `0.15.2` | `4b6b598d6ecae879b6eea39c31a36b27374d8d13` |
+| solvr | `0.3.1` | `e4f8cbd9c62fb405d2910d05ac3c04e7fbedcd91` |
 
-Numr declares the square-root rounding needed by triangular flow. Package versions remain unchanged during this unpublished work.
+Numr supplies checked square roots and fused multiply-add arithmetic for CPU and CUDA. Solvr supplies checked interval arithmetic and integration. Package versions remain unchanged during this unpublished work.
 
 ### Local dependency overrides
 
@@ -105,7 +105,7 @@ numr = { path = "../numr" }
 solvr = { path = "../solvr" }
 ```
 
-CI checks both dependency repositories through the same local patch mechanism. Committed manifests must use published versions or explicit Git revisions. Local overrides belong in ignored `.cargo/config.toml`.
+CI checks both dependency repositories at the recorded commits through the same local patch mechanism. Publish those dependency commits before running remote CI. Committed manifests must use published versions or explicit Git revisions. Local overrides belong in ignored `.cargo/config.toml`.
 
 ### Numerical ownership
 

@@ -16,6 +16,8 @@ mod coupled_pool_fixture;
 mod cross_section_profiles;
 #[path = "runtime_backends/cross_sections.rs"]
 mod cross_sections;
+#[path = "runtime_backends/gate_actuators.rs"]
+mod gate_actuators;
 #[path = "coupled_pool_inflows/inflow_fixture.rs"]
 mod inflow_fixture;
 #[path = "runtime_backends/inflows.rs"]
@@ -289,79 +291,6 @@ fn selected_cpu_client_executes_coupled_sources_and_trusted_restart() -> Result 
 fn selected_cuda_client_executes_coupled_sources_and_trusted_restart() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
     coupled_pool_source_execution!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?);
-    Ok(())
-}
-
-#[cfg(feature = "cuda")]
-#[test]
-fn cuda_actuator_rejects_backend_defined_fused_arithmetic() -> Result {
-    use hydr::structures::*;
-    use numr::dtype::DType;
-    use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    use numr::runtime::{FusedMulAddContract, Runtime};
-
-    assert_eq!(
-        CudaRuntime::fused_mul_add_contract(DType::F64),
-        FusedMulAddContract::BackendDefined
-    );
-    let context = StructureBatch::<CudaRuntime>::new(
-        CudaClient::new(CudaDevice::new(0))?,
-        vec![StructureElement {
-            id: "gate".into(),
-            endpoint_a: "pool".into(),
-            endpoint_b: "river".into(),
-            datum: "Analytical runtime datum".into(),
-            direction: DirectionPolicy::Bidirectional,
-            law: StructureLaw::HydrostaticRectangularGate(GateParameters::new(
-                1.0,
-                0.0,
-                1.0,
-                1.0,
-                0.5,
-                GateApplicability {
-                    coefficient_provenance: "Analytical gate fixture".into(),
-                    hydrostatic_quiescent_pool_assertion: "Quiescent analytical endpoints".into(),
-                    free_submerged_aperture_applicability: "Declared analytical aperture envelope"
-                        .into(),
-                    unobstructed_aperture_assertion: "Both endpoints expose the aperture".into(),
-                    symmetric_reversal: true,
-                },
-            )?),
-        }],
-    )?;
-    let result = context.with_gate_actuators(
-        vec![GateActuatorDefinition {
-            actuator_id: "actuator".into(),
-            structure_id: "gate".into(),
-            opening_rate_m_per_s: 0.25,
-            closing_rate_m_per_s: 0.25,
-            accuracy: GateActuatorAccuracy {
-                maximum_absolute_opening_error_m: 1e-12,
-                maximum_relative_opening_error: 1e-12,
-                maximum_arrival_window_s: 1e-10,
-            },
-            rate_provenance: "Explicit analytical rates".into(),
-            ideal_response_applicability: "Ideal finite rate response".into(),
-        }],
-        vec![GateActuatorInitialState {
-            actuator_id: "actuator".into(),
-            opening_m: 0.0,
-            target_opening_m: 0.5,
-        }],
-        GateActuatorSchedule {
-            initial_time_s: 0.0,
-            target_times_s: vec![],
-            end_s: 4.0,
-        },
-    );
-    let error = result
-        .err()
-        .ok_or("CUDA actuator admitted backend-defined fused arithmetic")?;
-    assert_eq!(
-        error.input_kind(),
-        Some(StructureInputErrorKind::Definition)
-    );
-    assert!(error.to_string().contains("fused arithmetic contracts"));
     Ok(())
 }
 
