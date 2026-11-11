@@ -50,3 +50,9 @@ pub use forcing::{
 };
 
 pub(crate) use coupling::{ChannelCouplingForcing, ChannelCouplingTrial, ChannelReservoirOperands};
+
+pub(crate) mod surveyed;
+pub use surveyed::{
+    PrismaticRiemannConfig, PrismaticRiemannError, PrismaticRiemannRejection,
+    PrismaticRiemannResult, PrismaticRiemannWork,
+};

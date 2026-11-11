@@ -97,4 +97,6 @@ The capacity check admits positive area at or below its lower bound. Above the u
 
 `section()` returns the source section index when known. Rejected queries leave the immutable batch usable. [Acceptance checks](acceptance.md#certified-surveyed-section-bounds) describe the tested cases and limits.
 
-These queries calculate geometry only. They add no surveyed-profile flow advancement or measured-event accuracy claim.
+These queries calculate geometry only. Use [surveyed interface fluxes](prismatic-fluxes.md) to bound fluxes between supplied states.
+
+Neither query adds surveyed-profile flow advancement or a measured-event accuracy claim.

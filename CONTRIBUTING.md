@@ -89,10 +89,10 @@ The current numerical checks use these local source commits. Match them when rep
 
 | Dependency | Version | Source commit |
 | --- | --- | --- |
-| numr | `0.15.2` | `4b6b598d6ecae879b6eea39c31a36b27374d8d13` |
+| numr | `0.15.2` | `1de441c21359d33a9e9e9db3312bed8ad8b95844` |
 | solvr | `0.3.1` | `6bff8a2ce12bd03113d2d072237a042fd0a994ca` |
 
-Numr supplies checked square roots and fused multiply-add arithmetic for CPU and CUDA. Solvr supplies checked interval arithmetic and integration. Package versions remain unchanged during this unpublished work.
+Numr supplies checked square roots and fused multiply-add arithmetic for CPU and CUDA. Solvr supplies checked interval arithmetic, certified integration, and certified root solving. Package versions remain unchanged during this unpublished work.
 
 ### Local dependency overrides
 

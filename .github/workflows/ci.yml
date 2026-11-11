@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ml-rust/numr
-          ref: 4b6b598d6ecae879b6eea39c31a36b27374d8d13
+          ref: 1de441c21359d33a9e9e9db3312bed8ad8b95844
           path: .ci-dependencies/numr
       - uses: actions/checkout@v4
         with:

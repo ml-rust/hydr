@@ -14,6 +14,7 @@ The library is unpublished. Its components support the following calculations:
 | Soil and land sources | Rain, Modified Green–Ampt infiltration, capped evaporation, and withdrawals with complete soil memory | [Soil](docs/soil.md) and [land sources](docs/land-sources.md) |
 | Rainfall runoff | Stored water and runoff from three catchment subareas | [Reservoir](docs/reservoir.md) and [subcatchment](docs/subcatchment.md) |
 | Channel cross-sections | Geometry at supplied stages, or bounds from depths and conserved areas | [Stage queries](docs/cross-sections.md) and [certified bounds](docs/prismatic-sections.md) |
+| Surveyed interface fluxes | Bounds on water and momentum fluxes between supplied states in one surveyed geometry | [Surveyed flux queries](docs/prismatic-fluxes.md) |
 | Channel flow | Flow through varying-width rectangular or prismatic triangular reaches, with prescribed lateral inflow and withdrawal | [Channel flow](docs/channels.md) |
 | Channels connected to pools | Channel flow and finite pool levels accepted over one common interval | [Channel-to-pool connections](docs/channel-pools.md) |
 | Storage pools | Water volume and level from supplied storage curves | [Level pools](docs/level-pool.md) |

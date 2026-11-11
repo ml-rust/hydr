@@ -226,6 +226,26 @@ Read [the certified-geometry guide](prismatic-sections.md) for depth and conserv
 
 CPU and CUDA cases use the same references and both input layouts. These checks establish geometry bounds only, without surveyed-profile flow or measured-event accuracy.
 
+### Surveyed interface-flux bounds
+
+Read [the surveyed-flux guide](prismatic-fluxes.md) for supplied states, returned bounds, and rejection actions.
+
+The [interface-flux cases](../tests/surveyed_riemann.rs) contain 37 independent reference cases with these required outcomes:
+
+| Cases | Required outcome |
+| --- | --- |
+| 34 | Successful flux bounds contain the independent references and meet the default width allowances. |
+| One shallow-film uncertainty case | Success meets the same checks, or the query returns a declared numerical rejection. |
+| Two | Compression beyond surveyed capacity returns `CapExceeded`. A zero work allowance returns `WorkLimit`. |
+
+Reference pairs supply lower and upper bounds. Equal endpoints supply a point reference. Tests check containment of both endpoints rather than agreement with a midpoint.
+
+The cases cover dry states, spreading waves, shocks, vacuum, and changes between surveyed height bands. Trace bounds contain both states beside a stationary shock.
+
+CPU checks use contiguous and strided inputs. Mixed batches check repeated section owners, independent input snapshots, and cumulative work limits.
+
+These queries calculate interface fluxes from supplied states. They establish neither surveyed reach advancement nor measured-event accuracy.
+
 ## Rectangular channel-flow checks
 
 Read [the channel guide](channels.md) for supported geometry and endpoint conditions. [Channel cases](../tests/channel_flow.rs) check first-order flow independently of static cross-section queries.

@@ -20,3 +20,11 @@ pub use batch::PrismaticSectionBatch;
 pub use config::{PRISMATIC_BAND_WORK_LIMIT, PrismaticRecoveryConfig};
 pub use output::{PrismaticRecoveredProperties, PrismaticSectionProperties};
 pub use query::{PrismaticSectionQuery, PrismaticSectionRecovery};
+
+mod hydraulic_evaluation;
+mod hydraulic_geometry;
+mod riemann;
+pub(crate) use hydraulic_geometry::{Constitutive, GatheredBands, HydraulicGeometry};
+
+#[cfg(test)]
+mod hydraulic_geometry_tests;

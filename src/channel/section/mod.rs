@@ -31,3 +31,5 @@ pub use prismatic::{
 pub use query::CrossSectionQuery;
 pub use recovery_config::CrossSectionRecoveryConfig;
 pub use recovery_query::{CrossSectionRecoveredProperties, CrossSectionRecovery};
+
+pub(crate) use prismatic::{Constitutive, GatheredBands, HydraulicGeometry};
