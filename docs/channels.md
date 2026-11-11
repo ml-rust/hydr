@@ -161,6 +161,28 @@ When endpoint inputs change, end their support at that change. Supply new states
 
 An error leaves the original reach unchanged. Hydr retries complete calculations without clipping negative water or scaling individual fluxes.
 
+### Supply inputs already on the device
+
+Use `step_tensor(requested_end_s, &interval)` when another calculation supplies Numr tensors. Construct `ChannelTensorForcingInterval<R>` on the reach's configured device.
+
+| Input | Tensor type |
+| --- | --- |
+| Endpoint policy | `ChannelTensorBoundary<R>` |
+| Lateral inflow or withdrawal | `ChannelTensorLateralInput<R>` |
+| Lateral rate or integrated volume | `ChannelTensorWaterAmount<R>` |
+
+Each numerical parameter requires an F64 tensor with shape `[1]`. Valid offset and strided views are accepted. Wrong devices, shapes, and dtypes reject.
+
+The tensor interface uses the same units, signs, physical limits, and exact-volume span rules as host forcing. Original operands remain on the selected device during advancement.
+
+Hydr copies tensor inputs into private device storage. Reusing caller buffers after the call cannot change accepted receipts or snapshots.
+
+The host `step()` interface uploads its operands once into this shared path. Explicit checkpoint-data calls copy retained operands to host values.
+
+Native forcing does not coordinate exchanges between finite channel and storage components. Those connections remain unsupported.
+
+The [native-forcing checks](../tests/channel_tensor_forcing.rs) compare complete host and tensor continuation.
+
 ### How sources affect the timestep
 
 Transport uses the accepted-start state. Lateral inflow changes transport on the following interval.

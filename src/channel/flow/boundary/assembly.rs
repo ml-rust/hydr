@@ -1,5 +1,5 @@
 use super::ScalarBoundaryFrame;
-use crate::channel::flow::{ChannelBoundary, ChannelError, context::Context};
+use crate::channel::flow::{ChannelError, ChannelTensorBoundary, context::Context};
 use numr::{
     dtype::DType,
     ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ShapeOps, UnaryOps},
@@ -7,14 +7,16 @@ use numr::{
     tensor::Tensor,
 };
 
-pub(in crate::channel::flow) fn is_scalar(boundary: &ChannelBoundary) -> bool {
+pub(in crate::channel::flow) fn is_scalar<R: Runtime<DType = DType>>(
+    boundary: &ChannelTensorBoundary<R>,
+) -> bool {
     boundary.is_scalar()
 }
 
-pub(in crate::channel::flow) fn numerical_range(
+pub(in crate::channel::flow) fn numerical_range<R: Runtime<DType = DType>>(
     count: usize,
-    left: &ChannelBoundary,
-    right: &ChannelBoundary,
+    left: &ChannelTensorBoundary<R>,
+    right: &ChannelTensorBoundary<R>,
 ) -> (usize, usize) {
     let start = usize::from(is_scalar(left));
     (start, count + 1 - start - usize::from(is_scalar(right)))
@@ -43,8 +45,8 @@ where
         &self,
         frame: Option<&ScalarBoundaryFrame<R>>,
         numerical: Option<&Tensor<R>>,
-        left: &ChannelBoundary,
-        right: &ChannelBoundary,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
     ) -> Result<Option<Tensor<R>>, ChannelError> {
         let Some(frame) = frame else {
             return Ok(None);
@@ -55,7 +57,10 @@ where
             .endpoints
             .iter()
             .map(|endpoint| {
-                if matches!(boundaries[*endpoint], ChannelBoundary::Discharge { .. }) {
+                if matches!(
+                    boundaries[*endpoint],
+                    ChannelTensorBoundary::Discharge { .. }
+                ) {
                     1.0
                 } else {
                     0.0

@@ -1,7 +1,8 @@
 use super::{
     ChannelError, ChannelForcingInterval, ChannelReach, ChannelStep, ChannelStepDiagnostics,
-    accounting::Impulses, boundary::assembly::is_scalar, engine::Accepted,
-    forcing::BoundChannelForcing, interval::IntervalControl, receipt::LastInterval,
+    ChannelTensorForcingInterval, accounting::Impulses, boundary::assembly::is_scalar,
+    engine::Accepted, forcing::BoundChannelForcing, interval::IntervalControl,
+    receipt::LastInterval,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -41,6 +42,25 @@ where
         self.step_bound(requested_end_s, &bound)
     }
 
+    /// Calculate one accepted interval using original device-resident forcing operands.
+    ///
+    /// Every tensor uses F64, shape `[1]`, and the configured reach device.
+    pub fn step_tensor(
+        &self,
+        requested_end_s: f64,
+        forcing: &ChannelTensorForcingInterval<R>,
+    ) -> Result<ChannelStep<R>, ChannelError> {
+        let bound = self.context.lateral.bind_native(
+            &self.context.client,
+            forcing.start_s,
+            forcing.end_s,
+            forcing.left.clone(),
+            forcing.right.clone(),
+            forcing.lateral_inputs.clone(),
+        )?;
+        self.step_bound(requested_end_s, &bound)
+    }
+
     pub(super) fn step_bound(
         &self,
         requested_end_s: f64,
@@ -53,14 +73,11 @@ where
                 "bound forcing belongs to different geometry or source bindings: bind inputs with the destination reach",
             ));
         }
-        super::definition::check_endpoint_interval(
+        super::definition::check_forcing_interval(
             self.time(),
             requested_end_s,
             forcing.start_s,
             forcing.end_s,
-            &forcing.left,
-            &forcing.right,
-            self.definition(),
         )?;
         let context = &self.context;
         let c = &context.client;

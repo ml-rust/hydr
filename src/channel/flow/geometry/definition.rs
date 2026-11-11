@@ -173,20 +173,4 @@ impl ChannelGeometry {
             }
         }
     }
-
-    pub(in crate::channel::flow) fn exterior_discharge(
-        &self,
-        index: usize,
-        depth: f64,
-        velocity: f64,
-    ) -> f64 {
-        match self {
-            Self::Rectangular { cells } => (depth * velocity) * cells[index].width_m,
-            Self::PrismaticTriangular {
-                left_bank_slope_h_per_v: l,
-                right_bank_slope_h_per_v: r,
-                ..
-            } => ((l.midpoint(*r) * depth) * depth) * velocity,
-        }
-    }
 }

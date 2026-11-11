@@ -1,5 +1,5 @@
 use super::super::{
-    ChannelBoundary, ChannelError, admission::Fields, context::Context, flux::Flux,
+    ChannelError, ChannelTensorBoundary, admission::Fields, context::Context, flux::Flux,
     geometry::TriangleGeometry,
 };
 use super::{faces::narrow_face, godunov::RiemannInput};
@@ -31,8 +31,8 @@ where
         &self,
         geometry: &TriangleGeometry<R>,
         fields: &Fields<R>,
-        left_boundary: &ChannelBoundary,
-        right_boundary: &ChannelBoundary,
+        left_boundary: &ChannelTensorBoundary<R>,
+        right_boundary: &ChannelTensorBoundary<R>,
     ) -> Result<Flux<R>, ChannelError> {
         let c = &self.client;
         let faces = self.triangular_faces(geometry, fields, left_boundary, right_boundary)?;
@@ -125,7 +125,7 @@ where
             right_boundary,
         )?;
         for (boundary, index) in [(left_boundary, 0), (right_boundary, self.count())] {
-            if matches!(boundary, ChannelBoundary::Wall)
+            if matches!(boundary, ChannelTensorBoundary::Wall)
                 && water.narrow(0, index, 1)?.item::<f64>()? != 0.0
             {
                 return Err(ChannelError::numerical(format!(

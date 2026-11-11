@@ -1,5 +1,7 @@
 use super::super::{ChannelError, ChannelForcingInterval, ChannelLateralInput};
-use super::{BoundChannelForcing, BoundLateralInputs, NativeLateralInput, NativeWaterAmount};
+use super::{
+    BoundChannelForcing, BoundLateralInputs, ChannelTensorLateralInput, ChannelTensorWaterAmount,
+};
 use crate::forcing::WaterAmount;
 use numr::dtype::DType;
 use numr::runtime::{Device, Runtime, RuntimeClient};
@@ -15,15 +17,17 @@ impl<R: Runtime<DType = DType>> BoundLateralInputs<R> {
                 ));
             }
             let amount = match input.amount() {
-                NativeWaterAmount::Rate { rate_m3_per_s } => WaterAmount::Rate {
+                ChannelTensorWaterAmount::Rate { rate_m3_per_s } => WaterAmount::Rate {
                     rate_m3_per_s: rate_m3_per_s.item::<f64>()?,
                 },
-                NativeWaterAmount::IntervalVolume { volume_m3 } => WaterAmount::IntervalVolume {
-                    volume_m3: volume_m3.item::<f64>()?,
-                },
+                ChannelTensorWaterAmount::IntervalVolume { volume_m3 } => {
+                    WaterAmount::IntervalVolume {
+                        volume_m3: volume_m3.item::<f64>()?,
+                    }
+                }
             };
             result.push(match input {
-                NativeLateralInput::Inflow {
+                ChannelTensorLateralInput::Inflow {
                     boundary_id,
                     longitudinal_velocity_m_per_s,
                     ..
@@ -32,7 +36,7 @@ impl<R: Runtime<DType = DType>> BoundLateralInputs<R> {
                     amount,
                     longitudinal_velocity_m_per_s: longitudinal_velocity_m_per_s.item::<f64>()?,
                 },
-                NativeLateralInput::Withdrawal { boundary_id, .. } => {
+                ChannelTensorLateralInput::Withdrawal { boundary_id, .. } => {
                     ChannelLateralInput::Withdrawal {
                         boundary_id: boundary_id.clone(),
                         amount,
@@ -49,8 +53,8 @@ impl<R: Runtime<DType = DType>> BoundChannelForcing<R> {
         Ok(ChannelForcingInterval {
             start_s: self.start_s,
             end_s: self.end_s,
-            left: self.left.clone(),
-            right: self.right.clone(),
+            left: self.left.project()?,
+            right: self.right.project()?,
             lateral_inputs: self.lateral.project(client)?,
         })
     }

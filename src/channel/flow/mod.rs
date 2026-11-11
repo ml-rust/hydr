@@ -42,3 +42,8 @@ pub use output::{
     ChannelRiemannDiagnostics, ChannelStepDiagnostics, ChannelWaterLedger,
 };
 pub use snapshot::{ChannelIntervalSnapshotData, ChannelSnapshot, ChannelSnapshotData};
+
+pub use forcing::{
+    ChannelTensorBoundary, ChannelTensorForcingInterval, ChannelTensorLateralInput,
+    ChannelTensorWaterAmount,
+};

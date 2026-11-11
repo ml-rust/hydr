@@ -1,15 +1,18 @@
 use super::super::{
-    ChannelBoundary, ChannelError, ChannelForcingInterval, ChannelLateralInput,
-    sources::LateralContext,
+    ChannelError, ChannelForcingInterval, ChannelLateralInput, sources::LateralContext,
 };
-use super::{BoundChannelForcing, BoundLateralInputs, NativeLateralInput, NativeWaterAmount};
+use super::admission::{all, check_scalar, finite};
+use super::{
+    BoundChannelForcing, BoundLateralInputs, ChannelTensorBoundary, ChannelTensorLateralInput,
+    ChannelTensorWaterAmount,
+};
 use crate::forcing::WaterAmount;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
     UnaryOps,
 };
-use numr::runtime::{Device, Runtime, RuntimeClient};
+use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -35,37 +38,39 @@ where
         let mut inputs = Vec::with_capacity(forcing.lateral_inputs.len());
         for input in &forcing.lateral_inputs {
             let amount = match input.amount() {
-                WaterAmount::Rate { rate_m3_per_s } => NativeWaterAmount::Rate {
+                WaterAmount::Rate { rate_m3_per_s } => ChannelTensorWaterAmount::Rate {
                     rate_m3_per_s: make(rate_m3_per_s)?,
                 },
-                WaterAmount::IntervalVolume { volume_m3 } => NativeWaterAmount::IntervalVolume {
-                    volume_m3: make(volume_m3)?,
-                },
+                WaterAmount::IntervalVolume { volume_m3 } => {
+                    ChannelTensorWaterAmount::IntervalVolume {
+                        volume_m3: make(volume_m3)?,
+                    }
+                }
             };
             inputs.push(match input {
                 ChannelLateralInput::Inflow {
                     boundary_id,
                     longitudinal_velocity_m_per_s,
                     ..
-                } => NativeLateralInput::Inflow {
+                } => ChannelTensorLateralInput::Inflow {
                     boundary_id: boundary_id.clone(),
                     amount,
                     longitudinal_velocity_m_per_s: make(*longitudinal_velocity_m_per_s)?,
                 },
                 ChannelLateralInput::Withdrawal { boundary_id, .. } => {
-                    NativeLateralInput::Withdrawal {
+                    ChannelTensorLateralInput::Withdrawal {
                         boundary_id: boundary_id.clone(),
                         amount,
                     }
                 }
             });
         }
-        self.bind_native(
+        self.bind_owned(
             client,
             forcing.start_s,
             forcing.end_s,
-            forcing.left.clone(),
-            forcing.right.clone(),
+            ChannelTensorBoundary::from_host(client, &forcing.left)?,
+            ChannelTensorBoundary::from_host(client, &forcing.right)?,
             inputs,
         )
     }
@@ -75,9 +80,27 @@ where
         client: &R::Client,
         start_s: f64,
         end_s: f64,
-        left: ChannelBoundary,
-        right: ChannelBoundary,
-        inputs: Vec<NativeLateralInput<R>>,
+        left: ChannelTensorBoundary<R>,
+        right: ChannelTensorBoundary<R>,
+        inputs: Vec<ChannelTensorLateralInput<R>>,
+    ) -> Result<BoundChannelForcing<R>, ChannelError> {
+        let left = left.into_owned(client)?;
+        let right = right.into_owned(client)?;
+        let inputs = inputs
+            .into_iter()
+            .map(|input| input.into_owned(client))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.bind_owned(client, start_s, end_s, left, right, inputs)
+    }
+
+    fn bind_owned(
+        &self,
+        client: &R::Client,
+        start_s: f64,
+        end_s: f64,
+        left: ChannelTensorBoundary<R>,
+        right: ChannelTensorBoundary<R>,
+        inputs: Vec<ChannelTensorLateralInput<R>>,
     ) -> Result<BoundChannelForcing<R>, ChannelError> {
         if (left.is_scalar() || right.is_scalar())
             && (R::float_arithmetic_contract(DType::F64)
@@ -96,15 +119,17 @@ where
                 "forcing start={start_s}: supply a finite accepted time"
             )));
         }
-        super::super::definition::check_endpoint_interval(
-            start_s,
-            end_s,
-            start_s,
-            end_s,
-            &left,
-            &right,
-            &self.definition,
-        )?;
+        super::super::definition::check_forcing_interval(start_s, end_s, start_s, end_s)?;
+        left.check(client, &self.definition, 0)?;
+        let last = self
+            .definition
+            .geometry
+            .len()
+            .checked_sub(1)
+            .ok_or_else(|| {
+                ChannelError::input("cell count=0: construct a nonempty channel reach")
+            })?;
+        right.check(client, &self.definition, last)?;
         if inputs.len() != self.count() {
             return Err(ChannelError::input(format!(
                 "lateral input count={}, bindings={}: supply every binding exactly once",
@@ -124,16 +149,16 @@ where
             }
             let tensor = input.amount().tensor();
             check_scalar(client, tensor, "lateral amount")?;
-            let value = tensor.item::<f64>()?;
-            if !value.is_finite() || value < 0.0 {
+            let zero = Tensor::zeros(&[1], DType::F64, client.device())?;
+            if !finite(client, tensor)? || !all(client, &client.ge(tensor, &zero)?)? {
                 return Err(ChannelError::input(format!(
-                    "boundary_id={:?}, amount={value}: supply a finite nonnegative rate or integrated volume",
+                    "boundary_id={:?}: supply a finite nonnegative rate or integrated volume",
                     input.boundary_id()
                 )));
             }
-            has_nonzero_values |= value != 0.0;
+            has_nonzero_values |= !all(client, &client.eq(tensor, &zero)?)?;
             has_interval_volumes |= !input.amount().is_rate();
-            if let NativeLateralInput::Inflow {
+            if let ChannelTensorLateralInput::Inflow {
                 longitudinal_velocity_m_per_s,
                 ..
             } = input
@@ -143,10 +168,9 @@ where
                     longitudinal_velocity_m_per_s,
                     "lateral inflow velocity",
                 )?;
-                let velocity = longitudinal_velocity_m_per_s.item::<f64>()?;
-                if !velocity.is_finite() {
+                if !finite(client, longitudinal_velocity_m_per_s)? {
                     return Err(ChannelError::input(format!(
-                        "boundary_id={:?}, velocity={velocity}: supply a finite explicit inflow velocity",
+                        "boundary_id={:?}: supply a finite explicit inflow velocity",
                         input.boundary_id()
                     )));
                 }
@@ -154,7 +178,7 @@ where
         }
         let mut amounts = Vec::with_capacity(inputs.len());
         let mut rates = Vec::with_capacity(inputs.len());
-        let mut velocities = Vec::new();
+        let mut velocities = Vec::with_capacity(self.inflow_indices.numel());
         for binding in &self.definition.lateral_bindings {
             let input = ordered
                 .remove(binding.boundary_id.as_str())
@@ -172,7 +196,7 @@ where
             }
             amounts.push(input.amount().tensor());
             rates.push(if input.amount().is_rate() { 1.0 } else { 0.0 });
-            if let NativeLateralInput::Inflow {
+            if let ChannelTensorLateralInput::Inflow {
                 longitudinal_velocity_m_per_s,
                 ..
             } = input
@@ -205,22 +229,4 @@ where
             lateral,
         })
     }
-}
-
-fn check_scalar<R: Runtime<DType = DType>>(
-    client: &R::Client,
-    tensor: &Tensor<R>,
-    name: &str,
-) -> Result<(), ChannelError> {
-    if tensor.shape() != [1]
-        || tensor.dtype() != DType::F64
-        || !tensor.device().is_same(client.device())
-    {
-        return Err(ChannelError::input(format!(
-            "{name} shape={:?}, dtype={:?}: supply an actual F64 scalar tensor on the configured client",
-            tensor.shape(),
-            tensor.dtype()
-        )));
-    }
-    Ok(())
 }

@@ -4,7 +4,7 @@ use super::{
     discharge::{Depth, DepthRequest},
 };
 use crate::channel::flow::{
-    ChannelBoundary, ChannelError, context::Context, geometry::TensorGeometry,
+    ChannelError, ChannelTensorBoundary, context::Context, geometry::TensorGeometry,
 };
 use numr::{
     dtype::DType,
@@ -46,8 +46,8 @@ where
     pub(in crate::channel::flow) fn scalar_boundary_frame(
         &self,
         interior: &EndpointInterior<R>,
-        left: &ChannelBoundary,
-        right: &ChannelBoundary,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
     ) -> Result<Option<ScalarBoundaryFrame<R>>, ChannelError> {
         let mut pending = Vec::with_capacity(2);
         for (endpoint, request) in [left, right].into_iter().enumerate() {
@@ -142,7 +142,7 @@ where
         &self,
         interior: &EndpointInterior<R>,
         endpoint: usize,
-        request: &ChannelBoundary,
+        request: &ChannelTensorBoundary<R>,
     ) -> Result<Pending<R>, ChannelError> {
         let c = &self.client;
         let index = if endpoint == 0 { 0 } else { self.count() - 1 };
@@ -191,10 +191,10 @@ where
         self.boundary_subcritical(&state.depth_bounds, &state.velocity_bounds)?;
         let cap = self.cap.narrow(0, index, 1)?;
         let (depth, target) = match request {
-            ChannelBoundary::Stage { elevation_m } => {
-                let stage = self.tensor(&[*elevation_m])?;
+            ChannelTensorBoundary::Stage { elevation_m } => {
+                let stage = elevation_m;
                 let bed = self.bed.narrow(0, index, 1)?;
-                let (depth, low) = c.two_sum(&stage, &c.neg(&bed)?)?;
+                let (depth, low) = c.two_sum(stage, &c.neg(&bed)?)?;
                 let bounds = Bounds {
                     lo: c.where_cond(
                         &c.ge(&low, &zero)?,
@@ -217,8 +217,8 @@ where
                     None,
                 )
             }
-            ChannelBoundary::Discharge { discharge_m3_per_s } => {
-                let longitudinal = self.tensor(&[*discharge_m3_per_s])?;
+            ChannelTensorBoundary::Discharge { discharge_m3_per_s } => {
+                let longitudinal = discharge_m3_per_s.clone();
                 let outward = c.mul_scalar(&longitudinal, normal)?;
                 (
                     self.boundary_discharge_prepare(&state, &coefficient, &cap, &outward)?,

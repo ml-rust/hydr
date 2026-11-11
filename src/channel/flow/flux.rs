@@ -1,5 +1,6 @@
 use super::{
-    ChannelBoundary, ChannelError, admission::Fields, context::Context, geometry::TensorGeometry,
+    ChannelError, ChannelTensorBoundary, admission::Fields, context::Context,
+    geometry::TensorGeometry,
 };
 use super::{
     boundary::{NativeBoundaryTraces, assembly::numerical_range},
@@ -50,8 +51,8 @@ where
     pub fn flux(
         &self,
         fields: &Fields<R>,
-        left_boundary: &ChannelBoundary,
-        right_boundary: &ChannelBoundary,
+        left_boundary: &ChannelTensorBoundary<R>,
+        right_boundary: &ChannelTensorBoundary<R>,
     ) -> Result<Flux<R>, ChannelError> {
         let face_width = match &self.geometry {
             TensorGeometry::Rectangular(section) => &section.face_width,
@@ -168,7 +169,7 @@ where
             self.finite(value, name)?;
         }
         for (boundary, index) in [(left_boundary, 0), (right_boundary, count)] {
-            if matches!(boundary, ChannelBoundary::Wall)
+            if matches!(boundary, ChannelTensorBoundary::Wall)
                 && water.narrow(0, index, 1)?.item::<f64>()? != 0.0
             {
                 return Err(ChannelError::numerical(format!(

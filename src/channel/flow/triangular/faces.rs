@@ -1,5 +1,5 @@
 use super::super::{
-    ChannelBoundary, ChannelError, ChannelTriangularReconstruction, admission::Fields,
+    ChannelError, ChannelTensorBoundary, ChannelTriangularReconstruction, admission::Fields,
     boundary::EndpointInterior, context::Context, geometry::TriangleGeometry,
 };
 use numr::{
@@ -39,8 +39,8 @@ where
         &self,
         geometry: &TriangleGeometry<R>,
         fields: &Fields<R>,
-        left: &ChannelBoundary,
-        right: &ChannelBoundary,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
     ) -> Result<TriangularFaces<R>, ChannelError> {
         let endpoints = self.triangular_endpoints(fields)?;
         let (la, lq) = self.triangular_exterior(
@@ -124,33 +124,33 @@ where
         geometry: &TriangleGeometry<R>,
         area_field: &Tensor<R>,
         discharge_field: &Tensor<R>,
-        boundary: &ChannelBoundary,
+        boundary: &ChannelTensorBoundary<R>,
         index: usize,
     ) -> Result<(Tensor<R>, Tensor<R>), ChannelError> {
         let area = area_field.narrow(0, index, 1)?;
         let discharge = discharge_field.narrow(0, index, 1)?;
         match boundary {
-            ChannelBoundary::Stage { .. } | ChannelBoundary::Discharge { .. } => {
+            ChannelTensorBoundary::Stage { .. } | ChannelTensorBoundary::Discharge { .. } => {
                 Ok((area, discharge))
             }
-            ChannelBoundary::Wall => Ok((area, self.client.neg(&discharge)?)),
-            ChannelBoundary::Exterior {
+            ChannelTensorBoundary::Wall => Ok((area, self.client.neg(&discharge)?)),
+            ChannelTensorBoundary::Exterior {
                 depth_m,
                 velocity_m_per_s,
             } => {
-                let depth = self.constant(&area, *depth_m)?;
-                let kh = self.client.mul(&geometry.coefficient, &depth)?;
-                let area = self.client.mul(&kh, &depth)?;
-                let discharge = self.client.mul_scalar(&area, *velocity_m_per_s)?;
+                let depth = depth_m;
+                let kh = self.client.mul(&geometry.coefficient, depth)?;
+                let area = self.client.mul(&kh, depth)?;
+                let discharge = self.client.mul(&area, velocity_m_per_s)?;
                 let zero = self.constant(&area, 0.0)?;
                 self.represented(
-                    &self.client.gt(&depth, &zero)?,
+                    &self.client.gt(depth, &zero)?,
                     &area,
                     "triangular exterior area",
                 )?;
                 let required = self.client.mul(
-                    &self.client.gt(&depth, &zero)?,
-                    &self.constant(&area, if *velocity_m_per_s != 0.0 { 1.0 } else { 0.0 })?,
+                    &self.client.gt(depth, &zero)?,
+                    &self.client.gt(&self.client.abs(velocity_m_per_s)?, &zero)?,
                 )?;
                 self.represented(&required, &discharge, "triangular exterior discharge")?;
                 Ok((area, discharge))

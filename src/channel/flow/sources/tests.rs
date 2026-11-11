@@ -2,7 +2,7 @@ use super::super::{
     ChannelBoundary, ChannelConfig, ChannelForcingInterval, ChannelInitialState,
     ChannelLateralBinding, ChannelLateralDirection, ChannelLateralInput, ChannelLateralStateData,
     ChannelReach, ChannelReachDefinition, RectangularChannelCell,
-    forcing::{NativeLateralInput, NativeWaterAmount},
+    forcing::{ChannelTensorLateralInput, ChannelTensorWaterAmount},
 };
 use super::*;
 use crate::forcing::WaterAmount;
@@ -106,18 +106,18 @@ where
         &client,
         0.0,
         2.0,
-        ChannelBoundary::Wall,
-        ChannelBoundary::Wall,
+        crate::channel::ChannelTensorBoundary::Wall,
+        crate::channel::ChannelTensorBoundary::Wall,
         vec![
-            NativeLateralInput::Withdrawal {
+            ChannelTensorLateralInput::Withdrawal {
                 boundary_id: "source-1".into(),
-                amount: NativeWaterAmount::Rate {
+                amount: ChannelTensorWaterAmount::Rate {
                     rate_m3_per_s: withdrawal,
                 },
             },
-            NativeLateralInput::Inflow {
+            ChannelTensorLateralInput::Inflow {
                 boundary_id: "source-0".into(),
-                amount: NativeWaterAmount::IntervalVolume {
+                amount: ChannelTensorWaterAmount::IntervalVolume {
                     volume_m3: incoming,
                 },
                 longitudinal_velocity_m_per_s: velocity,
@@ -134,9 +134,17 @@ where
         projected.lateral_inputs[1].amount(),
         WaterAmount::IntervalVolume { volume_m3: 0.125 }
     );
+    client.copy_into(
+        &values,
+        &Tensor::<R>::from_slice(&[f64::NAN, f64::NAN], &[2], client.device())?,
+    )?;
     assert_eq!(
-        bound.lateral.original[1].amount().tensor().strides(),
-        values.strides()
+        bound.lateral.original[1]
+            .amount()
+            .tensor()
+            .item::<f64>()?
+            .to_bits(),
+        0.125_f64.to_bits()
     );
     let make = |value| Tensor::<R>::from_slice(&[value], &[1], client.device());
     let previous = source.initial_state(&client)?;
@@ -185,8 +193,8 @@ where
         &client,
         0.0,
         0.01,
-        endpoint.clone(),
-        endpoint,
+        crate::channel::ChannelTensorBoundary::from_host(&client, &endpoint)?,
+        crate::channel::ChannelTensorBoundary::from_host(&client, &endpoint)?,
         bound.lateral.original.clone(),
     )?;
     let advanced = reach.step_bound(0.01, &native)?.next;

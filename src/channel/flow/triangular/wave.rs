@@ -1,5 +1,5 @@
 use super::super::{
-    ChannelBoundary, ChannelError,
+    ChannelError, ChannelTensorBoundary,
     admission::Fields,
     boundary::assembly::{is_scalar, numerical_range},
     context::Context,
@@ -53,8 +53,8 @@ where
         &self,
         geometry: &TriangleGeometry<R>,
         fields: &Fields<R>,
-        left: &ChannelBoundary,
-        right: &ChannelBoundary,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
     ) -> Result<CflSpeeds<R>, ChannelError> {
         let faces = self.triangular_faces(geometry, fields, left, right)?;
         if is_scalar(left) || is_scalar(right) {

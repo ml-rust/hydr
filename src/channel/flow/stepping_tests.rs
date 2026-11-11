@@ -47,7 +47,7 @@ fn rounded_numerical_transfers_preserve_water_and_consume_tolerance()
     let fields = reach
         .context
         .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
-    let flux = reach.context.flux(&fields, &forcing.left, &forcing.right)?;
+    let flux = native_flux(&reach.context, &fields, &forcing.left, &forcing.right)?;
     let original_rate = flux.water.narrow(0, 1, 1)?.item::<f64>()?;
     assert!(original_rate > 0.0);
     assert_eq!(original_rate * forcing.end_s, 0.0);
@@ -169,7 +169,7 @@ fn rounded_pressure_impulses_consume_the_configured_momentum_tolerance()
     let fields = reach
         .context
         .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
-    let flux = reach.context.flux(&fields, &forcing.left, &forcing.right)?;
+    let flux = native_flux(&reach.context, &fields, &forcing.left, &forcing.right)?;
     assert!(flux.water.narrow(0, 1, 1)?.item::<f64>()? * forcing.end_s > 0.0);
     let original_pressure = flux.momentum.narrow(0, 1, 1)?.item::<f64>()?;
     assert!(original_pressure > 0.0);
@@ -246,7 +246,7 @@ fn positive_wave_speed_cannot_disappear_during_width_weighting()
     let fields = reach
         .context
         .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
-    let flux = reach.context.flux(&fields, &forcing.left, &forcing.right)?;
+    let flux = native_flux(&reach.context, &fields, &forcing.left, &forcing.right)?;
     let speed = flux.speed.narrow(0, 0, 1)?.item::<f64>()?;
     assert!(speed > 0.0);
     assert_eq!(
@@ -311,7 +311,7 @@ fn prescribed_endpoint_rates_retain_longitudinal_bits_without_width_round_trip()
         let boundary = ChannelBoundary::Discharge {
             discharge_m3_per_s: rate,
         };
-        let flux = reach.context.flux(&fields, &boundary, &boundary)?;
+        let flux = native_flux(&reach.context, &fields, &boundary, &boundary)?;
         assert!(flux.riemann.is_none());
         assert_eq!(
             flux.boundary_traces
@@ -340,7 +340,7 @@ fn prescribed_endpoint_transfer_rejects_disappearing_nonzero_volume()
     let boundary = ChannelBoundary::Discharge {
         discharge_m3_per_s: 1e-200,
     };
-    let flux = reach.context.flux(&fields, &boundary, &boundary)?;
+    let flux = native_flux(&reach.context, &fields, &boundary, &boundary)?;
     let before = reach.snapshot_data()?;
     assert!(matches!(
         reach.context.integrate_transport(&flux, 1e-200),
@@ -394,7 +394,7 @@ fn scalar_only_rectangular_faces_preserve_full_section_motion()
     let boundary = ChannelBoundary::Stage {
         elevation_m: 1e-160,
     };
-    let flux = reach.context.flux(&fields, &boundary, &boundary)?;
+    let flux = native_flux(&reach.context, &fields, &boundary, &boundary)?;
     assert!(flux.riemann.is_none());
     assert_eq!(
         flux.boundary_traces
@@ -421,9 +421,7 @@ fn scalar_only_rectangular_faces_preserve_full_section_motion()
         );
     }
     assert!(matches!(
-        reach
-            .context
-            .flux(&fields, &boundary, &ChannelBoundary::Wall),
+        native_flux(&reach.context, &fields, &boundary, &ChannelBoundary::Wall),
         Err(ChannelError::Numerical { .. })
     ));
     let forcing = ChannelForcingInterval {
@@ -445,4 +443,18 @@ fn scalar_only_rectangular_faces_preserve_full_section_motion()
     );
     assert_eq!(reach.snapshot_data()?, before);
     Ok(())
+}
+
+fn native_flux(
+    context: &super::super::context::Context<CpuRuntime>,
+    fields: &super::super::admission::Fields<CpuRuntime>,
+    left: &ChannelBoundary,
+    right: &ChannelBoundary,
+) -> Result<super::super::flux::Flux<CpuRuntime>, ChannelError> {
+    use crate::channel::ChannelTensorBoundary;
+    context.flux(
+        fields,
+        &ChannelTensorBoundary::from_host(&context.client, left)?,
+        &ChannelTensorBoundary::from_host(&context.client, right)?,
+    )
 }

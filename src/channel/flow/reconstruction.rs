@@ -1,5 +1,5 @@
 use super::{
-    ChannelBoundary, ChannelError,
+    ChannelError, ChannelTensorBoundary,
     admission::Fields,
     boundary::{
         EndpointInterior,
@@ -45,8 +45,8 @@ where
     pub fn reconstruct(
         &self,
         fields: &Fields<R>,
-        left_boundary: &ChannelBoundary,
-        right_boundary: &ChannelBoundary,
+        left_boundary: &ChannelTensorBoundary<R>,
+        right_boundary: &ChannelTensorBoundary<R>,
     ) -> Result<ReconstructedFaces<R>, ChannelError> {
         let TensorGeometry::Rectangular(section) = &self.geometry else {
             return Err(ChannelError::numerical(
@@ -125,8 +125,8 @@ where
         &self,
         depth: &Tensor<R>,
         velocity: &Tensor<R>,
-        left: &ChannelBoundary,
-        right: &ChannelBoundary,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
         name: &str,
     ) -> Result<Tensor<R>, ChannelError> {
         let c = &self.client;
@@ -161,31 +161,30 @@ where
     fn exterior(
         &self,
         field: &Tensor<R>,
-        boundary: &ChannelBoundary,
+        boundary: &ChannelTensorBoundary<R>,
         index: usize,
         velocity: bool,
     ) -> Result<Tensor<R>, ChannelError> {
         let endpoint = field.narrow(0, index, 1)?;
         match boundary {
-            ChannelBoundary::Stage { .. } | ChannelBoundary::Discharge { .. } => Ok(endpoint),
-            ChannelBoundary::Wall => {
+            ChannelTensorBoundary::Stage { .. } | ChannelTensorBoundary::Discharge { .. } => {
+                Ok(endpoint)
+            }
+            ChannelTensorBoundary::Wall => {
                 if velocity {
                     Ok(self.client.neg(&endpoint)?)
                 } else {
                     Ok(endpoint)
                 }
             }
-            ChannelBoundary::Exterior {
+            ChannelTensorBoundary::Exterior {
                 depth_m,
                 velocity_m_per_s,
-            } => self.constant(
-                &endpoint,
-                if velocity {
-                    *velocity_m_per_s
-                } else {
-                    *depth_m
-                },
-            ),
+            } => Ok(if velocity {
+                velocity_m_per_s.clone()
+            } else {
+                depth_m.clone()
+            }),
         }
     }
 }
@@ -205,8 +204,8 @@ where
     pub fn candidate_speed(
         &self,
         fields: &Fields<R>,
-        left: &ChannelBoundary,
-        right: &ChannelBoundary,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
     ) -> Result<CflSpeeds<R>, ChannelError> {
         if let TensorGeometry::Triangular(geometry) = &self.geometry {
             return self.triangular_speed(geometry, fields, left, right);

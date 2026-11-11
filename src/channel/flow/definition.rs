@@ -260,16 +260,14 @@ impl ChannelReachDefinition {
     }
 }
 
-pub(super) fn check_endpoint_interval(
+pub(super) fn check_forcing_interval(
     time_s: f64,
     requested_end_s: f64,
     start_s: f64,
     end_s: f64,
-    left: &ChannelBoundary,
-    right: &ChannelBoundary,
-    definition: &ChannelReachDefinition,
 ) -> Result<(), ChannelError> {
-    if start_s.to_bits() != time_s.to_bits()
+    if !start_s.is_finite()
+        || start_s.to_bits() != time_s.to_bits()
         || !end_s.is_finite()
         || end_s <= start_s
         || !requested_end_s.is_finite()
@@ -279,60 +277,6 @@ pub(super) fn check_endpoint_interval(
         return Err(ChannelError::input(format!(
             "accepted_time={time_s}, forcing_span=[{start_s},{end_s}], requested_end={requested_end_s}: supply the exact accepted start and a later endpoint within forcing support"
         )));
-    }
-    let last =
-        definition.geometry.len().checked_sub(1).ok_or_else(|| {
-            ChannelError::input("cell count=0: construct a nonempty channel reach")
-        })?;
-    for (boundary, index) in [(left, 0), (right, last)] {
-        let cell = definition.geometry.cell(index);
-        match boundary {
-            ChannelBoundary::Stage { elevation_m } if !elevation_m.is_finite() => {
-                return Err(ChannelError::input(format!(
-                    "stage elevation_m={elevation_m}: supply a finite elevation in the reach datum"
-                ))
-                .at(index));
-            }
-            ChannelBoundary::Discharge { discharge_m3_per_s }
-                if !discharge_m3_per_s.is_finite() =>
-            {
-                return Err(ChannelError::input(format!(
-                    "discharge_m3_per_s={discharge_m3_per_s}: supply a finite longitudinal discharge"
-                )).at(index));
-            }
-            _ => {}
-        }
-        if let ChannelBoundary::Exterior {
-            depth_m,
-            velocity_m_per_s,
-        } = boundary
-        {
-            let unit_discharge = match &definition.geometry {
-                ChannelGeometry::Rectangular { .. } => Some(depth_m * velocity_m_per_s),
-                ChannelGeometry::PrismaticTriangular { .. } => None,
-            };
-            let discharge =
-                definition
-                    .geometry
-                    .exterior_discharge(index, *depth_m, *velocity_m_per_s);
-            if !depth_m.is_finite()
-                || *depth_m < 0.0
-                || *depth_m > cell.maximum_depth_m
-                || !velocity_m_per_s.is_finite()
-                || (*depth_m == 0.0 && *velocity_m_per_s != 0.0)
-                || unit_discharge.is_some_and(|value| !value.is_finite())
-                || !discharge.is_finite()
-                || (*depth_m > 0.0
-                    && *velocity_m_per_s != 0.0
-                    && (unit_discharge == Some(0.0) || discharge == 0.0))
-            {
-                return Err(ChannelError::input(format!(
-                    "exterior depth={depth_m}, velocity={velocity_m_per_s}, maximum_depth={}: supply supported finite depth and velocity, with zero velocity when dry",
-                    cell.maximum_depth_m
-                ))
-                .at(index));
-            }
-        }
     }
     Ok(())
 }
@@ -377,10 +321,4 @@ fn check_text(name: &str, value: &str) -> Result<(), ChannelError> {
         )));
     }
     Ok(())
-}
-
-impl ChannelBoundary {
-    pub(super) fn is_scalar(&self) -> bool {
-        matches!(self, Self::Stage { .. } | Self::Discharge { .. })
-    }
 }

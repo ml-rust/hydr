@@ -110,7 +110,8 @@ fn reflected_wall_water_is_exact_zero_and_rest_pressure_uses_triangular_section(
     };
     for velocity in [-1.0, 0.0, 1.0] {
         let fields = ctx.fields(&ctx.tensor(&[1.0])?, &ctx.tensor(&[velocity])?)?;
-        let flux = ctx.triangular_flux(
+        let flux = native_flux(
+            &ctx,
             geometry,
             &fields,
             &ChannelBoundary::Wall,
@@ -125,7 +126,8 @@ fn reflected_wall_water_is_exact_zero_and_rest_pressure_uses_triangular_section(
         }
     }
     let dry = ctx.fields(&ctx.tensor(&[0.0])?, &ctx.tensor(&[0.0])?)?;
-    let flux = ctx.triangular_flux(
+    let flux = native_flux(
+        &ctx,
         geometry,
         &dry,
         &ChannelBoundary::Wall,
@@ -147,7 +149,7 @@ fn one_sided_motion_retains_finite_flux_for_extreme_represented_velocity() -> Te
         depth_m: 1e-150,
         velocity_m_per_s: 1e200,
     };
-    let flux = ctx.triangular_flux(geometry, &fields, &boundary, &boundary)?;
+    let flux = native_flux(&ctx, geometry, &fields, &boundary, &boundary)?;
     for value in flux.momentum.try_to_vec::<f64>()? {
         assert!(value.is_finite() && value > 0.0);
     }
@@ -168,7 +170,7 @@ fn erased_pressure_retains_a_positive_momentum_charge() -> TestResult {
         depth_m: 1e-150,
         velocity_m_per_s: 0.0,
     };
-    let flux = ctx.triangular_flux(geometry, &fields, &boundary, &boundary)?;
+    let flux = native_flux(&ctx, geometry, &fields, &boundary, &boundary)?;
     assert_eq!(flux.momentum.try_to_vec::<f64>()?, [0.0, 0.0]);
     for value in flux.momentum_bound.try_to_vec::<f64>()? {
         assert!(value.is_finite() && value > 0.0);
@@ -217,7 +219,7 @@ fn certified_vacuum_interface_selects_both_zero_fluxes_and_keeps_original_wave_b
         depth_m: 1.0,
         velocity_m_per_s: velocity,
     };
-    let flux = ctx.triangular_flux(geometry, &fields, &left, &right)?;
+    let flux = native_flux(&ctx, geometry, &fields, &left, &right)?;
     assert_eq!(flux.water.narrow(0, 0, 1)?.item::<f64>()?, 0.0);
     assert_eq!(flux.momentum.narrow(0, 0, 1)?.item::<f64>()?, 0.0);
     assert_eq!(flux.momentum_bound.narrow(0, 0, 1)?.item::<f64>()?, 0.0);
@@ -285,7 +287,7 @@ fn exact_vacuum_discards_only_shared_flux_underflow_charges() -> TestResult {
         depth_m: 1e-150,
         velocity_m_per_s: 1.0,
     };
-    let flux = ctx.triangular_flux(geometry, &fields, &left, &right)?;
+    let flux = native_flux(&ctx, geometry, &fields, &left, &right)?;
     assert_eq!(flux.water.narrow(0, 0, 1)?.item::<f64>()?, 0.0);
     assert_eq!(flux.momentum.narrow(0, 0, 1)?.item::<f64>()?, 0.0);
     assert_eq!(flux.momentum_bound.narrow(0, 0, 1)?.item::<f64>()?, 0.0);
@@ -328,7 +330,7 @@ fn interface_flux(
         depth_m: right_depth,
         velocity_m_per_s: right_velocity,
     };
-    let flux = ctx.triangular_flux(geometry, &fields, &left, &right)?;
+    let flux = native_flux(ctx, geometry, &fields, &left, &right)?;
     Ok((
         flux.water.narrow(0, 0, 1)?.item::<f64>()?,
         flux.momentum.narrow(0, 0, 1)?.item::<f64>()?,
@@ -452,7 +454,7 @@ fn finite_extreme_upwind_flux_skips_unselected_sonic_residuals() -> TestResult {
         depth_m: depth,
         velocity_m_per_s: 1.0,
     };
-    let flux = ctx.triangular_flux(geometry, &fields, &exterior, &exterior)?;
+    let flux = native_flux(&ctx, geometry, &fields, &exterior, &exterior)?;
     for value in flux.water.try_to_vec::<f64>()? {
         assert_eq!(value, tiny);
     }
@@ -486,4 +488,20 @@ fn pressure_charge_retains_joint_erased_area_and_coefficient_uncertainty() -> Te
     assert_eq!(pressure.item::<f64>()?, 0.0);
     assert!(bound.item::<f64>()? > 0.0);
     Ok(())
+}
+
+fn native_flux(
+    context: &Context<CpuRuntime>,
+    geometry: &super::super::geometry::TriangleGeometry<CpuRuntime>,
+    fields: &super::super::admission::Fields<CpuRuntime>,
+    left: &ChannelBoundary,
+    right: &ChannelBoundary,
+) -> Result<super::super::flux::Flux<CpuRuntime>, super::super::ChannelError> {
+    use crate::channel::ChannelTensorBoundary;
+    context.triangular_flux(
+        geometry,
+        fields,
+        &ChannelTensorBoundary::from_host(&context.client, left)?,
+        &ChannelTensorBoundary::from_host(&context.client, right)?,
+    )
 }
