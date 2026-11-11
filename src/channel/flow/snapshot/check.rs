@@ -51,6 +51,17 @@ pub(super) fn forcing(a: &ChannelForcingInterval, b: &ChannelForcingInterval) ->
 fn boundary(a: &ChannelBoundary, b: &ChannelBoundary) -> bool {
     match (a, b) {
         (ChannelBoundary::Wall, ChannelBoundary::Wall) => true,
+        (ChannelBoundary::Stage { elevation_m: a }, ChannelBoundary::Stage { elevation_m: b }) => {
+            a.to_bits() == b.to_bits()
+        }
+        (
+            ChannelBoundary::Discharge {
+                discharge_m3_per_s: a,
+            },
+            ChannelBoundary::Discharge {
+                discharge_m3_per_s: b,
+            },
+        ) => a.to_bits() == b.to_bits(),
         (
             ChannelBoundary::Exterior {
                 depth_m: ah,
@@ -133,6 +144,10 @@ pub(super) fn ledger(a: &ChannelWaterLedger, b: &ChannelWaterLedger) -> bool {
 
 pub(super) fn diagnostics(a: &ChannelStepDiagnostics, b: &ChannelStepDiagnostics) -> bool {
     a.retries == b.retries
+        && a.boundary_traces
+            .iter()
+            .zip(&b.boundary_traces)
+            .all(|(a, b)| boundary_trace(a.as_ref(), b.as_ref()))
         && riemann(a.riemann.as_ref(), b.riemann.as_ref())
         && optional(a.candidate_cfl_limit_s, b.candidate_cfl_limit_s)
         && values(
@@ -292,6 +307,17 @@ pub(super) fn riemann(
                     ],
                 )
         }
+        _ => false,
+    }
+}
+
+pub(super) fn boundary_trace(
+    a: Option<&super::super::ChannelBoundaryTrace>,
+    b: Option<&super::super::ChannelBoundaryTrace>,
+) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a.same_bits(b),
         _ => false,
     }
 }

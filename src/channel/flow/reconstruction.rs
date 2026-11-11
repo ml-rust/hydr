@@ -1,5 +1,12 @@
 use super::{
-    ChannelBoundary, ChannelError, admission::Fields, context::Context, geometry::TensorGeometry,
+    ChannelBoundary, ChannelError,
+    admission::Fields,
+    boundary::{
+        EndpointInterior,
+        assembly::{is_scalar, numerical_range},
+    },
+    context::Context,
+    geometry::TensorGeometry,
 };
 use crate::numerics::{TensorFaceState, homogeneous_wave_speed_tensor};
 use numr::dtype::DType;
@@ -20,6 +27,7 @@ pub(super) struct ReconstructedFaces<R: Runtime<DType = DType>> {
     pub right: TensorFaceState<R>,
     pub left_depth: Tensor<R>,
     pub right_depth: Tensor<R>,
+    pub endpoints: EndpointInterior<R>,
     pub left_width: Tensor<R>,
     pub right_width: Tensor<R>,
 }
@@ -70,25 +78,20 @@ where
         let right_h = c.maximum(&c.sub(&right_depth, &right_step)?, &zero)?;
         self.finite(&left_h, "left reconstructed depth")?;
         self.finite(&right_h, "right reconstructed depth")?;
-        let left_discharge = c.mul(&left_h, &left_velocity)?;
-        let right_discharge = c.mul(&right_h, &right_velocity)?;
-        for (depth, velocity, discharge, name) in [
-            (
-                &left_h,
-                &left_velocity,
-                &left_discharge,
-                "left reconstructed unit discharge",
-            ),
-            (
-                &right_h,
-                &right_velocity,
-                &right_discharge,
-                "right reconstructed unit discharge",
-            ),
-        ] {
-            let required = c.mul(&c.gt(depth, &zero)?, &c.gt(&c.abs(velocity)?, &zero)?)?;
-            self.represented(&required, discharge, name)?;
-        }
+        let left_discharge = self.reconstructed_unit_discharge(
+            &left_h,
+            &left_velocity,
+            left_boundary,
+            right_boundary,
+            "left reconstructed unit discharge",
+        )?;
+        let right_discharge = self.reconstructed_unit_discharge(
+            &right_h,
+            &right_velocity,
+            left_boundary,
+            right_boundary,
+            "right reconstructed unit discharge",
+        )?;
         let left = TensorFaceState {
             q_normal: left_discharge,
             q_tangent: zero.clone(),
@@ -101,7 +104,14 @@ where
             h: right_h.clone(),
             bed: common_bed,
         };
+        let endpoints = EndpointInterior {
+            area: self.endpoint_pair(&fields.area, &fields.area)?,
+            discharge: self.endpoint_pair(&fields.discharge, &fields.discharge)?,
+            depth: self.endpoint_pair(&right.h, &left.h)?,
+            velocity: self.endpoint_pair(&fields.velocity, &fields.velocity)?,
+        };
         Ok(ReconstructedFaces {
+            endpoints,
             left,
             right,
             left_depth,
@@ -109,6 +119,43 @@ where
             left_width,
             right_width,
         })
+    }
+
+    fn reconstructed_unit_discharge(
+        &self,
+        depth: &Tensor<R>,
+        velocity: &Tensor<R>,
+        left: &ChannelBoundary,
+        right: &ChannelBoundary,
+        name: &str,
+    ) -> Result<Tensor<R>, ChannelError> {
+        let c = &self.client;
+        let (start, len) = numerical_range(self.count(), left, right);
+        let mut pieces = Vec::with_capacity(3);
+        if is_scalar(left) {
+            pieces.push(self.constant(&depth.narrow(0, 0, 1)?, 0.0)?);
+        }
+        if len > 0 {
+            let depth = depth.narrow(0, start, len)?;
+            let velocity = velocity.narrow(0, start, len)?;
+            let discharge = c.mul(&depth, &velocity)?;
+            let zero = self.constant(&depth, 0.0)?;
+            let required = c.mul(&c.gt(&depth, &zero)?, &c.gt(&c.abs(&velocity)?, &zero)?)?;
+            self.represented(&required, &discharge, name)?;
+            pieces.push(discharge);
+        }
+        if is_scalar(right) {
+            pieces.push(self.constant(&depth.narrow(0, self.count(), 1)?, 0.0)?);
+        }
+        if pieces.len() == 1 {
+            return pieces.pop().ok_or_else(|| {
+                ChannelError::numerical(
+                    "reconstructed discharge array absent: inspect numerical face assembly",
+                )
+            });
+        }
+        let refs: Vec<_> = pieces.iter().collect();
+        Ok(c.cat(&refs, 0)?)
     }
 
     fn exterior(
@@ -120,6 +167,7 @@ where
     ) -> Result<Tensor<R>, ChannelError> {
         let endpoint = field.narrow(0, index, 1)?;
         match boundary {
+            ChannelBoundary::Stage { .. } | ChannelBoundary::Discharge { .. } => Ok(endpoint),
             ChannelBoundary::Wall => {
                 if velocity {
                     Ok(self.client.neg(&endpoint)?)
@@ -164,15 +212,53 @@ where
             return self.triangular_speed(geometry, fields, left, right);
         }
         let reconstructed = self.reconstruct(fields, left, right)?;
-        Ok(CflSpeeds {
-            outer: homogeneous_wave_speed_tensor(
+        if !is_scalar(left) && !is_scalar(right) {
+            return Ok(CflSpeeds {
+                outer: homogeneous_wave_speed_tensor(
+                    &self.client,
+                    &reconstructed.left,
+                    &reconstructed.right,
+                    self.definition.config.gravity,
+                    &self.definition.config.wave_config(),
+                )?,
+                internal: None,
+            });
+        }
+        let frame = self.scalar_boundary_frame(&reconstructed.endpoints, left, right)?;
+        let (start, len) = numerical_range(self.count(), left, right);
+        let numerical = if len > 0 {
+            Some(homogeneous_wave_speed_tensor(
                 &self.client,
-                &reconstructed.left,
-                &reconstructed.right,
+                &narrow_face(&reconstructed.left, start, len)?,
+                &narrow_face(&reconstructed.right, start, len)?,
                 self.definition.config.gravity,
                 &self.definition.config.wave_config(),
+            )?)
+        } else {
+            None
+        };
+        Ok(CflSpeeds {
+            outer: self.assemble_boundary_faces(
+                frame.as_ref(),
+                numerical.as_ref(),
+                frame
+                    .as_ref()
+                    .map(|frame| &frame.traces.signal_speed_bound_m_per_s),
             )?,
             internal: None,
         })
     }
+}
+
+pub(super) fn narrow_face<R: Runtime<DType = DType>>(
+    face: &TensorFaceState<R>,
+    start: usize,
+    len: usize,
+) -> Result<TensorFaceState<R>, ChannelError> {
+    Ok(TensorFaceState {
+        h: face.h.narrow(0, start, len)?,
+        q_normal: face.q_normal.narrow(0, start, len)?,
+        q_tangent: face.q_tangent.narrow(0, start, len)?,
+        bed: face.bed.narrow(0, start, len)?,
+    })
 }

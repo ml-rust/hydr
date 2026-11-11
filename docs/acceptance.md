@@ -331,6 +331,48 @@ Both refinement paths retain the analytical ceilings. Combined differences first
 
 These checks cover prismatic triangular reaches only. They establish no general-profile dynamics, network coupling, SWMM equivalence, or measured-event accuracy.
 
+## Scalar channel-boundary checks
+
+[Scalar endpoint cases](../tests/channel_boundaries.rs) define Stage and Discharge acceptance for rectangular and triangular reaches. Scalar inputs require strictly wet-subcritical interior water and traces. These requirements establish no general inlet/outlet suitability.
+
+### Independent traces and incoming waves
+
+| Trace fixture | Outward velocity, m/s | Outward discharge, m³/s | Momentum flux, m⁴/s² |
+| --- | --- | --- | --- |
+| Rectangle `g=1`, width `3 m`, initial depth `1 m`, boundary depth `0.81 m` | `0.2` | `0.486` | `1.08135` |
+| Triangle `g=2`, `k=1`, initial depth `1 m`, boundary depth `0.81 m` | `0.4` | `0.26244` | `0.45927` |
+| Rectangle `g=1`, width `1 m`, boundary depth `2 m` | `-sqrt(3)/2` | `-sqrt(3)` | `7/2` |
+| Triangle `g=8`, `k=1`, boundary depth `1.5 m` | `-sqrt(95/27)` | `-(9/4)sqrt(95/27)` | `203/12` |
+
+All trace fixtures start at rest. Trace comparisons require relative agreement within `1e-12`. Compression fixtures also exercise the original geometry cap with explicit approximate-compatibility status when needed.
+
+Propagation uses a `20 m` domain and initial depth `1 m` at rest. The right endpoint is at `x=0`. Left-end cases reflect coordinates and longitudinal discharge independently.
+
+| Shape | Gravity | Geometry | Boundary depths | Final time |
+| --- | --- | --- | --- | --- |
+| Rectangle | `1 m/s²` | Width `3 m` | `0.81 / 1.21 m` | `2 s` |
+| Triangle | `2 m/s²` | `k=1` | `0.81 / 1.21 m` | `2 s` |
+
+Stage and Discharge use the same independently derived shock or fan state. Grids contain `50/100/200` cells with common maximum interval `0.002 s`.
+
+The reference splits wave segments before integrating conserved cell averages. Depth derives from average area. Length-weighted mean depth error must stay below `0.02 m`, and full-discharge error below `0.04 m³/s`. Both errors must decrease strictly for every shape, policy, wave, and orientation.
+
+Each finest-grid error must also stay below `25%` of the nonzero analytical change from uniform initial water. This gate rejects unchanged initial fields despite generous coarse ceilings.
+
+### Admission, accounting, and continuation
+
+| Check | Required behavior |
+| --- | --- |
+| Regime and capacity | Dry, critical, supercritical, unresolved, and certified out-of-cap requests reject atomically |
+| Original discharge | Both endpoints preserve longitudinal operands and signed zero, including width-round-trip counterexamples |
+| Momentum | One-cell recurrence uses physical endpoint pressure and advection |
+| Donors and retries | Endpoint exports compete with lateral withdrawals for original water. Integrated sources require fresh forcing before shortening. |
+| Final scalar state | Source-created candidates satisfy fresh scalar compatibility after the final state check |
+| Continuation | Trusted/cold restart retain complete targets, traces, config bits, and numerical receipts. Altered packages reject. |
+| Runtime | Actual CPU/CUDA clients execute nonuniform scalar-boundary flow and complete restart. WGPU rejects F64 without fallback. |
+
+Discharge inputs remain longitudinal-positive. Trace receipts use outward discharge. Read [the channel guide](channels.md) before selecting signs or compatibility controls.
+
 ## Connected-pool checks
 
 Read [coupled level pools](coupled-level-pools.md) before selecting this component.

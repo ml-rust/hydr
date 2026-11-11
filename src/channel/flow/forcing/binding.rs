@@ -79,6 +79,18 @@ where
         right: ChannelBoundary,
         inputs: Vec<NativeLateralInput<R>>,
     ) -> Result<BoundChannelForcing<R>, ChannelError> {
+        if (left.is_scalar() || right.is_scalar())
+            && (R::float_arithmetic_contract(DType::F64)
+                != numr::runtime::FloatArithmeticContract::Ieee754Basic
+                || R::square_root_contract(DType::F64)
+                    != numr::runtime::SquareRootContract::Ieee754RoundToNearest)
+        {
+            return Err(ChannelError::input(format!(
+                "scalar endpoint F64 contracts: arithmetic={:?}, square_root={:?}. Select a runtime declaring IEEE 754 basic arithmetic and round-to-nearest square roots",
+                R::float_arithmetic_contract(DType::F64),
+                R::square_root_contract(DType::F64)
+            )));
+        }
         if !start_s.is_finite() {
             return Err(ChannelError::input(format!(
                 "forcing start={start_s}: supply a finite accepted time"

@@ -33,6 +33,13 @@ where
         let c = &self.client;
         let count = self.count();
         let face_volume = c.mul_scalar(&flux.water, dt)?;
+        if let Some(prescribed) = &flux.prescribed_water {
+            let required = c.mul(
+                prescribed,
+                &c.gt(&c.abs(&flux.water)?, &self.constant(&flux.water, 0.0)?)?,
+            )?;
+            self.represented(&required, &face_volume, "prescribed discharge face volume")?;
+        }
         let transfer_underflow_bound = self.product_bound(
             &flux.water,
             &flux.water_bound,

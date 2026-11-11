@@ -1,5 +1,7 @@
 //! Actual runtime execution and arithmetic admission through public components.
 
+#[path = "runtime_backends/channel_boundaries.rs"]
+mod channel_boundaries;
 #[path = "runtime_backends/channels.rs"]
 mod channels;
 #[path = "coupled_level_pools/fixture.rs"]

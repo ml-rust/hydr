@@ -1,6 +1,10 @@
 use super::{
     ChannelBoundary, ChannelError, admission::Fields, context::Context, geometry::TensorGeometry,
 };
+use super::{
+    boundary::{NativeBoundaryTraces, assembly::numerical_range},
+    reconstruction::narrow_face,
+};
 use crate::numerics::homogeneous_hll_tensor;
 use numr::dtype::DType;
 use numr::ops::{
@@ -9,8 +13,11 @@ use numr::ops::{
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use std::sync::Arc;
 
 pub(super) struct Flux<R: Runtime<DType = DType>> {
+    pub boundary_traces: Option<Arc<NativeBoundaryTraces<R>>>,
+    pub prescribed_water: Option<Tensor<R>>,
     pub water: Tensor<R>,
     pub water_bound: Tensor<R>,
     pub riemann: Option<super::riemann_diagnostics::RiemannDiagnosticState<R>>,
@@ -55,36 +62,91 @@ where
         let c = &self.client;
         let count = self.count();
         let reconstructed = self.reconstruct(fields, left_boundary, right_boundary)?;
+        let frame =
+            self.scalar_boundary_frame(&reconstructed.endpoints, left_boundary, right_boundary)?;
+        let (start, len) = numerical_range(count, left_boundary, right_boundary);
         let left = reconstructed.left;
         let right = reconstructed.right;
         let left_h = &left.h;
         let right_h = &right.h;
-        let homogeneous = homogeneous_hll_tensor(
-            c,
-            &left,
-            &right,
-            self.definition.config.gravity,
-            &self.definition.config.wave_config(),
+        let homogeneous = if len > 0 {
+            Some(homogeneous_hll_tensor(
+                c,
+                &narrow_face(&left, start, len)?,
+                &narrow_face(&right, start, len)?,
+                self.definition.config.gravity,
+                &self.definition.config.wave_config(),
+            )?)
+        } else {
+            None
+        };
+        let numerical_water = homogeneous
+            .as_ref()
+            .map(|flux| {
+                let water = c.mul(&flux.shared[0], &face_width.narrow(0, start, len)?)?;
+                let required = c.gt(&c.abs(&flux.shared[0])?, &self.constant(&water, 0.0)?)?;
+                self.represented(&required, &water, "full-width shared water rate")?;
+                Ok::<_, ChannelError>(water)
+            })
+            .transpose()?;
+        let numerical_momentum = homogeneous
+            .as_ref()
+            .map(|flux| {
+                Ok::<_, ChannelError>(c.mul(&flux.shared[1], &face_width.narrow(0, start, len)?)?)
+            })
+            .transpose()?;
+        let water = self.assemble_boundary_faces(
+            frame.as_ref(),
+            numerical_water.as_ref(),
+            frame.as_ref().map(|f| &f.longitudinal_water),
         )?;
-        let water = c.mul(&homogeneous.shared[0], face_width)?;
-        let momentum = c.mul(&homogeneous.shared[1], face_width)?;
-        let required = c.gt(
-            &c.abs(&homogeneous.shared[0])?,
-            &self.constant(&water, 0.0)?,
+        let momentum = self.assemble_boundary_faces(
+            frame.as_ref(),
+            numerical_momentum.as_ref(),
+            frame.as_ref().map(|f| &f.traces.momentum_flux_m4_per_s2),
         )?;
-        self.represented(&required, &water, "full-width shared water rate")?;
+        let speed = self.assemble_boundary_faces(
+            frame.as_ref(),
+            homogeneous.as_ref().map(|flux| &flux.speed),
+            frame.as_ref().map(|f| &f.traces.signal_speed_bound_m_per_s),
+        )?;
         let left_reconstructed = self.pressure(left_h, face_width)?;
         let right_reconstructed = self.pressure(right_h, face_width)?;
         let pressure_bound = c.maximum(
             &left_reconstructed.unit_bound,
             &right_reconstructed.unit_bound,
         )?;
-        let momentum_bound = self.product_bound(
-            &homogeneous.shared[1],
-            &pressure_bound,
-            face_width,
-            &momentum,
-            "full-width shared momentum rate",
+        let numerical_momentum_bound =
+            if let (Some(homogeneous), Some(momentum)) = (&homogeneous, &numerical_momentum) {
+                Some(self.product_bound(
+                    &homogeneous.shared[1],
+                    &pressure_bound.narrow(0, start, len)?,
+                    &face_width.narrow(0, start, len)?,
+                    momentum,
+                    "full-width shared momentum rate",
+                )?)
+            } else {
+                None
+            };
+        let momentum_bound = self.assemble_boundary_faces(
+            frame.as_ref(),
+            numerical_momentum_bound.as_ref(),
+            frame.as_ref().map(|f| &f.momentum_underflow_bound),
+        )?;
+        let numerical_water_bound = numerical_water
+            .as_ref()
+            .map(|water| self.constant(water, 0.0))
+            .transpose()?;
+        let water_bound = self.assemble_boundary_faces(
+            frame.as_ref(),
+            numerical_water_bound.as_ref(),
+            frame.as_ref().map(|f| &f.water_underflow_bound),
+        )?;
+        let prescribed_water = self.prescribed_water_mask(
+            frame.as_ref(),
+            numerical_water.as_ref(),
+            left_boundary,
+            right_boundary,
         )?;
         let left_original = self.pressure(&reconstructed.left_depth, &reconstructed.left_width)?;
         let right_original =
@@ -115,7 +177,9 @@ where
             }
         }
         Ok(Flux {
-            water_bound: self.constant(&water, 0.0)?,
+            boundary_traces: frame.map(|frame| frame.traces),
+            prescribed_water,
+            water_bound,
             riemann: None,
             water,
             momentum,
@@ -128,7 +192,7 @@ where
             right_pressure_bound,
             left_reconstructed_pressure_bound: left_reconstructed.bound,
             right_reconstructed_pressure_bound: right_reconstructed.bound,
-            speed: homogeneous.speed,
+            speed,
             internal_speed: None,
         })
     }

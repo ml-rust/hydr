@@ -1,7 +1,7 @@
 use super::{
     ChannelError, ChannelForcingInterval, ChannelReach, ChannelStep, ChannelStepDiagnostics,
-    accounting::Impulses, engine::Accepted, forcing::BoundChannelForcing,
-    interval::IntervalControl, receipt::LastInterval,
+    accounting::Impulses, boundary::assembly::is_scalar, engine::Accepted,
+    forcing::BoundChannelForcing, interval::IntervalControl, receipt::LastInterval,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -180,7 +180,7 @@ where
                 }
                 Err(error) => return Err(error),
             };
-            let candidate_cfl = if prepared.has_nonzero_values {
+            let mut candidate_cfl = if prepared.has_nonzero_values {
                 let speed =
                     match context.candidate_speed(&candidate_fields, &forcing.left, &forcing.right)
                     {
@@ -212,7 +212,36 @@ where
                 Err(error) => return Err(error),
             };
             let friction = c.sub(&momentum, &application.momentum)?;
-            context.fields(&application.volume, &momentum)?;
+            let has_scalar_boundary = is_scalar(&forcing.left) || is_scalar(&forcing.right);
+            let final_fields = match context.fields(&application.volume, &momentum) {
+                Ok(fields) => fields,
+                Err(error @ ChannelError::Numerical { .. }) if has_scalar_boundary => {
+                    reason = error.to_string();
+                    dt = control.shorten(dt, dt * 0.5, retries, reason.clone())?;
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            if has_scalar_boundary {
+                let speed =
+                    match context.candidate_speed(&final_fields, &forcing.left, &forcing.right) {
+                        Ok(speed) => speed,
+                        Err(error @ ChannelError::Numerical { .. }) => {
+                            reason = error.to_string();
+                            dt = control.shorten(dt, dt * 0.5, retries, reason.clone())?;
+                            continue;
+                        }
+                        Err(error) => return Err(error),
+                    };
+                let limit = context.cfl_limit(&speed.outer, speed.internal.as_ref())?;
+                if dt > limit {
+                    reason =
+                        format!("postfriction scalar boundary CFL={limit} is below duration={dt}");
+                    dt = control.shorten(dt, 0.95 * limit, retries, reason.clone())?;
+                    continue;
+                }
+                candidate_cfl = Some(candidate_cfl.map_or(limit, |source| source.min(limit)));
+            }
             let lateral = context
                 .lateral
                 .finalize_state(&prepared, application.water_assembly_charge_m3)?;
@@ -245,6 +274,7 @@ where
                 ChannelError::numerical("channel accepted count overflows: start another run")
             })?;
             let scalar = ChannelStepDiagnostics {
+                boundary_traces: [None, None],
                 riemann: None,
                 start_s: self.time(),
                 end_s: end,
@@ -287,6 +317,7 @@ where
                 requested_end: requested_end_s,
                 scalar,
                 riemann: flux.riemann,
+                boundary_traces: flux.boundary_traces,
                 face_volume: transport.face_volume,
                 face_momentum: transport.face_momentum,
                 left_pressure: transport.left_pressure,

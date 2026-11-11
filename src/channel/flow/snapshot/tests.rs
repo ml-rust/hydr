@@ -63,6 +63,17 @@ fn restoration_retains_the_destination_configured_client() -> Result<(), Channel
         },
     )?
     .next;
+    let original_package = source.snapshot_data()?;
+    let mut altered_config = original_package.clone();
+    altered_config.definition.config.boundary.velocity_relative = 2e-12;
+    assert!(destination.import_snapshot(&altered_config).is_err());
+    let mut forged = original_package.clone();
+    let interval = forged
+        .last_interval
+        .as_mut()
+        .ok_or_else(|| ChannelError::input("test interval absent: retain the accepted step"))?;
+    interval.diagnostics.boundary_traces[0] = Some(trace());
+    assert!(destination.import_snapshot(&forged).is_err());
     let context = Arc::clone(&destination.context);
     let trusted = destination.restore(&source.snapshot())?;
     let cold = destination.import_snapshot(&source.snapshot_data()?)?;
@@ -184,4 +195,88 @@ fn triangular_restoration_rejects_a_different_reconstruction() -> Result<(), Cha
             .is_err()
     );
     Ok(())
+}
+
+fn trace() -> crate::channel::ChannelBoundaryTrace {
+    crate::channel::ChannelBoundaryTrace {
+        depth_m: 0.0,
+        area_m2: 0.0,
+        outward_velocity_m_per_s: 0.0,
+        outward_discharge_m3_per_s: 0.0,
+        momentum_flux_m4_per_s2: 0.0,
+        signal_speed_bound_m_per_s: 0.0,
+        velocity_compatibility_abs_bound_m_per_s: 0.0,
+        water_compatibility_abs_bound_m3_per_s: 0.0,
+        momentum_compatibility_abs_bound_m4_per_s2: 0.0,
+        water_flux_width_m3_per_s: 0.0,
+        momentum_flux_width_m4_per_s2: 0.0,
+        cap_compatibility_approximation: false,
+        root_iterations: 3,
+    }
+}
+
+#[test]
+fn boundary_receipts_retain_every_field_and_optional_entry() {
+    let original = trace();
+    assert!(super::check::boundary_trace(None, None));
+    assert!(super::check::boundary_trace(
+        Some(&original),
+        Some(&original)
+    ));
+    assert!(!super::check::boundary_trace(None, Some(&original)));
+    assert!(!super::check::boundary_trace(Some(&original), None));
+    for index in 0..13 {
+        let mut changed = original.clone();
+        match index {
+            0 => changed.depth_m = -0.0,
+            1 => changed.area_m2 = -0.0,
+            2 => changed.outward_velocity_m_per_s = -0.0,
+            3 => changed.outward_discharge_m3_per_s = -0.0,
+            4 => changed.momentum_flux_m4_per_s2 = -0.0,
+            5 => changed.signal_speed_bound_m_per_s = -0.0,
+            6 => changed.velocity_compatibility_abs_bound_m_per_s = -0.0,
+            7 => changed.water_compatibility_abs_bound_m3_per_s = -0.0,
+            8 => changed.momentum_compatibility_abs_bound_m4_per_s2 = -0.0,
+            9 => changed.water_flux_width_m3_per_s = -0.0,
+            10 => changed.momentum_flux_width_m4_per_s2 = -0.0,
+            11 => changed.cap_compatibility_approximation = true,
+            _ => changed.root_iterations += 1,
+        }
+        assert!(!super::check::boundary_trace(
+            Some(&original),
+            Some(&changed)
+        ));
+    }
+}
+
+#[test]
+fn scalar_forcing_identity_retains_policy_target_bits() {
+    let forcing = ChannelForcingInterval {
+        start_s: 0.0,
+        end_s: 1.0,
+        left: ChannelBoundary::Stage { elevation_m: 0.0 },
+        right: ChannelBoundary::Discharge {
+            discharge_m3_per_s: 0.0,
+        },
+        lateral_inputs: vec![],
+    };
+    assert!(super::check::forcing(&forcing, &forcing));
+    for index in 0..4 {
+        let mut changed = forcing.clone();
+        match index {
+            0 => changed.left = ChannelBoundary::Stage { elevation_m: -0.0 },
+            1 => {
+                changed.right = ChannelBoundary::Discharge {
+                    discharge_m3_per_s: -0.0,
+                }
+            }
+            2 => {
+                changed.left = ChannelBoundary::Discharge {
+                    discharge_m3_per_s: 0.0,
+                }
+            }
+            _ => changed.right = ChannelBoundary::Stage { elevation_m: 0.0 },
+        }
+        assert!(!super::check::forcing(&forcing, &changed));
+    }
 }

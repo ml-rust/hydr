@@ -49,6 +49,16 @@ pub struct ChannelInitialState {
 /// Endpoint policy using the declared section and adjacent bed elevation.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ChannelBoundary {
+    /// Held water elevation in the reach datum.
+    Stage {
+        /// Water elevation in metres.
+        elevation_m: f64,
+    },
+    /// Held full-section discharge, positive along the increasing longitudinal coordinate.
+    Discharge {
+        /// Original discharge operand in m³/s.
+        discharge_m3_per_s: f64,
+    },
     /// Genuine impermeable wall, implemented by reflecting longitudinal velocity.
     Wall,
     /// Held exterior reservoir state, without prescribing achieved discharge.
@@ -132,6 +142,7 @@ impl ChannelReachDefinition {
         self.vertical_datum == other.vertical_datum
             && self.provenance == other.provenance
             && self.geometry.same_bits(&other.geometry)
+            && left.boundary.same_bits(&right.boundary)
             && left.max_retries == right.max_retries
             && left.root_iterations == right.root_iterations
             && left.triangular_reconstruction == right.triangular_reconstruction
@@ -275,6 +286,22 @@ pub(super) fn check_endpoint_interval(
         })?;
     for (boundary, index) in [(left, 0), (right, last)] {
         let cell = definition.geometry.cell(index);
+        match boundary {
+            ChannelBoundary::Stage { elevation_m } if !elevation_m.is_finite() => {
+                return Err(ChannelError::input(format!(
+                    "stage elevation_m={elevation_m}: supply a finite elevation in the reach datum"
+                ))
+                .at(index));
+            }
+            ChannelBoundary::Discharge { discharge_m3_per_s }
+                if !discharge_m3_per_s.is_finite() =>
+            {
+                return Err(ChannelError::input(format!(
+                    "discharge_m3_per_s={discharge_m3_per_s}: supply a finite longitudinal discharge"
+                )).at(index));
+            }
+            _ => {}
+        }
         if let ChannelBoundary::Exterior {
             depth_m,
             velocity_m_per_s,
@@ -350,4 +377,10 @@ fn check_text(name: &str, value: &str) -> Result<(), ChannelError> {
         )));
     }
     Ok(())
+}
+
+impl ChannelBoundary {
+    pub(super) fn is_scalar(&self) -> bool {
+        matches!(self, Self::Stage { .. } | Self::Discharge { .. })
+    }
 }

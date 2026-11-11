@@ -83,7 +83,7 @@ where
     Ok((sl, sr))
 }
 
-pub(super) fn shock_speed<R, C>(
+pub(crate) fn shock_speed<R, C>(
     client: &C,
     upper: &Tensor<R>,
     h: &Tensor<R>,
@@ -105,7 +105,7 @@ where
     Ok(speed)
 }
 
-pub(super) fn curve<R, C>(
+pub(crate) fn curve<R, C>(
     client: &C,
     h: &Tensor<R>,
     reference: &Tensor<R>,

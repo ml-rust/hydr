@@ -1,6 +1,6 @@
 use super::super::{
     ChannelBoundary, ChannelError, ChannelTriangularReconstruction, admission::Fields,
-    context::Context, geometry::TriangleGeometry,
+    boundary::EndpointInterior, context::Context, geometry::TriangleGeometry,
 };
 use numr::{
     dtype::DType,
@@ -107,6 +107,18 @@ where
         })
     }
 
+    pub(super) fn triangular_endpoint_interior(
+        &self,
+        faces: &TriangularFaces<R>,
+    ) -> Result<EndpointInterior<R>, ChannelError> {
+        Ok(EndpointInterior {
+            area: self.endpoint_pair(&faces.right.area, &faces.left.area)?,
+            discharge: self.endpoint_pair(&faces.right.discharge, &faces.left.discharge)?,
+            depth: self.endpoint_pair(&faces.right.depth, &faces.left.depth)?,
+            velocity: self.endpoint_pair(&faces.right.velocity, &faces.left.velocity)?,
+        })
+    }
+
     fn triangular_exterior(
         &self,
         geometry: &TriangleGeometry<R>,
@@ -118,6 +130,9 @@ where
         let area = area_field.narrow(0, index, 1)?;
         let discharge = discharge_field.narrow(0, index, 1)?;
         match boundary {
+            ChannelBoundary::Stage { .. } | ChannelBoundary::Discharge { .. } => {
+                Ok((area, discharge))
+            }
             ChannelBoundary::Wall => Ok((area, self.client.neg(&discharge)?)),
             ChannelBoundary::Exterior {
                 depth_m,
@@ -142,4 +157,17 @@ where
             }
         }
     }
+}
+
+pub(super) fn narrow_face<R: Runtime<DType = DType>>(
+    face: &Face<R>,
+    start: usize,
+    len: usize,
+) -> Result<Face<R>, ChannelError> {
+    Ok(Face {
+        area: face.area.narrow(0, start, len)?,
+        discharge: face.discharge.narrow(0, start, len)?,
+        depth: face.depth.narrow(0, start, len)?,
+        velocity: face.velocity.narrow(0, start, len)?,
+    })
 }

@@ -20,3 +20,5 @@ pub(crate) use boundary::{
 pub(crate) use tensor_flux::hydrostatic_hll_tensor;
 pub(crate) use tensor_hll::{homogeneous_hll_tensor, homogeneous_wave_speed_tensor};
 pub(crate) use tensor_types::TensorFaceState;
+
+pub(crate) use tensor_wave::curve;

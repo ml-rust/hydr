@@ -1,10 +1,14 @@
 use super::super::{
-    ChannelBoundary, ChannelError, admission::Fields, context::Context, geometry::TriangleGeometry,
+    ChannelBoundary, ChannelError,
+    admission::Fields,
+    boundary::assembly::{is_scalar, numerical_range},
+    context::Context,
+    geometry::TriangleGeometry,
     reconstruction::CflSpeeds,
 };
 use super::{
     envelope::{lower, upper},
-    faces::Face,
+    faces::{Face, narrow_face},
 };
 use numr::{
     dtype::DType,
@@ -14,6 +18,7 @@ use numr::{
     runtime::Runtime,
     tensor::Tensor,
 };
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
 pub(super) struct WaveBounds<R: Runtime<DType = DType>> {
     pub lower: Tensor<R>,
@@ -41,7 +46,8 @@ where
         + ScalarOps<R>
         + ShapeOps<R>
         + TwoSumOps<R>
-        + UnaryOps<R>,
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>,
 {
     pub(in crate::channel::flow) fn triangular_speed(
         &self,
@@ -51,6 +57,35 @@ where
         right: &ChannelBoundary,
     ) -> Result<CflSpeeds<R>, ChannelError> {
         let faces = self.triangular_faces(geometry, fields, left, right)?;
+        if is_scalar(left) || is_scalar(right) {
+            let frame = self.scalar_boundary_frame(
+                &self.triangular_endpoint_interior(&faces)?,
+                left,
+                right,
+            )?;
+            let (start, len) = numerical_range(self.count(), left, right);
+            let numerical = if len > 0 {
+                let (sl, sr) = self.triangular_bounds(
+                    geometry,
+                    &narrow_face(&faces.left, start, len)?,
+                    &narrow_face(&faces.right, start, len)?,
+                )?;
+                Some(
+                    self.client
+                        .maximum(&self.client.abs(&sl)?, &self.client.abs(&sr)?)?,
+                )
+            } else {
+                None
+            };
+            return Ok(CflSpeeds {
+                outer: self.assemble_boundary_faces(
+                    frame.as_ref(),
+                    numerical.as_ref(),
+                    frame.as_ref().map(|f| &f.traces.signal_speed_bound_m_per_s),
+                )?,
+                internal: faces.internal_speed,
+            });
+        }
         let (sl, sr) = self.triangular_bounds(geometry, &faces.left, &faces.right)?;
         Ok(CflSpeeds {
             outer: self

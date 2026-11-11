@@ -45,18 +45,62 @@ The maximum depth limits the supported geometry. Hydr rejects unresolved positiv
 
 ## Choose both endpoint conditions
 
-Supply both ends through `ChannelForcingInterval`. Its endpoint states remain constant over the supplied time interval.
+Supply both endpoints through `ChannelForcingInterval`. Keep the supplied values constant throughout the interval.
+
+A boundary trace gives the depth and velocity used to calculate flow across an endpoint.
 
 | Policy | Required input | Meaning |
 | --- | --- | --- |
 | `Wall` | A genuine impermeable end | Reflects flow and transfers no water across that end |
 | `Exterior` | Depth and longitudinal velocity | Describes exterior water using the declared endpoint section and bed |
+| `Stage { elevation_m }` | Water-surface elevation in the reach datum | Solves a compatible wet-subcritical trace velocity |
+| `Discharge { discharge_m3_per_s }` | Full-section longitudinal discharge in m³/s | Solves compatible wet-subcritical depth and velocity |
 
 Exterior depth uses metres above the local bed. Exterior velocity uses m/s in the channel's positive direction.
 
 An exterior state does not prescribe achieved discharge. The numerical interface calculation determines that discharge from both sides.
 
 Missing outlet information requires corrected inputs. A wall cannot replace an unknown outlet.
+
+### Use stage and discharge within their admitted regime
+
+Stage and Discharge each prescribe one boundary quantity. Both require wet interior water and wet boundary traces. Flow speeds must remain below local gravity-wave speeds.
+
+Hydr uses the interior flow to determine the missing boundary value. The compatible wave must travel into the reach.
+
+Stage uses absolute elevation in the declared datum. Depth equals elevation minus the endpoint bed. Discharge uses the same longitudinal sign as cell results and exterior velocity.
+
+| Endpoint | Positive discharge | Negative discharge |
+| --- | --- | --- |
+| Left | Enters the reach | Leaves the reach |
+| Right | Leaves the reach | Enters the reach |
+
+Flow reversal remains supported inside the wet-subcritical branch. States outside that resolved branch reject.
+
+Requests outside the certified range reject. Unresolved calculations reject unless the cap approximation below applies.
+
+Hydr inserts the compatible physical endpoint flux directly. Prescribed discharge retains the original operand instead of reconstructing it through width or area.
+
+Fresh scalar traces participate in every retry and the final state check after friction. Their limits also restrict source-created candidate states. The reported candidate CFL includes both checks when both apply.
+
+Discharge accepts held rates. Integrated endpoint volumes remain unsupported.
+
+### Read scalar compatibility controls
+
+`ChannelConfig.boundary` contains `ChannelBoundaryConfig`. These controls limit mismatches between the computed trace and the interior wave relation. Conservation allowances and flux-width budgets remain separate.
+
+| Field | Default | Quantity |
+| --- | --- | --- |
+| `discharge_absolute_m3_per_s` | `1e-12 m³/s` | Absolute discharge mismatch allowance |
+| `discharge_relative` | `1e-12` | Relative discharge mismatch allowance |
+| `momentum_absolute_m4_per_s2` | `1e-12 m⁴/s²` | Absolute momentum-flux mismatch allowance |
+| `momentum_relative` | `1e-12` | Relative momentum-flux mismatch allowance |
+| `velocity_relative` | `1e-12` | Relative velocity mismatch allowance |
+| `critical_relative` | `64 × f64::EPSILON` | Minimum relative gap between flow speed and wave speed |
+
+Each discharge or momentum budget adds absolute and relative allowances at the corresponding physical scale. The velocity allowance uses the largest flow or gravity-wave speed magnitude at either state. No absolute velocity floor applies.
+
+Controls must be finite and nonnegative. Each discharge/momentum pair requires a positive value. Velocity tolerance remains positive. Critical separation lies strictly between zero and one.
 
 ## Declare lateral water inputs
 
@@ -146,9 +190,30 @@ Lateral receipts retain original inputs and accepted volumes. They report applie
 
 A zero withdrawal from a dry cell has no applied velocity.
 
-### Read triangular flux accuracy
+### Inspect scalar endpoint receipts
 
-The accepted interval's `ChannelStepDiagnostics.riemann` contains `Some(ChannelRiemannDiagnostics)` for triangular intervals. Rectangular HLL intervals return `None`.
+`ChannelStepDiagnostics.boundary_traces` contains left/right optional `ChannelBoundaryTrace` values. Stage and Discharge produce traces. Wall and Exterior entries remain absent.
+
+These traces describe the accepted interval's flux calculation.
+
+| Receipt group | Recorded quantities |
+| --- | --- |
+| Physical trace | Depth, area, outward velocity/discharge, physical momentum flux, and signal-speed bound |
+| Compatibility | Velocity mismatch and induced water/momentum mismatch bounds |
+| Flux accuracy | Water/momentum flux widths and maximum contributing root iterations |
+| Cap status | `cap_compatibility_approximation` marks tolerance-based cap admission |
+
+Receipt discharge uses the outward sign. This differs from the longitudinal sign of the supplied Discharge operand. Prescribed discharge has zero water-flux width.
+
+A rounded discharge can fall inside a certified uncertainty band at the original geometry cap. Approximate admission keeps the original discharge and reports bounded compatibility mismatches. Both delivered and compatible velocities must remain strictly subcritical.
+
+An approximate cap trace does not establish an exact cap root. Certified targets outside the cap range reject. Compatibility bounds never enlarge conservation allowances.
+
+### Read flux accuracy
+
+Triangular intervals report face-flux uncertainty in `ChannelStepDiagnostics.riemann`. Rectangular intervals return `None`.
+
+Scalar boundary receipts report endpoint flux widths for either shape. All use the same budgets below.
 
 | Diagnostic | Meaning |
 | --- | --- |
@@ -198,7 +263,7 @@ Construct the destination with the same definition, config, and original initial
 | In-memory checkpoint on the same device | `snapshot()` | `restore(&snapshot)` |
 | Application-owned persistence | `snapshot_data()?` | `import_snapshot(&data)?` |
 
-Both restoration paths retain the destination's configured client. Importing saved data recalculates the complete last interval, including lateral inputs, counters, and triangular flux certificates.
+Both restoration paths retain the destination's configured client. Importing saved data recalculates the complete last interval, including lateral inputs, counters, scalar traces, and triangular flux certificates.
 
 Geometry variants and original geometry bits bind both restart paths. Changed triangular slopes or bed bits reject restoration. Equal area laws do not make different bank declarations interchangeable.
 
@@ -215,7 +280,7 @@ The solver uses finite volumes and forward Euler time integration. It represents
 | Part | Rectangular reach | Prismatic triangular reach |
 | --- | --- | --- |
 | Pressure | [Roberts–Wilson reconstruction](https://journal.austms.org.au/ojs/index.php/ANZIAMJ/article/view/3948/1542) balances bed and width forces at rest | Hydrostatic pressure is `p = g A h / 3` on the common bed |
-| Transport | Width-aware HLL with bracketed wave bounds | Complete barotropic Godunov sampling at the stationary interface |
+| Interior transport | Width-aware HLL with bracketed wave bounds | Complete barotropic Godunov sampling at the stationary interface |
 | Step size | Width-aware wave limit | Reconstructed half-cell CFL for `LimitedLinear`, full-cell CFL for `FirstOrderReference` |
 | Friction | Wetted perimeter includes the bed and both vertical sides | Wetted perimeter uses both declared bank slopes |
 
@@ -252,7 +317,7 @@ Numr supplies runtime storage and tensor operations. Solvr supplies generic root
 
 ### Bound the triangular timestep
 
-Sound speed is `c = sqrt(g h / 2)`. Hydr encloses wave speeds using invariant-region bounds and a lower sound-speed floor. Certified expanding states use their outer rarefaction heads.
+Gravity-wave speed is `c = sqrt(g h / 2)`. Hydr encloses wave speeds using invariant-region bounds and a lower wave-speed floor. Certified expanding states use their outer rarefaction heads.
 
 These proved wave bounds determine CFL limits only. The Godunov sample determines the triangular flux.
 
@@ -268,7 +333,7 @@ The solver represents hydrostatic, one-dimensional shallow-water flow. It exclud
 
 - Geometry: Rectangular width and bed can vary between cells. Triangles require one common bed and bank slopes.
 - Profiles: Trapezoids, mixed shapes, and varying longitudinal triangular profiles remain unsupported. Surveyed profiles support [static queries](cross-sections.md) only.
-- Boundaries: Only walls and complete exterior states are supported. Scalar stage/discharge and transmissive channel policies remain unsupported.
+- Boundaries: Stage and Discharge require resolved wet-subcritical traces. Complete exterior data supports other flow regimes. Use walls only for physical closures. Transmissive policies remain unsupported.
 - Connections: Junctions, structures, and coordinated exchange with other components remain unsupported.
 - Losses: Separate abrupt contraction and expansion losses remain unsupported.
 - Drainage: This solver supplies no SWMM drainage, surcharge, or pressurized-pipe model.

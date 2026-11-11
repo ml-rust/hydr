@@ -2,7 +2,10 @@ use super::super::{
     ChannelBoundary, ChannelError, admission::Fields, context::Context, flux::Flux,
     geometry::TriangleGeometry,
 };
-use super::godunov::RiemannInput;
+use super::{faces::narrow_face, godunov::RiemannInput};
+use crate::channel::flow::{
+    boundary::assembly::numerical_range, riemann_diagnostics::RiemannDiagnosticState,
+};
 use numr::{
     dtype::DType,
     ops::{
@@ -33,28 +36,94 @@ where
     ) -> Result<Flux<R>, ChannelError> {
         let c = &self.client;
         let faces = self.triangular_faces(geometry, fields, left_boundary, right_boundary)?;
-        let left = faces.left;
-        let right = faces.right;
-        let (sl, sr) = self.triangular_bounds(geometry, &left, &right)?;
-        let ls = self.triangular_side_bounds(geometry, &left)?;
-        let rs = self.triangular_side_bounds(geometry, &right)?;
-        let sample = self.triangular_godunov(
-            geometry,
-            RiemannInput {
-                left: &left,
-                right: &right,
-                left_bounds: &ls,
-                right_bounds: &rs,
-                lower_signal: &sl,
-                upper_signal: &sr,
-            },
+        let frame = self.scalar_boundary_frame(
+            &self.triangular_endpoint_interior(&faces)?,
+            left_boundary,
+            right_boundary,
         )?;
-        let water = sample.water;
-        let momentum = sample.momentum;
+        let (start, len) = numerical_range(self.count(), left_boundary, right_boundary);
+        let numerical = if len > 0 {
+            let left = narrow_face(&faces.left, start, len)?;
+            let right = narrow_face(&faces.right, start, len)?;
+            let (sl, sr) = self.triangular_bounds(geometry, &left, &right)?;
+            let ls = self.triangular_side_bounds(geometry, &left)?;
+            let rs = self.triangular_side_bounds(geometry, &right)?;
+            let sample = self.triangular_godunov(
+                geometry,
+                RiemannInput {
+                    left: &left,
+                    right: &right,
+                    left_bounds: &ls,
+                    right_bounds: &rs,
+                    lower_signal: &sl,
+                    upper_signal: &sr,
+                },
+            )?;
+            Some((sample, c.maximum(&c.abs(&sl)?, &c.abs(&sr)?)?))
+        } else {
+            None
+        };
+        let water = self.assemble_boundary_faces(
+            frame.as_ref(),
+            numerical.as_ref().map(|(sample, _)| &sample.water),
+            frame.as_ref().map(|f| &f.longitudinal_water),
+        )?;
+        let momentum = self.assemble_boundary_faces(
+            frame.as_ref(),
+            numerical.as_ref().map(|(sample, _)| &sample.momentum),
+            frame.as_ref().map(|f| &f.traces.momentum_flux_m4_per_s2),
+        )?;
+        let speed = self.assemble_boundary_faces(
+            frame.as_ref(),
+            numerical.as_ref().map(|(_, speed)| speed),
+            frame.as_ref().map(|f| &f.traces.signal_speed_bound_m_per_s),
+        )?;
+        let water_bound = self.assemble_boundary_faces(
+            frame.as_ref(),
+            numerical.as_ref().map(|(sample, _)| &sample.water_bound),
+            frame.as_ref().map(|f| &f.water_underflow_bound),
+        )?;
+        let momentum_bound = self.assemble_boundary_faces(
+            frame.as_ref(),
+            numerical.as_ref().map(|(sample, _)| &sample.momentum_bound),
+            frame.as_ref().map(|f| &f.momentum_underflow_bound),
+        )?;
+        let water_flux_width = self.assemble_boundary_faces(
+            frame.as_ref(),
+            numerical
+                .as_ref()
+                .map(|(sample, _)| &sample.diagnostics.water_flux_width),
+            frame.as_ref().map(|f| &f.traces.water_flux_width_m3_per_s),
+        )?;
+        let momentum_flux_width = self.assemble_boundary_faces(
+            frame.as_ref(),
+            numerical
+                .as_ref()
+                .map(|(sample, _)| &sample.diagnostics.momentum_flux_width),
+            frame
+                .as_ref()
+                .map(|f| &f.traces.momentum_flux_width_m4_per_s2),
+        )?;
+        let root_iterations = numerical
+            .as_ref()
+            .map_or(0, |(sample, _)| sample.diagnostics.root_iterations)
+            .max(
+                frame
+                    .as_ref()
+                    .and_then(|f| f.traces.root_iterations.iter().copied().max())
+                    .unwrap_or(0),
+            );
         let zero = self.constant(&water, 0.0)?;
-        let (left_pressure, left_pressure_bound) = self.triangular_pressure_value(&left, &zero)?;
+        let (left_pressure, left_pressure_bound) =
+            self.triangular_pressure_value(&faces.left, &zero)?;
         let (right_pressure, right_pressure_bound) =
-            self.triangular_pressure_value(&right, &zero)?;
+            self.triangular_pressure_value(&faces.right, &zero)?;
+        let prescribed_water = self.prescribed_water_mask(
+            frame.as_ref(),
+            numerical.as_ref().map(|(sample, _)| &sample.water),
+            left_boundary,
+            right_boundary,
+        )?;
         for (boundary, index) in [(left_boundary, 0), (right_boundary, self.count())] {
             if matches!(boundary, ChannelBoundary::Wall)
                 && water.narrow(0, index, 1)?.item::<f64>()? != 0.0
@@ -64,15 +133,20 @@ where
                 )));
             }
         }
-        let speed = c.maximum(&c.abs(&sl)?, &c.abs(&sr)?)?;
         Ok(Flux {
+            boundary_traces: frame.map(|frame| frame.traces),
+            prescribed_water,
             water,
             momentum,
             speed,
             internal_speed: faces.internal_speed,
-            momentum_bound: sample.momentum_bound,
-            water_bound: sample.water_bound,
-            riemann: Some(sample.diagnostics),
+            momentum_bound,
+            water_bound,
+            riemann: Some(RiemannDiagnosticState {
+                water_flux_width,
+                momentum_flux_width,
+                root_iterations,
+            }),
             left_pressure: zero.clone(),
             right_pressure: zero.clone(),
             left_pressure_bound: zero.clone(),

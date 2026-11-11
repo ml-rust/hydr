@@ -26,6 +26,7 @@ pub(super) struct LastInterval<R: Runtime<DType = DType>> {
     pub requested_end: f64,
     pub scalar: ChannelStepDiagnostics,
     pub riemann: Option<RiemannDiagnosticState<R>>,
+    pub boundary_traces: Option<std::sync::Arc<super::boundary::types::NativeBoundaryTraces<R>>>,
     pub face_volume: Tensor<R>,
     pub face_momentum: Tensor<R>,
     pub left_pressure: Tensor<R>,
@@ -58,6 +59,10 @@ where
             .as_ref()
             .map(|state| state.project(client))
             .transpose()?;
+        result.boundary_traces = match &self.boundary_traces {
+            Some(traces) => traces.project()?,
+            None => [None, None],
+        };
         result.face_volume_m3 = self.face_volume.try_to_vec::<f64>()?;
         result.face_momentum_m4_per_s = self.face_momentum.try_to_vec::<f64>()?;
         result.left_pressure_impulse_m4_per_s = self.left_pressure.try_to_vec::<f64>()?;

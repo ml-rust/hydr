@@ -13,6 +13,8 @@ pub enum ChannelTriangularReconstruction {
 /// Numerical controls for a channel reach.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChannelConfig {
+    /// Scalar endpoint compatibility controls.
+    pub boundary: super::ChannelBoundaryConfig,
     /// Triangular spatial reconstruction. Rectangular reaches retain their existing method.
     pub triangular_reconstruction: ChannelTriangularReconstruction,
     /// Gravity in m/s².
@@ -51,6 +53,7 @@ impl Default for ChannelConfig {
     fn default() -> Self {
         let config = SolverConfig::default();
         Self {
+            boundary: super::ChannelBoundaryConfig::default(),
             triangular_reconstruction: ChannelTriangularReconstruction::LimitedLinear,
             gravity: config.gravity,
             cfl: config.cfl,
@@ -73,6 +76,7 @@ impl Default for ChannelConfig {
 
 impl ChannelConfig {
     pub(super) fn check(&self) -> Result<(), ChannelError> {
+        self.boundary.check()?;
         for (name, value) in [
             ("gravity", self.gravity),
             ("cfl", self.cfl),
