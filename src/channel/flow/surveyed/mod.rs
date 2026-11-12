@@ -6,6 +6,7 @@ pub(crate) mod config;
 pub(crate) mod controller;
 mod curve_evaluation;
 pub(crate) mod curves;
+mod depth_potential;
 pub(crate) mod derivatives;
 pub(crate) mod equation_ops;
 pub(crate) mod error;
