@@ -15,6 +15,7 @@ pub(crate) mod potential_difference;
 pub(crate) mod potential_difference_derivatives;
 pub(crate) mod potential_difference_lanes;
 pub(crate) mod pressure;
+pub(crate) mod pressure_segments;
 mod refinement;
 mod reflection;
 pub(crate) mod root_calls;

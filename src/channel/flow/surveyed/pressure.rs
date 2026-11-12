@@ -57,35 +57,10 @@ where
     // Convexity places every pressure secant between the endpoint pressure derivatives, including equality.
     let connected = geometry.at_depth(a, bands, &span, None)?;
     let mut result = scale(a, &connected.hydraulic_depth, gravity)?;
-    let low_column = a.bounds(
-        &low.lower().reshape(&[count, 1])?,
-        &low.upper().reshape(&[count, 1])?,
-    )?;
-    let high_column = a.bounds(
-        &high.lower().reshape(&[count, 1])?,
-        &high.upper().reshape(&[count, 1])?,
-    )?;
-    let d1 = local_depth(a, &low_column, bands)?;
-    let d2 = local_depth(a, &high_column, bands)?;
-    let sum = a.add(&d1, &d2)?;
-    let half_sum = scale(a, &sum, 0.5)?;
-    let slope_half_sum = a.mul(&bands.slope, &half_sum)?;
-    let area_secant = a.add(&bands.start_width, &slope_half_sum)?;
-    let width_half_sum = a.mul(&bands.start_width, &half_sum)?;
-    let base = a.add(&bands.start_area, &width_half_sum)?;
-    let d1_square = a.mul(&d1, &d1)?;
-    let d2_square = a.mul(&d2, &d2)?;
-    let product = a.mul(&d1, &d2)?;
-    let square_sum = a.add(&d1_square, &product)?;
-    let square_sum = a.add(&square_sum, &d2_square)?;
-    let slope_square = a.mul(&bands.slope, &square_sum)?;
-    let sixth = a.div_positive(&slope_square, &Tensor::from_slice(&[6.0], &[], c.device())?)?;
-    let integral_secant = a.add(&base, &sixth)?;
-    let delta = a.sub(&d2, &d1)?;
-    let delta = a.bounds(
-        &c.maximum(delta.lower(), zero.lower())?,
-        &c.maximum(delta.upper(), zero.upper())?,
-    )?;
+    let segments = super::pressure_segments::local_segments(a, bands, &low, &high, &zero)?;
+    let area_secant = segments.area_secant;
+    let integral_secant = segments.integral_secant;
+    let delta = segments.depth_increment;
     let area_increment = a.mul(&delta, &area_secant)?;
     let integral_increment = a.mul(&delta, &integral_secant)?;
     let area_increment = choose(a, &bands.valid, &area_increment, &zero)?;
@@ -124,35 +99,6 @@ where
         result = choose(a, &positive, &local, &result)?;
     }
     Ok(result)
-}
-
-fn local_depth<R>(
-    a: &mut Arithmetic<'_, R>,
-    depth: &Interval<R>,
-    bands: &GatheredBands<R>,
-) -> HydraulicResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    let c = a.client();
-    let zero = scalar(a, 0.0)?;
-    let local = a.sub(depth, &bands.start_depth)?;
-    Ok(a.bounds(
-        &c.maximum(
-            &c.minimum(local.lower(), bands.thickness.lower())?,
-            zero.lower(),
-        )?,
-        &c.maximum(
-            &c.minimum(local.upper(), bands.thickness.upper())?,
-            zero.upper(),
-        )?,
-    )?)
 }
 
 fn column<R>(
