@@ -1,0 +1,290 @@
+pub(crate) struct Profile {
+    pub id: &'static str,
+    pub coordinates: &'static [[u64; 2]],
+    pub cap: u64,
+}
+pub(crate) struct DifferenceCase {
+    pub id: &'static str,
+    pub profile: usize,
+    pub original: u64,
+    pub target: [u64; 2],
+    pub reference: [u64; 2],
+    pub endpoints: [[u64; 2]; 2],
+    pub gate: &'static str,
+}
+pub(crate) const PROFILES: &[Profile] = &[
+    Profile {
+        id: "decimal",
+        coordinates: &[
+            [0xbfd3333333333333, 0x3fe6666666666666],
+            [0x3fb999999999999a, 0x3fb999999999999a],
+            [0x3fe3333333333333, 0x3fb999999999999a],
+            [0x3ffe666666666666, 0x3ff4cccccccccccd],
+        ],
+        cap: 0x3fe6666666666666,
+    },
+    Profile {
+        id: "pointed",
+        coordinates: &[
+            [0xc010000000000000, 0x4010000000000000],
+            [0x0000000000000000, 0x0000000000000000],
+            [0x4020000000000000, 0x4010000000000000],
+        ],
+        cap: 0x4010000000000000,
+    },
+    Profile {
+        id: "rectangle",
+        coordinates: &[
+            [0x0000000000000000, 0x4010000000000000],
+            [0x0000000000000000, 0x0000000000000000],
+            [0x4000000000000000, 0x0000000000000000],
+            [0x4000000000000000, 0x4010000000000000],
+        ],
+        cap: 0x4010000000000000,
+    },
+    Profile {
+        id: "three_bands",
+        coordinates: &[
+            [0xc010000000000000, 0x4010000000000000],
+            [0xc008000000000000, 0x4000000000000000],
+            [0xbff0000000000000, 0x3ff0000000000000],
+            [0x0000000000000000, 0x0000000000000000],
+            [0x3ff0000000000000, 0x0000000000000000],
+            [0x4000000000000000, 0x3ff0000000000000],
+            [0x4010000000000000, 0x4000000000000000],
+            [0x4014000000000000, 0x4010000000000000],
+        ],
+        cap: 0x4010000000000000,
+    },
+    Profile {
+        id: "trapezoid",
+        coordinates: &[
+            [0xc010000000000000, 0x4010000000000000],
+            [0x0000000000000000, 0x0000000000000000],
+            [0x4000000000000000, 0x0000000000000000],
+            [0x4024000000000000, 0x4010000000000000],
+        ],
+        cap: 0x4010000000000000,
+    },
+];
+pub(crate) const CASES: &[DifferenceCase] = &[
+    DifferenceCase {
+        id: "captured_weak_face",
+        profile: 4,
+        original: 0x4024000000000000,
+        target: [0x4023f45a904bb43e, 0x4023f45a904bb43e],
+        reference: [0xbf8053a1eb2f5481, 0xbf8053a1eb2f5480],
+        endpoints: [
+            [0xbf8053a1eb2f5481, 0xbf8053a1eb2f5480],
+            [0xbf8053a1eb2f5481, 0xbf8053a1eb2f5480],
+        ],
+        gate: "common_band_width",
+    },
+    DifferenceCase {
+        id: "reverse_orientation",
+        profile: 4,
+        original: 0x4023f45a904bb43e,
+        target: [0x4024000000000000, 0x4024000000000000],
+        reference: [0x3f8053a1eb2f5480, 0x3f8053a1eb2f5481],
+        endpoints: [
+            [0x3f8053a1eb2f5480, 0x3f8053a1eb2f5481],
+            [0x3f8053a1eb2f5480, 0x3f8053a1eb2f5481],
+        ],
+        gate: "common_band_width",
+    },
+    DifferenceCase {
+        id: "equal_area",
+        profile: 4,
+        original: 0x4024000000000000,
+        target: [0x4024000000000000, 0x4024000000000000],
+        reference: [0x0000000000000000, 0x0000000000000000],
+        endpoints: [
+            [0x0000000000000000, 0x0000000000000000],
+            [0x0000000000000000, 0x0000000000000000],
+        ],
+        gate: "exact_zero",
+    },
+    DifferenceCase {
+        id: "one_ulp_below",
+        profile: 4,
+        original: 0x4024000000000000,
+        target: [0x4023ffffffffffff, 0x4023ffffffffffff],
+        reference: [0xbcc66953311f8a2f, 0xbcc66953311f8a2e],
+        endpoints: [
+            [0xbcc66953311f8a2f, 0xbcc66953311f8a2e],
+            [0xbcc66953311f8a2f, 0xbcc66953311f8a2e],
+        ],
+        gate: "common_band_width",
+    },
+    DifferenceCase {
+        id: "one_ulp_above",
+        profile: 4,
+        original: 0x4024000000000000,
+        target: [0x4024000000000001, 0x4024000000000001],
+        reference: [0x3cc66953311f8a2d, 0x3cc66953311f8a2e],
+        endpoints: [
+            [0x3cc66953311f8a2d, 0x3cc66953311f8a2e],
+            [0x3cc66953311f8a2d, 0x3cc66953311f8a2e],
+        ],
+        gate: "common_band_width",
+    },
+    DifferenceCase {
+        id: "straddling_original",
+        profile: 4,
+        original: 0x4024000000000000,
+        target: [0x4023ffffffffffff, 0x4024000000000001],
+        reference: [0xbcc66953311f8a2f, 0x3cc66953311f8a2e],
+        endpoints: [
+            [0xbcc66953311f8a2f, 0xbcc66953311f8a2e],
+            [0x3cc66953311f8a2d, 0x3cc66953311f8a2e],
+        ],
+        gate: "common_band_width",
+    },
+    DifferenceCase {
+        id: "positive_near_dry_rectangle",
+        profile: 2,
+        original: 0x05cd0b15a491eb84,
+        target: [0x05cd0bd3fb23dac6, 0x05cd0c9251b5ca07],
+        reference: [0x221ba7906f349711, 0x222ba763217f3217],
+        endpoints: [
+            [0x221ba7906f349711, 0x221ba7906f349712],
+            [0x222ba763217f3216, 0x222ba763217f3217],
+        ],
+        gate: "common_band_width",
+    },
+    DifferenceCase {
+        id: "positive_near_dry_pointed",
+        profile: 1,
+        original: 0x05cd0b15a491eb84,
+        target: [0x05cd0bd3fb23dac6, 0x05cd0c9251b5ca07],
+        reference: [0x30a21a5adc4a6f1f, 0x30b21a2e60773935],
+        endpoints: [
+            [0x30a21a5adc4a6f1f, 0x30a21a5adc4a6f20],
+            [0x30b21a2e60773934, 0x30b21a2e60773935],
+        ],
+        gate: "common_band_width",
+    },
+    DifferenceCase {
+        id: "near_cap",
+        profile: 4,
+        original: 0x403ffd70a3d70a3d,
+        target: [0x403fffffffffffff, 0x403fffffffffffff],
+        reference: [0x3f583f5894bc4c62, 0x3f583f5894bc4c63],
+        endpoints: [
+            [0x3f583f5894bc4c62, 0x3f583f5894bc4c63],
+            [0x3f583f5894bc4c62, 0x3f583f5894bc4c63],
+        ],
+        gate: "common_band_width",
+    },
+    DifferenceCase {
+        id: "decimal_profile",
+        profile: 0,
+        original: 0x3fc999999999999a,
+        target: [0x3fc999ed7c6fbd27, 0x3fc999ed7c6fbd27],
+        reference: [0x3f129897d5b18eaf, 0x3f129897d5b18eb0],
+        endpoints: [
+            [0x3f129897d5b18eaf, 0x3f129897d5b18eb0],
+            [0x3f129897d5b18eaf, 0x3f129897d5b18eb0],
+        ],
+        gate: "common_band_width",
+    },
+    DifferenceCase {
+        id: "ordinary_upper_band",
+        profile: 3,
+        original: 0x4024000000000000,
+        target: [0x4028000000000000, 0x4028000000000000],
+        reference: [0x3fe606005483e177, 0x3fe606005483e178],
+        endpoints: [
+            [0x3fe606005483e177, 0x3fe606005483e178],
+            [0x3fe606005483e177, 0x3fe606005483e178],
+        ],
+        gate: "common_band_width",
+    },
+    DifferenceCase {
+        id: "knot_endpoint",
+        profile: 3,
+        original: 0x3ffe666666666666,
+        target: [0x4000000000000000, 0x4000000000000000],
+        reference: [0x3fc0abcda8382f77, 0x3fc0abcda8382f78],
+        endpoints: [
+            [0x3fc0abcda8382f77, 0x3fc0abcda8382f78],
+            [0x3fc0abcda8382f77, 0x3fc0abcda8382f78],
+        ],
+        gate: "containment_only",
+    },
+    DifferenceCase {
+        id: "knot_overlap",
+        profile: 3,
+        original: 0x3ffe666666666666,
+        target: [0x3fffffffffffffff, 0x4000000000000001],
+        reference: [0x3fc0abcda8382f6d, 0x3fc0abcda8382f8d],
+        endpoints: [
+            [0x3fc0abcda8382f6d, 0x3fc0abcda8382f6e],
+            [0x3fc0abcda8382f8c, 0x3fc0abcda8382f8d],
+        ],
+        gate: "containment_only",
+    },
+    DifferenceCase {
+        id: "knot_crossing",
+        profile: 3,
+        original: 0x3ffe666666666666,
+        target: [0x4000cccccccccccd, 0x400199999999999a],
+        reference: [0x3fd0553b0a6e3258, 0x3fd7fbebd9a8bbd4],
+        endpoints: [
+            [0x3fd0553b0a6e3258, 0x3fd0553b0a6e3259],
+            [0x3fd7fbebd9a8bbd3, 0x3fd7fbebd9a8bbd4],
+        ],
+        gate: "containment_only",
+    },
+    DifferenceCase {
+        id: "dry_target",
+        profile: 4,
+        original: 0x4024000000000000,
+        target: [0x0000000000000000, 0x0000000000000000],
+        reference: [0xc023f57bd9399b52, 0xc023f57bd9399b51],
+        endpoints: [
+            [0xc023f57bd9399b52, 0xc023f57bd9399b51],
+            [0xc023f57bd9399b52, 0xc023f57bd9399b51],
+        ],
+        gate: "containment_only",
+    },
+    DifferenceCase {
+        id: "dry_overlap",
+        profile: 2,
+        original: 0x05cd0b15a491eb84,
+        target: [0x0000000000000000, 0x05cd0b15a491eb84],
+        reference: [0xa300e1218f42ecb2, 0x0000000000000000],
+        endpoints: [
+            [0xa300e1218f42ecb2, 0xa300e1218f42ecb1],
+            [0x0000000000000000, 0x0000000000000000],
+        ],
+        gate: "containment_only",
+    },
+    DifferenceCase {
+        id: "wide_positive_span",
+        profile: 4,
+        original: 0x3ff0000000000000,
+        target: [0x4024000000000000, 0x4024000000000000],
+        reference: [0x4017b25f453223fe, 0x4017b25f453223ff],
+        endpoints: [
+            [0x4017b25f453223fe, 0x4017b25f453223ff],
+            [0x4017b25f453223fe, 0x4017b25f453223ff],
+        ],
+        gate: "containment_only",
+    },
+    DifferenceCase {
+        id: "cap_endpoint",
+        profile: 4,
+        original: 0x403ffd70a3d70a3d,
+        target: [0x4040000000000000, 0x4040000000000000],
+        reference: [0x3f583f5894bc55db, 0x3f583f5894bc55dc],
+        endpoints: [
+            [0x3f583f5894bc55db, 0x3f583f5894bc55dc],
+            [0x3f583f5894bc55db, 0x3f583f5894bc55dc],
+        ],
+        gate: "containment_only",
+    },
+];
+pub(crate) const GRAVITY: u64 = 0x40239eb851eb851f;
+pub(crate) const WATER: [u64; 2] = [0x3fb15448cb49129a, 0x3fb15448cb49129b];
+pub(crate) const MOMENTUM: [u64; 2] = [0x40538f915927cdff, 0x40538f915927ce00];

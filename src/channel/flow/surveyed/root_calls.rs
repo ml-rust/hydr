@@ -11,14 +11,14 @@ use numr::{
 };
 use solvr::{
     integrate::CertifiedSimpsonAlgorithms,
-    optimize::{CertifiedBisectionAlgorithms, CertifiedRootValues, OptimizeError},
+    optimize::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms, OptimizeError},
 };
 
 use super::{
-    curves::{sonic_residual, star_residual},
     error::{HydraulicError, HydraulicResult, checked},
+    root_evaluation::evaluate,
+    star_bracket::bracket_star,
     types::{Oracle, WaveSide},
-    work::QueryWork,
 };
 
 pub(crate) struct RootSet<R: Runtime<DType = DType>> {
@@ -40,12 +40,28 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>
         + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
         + CertifiedSimpsonAlgorithms<R>,
 {
-    let c = oracle.geometry.client();
-    let lower = Tensor::zeros(face_owner.shape(), DType::F64, c.device())?;
-    let upper = Tensor::ones(face_owner.shape(), DType::F64, c.device())?;
-    solve(oracle, face_owner, &lower, &upper, None)
+    let bracket = bracket_star(oracle, face_owner)?;
+    let remaining_points = oracle
+        .config
+        .root
+        .max_points
+        .checked_sub(bracket.callback_points())
+        .ok_or_else(|| HydraulicError::Numerical {
+            context:
+                "Certified star bracket exceeds root.max_points. Review callback point accounting"
+                    .into(),
+        })?;
+    solve(
+        oracle,
+        face_owner,
+        bracket.lower(),
+        bracket.upper(),
+        None,
+        remaining_points,
+    )
 }
 
 pub(crate) fn solve_sonic<R>(
@@ -66,7 +82,14 @@ where
         + CertifiedBisectionAlgorithms<R>
         + CertifiedSimpsonAlgorithms<R>,
 {
-    solve(oracle, face_owner, lower_t, upper_t, Some(side))
+    solve(
+        oracle,
+        face_owner,
+        lower_t,
+        upper_t,
+        Some(side),
+        oracle.config.root.max_points,
+    )
 }
 
 fn solve<R>(
@@ -75,6 +98,7 @@ fn solve<R>(
     lower: &Tensor<R>,
     upper: &Tensor<R>,
     sonic: Option<WaveSide>,
+    max_points: usize,
 ) -> HydraulicResult<RootSet<R>>
 where
     R: Runtime<DType = DType>,
@@ -98,14 +122,13 @@ where
                 section_owner: None,
                 context: "Root admission point count overflows usize. Split the face batch".into(),
             })?;
-    if admission_points > oracle.config.root.max_points {
+    if admission_points > max_points {
         return Err(HydraulicError::Rejected {
             reason: super::error::PrismaticRiemannRejection::WorkLimit,
             query: None,
             section_owner: None,
             context: format!(
-                "Root admission needs {admission_points} points, root.max_points={}. Increase the root budget or split the face batch",
-                oracle.config.root.max_points
+                "Root admission needs {admission_points} points, remaining root.max_points={max_points}. Increase the root budget or split the face batch"
             ),
         });
     }
@@ -138,43 +161,14 @@ where
     })?;
     oracle.work.begin_root()?;
     let cause = Cell::new(None);
+    let mut options = oracle.config.root.clone();
+    options.max_points = max_points;
     let result = c.bisect_certified(
-        |query| {
-            let calculation = (|| {
-                oracle
-                    .work
-                    .charge(QueryWork::Residual, query.point.numel())?;
-                // Solvr owners index this invocation, rather than the original face batch.
-                let faces = c.index_select(face_owner, 0, &query.owner)?;
-                match sonic.as_ref() {
-                    Some(WaveSide::Left) => {
-                        sonic_residual(oracle, WaveSide::Left, &faces, &query.point)
-                    }
-                    Some(WaveSide::Right) => {
-                        sonic_residual(oracle, WaveSide::Right, &faces, &query.point)
-                    }
-                    None => star_residual(oracle, &faces, &query.point),
-                }
-            })();
-            match calculation {
-                Ok(value) => Ok(CertifiedRootValues {
-                    lower: value.lower().clone(),
-                    upper: value.upper().clone(),
-                }),
-                Err(error) => {
-                    let first = cause.take();
-                    cause.set(Some(first.unwrap_or(error)));
-                    Err(numr::error::Error::InvalidArgument {
-                        arg: "surveyed residual",
-                        reason: "Hydraulic callback rejected. Read the retained typed cause".into(),
-                    })
-                }
-            }
-        },
+        |query| evaluate(oracle, face_owner, query, sonic, &cause),
         lower,
         upper,
         &derivative,
-        &oracle.config.root,
+        &options,
     );
     let result = resolve_root(result, cause.take())?;
     oracle.work.finish_root(result.iterations())?;

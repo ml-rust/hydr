@@ -113,7 +113,10 @@ where
     })
 }
 
-fn retain_cause(cause: &Cell<Option<HydraulicError>>, error: HydraulicError) -> IntegrateError {
+pub(super) fn retain_cause(
+    cause: &Cell<Option<HydraulicError>>,
+    error: HydraulicError,
+) -> IntegrateError {
     let first = cause.take();
     cause.set(Some(first.unwrap_or(error)));
     IntegrateError::NumericalError {

@@ -1,7 +1,9 @@
-use super::equation_ops::{choose, hull, nonnegative, reject_mask, scalar, scale, select_interval};
+use super::curve_evaluation::{fan_increment, pair_evaluation, select_state};
+use super::equation_ops::{choose, hull, reject_mask, scalar, scale, select_interval};
 use super::error::{Arithmetic, HydraulicResult, checked};
 use super::integration::potential;
 use super::pressure::{pressure, pressure_secant};
+use super::shock;
 use super::types::{Oracle, SideState, WaveSide};
 use super::work::WorkLedger;
 use super::{PrismaticRiemannConfig, PrismaticRiemannRejection};
@@ -110,32 +112,25 @@ where
             select_side(a, oracle.right, face_owner)?,
         ))
     })?;
-    let phi = potential(
-        oracle.geometry,
-        &bands,
-        &state,
-        oracle.config,
-        oracle.panels,
-        oracle.work,
-    )?;
+    let evaluated = pair_evaluation(oracle, &bands, &state, &left, &right)?;
     checked(c, "surveyed star equation", |a| {
         let left_curve = side_curve(
             a,
-            oracle.geometry,
+            oracle,
             &bands,
             &state,
-            &phi,
+            &evaluated.dry_potential,
+            &evaluated.left_increment,
             &left,
-            oracle.config.gravity_m_per_s2,
         )?;
         let right_curve = side_curve(
             a,
-            oracle.geometry,
+            oracle,
             &bands,
             &state,
-            &phi,
+            &evaluated.dry_potential,
+            &evaluated.right_increment,
             &right,
-            oracle.config.gravity_m_per_s2,
         )?;
         let waves = a.add(&left_curve, &right_curve)?;
         let jump = a.sub(&right.velocity, &left.velocity)?;
@@ -169,32 +164,25 @@ where
             select_side(a, oracle.right, face_owner)?,
         ))
     })?;
-    let phi = potential(
-        oracle.geometry,
-        &bands,
-        &state,
-        oracle.config,
-        oracle.panels,
-        oracle.work,
-    )?;
+    let evaluated = pair_evaluation(oracle, &bands, &state, &left, &right)?;
     checked(c, "surveyed star velocity intersection", |a| {
         let fl = side_curve(
             a,
-            oracle.geometry,
+            oracle,
             &bands,
             &state,
-            &phi,
+            &evaluated.dry_potential,
+            &evaluated.left_increment,
             &left,
-            oracle.config.gravity_m_per_s2,
         )?;
         let fr = side_curve(
             a,
-            oracle.geometry,
+            oracle,
             &bands,
             &state,
-            &phi,
+            &evaluated.dry_potential,
+            &evaluated.right_increment,
             &right,
-            oracle.config.gravity_m_per_s2,
         )?;
         let ul = a.sub(&left.velocity, &fl)?;
         let ur = a.add(&right.velocity, &fr)?;
@@ -237,16 +225,8 @@ where
             select_side(a, selected, face_owner)?,
         ))
     })?;
-    let phi = potential(
-        oracle.geometry,
-        &bands,
-        state,
-        oracle.config,
-        oracle.panels,
-        oracle.work,
-    )?;
+    let difference = fan_increment(oracle, &bands, state, &selected)?;
     checked(c, "surveyed fan velocity", |a| {
-        let difference = a.sub(&phi, &selected.potential)?;
         Ok(match side {
             WaveSide::Left => a.sub(&selected.velocity, &difference)?,
             WaveSide::Right => a.add(&selected.velocity, &difference)?,
@@ -288,12 +268,12 @@ where
 
 fn side_curve<R>(
     a: &mut Arithmetic<'_, R>,
-    geometry: &HydraulicGeometry<R>,
+    oracle: &Oracle<'_, R>,
     bands: &GatheredBands<R>,
     state: &Constitutive<R>,
     phi: &Interval<R>,
+    increment: &Interval<R>,
     side: &SideState<R>,
-    gravity: f64,
 ) -> HydraulicResult<Interval<R>>
 where
     R: Runtime<DType = DType>,
@@ -307,10 +287,9 @@ where
     let c = a.client();
     let zero = scalar(a, 0.0)?;
     let one = scalar(a, 1.0)?;
-    let rare = a.sub(phi, &side.potential)?;
     let rare = a.bounds(
-        &c.minimum(rare.lower(), zero.lower())?,
-        &c.minimum(rare.upper(), zero.upper())?,
+        &c.minimum(increment.lower(), zero.lower())?,
+        &c.minimum(increment.upper(), zero.upper())?,
     )?;
     let original = a.point(&side.original_area)?;
     let shock_area = a.bounds(
@@ -319,13 +298,15 @@ where
     )?;
     let shock_area = choose(a, &side.wet, &shock_area, &one)?;
     let side_area = choose(a, &side.wet, &original, &one)?;
-    let product = a.mul(&shock_area, &side_area)?;
-    let secant = pressure_secant(a, geometry, bands, state, &side.geometry, gravity)?;
-    let ratio = a.div_positive_interval(&secant, &product)?;
-    let root = a.sqrt_nonnegative(&ratio)?;
-    let difference = a.sub(&state.area, &original)?;
-    let difference = nonnegative(a, &difference)?;
-    let shock = a.mul(&difference, &root)?;
+    let secant = pressure_secant(
+        a,
+        oracle.geometry,
+        bands,
+        state,
+        &side.geometry,
+        oracle.config.gravity_m_per_s2,
+    )?;
+    let shock = shock::curve(a, &shock_area, side_area.lower(), &secant)?;
     let both = hull(a, &rare, &shock)?;
     let definitely_rare = c.lt(state.area.upper(), original.lower())?;
     let definitely_shock = c.gt(state.area.lower(), original.upper())?;
@@ -349,20 +330,10 @@ where
         + RuntimeClient<R>,
 {
     let c = a.client();
-    let state = &side.geometry;
     Ok(SideState {
         original_area: c.index_select(&side.original_area, 0, rows)?,
         original_discharge: c.index_select(&side.original_discharge, 0, rows)?,
-        geometry: Constitutive {
-            depth: select_interval(a, &state.depth, rows)?,
-            forward_area: select_interval(a, &state.forward_area, rows)?,
-            area: select_interval(a, &state.area, rows)?,
-            top_width: select_interval(a, &state.top_width, rows)?,
-            integral: select_interval(a, &state.integral, rows)?,
-            hydraulic_depth: select_interval(a, &state.hydraulic_depth, rows)?,
-            wet_possible: c.index_select(&state.wet_possible, 0, rows)?,
-            dry_possible: c.index_select(&state.dry_possible, 0, rows)?,
-        },
+        geometry: select_state(a, &side.geometry, rows)?,
         velocity: select_interval(a, &side.velocity, rows)?,
         sound: select_interval(a, &side.sound, rows)?,
         pressure: select_interval(a, &side.pressure, rows)?,

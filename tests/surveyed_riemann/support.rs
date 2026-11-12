@@ -11,7 +11,7 @@ use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::Interval;
 use solvr::integrate::CertifiedSimpsonAlgorithms;
-use solvr::optimize::roots::CertifiedBisectionAlgorithms;
+use solvr::optimize::roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms};
 
 pub(super) type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -26,6 +26,7 @@ pub(super) trait Client<R: Runtime<DType = DType>>:
     + RuntimeClient<R>
     + CertifiedSimpsonAlgorithms<R>
     + CertifiedBisectionAlgorithms<R>
+    + CertifiedUpperBracketAlgorithms<R>
 {
 }
 
@@ -41,7 +42,8 @@ where
         + MidpointOps<R>
         + RuntimeClient<R>
         + CertifiedSimpsonAlgorithms<R>
-        + CertifiedBisectionAlgorithms<R>,
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>,
 {
 }
 
@@ -179,9 +181,19 @@ pub(super) fn work(work: PrismaticRiemannWork, config: &PrismaticRiemannConfig) 
     assert!(work.maximum_simpson_panels == 0 || work.maximum_simpson_panels.is_power_of_two());
     if work.root_solves == 0 {
         assert_eq!(work.root_iterations, 0);
+    }
+    if work.root_solves == 0 && work.bracket_solves == 0 {
         assert_eq!(work.residual_points, 0);
     }
     assert!(work.root_iterations <= work.root_solves.saturating_mul(config.root.max_iterations));
+    assert!(
+        work.bracket_expansion_rounds
+            <= work
+                .bracket_solves
+                .saturating_mul(config.max_bracket_expansions)
+    );
+    assert!(work.maximum_bracket_expansion_rounds <= config.max_bracket_expansions);
+    assert!(work.maximum_bracket_expansion_rounds <= work.bracket_expansion_rounds);
     Ok(())
 }
 

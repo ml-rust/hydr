@@ -79,7 +79,7 @@ where
     let upper = c.index_select(normalized_depth_bounds.1, 0, &active)?;
     let roots = solve_sonic(oracle, side, &sonic_faces, &lower, &upper)?;
     checked(c, "surveyed sonic work status", |a| {
-        samples.root_status(a, &roots.status)
+        samples.root_status(a, &sonic_faces, &roots.status)
     })?;
     if roots.face_owner.numel() != 0 {
         merge_fan_state(

@@ -15,8 +15,10 @@ pub struct PrismaticRiemannConfig {
     pub momentum_flux_atol_m4_per_s2: f64,
     /// Relative flux-width allowance times the largest absolute endpoint. Default: `1e-10`.
     pub flux_rtol: f64,
-    /// Normalized-depth root tolerances and work ceilings. Root convergence alone never accepts a flux.
+    /// Normalized-depth root controls. `max_iterations` limits midpoint rounds. Root convergence alone never accepts a flux.
     pub root: CertifiedBisectionOptions,
+    /// Maximum upper-bracket expansion rounds, at most `i64::MAX`. Zero checks initial endpoints only. Default: `4096`.
+    pub max_bracket_expansions: usize,
     /// Initial Simpson panels per active band contribution. Positive power of two. Default: `4`.
     pub initial_simpson_panels: usize,
     /// Maximum Simpson panels per active band contribution. Positive power of two. Default: `4096`.
@@ -36,6 +38,7 @@ impl Default for PrismaticRiemannConfig {
             momentum_flux_atol_m4_per_s2: 1e-8,
             flux_rtol: 1e-10,
             root: CertifiedBisectionOptions::default(),
+            max_bracket_expansions: 4096,
             initial_simpson_panels: 4,
             max_simpson_panels: 4096,
             max_refinements: 10,
@@ -52,6 +55,12 @@ impl PrismaticRiemannConfig {
                 context,
             })
         };
+        if i64::try_from(self.max_bracket_expansions).is_err() {
+            return Err(invalid(format!(
+                "max_bracket_expansions={}: supply a ceiling no greater than i64::MAX",
+                self.max_bracket_expansions
+            )));
+        }
         if !self.gravity_m_per_s2.is_finite() || self.gravity_m_per_s2 <= 0.0 {
             return Err(invalid(format!(
                 "gravity_m_per_s2={}: supply finite positive gravity",
@@ -86,5 +95,33 @@ impl PrismaticRiemannConfig {
             )));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zero_bracket_expansions_admit_endpoint_classification() -> HydraulicResult<()> {
+        let mut config = PrismaticRiemannConfig::default();
+        assert_eq!(config.max_bracket_expansions, 4096);
+        config.max_bracket_expansions = 0;
+        config.check()
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn bracket_expansion_ceiling_rejects_counts_above_i64() {
+        let config = PrismaticRiemannConfig {
+            max_bracket_expansions: usize::MAX,
+            ..PrismaticRiemannConfig::default()
+        };
+        assert!(matches!(
+            config.check(),
+            Err(HydraulicError::Geometry(
+                crate::channel::section::CrossSectionError::InvalidInput { .. }
+            ))
+        ));
     }
 }

@@ -43,7 +43,7 @@ where
             ..
         }) => {
             assert_eq!(reason, PrismaticRiemannRejection::WorkLimit, "{context}");
-            support::work(work, &config)?;
+            support::work(*work, &config)?;
             let executed =
                 work.residual_points + work.simpson_value_points + work.simpson_derivative_points;
             assert!(executed < total);

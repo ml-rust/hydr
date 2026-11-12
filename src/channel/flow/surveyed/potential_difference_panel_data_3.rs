@@ -1,0 +1,57 @@
+use super::derivatives::{DerivativePanel, DerivativePoint};
+pub(crate) const PANEL: DerivativePanel = DerivativePanel {
+    id: "rectangular_scaled_panel",
+    area: [0x05cd0b15a491e6c5, 0x05cd0c9251b5cec6],
+    squared_width: [0x4010000000000000, 0x4010000000000000],
+    absolute_delta: [0x0507cad23e0e2800, 0x0507cad23e0e2800],
+    points: &[
+        DerivativePoint {
+            area: [0x05cd0b15a491eb84, 0x05cd0b15a491eb84],
+            squared_width: [0x4010000000000000, 0x4010000000000000],
+            delta: [0x04f7cad23de84000, 0x04f7cad23de84000],
+            slope: [0x0000000000000000, 0x0000000000000000],
+            convex_margin: [0x4010000000000000, 0x4010000000000000],
+            reference: [0x1ef46f056debe263, 0x1ef46f056debe264],
+        },
+        DerivativePoint {
+            area: [0x05cd0b74cfdae325, 0x05cd0b74cfdae325],
+            squared_width: [0x4010000000000000, 0x4010000000000000],
+            delta: [0x04f7cad23de84000, 0x04f7cad23de84000],
+            slope: [0x0000000000000000, 0x0000000000000000],
+            convex_margin: [0x4010000000000000, 0x4010000000000000],
+            reference: [0x1ef46dd829fadd7a, 0x1ef46dd829fadd7b],
+        },
+        DerivativePoint {
+            area: [0x05cd0bd3fb23dac6, 0x05cd0bd3fb23dac6],
+            squared_width: [0x4010000000000000, 0x4010000000000000],
+            delta: [0x04f7cad23de84000, 0x04f7cad23de84000],
+            slope: [0x0000000000000000, 0x0000000000000000],
+            convex_margin: [0x4010000000000000, 0x4010000000000000],
+            reference: [0x1ef46caafb3e5a85, 0x1ef46caafb3e5a86],
+        },
+        DerivativePoint {
+            area: [0x05cd0b15a491eb84, 0x05cd0b15a491eb84],
+            squared_width: [0x4010000000000000, 0x4010000000000000],
+            delta: [0x0507cad23de83000, 0x0507cad23de83000],
+            slope: [0x0000000000000000, 0x0000000000000000],
+            convex_margin: [0x4010000000000000, 0x4010000000000000],
+            reference: [0x1f446f056deb9dae, 0x1f446f056deb9daf],
+        },
+        DerivativePoint {
+            area: [0x05cd0bd3fb23dac5, 0x05cd0bd3fb23dac6],
+            squared_width: [0x4010000000000000, 0x4010000000000000],
+            delta: [0x0507cad23de83000, 0x0507cad23de83000],
+            slope: [0x0000000000000000, 0x0000000000000000],
+            convex_margin: [0x4010000000000000, 0x4010000000000000],
+            reference: [0x1f446caafb3e15d9, 0x1f446caafb3e15da],
+        },
+        DerivativePoint {
+            area: [0x05cd0c9251b5ca07, 0x05cd0c9251b5ca07],
+            squared_width: [0x4010000000000000, 0x4010000000000000],
+            delta: [0x0507cad23de83000, 0x0507cad23de83000],
+            slope: [0x0000000000000000, 0x0000000000000000],
+            convex_margin: [0x4010000000000000, 0x4010000000000000],
+            reference: [0x1f446a50dd5b87cd, 0x1f446a50dd5b87ce],
+        },
+    ],
+};

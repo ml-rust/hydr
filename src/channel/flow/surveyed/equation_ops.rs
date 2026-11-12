@@ -146,27 +146,6 @@ where
     )?)
 }
 
-pub(crate) fn nonnegative<R>(
-    a: &mut Arithmetic<'_, R>,
-    value: &Interval<R>,
-) -> HydraulicResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    let c = a.client();
-    let zero = Tensor::from_slice(&[0.0], &[], c.device())?;
-    Ok(a.bounds(
-        &c.maximum(value.lower(), &zero)?,
-        &c.maximum(value.upper(), &zero)?,
-    )?)
-}
-
 pub(crate) fn reject_mask<R>(
     a: &mut Arithmetic<'_, R>,
     mask: &Tensor<R>,

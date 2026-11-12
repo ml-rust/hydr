@@ -8,6 +8,7 @@ use super::{
     sample_candidates::{dry, exterior, from_state},
     sample_fans::{fan, normalized_segment},
     sample_merge::{SampledSolution, Samples},
+    shock,
     types::{Oracle, WaveSide},
 };
 use numr::{
@@ -19,7 +20,10 @@ use numr::{
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
-use solvr::{integrate::CertifiedSimpsonAlgorithms, optimize::CertifiedBisectionAlgorithms};
+use solvr::{
+    integrate::CertifiedSimpsonAlgorithms,
+    optimize::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+};
 
 pub(crate) fn sample<R>(oracle: &Oracle<'_, R>) -> HydraulicResult<SampledSolution<R>>
 where
@@ -31,6 +35,7 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>
         + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
         + CertifiedSimpsonAlgorithms<R>,
 {
     let c = oracle.geometry.client();
@@ -130,7 +135,7 @@ where
     if star_faces.numel() != 0 {
         let roots = solve_star(oracle, &star_faces)?;
         checked(c, "surveyed star work status", |a| {
-            samples.root_status(a, &roots.status)
+            samples.root_status(a, &star_faces, &roots.status)
         })?;
         if roots.face_owner.numel() != star_faces.numel() {
             let no_root = Tensor::from_slice(&[1_i64], &[], c.device())?;
@@ -319,9 +324,7 @@ where
                     &star,
                     oracle.config.gravity_m_per_s2,
                 )?;
-                let ratio = a.div_positive(&star.area, &source.original_area)?;
-                let squared = a.mul(&ratio, &secant)?;
-                let offset = a.sqrt_nonnegative(&squared)?;
+                let offset = shock::offset(a, &star.area, &source.original_area, &secant)?;
                 let star_sound = sound(a, &star, oracle.config.gravity_m_per_s2)?;
                 let zero = Tensor::zeros(&[], DType::F64, c.device())?;
                 let shock_possible = c.ge(star.area.upper(), &source.original_area)?;

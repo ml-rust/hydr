@@ -7,6 +7,15 @@ use numr::ops::BinaryOps;
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 
+fn reflected_discharge(actual: [f64; 2], frozen: [u64; 2], label: &str) {
+    let frozen = frozen.map(f64::from_bits);
+    assert!(
+        frozen[0] <= 0.0 && frozen[1] >= 0.0,
+        "{label}: frozen central discharge excludes the exact reflection value: {frozen:?}"
+    );
+    assert_eq!(actual, [0.0, 0.0], "{label}: exact reflected discharge");
+}
+
 pub(super) fn check<R: Runtime<DType = DType>>(
     result: &PrismaticRiemannResult<R>,
     cases: &[&Case],
@@ -28,11 +37,22 @@ pub(super) fn check<R: Runtime<DType = DType>>(
     let dry = result.trace_dry_possible().try_to_vec::<f64>()?;
     let wet = result.trace_wet_possible().try_to_vec::<f64>()?;
     for (row, case) in cases.iter().enumerate() {
-        for (actual, truth, atol) in [
+        let [left_area, left_discharge, right_area, right_discharge] =
+            case.input.map(f64::from_bits);
+        let reflected =
+            left_area > 0.0 && left_area == right_area && left_discharge == -right_discharge;
+        for (field, (actual, truth, atol)) in [
             (water[row], case.flux[0], 1e-9f64),
             (momentum[row], case.flux[1], 1e-8f64),
-        ] {
-            support::contains(actual, truth, case.id);
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if reflected && field == 0 {
+                reflected_discharge(actual, truth, case.id);
+            } else {
+                support::contains(actual, truth, case.id);
+            }
             assert!(
                 exact_width::accepted(actual[0], actual[1], atol, 1e-10)?,
                 "{}: flux width exceeds the original F64 allowance: {actual:?}",
@@ -41,7 +61,12 @@ pub(super) fn check<R: Runtime<DType = DType>>(
         }
         for candidate in case.candidates {
             support::contains(area[row], candidate.area, case.id);
-            support::contains(discharge[row], candidate.discharge, case.id);
+            // These fixture candidates describe the central sampled trace, where exact reflection proves Q=0.
+            if reflected {
+                reflected_discharge(discharge[row], candidate.discharge, case.id);
+            } else {
+                support::contains(discharge[row], candidate.discharge, case.id);
+            }
             support::contains(depth[row], candidate.depth, case.id);
         }
         for edge in case.edges {
@@ -98,7 +123,7 @@ where
                 work,
                 context,
             }) => {
-                support::work(work, &config)?;
+                support::work(*work, &config)?;
                 assert!(!context.is_empty(), "{}: rejection lacks context", case.id);
                 if let Some(query) = query {
                     assert_eq!(query, 0, "{}", case.id);

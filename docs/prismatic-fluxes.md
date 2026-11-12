@@ -81,7 +81,16 @@ Each complete flux-interval width must fit `atol + flux_rtol * max(abs(lower), a
 
 Numerical bounds describe the supplied profile and states. They establish neither survey accuracy nor measured-event accuracy.
 
-`root` controls root tolerances and work ceilings. `result.work()` counts executed work across all root solves and integration refinements. The point ceiling includes equation evaluations, integration values, and derivative bounds.
+Star roots start from the supplied water depths. Solvr expands the search within the surveyed cap before bisection.
+
+| Control | Meaning |
+| --- | --- |
+| `root.atol`, `root.rtol` | Root-width allowances in normalized depth |
+| `root.max_iterations` | Maximum bisection midpoint rounds |
+| `max_bracket_expansions` | Maximum search expansions. Default: `4096`. Zero checks the initial endpoints only. |
+| `root.max_points` | Shared equation-evaluation ceiling for search and bisection, including repeated endpoint evaluations |
+
+`result.work()` reports executed work across every refinement. Bracket invocations and bisection invocations have separate counters. Expansion rounds have separate total and maximum counters. The global point ceiling includes equation evaluations, integration values, and derivative bounds.
 
 ## Act on rejection
 

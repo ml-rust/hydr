@@ -15,7 +15,10 @@ use numr::{
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
-use solvr::{integrate::CertifiedSimpsonAlgorithms, optimize::roots::CertifiedBisectionAlgorithms};
+use solvr::{
+    integrate::CertifiedSimpsonAlgorithms,
+    optimize::roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+};
 
 impl<R> PrismaticSectionBatch<R>
 where
@@ -27,7 +30,8 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>
         + CertifiedSimpsonAlgorithms<R>
-        + CertifiedBisectionAlgorithms<R>,
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>,
 {
     /// Enclose horizontal surveyed-channel Godunov fluxes using the configured native client.
     ///

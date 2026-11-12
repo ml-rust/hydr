@@ -42,9 +42,9 @@ pub enum PrismaticRiemannError {
         /// Original section-owner index when known.
         section_owner: Option<usize>,
         /// Actual work executed before rejection.
-        work: PrismaticRiemannWork,
+        work: Box<PrismaticRiemannWork>,
         /// Original solver status or rejected quantity, with the next action.
-        context: String,
+        context: Box<str>,
     },
 }
 
@@ -151,8 +151,8 @@ pub(crate) fn into_public(
             reason,
             query,
             section_owner,
-            work,
-            context,
+            work: Box::new(work),
+            context: context.into_boxed_str(),
         },
         HydraulicError::Runtime(error) => Channel(ChannelError::Runtime {
             cell: None,
@@ -193,15 +193,15 @@ pub(crate) fn into_public(
                     reason: PrismaticRiemannRejection::GeometryUnresolved,
                     query: None,
                     section_owner,
-                    work,
-                    context,
+                    work: Box::new(work),
+                    context: context.into_boxed_str(),
                 },
                 CrossSectionError::UnsupportedStage { .. } => Rejected {
                     reason: PrismaticRiemannRejection::CapExceeded,
                     query: None,
                     section_owner,
-                    work,
-                    context,
+                    work: Box::new(work),
+                    context: context.into_boxed_str(),
                 },
             }
         }

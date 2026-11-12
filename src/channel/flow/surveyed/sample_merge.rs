@@ -15,6 +15,7 @@ use solvr::common::arithmetic::Interval;
 
 pub(crate) struct SampledSolution<R: Runtime<DType = DType>> {
     pub(crate) root_work_limited: bool,
+    pub(crate) root_work_limited_rows: Tensor<R>,
     pub(crate) water_flux: Interval<R>,
     pub(crate) momentum_flux: Interval<R>,
     pub(crate) trace_area: Interval<R>,
@@ -45,6 +46,7 @@ where
         Ok(Self {
             solution: SampledSolution {
                 root_work_limited: false,
+                root_work_limited_rows: zero.clone(),
                 water_flux: a.point(&zero)?,
                 momentum_flux: a.point(&zero)?,
                 trace_area: a.point(&zero)?,
@@ -61,6 +63,7 @@ where
     pub(crate) fn root_status(
         &mut self,
         a: &mut Arithmetic<'_, R>,
+        rows: &Tensor<R>,
         status: &Tensor<R>,
     ) -> HydraulicResult<()> {
         if status.numel() == 0 {
@@ -68,8 +71,16 @@ where
         }
         let c = a.client();
         let code = Tensor::from_slice(&[4_i64], &[], c.device())?;
+        let limited_rows = c.cast(&c.eq(status, &code)?, DType::F64)?;
+        let previous = c.index_select(&self.solution.root_work_limited_rows, 0, rows)?;
+        self.solution.root_work_limited_rows = c.index_put(
+            &self.solution.root_work_limited_rows,
+            0,
+            rows,
+            &c.maximum(&previous, &limited_rows)?,
+        )?;
         let limited = c
-            .cast(&c.any(&c.eq(status, &code)?, &[], false)?, DType::F64)?
+            .cast(&c.any(&limited_rows, &[], false)?, DType::F64)?
             .item::<f64>()?
             != 0.0;
         self.solution.root_work_limited |= limited;
