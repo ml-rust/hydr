@@ -1,17 +1,18 @@
 use super::band_lanes::IntegrationLanes;
 use super::derivatives::{integrand, panel_fourth_bound};
 use super::equation_ops::{choose, gravity_depth_root, scalar, scale};
-use super::error::{HydraulicError, HydraulicResult, checked};
-use super::work::{QueryWork, WorkLedger};
+use super::error::{Arithmetic, HydraulicError, HydraulicResult, checked};
+use super::lane_quadrature::numerical_contributions;
+use super::work::WorkLedger;
 use super::{PrismaticRiemannConfig, PrismaticRiemannRejection};
 use crate::channel::section::{Constitutive, GatheredBands, HydraulicGeometry};
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps};
+use numr::ops::{CompareOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps};
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticError, Interval};
 use solvr::integrate::{
-    CertifiedSimpsonAlgorithms, CertifiedSimpsonOptions, CertifiedSimpsonValues, IntegrateError,
+    CertifiedSimpsonAlgorithms, CertifiedSimpsonOptions, CertifiedSimpsonResult, IntegrateError,
 };
 use std::cell::Cell;
 
@@ -60,64 +61,20 @@ where
 {
     let left = Tensor::zeros(&[lanes.band_index.numel()], DType::F64, c.device())?;
     let right = lanes.active.reshape(&[lanes.face_owner.numel()])?;
-    let cause = Cell::new(None);
-    let result = c.certified_simpson(
+    let result = numerical_contributions(
+        c,
         &left,
         &right,
         CertifiedSimpsonOptions {
             panels,
             max_points: config.max_native_query_points,
         },
-        |query| {
-            let result = work
-                .charge(QueryWork::SimpsonValue, query.owner.numel())
-                .and_then(|()| {
-                    checked(c, "surveyed Simpson values", |a| {
-                        let x = a.bounds(&query.lower, &query.upper)?;
-                        let value = integrand(a, lanes, &query.owner, &x)?;
-                        let point = a.point(&query.point)?;
-                        let nominal_bounds = integrand(a, lanes, &query.owner, &point)?;
-                        let half_width = c.mul_scalar(
-                            &c.sub(nominal_bounds.upper(), nominal_bounds.lower())?,
-                            0.5,
-                        )?;
-                        let nominal = c.add(nominal_bounds.lower(), &half_width)?;
-                        let nominal =
-                            c.maximum(value.lower(), &c.minimum(&nominal, value.upper())?)?;
-                        Ok(CertifiedSimpsonValues {
-                            value: nominal,
-                            lower: value.lower().clone(),
-                            upper: value.upper().clone(),
-                        })
-                    })
-                });
-            result.map_err(|error| retain_cause(&cause, error))
-        },
-        |panel| {
-            let result = work
-                .charge(QueryWork::SimpsonDerivative, panel.owner.numel())
-                .and_then(|()| {
-                    checked(c, "surveyed Simpson fourth derivatives", |a| {
-                        let x = a.bounds(&panel.lower, &panel.upper)?;
-                        panel_fourth_bound(a, lanes, &panel.owner, &x)
-                    })
-                });
-            result.map_err(|error| retain_cause(&cause, error))
-        },
-    );
-    let result = complete_integration(result, cause.take())?;
+        work,
+        |a, owner, x| integrand(a, lanes, owner, x),
+        |a, owner, x| panel_fourth_bound(a, lanes, owner, x),
+    )?;
     checked(c, "surveyed potential assembly", |a| {
-        let zero = scalar(a, 0.0)?;
-        let one = scalar(a, 1.0)?;
-        let two = scalar(a, 2.0)?;
-        let pointed = pointed.flatten()?;
-        let pointed_factor = choose(a, &pointed, &two, &one)?;
-        let root = gravity_depth_root(a, &lanes.gravity, &lanes.extent, Some(&pointed_factor))?;
-        let bottom_exact = scale(a, &root, 2.0)?;
-        let bottom_exact = choose(a, &lanes.bottom, &bottom_exact, &zero)?;
-        let exact = choose(a, &lanes.analytic, &bottom_exact, &zero)?;
-        let numerical = a.bounds(result.lower(), result.upper())?;
-        let contributions = a.add(&exact, &numerical)?;
+        let contributions = assemble_lane_contributions(a, lanes, pointed, &result)?;
         let shape = [lanes.face_count, lanes.band_count];
         let lower = contributions.lower().reshape(&shape)?;
         let upper = contributions.upper().reshape(&shape)?;
@@ -132,6 +89,34 @@ where
         }
         Ok(total)
     })
+}
+
+pub(crate) fn assemble_lane_contributions<R>(
+    a: &mut Arithmetic<'_, R>,
+    lanes: &IntegrationLanes<R>,
+    pointed: &Tensor<R>,
+    result: &CertifiedSimpsonResult<R>,
+) -> HydraulicResult<Interval<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    let zero = scalar(a, 0.0)?;
+    let one = scalar(a, 1.0)?;
+    let two = scalar(a, 2.0)?;
+    let pointed = pointed.flatten()?;
+    let pointed_factor = choose(a, &pointed, &two, &one)?;
+    let root = gravity_depth_root(a, &lanes.gravity, &lanes.extent, Some(&pointed_factor))?;
+    let bottom_exact = scale(a, &root, 2.0)?;
+    let bottom_exact = choose(a, &lanes.bottom, &bottom_exact, &zero)?;
+    let exact = choose(a, &lanes.analytic, &bottom_exact, &zero)?;
+    let numerical = a.bounds(result.lower(), result.upper())?;
+    Ok(a.add(&exact, &numerical)?)
 }
 
 pub(super) fn retain_cause(

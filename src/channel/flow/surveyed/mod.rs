@@ -11,6 +11,7 @@ pub(crate) mod derivatives;
 pub(crate) mod equation_ops;
 pub(crate) mod error;
 pub(crate) mod integration;
+pub(crate) mod lane_quadrature;
 pub(crate) mod output;
 pub(crate) mod potential_difference;
 pub(crate) mod potential_difference_derivatives;
@@ -47,6 +48,8 @@ mod derivative_data;
 mod derivative_tests;
 #[cfg(test)]
 mod error_tests;
+#[cfg(test)]
+mod lane_quadrature_tests;
 
 #[cfg(test)]
 mod controller_resolution_tests;
