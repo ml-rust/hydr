@@ -37,6 +37,27 @@ where
     let lanes = checked(c, "surveyed integration lanes", |a| {
         IntegrationLanes::build(a, bands, state, config.gravity_m_per_s2)
     })?;
+    integrate_lanes(c, &lanes, &bands.pointed, config, panels, work)
+}
+
+pub(crate) fn integrate_lanes<R>(
+    c: &R::Client,
+    lanes: &IntegrationLanes<R>,
+    pointed: &Tensor<R>,
+    config: &PrismaticRiemannConfig,
+    panels: usize,
+    work: &WorkLedger,
+) -> HydraulicResult<Interval<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>
+        + CertifiedSimpsonAlgorithms<R>,
+{
     let left = Tensor::zeros(&[lanes.band_index.numel()], DType::F64, c.device())?;
     let right = lanes.active.reshape(&[lanes.face_owner.numel()])?;
     let cause = Cell::new(None);
@@ -53,9 +74,9 @@ where
                 .and_then(|()| {
                     checked(c, "surveyed Simpson values", |a| {
                         let x = a.bounds(&query.lower, &query.upper)?;
-                        let value = integrand(a, &lanes, &query.owner, &x)?;
+                        let value = integrand(a, lanes, &query.owner, &x)?;
                         let point = a.point(&query.point)?;
-                        let nominal_bounds = integrand(a, &lanes, &query.owner, &point)?;
+                        let nominal_bounds = integrand(a, lanes, &query.owner, &point)?;
                         let half_width = c.mul_scalar(
                             &c.sub(nominal_bounds.upper(), nominal_bounds.lower())?,
                             0.5,
@@ -78,7 +99,7 @@ where
                 .and_then(|()| {
                     checked(c, "surveyed Simpson fourth derivatives", |a| {
                         let x = a.bounds(&panel.lower, &panel.upper)?;
-                        panel_fourth_bound(a, &lanes, &panel.owner, &x)
+                        panel_fourth_bound(a, lanes, &panel.owner, &x)
                     })
                 });
             result.map_err(|error| retain_cause(&cause, error))
@@ -89,7 +110,7 @@ where
         let zero = scalar(a, 0.0)?;
         let one = scalar(a, 1.0)?;
         let two = scalar(a, 2.0)?;
-        let pointed = bands.pointed.flatten()?;
+        let pointed = pointed.flatten()?;
         let pointed_factor = choose(a, &pointed, &two, &one)?;
         let root = gravity_depth_root(a, &lanes.gravity, &lanes.extent, Some(&pointed_factor))?;
         let bottom_exact = scale(a, &root, 2.0)?;
