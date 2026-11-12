@@ -14,8 +14,8 @@ use std::sync::Arc;
 /// Certified surveyed geometry with separately compiled bank contact lengths.
 #[derive(Clone, Debug)]
 pub struct PrismaticPerimeterBatch<R: Runtime<DType = DType>> {
-    geometry: PrismaticSectionBatch<R>,
-    contact: Arc<ContactTable<R>>,
+    pub(super) geometry: PrismaticSectionBatch<R>,
+    pub(super) contact: Arc<ContactTable<R>>,
 }
 
 impl<R: Runtime<DType = DType>> PrismaticPerimeterBatch<R> {

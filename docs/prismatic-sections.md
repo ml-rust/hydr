@@ -65,6 +65,8 @@ Use `PrismaticSectionBatch::recover_area_points_tensor(&owners, &areas_m2, &conf
 
 The result's `requested_areas_m2()` preserves both components. Keep both components when passing the requested area to another calculation.
 
+Use `PrismaticPerimeterBatch::recover_area_points_tensor` when you also need wetted-perimeter and hydraulic-radius bounds. Hydraulic radius uses both original area components.
+
 `band_coordinates()` retains area and depth distances from both ends of each survey band. Use `candidate_mask()` to select compatible bands. These coordinates retain local distances even when absolute depth bounds cannot distinguish nearby points.
 
 At zero area, band coordinates retain geometric endpoints at depth zero. Dry width and hydraulic depth still use native zero placeholders and host `None`.

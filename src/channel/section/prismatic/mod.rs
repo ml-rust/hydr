@@ -31,6 +31,7 @@ pub use batch::PrismaticSectionBatch;
 pub use config::{PRISMATIC_BAND_WORK_LIMIT, PrismaticRecoveryConfig};
 pub use output::{PrismaticRecoveredProperties, PrismaticSectionProperties};
 pub use perimeter::{
+    PrismaticPerimeterAreaPointRecoveredProperties, PrismaticPerimeterAreaPointRecovery,
     PrismaticPerimeterBatch, PrismaticPerimeterProperties, PrismaticPerimeterQuery,
     PrismaticPerimeterRecoveredProperties, PrismaticPerimeterRecovery,
 };
