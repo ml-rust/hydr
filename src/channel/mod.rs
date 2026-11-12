@@ -18,10 +18,12 @@ pub use section::{
     CrossSectionBatch, CrossSectionDefinition, CrossSectionError, CrossSectionPoint,
     CrossSectionProperties, CrossSectionQuery, CrossSectionRecoveredProperties,
     CrossSectionRecovery, CrossSectionRecoveryConfig, PRISMATIC_BAND_WORK_LIMIT,
-    PrismaticPerimeterBatch, PrismaticPerimeterProperties, PrismaticPerimeterQuery,
-    PrismaticPerimeterRecoveredProperties, PrismaticPerimeterRecovery,
-    PrismaticRecoveredProperties, PrismaticRecoveryConfig, PrismaticSectionBatch,
-    PrismaticSectionProperties, PrismaticSectionQuery, PrismaticSectionRecovery,
+    PrismaticAreaPointBandCoordinates, PrismaticAreaPointBandProperties,
+    PrismaticAreaPointRecoveredProperties, PrismaticAreaPointRecovery, PrismaticPerimeterBatch,
+    PrismaticPerimeterProperties, PrismaticPerimeterQuery, PrismaticPerimeterRecoveredProperties,
+    PrismaticPerimeterRecovery, PrismaticRecoveredProperties, PrismaticRecoveryConfig,
+    PrismaticSectionBatch, PrismaticSectionProperties, PrismaticSectionQuery,
+    PrismaticSectionRecovery,
 };
 
 pub(crate) use flow::{ChannelCouplingForcing, ChannelCouplingTrial, ChannelReservoirOperands};

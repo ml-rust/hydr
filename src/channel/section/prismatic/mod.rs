@@ -1,5 +1,11 @@
 //! Certified surveyed geometry on represented depths and conserved areas.
 
+mod area_point_fields;
+mod area_point_input;
+mod area_point_inverse;
+mod area_point_projection;
+mod area_point_query;
+mod area_point_recovery;
 mod band_geometry;
 mod batch;
 mod compilation;
@@ -17,6 +23,10 @@ mod query_input;
 mod recovery;
 mod topology;
 
+pub use area_point_query::{
+    PrismaticAreaPointBandCoordinates, PrismaticAreaPointBandProperties,
+    PrismaticAreaPointRecoveredProperties, PrismaticAreaPointRecovery,
+};
 pub use batch::PrismaticSectionBatch;
 pub use config::{PRISMATIC_BAND_WORK_LIMIT, PrismaticRecoveryConfig};
 pub use output::{PrismaticRecoveredProperties, PrismaticSectionProperties};

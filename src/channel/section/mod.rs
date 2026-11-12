@@ -24,10 +24,12 @@ pub use definition::{CrossSectionDefinition, CrossSectionPoint};
 pub use error::CrossSectionError;
 pub use output::CrossSectionProperties;
 pub use prismatic::{
-    PRISMATIC_BAND_WORK_LIMIT, PrismaticPerimeterBatch, PrismaticPerimeterProperties,
-    PrismaticPerimeterQuery, PrismaticPerimeterRecoveredProperties, PrismaticPerimeterRecovery,
-    PrismaticRecoveredProperties, PrismaticRecoveryConfig, PrismaticSectionBatch,
-    PrismaticSectionProperties, PrismaticSectionQuery, PrismaticSectionRecovery,
+    PRISMATIC_BAND_WORK_LIMIT, PrismaticAreaPointBandCoordinates, PrismaticAreaPointBandProperties,
+    PrismaticAreaPointRecoveredProperties, PrismaticAreaPointRecovery, PrismaticPerimeterBatch,
+    PrismaticPerimeterProperties, PrismaticPerimeterQuery, PrismaticPerimeterRecoveredProperties,
+    PrismaticPerimeterRecovery, PrismaticRecoveredProperties, PrismaticRecoveryConfig,
+    PrismaticSectionBatch, PrismaticSectionProperties, PrismaticSectionQuery,
+    PrismaticSectionRecovery,
 };
 pub use query::CrossSectionQuery;
 pub use recovery_config::CrossSectionRecoveryConfig;

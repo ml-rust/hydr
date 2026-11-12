@@ -59,6 +59,16 @@ The native `dry_mask()` contains F64 `1` for dry rows and `0` for wet rows. Dry 
 
 Recovery retains the exact original area through `requested_areas_m2()` and `requested_area_m2`. Keep that original area as the conserved value. `forward_area_m2` bounds geometry across the recovered depth interval.
 
+## Retain small area changes
+
+Use `PrismaticSectionBatch::recover_area_points_tensor(&owners, &areas_m2, &config)` when a small change disappears when added to a large area. Supply a Solvr `CertifiedExpansion<R>` with a zero error radius. Its high and low F64 components define the exact nonnegative area in m². Use `recover_depths_tensor` for a single F64 area tensor.
+
+The result's `requested_areas_m2()` preserves both components. Keep both components when passing the requested area to another calculation.
+
+`band_coordinates()` retains area and depth distances from both ends of each survey band. Use `candidate_mask()` to select compatible bands. These coordinates retain local distances even when absolute depth bounds cannot distinguish nearby points.
+
+At zero area, band coordinates retain geometric endpoints at depth zero. Dry width and hydraulic depth still use native zero placeholders and host `None`.
+
 ## Add wetted-perimeter and hydraulic-radius bounds
 
 Call `certify_perimeter()` on your `PrismaticSectionBatch<R>` to obtain a `PrismaticPerimeterBatch<R>`. This opt-in batch retains your configured client and existing geometry.
