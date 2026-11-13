@@ -1,5 +1,6 @@
 use super::super::{
-    SupportedAreaQuery, endpoints::PhysicalEndpoint, source_difference::source_difference,
+    SupportedAreaQuery, admission, endpoints::PhysicalEndpoint,
+    source_difference::source_difference,
 };
 
 use super::{
@@ -21,6 +22,39 @@ use numr::{
     tensor::Tensor,
 };
 
+/// Consume one supported physical endpoint without evaluating the opposite endpoint.
+pub(crate) fn pressure_endpoint<R>(
+    a: &mut Arithmetic<'_, R>,
+    geometry: &HydraulicGeometry<R>,
+    bands: &GatheredBands<R>,
+    endpoint: &SupportedAreaQuery<R>,
+    source: &PrismaticAreaPointRecovery<R>,
+    boundaries: &BoundaryAreas<R>,
+    gravity: f64,
+) -> HydraulicResult<PressureEndpoint<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    admission::reject(
+        a,
+        &a.client().ne(
+            endpoint.query.parameter.lower(),
+            endpoint.query.parameter.upper(),
+        )?,
+        "pressure endpoint requires a singleton physical query. Select one supported endpoint",
+    )?;
+    let delta = source_difference(a, bands, endpoint, source, boundaries)?;
+    let target = geometry.recover_query(a, bands, endpoint)?;
+    let k = secant::secant(a, geometry, bands, source, &target, &delta.lower, gravity)?;
+    finish(a, delta.lower, k)
+}
 pub(crate) fn pressure_range<R>(
     a: &mut Arithmetic<'_, R>,
     geometry: &HydraulicGeometry<R>,

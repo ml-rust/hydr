@@ -20,10 +20,15 @@ mod potential_range_tests;
 mod potential_sonic;
 #[cfg(test)]
 mod potential_underflow_tests;
+mod shock_points;
 pub(crate) mod source_velocity;
 #[cfg(test)]
 mod source_velocity_binding_tests;
 pub(crate) mod types;
+mod wave_curve;
+#[cfg(test)]
+mod wave_curve_tests;
+mod wave_curve_types;
 
 #[cfg(test)]
 #[path = "source_tests.rs"]

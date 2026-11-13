@@ -52,12 +52,15 @@ mod riemann;
 pub(crate) use hydraulic_geometry::{Constitutive, GatheredBands, HydraulicGeometry};
 
 #[cfg(test)]
+pub(crate) use area_query::PressureEndpoint;
+#[cfg(test)]
 pub(crate) use area_query::conditional_band::{
     ClippedBandEndpoints, ConditionalBandSegments, PreparedAreaPrefix, WetDepthGeometry,
 };
 #[cfg(test)]
 pub(crate) use area_query::{
-    AreaAnchor, AreaDirection, AreaQuery, PhysicalEndpoint, SupportedAreaQuery, source_difference,
+    AreaAnchor, AreaDirection, AreaQuery, PhysicalEndpoint, SupportedAreaQuery, pressure_endpoint,
+    source_difference,
 };
 #[cfg(test)]
 pub(crate) use boundary_area::BoundaryAreas;

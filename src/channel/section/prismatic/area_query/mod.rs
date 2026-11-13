@@ -18,6 +18,8 @@ pub(super) mod evaluation;
 #[cfg(test)]
 mod pressure;
 #[cfg(test)]
+pub(crate) use pressure::{PressureEndpoint, pressure_endpoint};
+#[cfg(test)]
 mod range;
 #[cfg(test)]
 mod selection;
