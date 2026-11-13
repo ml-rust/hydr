@@ -4,6 +4,7 @@ use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::ArithmeticResult;
 
+#[derive(Debug)]
 pub(super) struct BankInputs<R: Runtime<DType = DType>> {
     pub left_station: Tensor<R>,
     pub right_station: Tensor<R>,
@@ -12,6 +13,7 @@ pub(super) struct BankInputs<R: Runtime<DType = DType>> {
     pub vertical: Tensor<R>,
 }
 
+#[derive(Debug)]
 pub(super) struct Inputs<R: Runtime<DType = DType>> {
     pub bed: Tensor<R>,
     pub bottom_left: Tensor<R>,

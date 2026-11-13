@@ -56,25 +56,28 @@ where
         + RuntimeClient<R>,
 {
     let c = a.client();
-    Ok(GatheredBands {
-        section_owner: Tensor::from_slice(&vec![0_i64; count], &[count], c.device())?,
-        band_count: 1,
-        valid: Tensor::from_slice(&vec![1.0; count], &[count, 1], c.device())?,
-        pointed: Tensor::zeros(&[count, 1], DType::F64, c.device())?,
-        start_depth: constant(a, count, 0.0, true)?,
-        end_depth: constant(a, count, 4.0, true)?,
-        thickness: constant(a, count, 4.0, true)?,
-        start_area: constant(a, count, 0.0, true)?,
-        end_area: constant(a, count, 8.0, true)?,
-        area_increment: constant(a, count, 8.0, true)?,
-        start_width: constant(a, count, 2.0, true)?,
-        slope: constant(a, count, 0.0, true)?,
-        start_integral: constant(a, count, 0.0, true)?,
-        cap_depth: constant(a, count, 4.0, false)?,
-        cap_area: constant(a, count, 8.0, false)?,
-        cap_width: constant(a, count, 2.0, false)?,
-        cap_integral: constant(a, count, 16.0, false)?,
-    })
+    let (geometry, _) = native_geometry::<R>(c, &[(0.0, 4.0), (0.0, 0.0), (2.0, 0.0), (2.0, 4.0)])?;
+    let owners = Tensor::from_slice(&vec![0_i64; count], &[count], c.device())?;
+    let mut bands = geometry.gather(a, &owners)?;
+    // Keep exact synthetic intervals while retaining the compiled model's provenance.
+    bands.section_owner = Tensor::from_slice(&vec![0_i64; count], &[count], c.device())?;
+    bands.band_count = 1;
+    bands.valid = Tensor::from_slice(&vec![1.0; count], &[count, 1], c.device())?;
+    bands.pointed = Tensor::zeros(&[count, 1], DType::F64, c.device())?;
+    bands.start_depth = constant(a, count, 0.0, true)?;
+    bands.end_depth = constant(a, count, 4.0, true)?;
+    bands.thickness = constant(a, count, 4.0, true)?;
+    bands.start_area = constant(a, count, 0.0, true)?;
+    bands.end_area = constant(a, count, 8.0, true)?;
+    bands.area_increment = constant(a, count, 8.0, true)?;
+    bands.start_width = constant(a, count, 2.0, true)?;
+    bands.slope = constant(a, count, 0.0, true)?;
+    bands.start_integral = constant(a, count, 0.0, true)?;
+    bands.cap_depth = constant(a, count, 4.0, false)?;
+    bands.cap_area = constant(a, count, 8.0, false)?;
+    bands.cap_width = constant(a, count, 2.0, false)?;
+    bands.cap_integral = constant(a, count, 16.0, false)?;
+    Ok(bands)
 }
 
 fn side<R>(a: &mut Arithmetic<'_, R>, velocities: &[f64]) -> HydraulicResult<SideState<R>>

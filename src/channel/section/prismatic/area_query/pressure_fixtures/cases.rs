@@ -1,0 +1,26 @@
+use super::model::Case;
+
+pub(crate) const CASES: &[Case] = &[
+    super::retained_first_knot::CASES[0],
+    super::retained_second_knot::CASES[0],
+    super::retained_capacity::CASES[0],
+    super::retained_capacity::CASES[1],
+    super::retained_first_knot::CASES[1],
+    super::retained_second_knot::CASES[1],
+    super::decimal_sources::CASES[0],
+    super::rectangular_dry_limits::CASES[0],
+    super::rectangular_dry_limits::CASES[1],
+    super::pointed_dry_limits::CASES[0],
+    super::pointed_dry_limits::CASES[1],
+    super::cross_band_ranges::CASES[0],
+    super::decimal_sources::CASES[1],
+    super::cross_band_ranges::CASES[1],
+    super::rectangular_dry_limits::CASES[2],
+    super::pointed_dry_limits::CASES[2],
+    super::retained_trapezoid::CASES[0],
+    super::cross_band_ranges::CASES[2],
+    super::cross_band_ranges::CASES[3],
+    super::rectangular_dry_limits::CASES[3],
+    super::pointed_dry_limits::CASES[3],
+    super::decimal_sources::CASES[2],
+];

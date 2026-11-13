@@ -103,6 +103,14 @@ pub struct PrismaticAreaPointRecovery<R: Runtime<DType = DType>> {
 }
 
 impl<R: Runtime<DType = DType>> PrismaticAreaPointRecovery<R> {
+    #[cfg(test)]
+    pub(in crate::channel::section::prismatic) fn same_context(
+        &self,
+        context: &Arc<Context<R>>,
+    ) -> bool {
+        Arc::ptr_eq(&self.context, context)
+    }
+
     /// Original captured I64 section owners. Keep storage immutable.
     pub fn owners(&self) -> &Tensor<R> {
         &self.owners

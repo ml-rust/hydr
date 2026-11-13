@@ -26,6 +26,8 @@ pub(crate) struct HydraulicGeometry<R: Runtime<DType = DType>> {
 }
 
 pub(crate) struct GatheredBands<R: Runtime<DType = DType>> {
+    #[cfg(test)]
+    pub(super) model: Arc<Context<R>>,
     pub(crate) section_owner: Tensor<R>,
     pub(crate) band_count: usize,
     pub(crate) valid: Tensor<R>,
@@ -91,6 +93,8 @@ where
                 )?)
             };
         Ok(Self {
+            #[cfg(test)]
+            model: Arc::clone(&self.model),
             section_owner: c.index_select(&self.section_owner, 0, row)?,
             band_count: self.band_count,
             valid: c.index_select(&self.valid, 0, row)?,
@@ -148,6 +152,24 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>,
 {
+    #[cfg(test)]
+    pub(crate) fn boundary_areas(
+        &self,
+        a: &mut Arithmetic<'_, R>,
+    ) -> HydraulicResult<super::boundary_area::BoundaryAreaTable<R>> {
+        super::boundary_area::BoundaryAreaTable::build(a, &self.context)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn recover_query(
+        &self,
+        a: &mut Arithmetic<'_, R>,
+        bands: &GatheredBands<R>,
+        query: &super::area_query::SupportedAreaQuery<R>,
+    ) -> HydraulicResult<super::area_query::AreaQueryGeometry<R>> {
+        super::area_query::evaluation::recover(a, &self.context, bands, query)
+    }
+
     pub(crate) fn gather(
         &self,
         a: &mut Arithmetic<'_, R>,
@@ -157,6 +179,8 @@ where
         let captured = Tensor::empty(owners.shape(), DType::I64, self.client().device())?;
         self.client().copy_into(&captured, owners)?;
         Ok(GatheredBands {
+            #[cfg(test)]
+            model: Arc::clone(&self.context),
             section_owner: captured,
             band_count: self.context.maximum_bands,
             valid: rows.valid,

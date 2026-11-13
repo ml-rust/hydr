@@ -6,9 +6,15 @@ mod area_point_inverse;
 mod area_point_projection;
 mod area_point_query;
 mod area_point_recovery;
+#[cfg(test)]
+mod area_point_selection;
+#[cfg(test)]
+mod area_point_selection_tests;
 mod area_query;
 mod band_geometry;
 mod batch;
+#[cfg(test)]
+mod boundary_area;
 mod compilation;
 mod compilation_bounds;
 mod config;
