@@ -5,6 +5,10 @@ mod analytic_bottom_arithmetic;
 mod analytic_endpoint;
 #[cfg(test)]
 mod analytic_endpoint_tests;
+mod paired_residual;
+mod paired_source_cache;
+mod paired_source_invariant;
+mod paired_sources;
 mod potential_absolute;
 mod potential_analytic;
 #[cfg(test)]
