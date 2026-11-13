@@ -12,6 +12,11 @@ mod chart_root_derivative;
 mod chart_roots;
 #[cfg(test)]
 mod chart_test_support;
+mod dry_vacuum;
+mod dry_vacuum_candidates;
+mod dry_vacuum_evidence;
+mod dry_vacuum_positions;
+mod dry_vacuum_types;
 mod paired_endpoint;
 mod paired_residual;
 mod paired_source_cache;

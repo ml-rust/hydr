@@ -20,8 +20,8 @@ use crate::channel::{
 use numr::{
     dtype::DType,
     ops::{
-        BinaryOps, CompareOps, ConditionalOps, MidpointOps, NextRepresentableOps, ScalarOps,
-        TensorOps, TwoSumOps,
+        BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
+        ScalarOps, SortingOps, TensorOps, TwoSumOps,
     },
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
@@ -48,7 +48,7 @@ where
             continue;
         }
         for domain in &request.domains {
-            domains.push(certificate(session.sources, domain)?);
+            domains.push(certificate(session.sources, &Operands::from(domain))?);
         }
     }
     let c = session.sources.geometry.client();
@@ -87,9 +87,128 @@ where
     })
 }
 
+struct Operands<'a, R: Runtime<DType = DType>> {
+    invocation_owner: &'a Tensor<R>,
+    parent_rows: &'a Tensor<R>,
+    side: SonicSide,
+    query: &'a crate::channel::section::SupportedAreaQuery<R>,
+    epsilon: &'a solvr::common::arithmetic::CertifiedExpansion<R>,
+    classification: SourceSonicStatus,
+    depth: &'a solvr::common::arithmetic::Interval<R>,
+    normalized_depth: &'a solvr::common::arithmetic::Interval<R>,
+    status: &'a Tensor<R>,
+    iterations: usize,
+    callback_points: usize,
+    mapped_points: usize,
+}
+impl<'a, R: Runtime<DType = DType>> From<&'a SourceSonicDomain<R>> for Operands<'a, R> {
+    fn from(d: &'a SourceSonicDomain<R>) -> Self {
+        Self {
+            invocation_owner: &d.invocation_owner,
+            parent_rows: &d.parent_rows,
+            side: d.side,
+            query: &d.query,
+            epsilon: &d.epsilon,
+            classification: d.classification,
+            depth: &d.depth,
+            normalized_depth: &d.normalized_depth,
+            status: &d.status,
+            iterations: d.iterations,
+            callback_points: d.callback_points,
+            mapped_points: d.mapped_points,
+        }
+    }
+}
+
+/// Select immutable certificate operands without selecting or copying native continuation state.
+pub(super) fn selected<R>(
+    session: &mut PointRootSession<'_, '_, R>,
+    demanded: [&Tensor<R>; 2],
+) -> HydraulicResult<Vec<SourceSonicCertificate<R>>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>
+        + CertifiedSimpsonAlgorithms<R>,
+{
+    session
+        .sources
+        .check_root_witness(session.invocation.source_witness())?;
+    session.check_domains()?;
+    if session
+        .sonic
+        .requests
+        .iter()
+        .any(|request| request.terminal)
+    {
+        return Err(super::point_root_session::invalid(
+            "selected sonic certificates remain sealed after an earlier numerical error",
+        ));
+    }
+    let c = session.sources.geometry.client();
+    let mut output = Vec::new();
+    for request in &session.sonic.requests {
+        for domain in &request.domains {
+            if domain.classification != SourceSonicStatus::PositiveRoot {
+                continue;
+            }
+            let mask =
+                c.index_select(demanded[domain.side.index()], 0, &domain.invocation_owner)?;
+            let rows = c.nonzero(&mask)?;
+            let rows = rows.reshape(&[rows.numel()])?;
+            if rows.numel() == 0 {
+                continue;
+            }
+            let (owners, parent, query, epsilon, depth, normalized, status) =
+                checked::<R, _>(c, "source sonic demanded certificate operands", |a| {
+                    Ok((
+                        c.index_select(&domain.invocation_owner, 0, &rows)?,
+                        c.index_select(&domain.parent_rows, 0, &rows)?,
+                        domain.query.select(a, &rows)?,
+                        super::potential_range::select_expansion(a, &domain.epsilon, &rows)?,
+                        crate::channel::flow::surveyed::equation_ops::select_interval(
+                            a,
+                            &domain.depth,
+                            &rows,
+                        )?,
+                        crate::channel::flow::surveyed::equation_ops::select_interval(
+                            a,
+                            &domain.normalized_depth,
+                            &rows,
+                        )?,
+                        c.index_select(&domain.status, 0, &rows)?,
+                    ))
+                })?;
+            output.push(certificate(
+                session.sources,
+                &Operands {
+                    invocation_owner: &owners,
+                    parent_rows: &parent,
+                    side: domain.side,
+                    query: &query,
+                    epsilon: &epsilon,
+                    classification: domain.classification,
+                    depth: &depth,
+                    normalized_depth: &normalized,
+                    status: &status,
+                    iterations: domain.iterations,
+                    callback_points: domain.callback_points,
+                    mapped_points: domain.mapped_points,
+                },
+            )?);
+        }
+    }
+    Ok(output)
+}
+
 fn certificate<R>(
     sources: &mut PairedSources<'_, R>,
-    domain: &SourceSonicDomain<R>,
+    domain: &Operands<'_, R>,
 ) -> HydraulicResult<SourceSonicCertificate<R>>
 where
     R: Runtime<DType = DType>,
@@ -103,7 +222,7 @@ where
         + CertifiedSimpsonAlgorithms<R>,
 {
     let c = sources.geometry.client();
-    let selected = sources.select_rows(&domain.parent_rows, &domain.query)?;
+    let selected = sources.select_rows(domain.parent_rows, domain.query)?;
     let mut endpoint_velocity = Vec::with_capacity(2);
     let mut endpoint_change = Vec::with_capacity(2);
     let mut endpoint_residual = Vec::with_capacity(2);
@@ -134,12 +253,12 @@ where
                         c.device(),
                     )?)?;
                     Ok((
-                        a.expansion_sub(&domain.epsilon, &potential.retained)?,
+                        a.expansion_sub(domain.epsilon, &potential.retained)?,
                         a.expansion_sub(&zero, &increment.retained)?,
                     ))
                 } else {
                     Ok((
-                        a.expansion_sub(&potential.retained, &domain.epsilon)?,
+                        a.expansion_sub(&potential.retained, domain.epsilon)?,
                         increment.retained,
                     ))
                 }
@@ -148,11 +267,11 @@ where
         endpoint_change.push(change);
         endpoint_residual.push(super::source_sonic_residual::endpoint(
             sources,
-            &domain.parent_rows,
+            domain.parent_rows,
             &query,
             PhysicalEndpoint::Lower,
             domain.side,
-            &domain.epsilon,
+            domain.epsilon,
         )?);
     }
     checked::<R, _>(c, "source sonic physical certificates", |a| {
@@ -276,8 +395,8 @@ where
             &c.where_cond(&valid, discharge.upper(), &zero)?,
         )?;
         Ok(SourceSonicCertificate {
-            invocation_owner: copy(&domain.invocation_owner)?,
-            parent_rows: copy(&domain.parent_rows)?,
+            invocation_owner: copy(domain.invocation_owner)?,
+            parent_rows: copy(domain.parent_rows)?,
             side: domain.side,
             query,
             depth: a.bounds(&copy(domain.depth.lower())?, &copy(domain.depth.upper())?)?,
@@ -300,7 +419,7 @@ where
             residual,
             classification: domain.classification,
             status,
-            depth_status: copy(&domain.status)?,
+            depth_status: copy(domain.status)?,
             iterations: domain.iterations,
             callback_points: domain.callback_points,
             mapped_points: domain.mapped_points,
