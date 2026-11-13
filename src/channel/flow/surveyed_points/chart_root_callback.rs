@@ -65,7 +65,7 @@ where
                 .numel()
                 != 0
             {
-                return Err(super::chart_roots::unresolved(
+                return Err(super::chart_admission::unresolved(
                     "Chart root residual is unavailable. Supply two wet sources and a supported chart",
                 ));
             }

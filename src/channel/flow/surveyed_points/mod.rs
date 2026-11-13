@@ -5,9 +5,13 @@ mod analytic_bottom_arithmetic;
 mod analytic_endpoint;
 #[cfg(test)]
 mod analytic_endpoint_tests;
+mod chart_admission;
+mod chart_brackets;
 mod chart_root_callback;
 mod chart_root_derivative;
 mod chart_roots;
+#[cfg(test)]
+mod chart_test_support;
 mod paired_residual;
 mod paired_source_cache;
 mod paired_source_invariant;

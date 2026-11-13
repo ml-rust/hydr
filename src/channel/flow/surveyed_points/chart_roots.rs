@@ -1,9 +1,11 @@
 use std::cell::{Cell, RefCell};
 
-use super::{chart_root_callback, chart_root_derivative, paired_sources::PairedSources};
+use super::{
+    chart_admission, chart_root_callback, chart_root_derivative, paired_sources::PairedSources,
+};
 use crate::channel::{
     flow::surveyed::{
-        error::{HydraulicError, HydraulicResult, PrismaticRiemannRejection, checked},
+        error::{HydraulicResult, checked},
         root_calls::resolve_root,
     },
     section::SupportedAreaQuery,
@@ -11,8 +13,7 @@ use crate::channel::{
 use numr::{
     dtype::DType,
     ops::{
-        CompareOps, IndexingOps, MidpointOps, NextRepresentableOps, ScalarOps, SortingOps,
-        TensorOps, TwoSumOps,
+        CompareOps, IndexingOps, MidpointOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps,
     },
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
@@ -50,44 +51,13 @@ where
         + CertifiedBisectionAlgorithms<R>,
 {
     let config = sources.evaluation.config;
-    if max_points > config.root.max_points {
-        return Err(work_limit(&format!(
-            "Chart root max_points={max_points} exceeds config.root.max_points={}. Supply the remaining configured budget",
-            config.root.max_points,
-        )));
-    }
-    let admission = parent_rows.numel().checked_mul(2).ok_or_else(|| {
-        work_limit(&format!(
-            "Chart root admission count 2*rows={} overflows usize. Split the invocation",
-            parent_rows.numel(),
-        ))
-    })?;
-    if admission > max_points {
-        return Err(work_limit(&format!(
-            "Chart root admission needs {admission} points, max_points={max_points}. Supply sufficient remaining points or split the invocation",
-        )));
-    }
+    chart_admission::budget(config, parent_rows.numel(), max_points, "Chart root")?;
 
     // Source/query identity and support checks precede every cache mutation and work charge.
     let selected = sources.select_rows(parent_rows, chart)?;
     let c = sources.geometry.client();
     let (chart, derivative) = checked::<R, _>(c, "point chart root admission", |a| {
-        let zero = Tensor::zeros(&[], a.dtype(), c.device())?;
-        if c.nonzero(&c.le(&selected.velocity.both_wet, &zero)?)?
-            .numel()
-            != 0
-        {
-            return Err(unresolved(
-                "Chart root requires two wet sources. Classify dry sources before solving",
-            ));
-        }
-        let chart = chart.with_parameter_bounds(a, &selected.bands, &chart.query.parameter)?;
-        let scale = a.expansion_interval(&chart.query.scale)?;
-        if c.nonzero(&c.le(scale.lower(), &zero)?)?.numel() != 0 {
-            return Err(unresolved(
-                "Chart root scale lacks a strictly positive complete lower bound. Choose a resolved affine chart",
-            ));
-        }
+        let chart = chart_admission::supported(a, &selected, chart)?;
         let derivative =
             chart_root_derivative::lower(a, &selected.bands, &chart, config.gravity_m_per_s2)?;
         Ok((chart, derivative))
@@ -124,24 +94,6 @@ where
         query,
         result,
     })
-}
-
-pub(super) fn unresolved(context: &str) -> HydraulicError {
-    HydraulicError::Rejected {
-        reason: PrismaticRiemannRejection::GeometryUnresolved,
-        query: None,
-        section_owner: None,
-        context: context.into(),
-    }
-}
-
-fn work_limit(context: &str) -> HydraulicError {
-    HydraulicError::Rejected {
-        reason: PrismaticRiemannRejection::WorkLimit,
-        query: None,
-        section_owner: None,
-        context: context.into(),
-    }
 }
 
 #[cfg(test)]

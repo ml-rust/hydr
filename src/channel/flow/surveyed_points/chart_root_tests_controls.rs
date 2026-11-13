@@ -1,6 +1,7 @@
 use super::{super::solve_chart, support};
-use crate::channel::flow::surveyed_points::source_tests::support::{
-    Client, Result, components, endpoints, hydraulic,
+use crate::channel::flow::surveyed_points::{
+    chart_test_support::cache,
+    source_tests::support::{Client, Result, hydraulic},
 };
 use numr::{
     dtype::DType,
@@ -135,28 +136,6 @@ where
         baseline = Some(observed);
     }
     Ok(())
-}
-
-#[derive(Debug, PartialEq)]
-struct CacheSnapshot {
-    ready: Vec<f64>,
-    retained: Vec<[u64; 3]>,
-    physical: Vec<[f64; 2]>,
-}
-
-fn cache<R: Runtime<DType = DType>>(
-    pair: &crate::channel::flow::surveyed_points::paired_sources::PairedSources<'_, R>,
-) -> Result<Vec<CacheSnapshot>> {
-    pair.cache
-        .iter()
-        .map(|entry| {
-            Ok(CacheSnapshot {
-                ready: entry.ready.try_to_vec::<f64>()?,
-                retained: components(&entry.value.retained)?,
-                physical: endpoints(&entry.value.physical)?,
-            })
-        })
-        .collect()
 }
 
 fn admission<R>(client: &R::Client) -> Result
