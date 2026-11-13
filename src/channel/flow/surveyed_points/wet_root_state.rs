@@ -2,7 +2,7 @@ use super::{
     wave_curve_types::{CurveValue, scatter_value, unavailable},
     wet_root_types::{WetRootDomain, WetRootDomains, WetRootStatus},
 };
-use crate::channel::flow::surveyed::error::{Arithmetic, HydraulicError, HydraulicResult, checked};
+use crate::channel::flow::surveyed::error::{Arithmetic, HydraulicResult, checked};
 use numr::{
     dtype::DType,
     ops::{
@@ -17,7 +17,6 @@ pub(super) struct Locator<R: Runtime<DType = DType>> {
     pub(super) output: WetRootDomains<R>,
     pub(super) pending: Tensor<R>,
     pub(super) f0: CurveValue<R>,
-    pub(super) limit: usize,
 }
 
 impl<R> Locator<R>
@@ -40,7 +39,7 @@ where
             let n = rows.numel();
             Ok(Self {
                 output: WetRootDomains {
-                    witness,
+                    invocation: super::root_invocation::RootInvocation::new(witness, limit)?,
                     invocation_rows: rows,
                     status: Tensor::full_scalar(
                         &[n],
@@ -50,44 +49,11 @@ where
                     )?,
                     domains: Vec::new(),
                     evidence: Vec::new(),
-                    callback_points: 0,
-                    point_limit: limit,
                 },
                 pending: Tensor::ones(&[n], a.dtype(), client.device())?,
                 f0: unavailable(a, n)?,
-                limit,
             })
         })
-    }
-
-    pub(super) fn remaining(&self) -> HydraulicResult<usize> {
-        self.limit
-            .checked_sub(self.output.callback_points)
-            .ok_or_else(|| HydraulicError::Numerical {
-                context: "Wet root callback count exceeds its budget. Discard the locator result"
-                    .into(),
-            })
-    }
-
-    pub(super) fn add_points(&mut self, points: usize) -> HydraulicResult<()> {
-        let used = self
-            .output
-            .callback_points
-            .checked_add(points)
-            .ok_or_else(|| HydraulicError::Numerical {
-                context: "Wet root callback count overflows usize. Discard the locator result"
-                    .into(),
-            })?;
-        if used > self.limit {
-            return Err(HydraulicError::Numerical {
-                context: format!(
-                    "Wet root callbacks={used} exceed budget={}. Discard the locator result",
-                    self.limit
-                ),
-            });
-        }
-        self.output.callback_points = used;
-        Ok(())
     }
 
     pub(super) fn set_status(
@@ -190,6 +156,7 @@ pub(super) fn direct_domain<R>(
     parent_rows: Tensor<R>,
     query: crate::channel::section::SupportedAreaQuery<R>,
     value: &CurveValue<R>,
+    invocation_witness: super::root_invocation::RootInvocationWitness,
 ) -> HydraulicResult<WetRootDomain<R>>
 where
     R: Runtime<DType = DType>,
@@ -201,6 +168,7 @@ where
         + RuntimeClient<R>,
 {
     Ok(WetRootDomain {
+        invocation_witness,
         invocation_owner,
         parent_rows,
         query,

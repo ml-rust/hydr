@@ -45,7 +45,12 @@ where
                 if stale {
                     session.sources.evaluation.panels *= 2;
                 } else {
-                    session.witness = foreign.clone();
+                    session.invocation = hydraulic(
+                        crate::channel::flow::surveyed_points::root_invocation::RootInvocation::new(
+                            foreign.clone(),
+                            session.point_limit(),
+                        ),
+                    )?;
                 }
                 assert!(session.certify_wet_waves().is_err());
                 assert_eq!(work.snapshot(), before);

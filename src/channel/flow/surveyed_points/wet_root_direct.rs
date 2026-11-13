@@ -80,7 +80,14 @@ where
                 let rows = c.index_select(&parent_rows, 0, &hits)?;
                 let query = query.select(a, &hits)?;
                 let exact = selected_value(a, &value, &hits)?;
-                Some(direct_domain(a, hit_owner.clone(), rows, query, &exact)?)
+                Some(direct_domain(
+                    a,
+                    hit_owner.clone(),
+                    rows,
+                    query,
+                    &exact,
+                    locator.output.invocation.witness(),
+                )?)
             };
             let exceeded = if cap {
                 let f0 = selected_value(a, &locator.f0, &owner)?;
@@ -172,7 +179,7 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>,
 {
-    if owner.numel() > locator.remaining()? {
+    if owner.numel() > locator.output.invocation.remaining()? {
         locator.set_status(parent.geometry.client(), owner, WetRootStatus::WorkLimit)?;
         return Ok(false);
     }
@@ -180,6 +187,6 @@ where
         .evaluation
         .work
         .charge(QueryWork::Residual, owner.numel())?;
-    locator.add_points(owner.numel())?;
+    locator.output.invocation.add_points(owner.numel())?;
     Ok(true)
 }

@@ -37,8 +37,8 @@ where
         |pair, work| {
             let rows = support::rows::<R>(client, &[0])?;
             let located = hydraulic(locate_wet_roots(pair, &rows, 1))?;
-            assert_eq!(located.point_limit, 1);
-            assert_eq!(located.callback_points, 1);
+            assert_eq!(located.point_limit(), 1);
+            assert_eq!(located.callback_points(), 1);
             assert_eq!(
                 located.status.try_to_vec::<i64>()?,
                 [WetRootStatus::Located as i64]
@@ -94,7 +94,7 @@ where
             [WetRootStatus::Located as i64; 2]
         );
         assert_eq!(located.domains.len(), 2);
-        let points = located.callback_points;
+        let points = located.callback_points();
         let session = hydraulic(refine_wet_depth(pair, located))?;
         assert_eq!(session.domains().len(), 2);
         assert!(

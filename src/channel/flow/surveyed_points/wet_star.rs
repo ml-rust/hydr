@@ -32,7 +32,9 @@ where
 {
     /// Enclose each established wet root while retaining depth evidence and continuation unchanged.
     pub(super) fn certify_wet_star(&mut self) -> HydraulicResult<Vec<WetStarDomain<R>>> {
-        self.sources.check_root_witness(&self.witness)?;
+        self.sources
+            .check_root_witness(self.invocation.source_witness())?;
+        self.check_domains()?;
         let mut output = Vec::with_capacity(self.domains.len());
         for domain in &self.domains {
             let lower = wet_star_endpoint::evaluate(

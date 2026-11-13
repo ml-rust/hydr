@@ -35,6 +35,7 @@ where
     };
     let c = a.client();
     let original = WetRootDomain {
+        invocation_witness: original.invocation_witness.clone(),
         invocation_owner: c.index_select(&original.invocation_owner, 0, rows)?,
         parent_rows: c.index_select(&original.parent_rows, 0, rows)?,
         query: original.query.select(a, rows)?,
@@ -44,6 +45,7 @@ where
         upper_retained: select_expansion(a, &original.upper_retained, rows)?,
     };
     Ok(WetDepthDomain {
+        invocation_witness: domain.invocation_witness.clone(),
         invocation_owner: c.index_select(&domain.invocation_owner, 0, rows)?,
         parent_rows: c.index_select(&domain.parent_rows, 0, rows)?,
         query: domain.query.select(a, rows)?,

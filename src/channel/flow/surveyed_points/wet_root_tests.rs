@@ -104,13 +104,13 @@ where
             }
             certificates::check(pair, &result)?;
             assert_eq!(
-                result.callback_points,
+                result.callback_points(),
                 work.snapshot().residual_points,
                 "{}",
                 case.id
             );
             assert!(
-                result.callback_points <= config.root.max_points,
+                result.callback_points() <= config.root.max_points,
                 "{}",
                 case.id
             );

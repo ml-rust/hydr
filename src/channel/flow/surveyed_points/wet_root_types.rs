@@ -1,4 +1,7 @@
-use super::wave_curve_types::CurveValue;
+use super::{
+    root_invocation::{RootInvocation, RootInvocationWitness},
+    wave_curve_types::CurveValue,
+};
 use crate::channel::section::SupportedAreaQuery;
 use numr::{dtype::DType, runtime::Runtime, tensor::Tensor};
 use solvr::common::arithmetic::{CertifiedExpansion, Interval};
@@ -30,6 +33,7 @@ pub(super) struct WetRootEvidence<R: Runtime<DType = DType>> {
 
 /// A certified existence domain, without a selected center or hydraulic convergence claim.
 pub(super) struct WetRootDomain<R: Runtime<DType = DType>> {
+    pub(super) invocation_witness: RootInvocationWitness,
     pub(super) invocation_owner: Tensor<R>,
     pub(super) parent_rows: Tensor<R>,
     pub(super) query: SupportedAreaQuery<R>,
@@ -42,11 +46,18 @@ pub(super) struct WetRootDomain<R: Runtime<DType = DType>> {
 }
 
 pub(super) struct WetRootDomains<R: Runtime<DType = DType>> {
-    pub(super) witness: super::source_binding::RootSourceWitness,
+    pub(super) invocation: RootInvocation,
     pub(super) invocation_rows: Tensor<R>,
     pub(super) status: Tensor<R>,
     pub(super) domains: Vec<WetRootDomain<R>>,
     pub(super) evidence: Vec<WetRootEvidence<R>>,
-    pub(super) callback_points: usize,
-    pub(super) point_limit: usize,
+}
+
+impl<R: Runtime<DType = DType>> WetRootDomains<R> {
+    pub(super) fn callback_points(&self) -> usize {
+        self.invocation.callback_points()
+    }
+    pub(super) fn point_limit(&self) -> usize {
+        self.invocation.point_limit()
+    }
 }

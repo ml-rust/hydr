@@ -32,7 +32,7 @@ where
             located.domains[0].parent_rows.try_to_vec::<i64>()?,
             [2, 0, 1]
         );
-        let located_points = located.callback_points;
+        let located_points = located.callback_points();
         let cache = chart_test_support::cache(pair)?;
         let before = work.snapshot();
         let session = hydraulic(refine_wet_depth(pair, located))?;
@@ -133,6 +133,7 @@ where
     // The lower values round A/12 downward. Their successors round it upward.
     let normalized_lower = [0x3fb5555555555555, 0x3fc5555555555555, 0x3f65555555555555];
     for domain in session.domains() {
+        hydraulic(domain.check_invocation(&session.invocation))?;
         let parents = domain.parent_rows.try_to_vec::<i64>()?;
         let owners = domain.invocation_owner.try_to_vec::<i64>()?;
         let diagnostics = domain.query.query.original_rows.try_to_vec::<i64>()?;

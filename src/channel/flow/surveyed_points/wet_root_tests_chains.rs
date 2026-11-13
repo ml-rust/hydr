@@ -90,7 +90,7 @@ where
         located.status.try_to_vec::<i64>()?,
         [WetRootStatus::Located as i64],
         "{id}: callbacks={}, work={:?}, evidence={:?}",
-        located.callback_points,
+        located.callback_points(),
         pair.evaluation.work.snapshot(),
         located
             .evidence
@@ -107,7 +107,7 @@ where
     let mut remaining = config
         .root
         .max_points
-        .checked_sub(located.callback_points)
+        .checked_sub(located.callback_points())
         .ok_or("Locator exceeds cumulative root-point budget")?;
     let automatic_film = matches!(id, "retained_vacuum_inside_film" | "analytic_pointed_film");
     for domain in &located.domains {

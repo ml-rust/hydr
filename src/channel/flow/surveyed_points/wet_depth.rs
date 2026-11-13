@@ -36,13 +36,14 @@ where
         + CertifiedSimpsonAlgorithms<R>
         + CertifiedMappedBisectionAlgorithms<R>,
 {
-    sources.check_root_witness(&located.witness)?;
-    if located.callback_points > located.point_limit {
-        return Err(HydraulicError::Numerical { context: "Located root work exceeds its captured point limit. Discard inconsistent root evidence".into() });
+    sources.check_root_witness(located.invocation.source_witness())?;
+    located.invocation.remaining()?;
+    for domain in &located.domains {
+        located.invocation.check(&domain.invocation_witness)?;
     }
     let tolerance = CertifiedRootTolerance {
-        atol: located.witness.config().root.atol,
-        rtol: located.witness.config().root.rtol,
+        atol: located.invocation.source_witness().config().root.atol,
+        rtol: located.invocation.source_witness().config().root.rtol,
     };
     let c = sources.geometry.client();
     let mut domains = Vec::with_capacity(located.domains.len());
@@ -63,6 +64,7 @@ where
                 Ok((query, owners, selected.rows))
             })?;
         domains.push(WetDepthDomain {
+            invocation_witness: original.invocation_witness.clone(),
             invocation_owner,
             parent_rows,
             query,
@@ -84,13 +86,11 @@ where
     }
     WetDepthSession {
         sources,
-        witness: located.witness,
+        invocation: located.invocation,
         invocation_rows: located.invocation_rows,
         locator_status: located.status,
         evidence: located.evidence,
         domains,
-        point_limit: located.point_limit,
-        callback_points: located.callback_points,
         tolerance,
     }
     .refine_depth_to(tolerance)
@@ -114,8 +114,10 @@ where
         mut self,
         tolerance: CertifiedRootTolerance,
     ) -> HydraulicResult<Self> {
-        self.sources.check_root_witness(&self.witness)?;
-        check_tolerance(&tolerance, &self.witness.config().root)?;
+        self.sources
+            .check_root_witness(self.invocation.source_witness())?;
+        self.check_domains()?;
+        check_tolerance(&tolerance, &self.invocation.source_witness().config().root)?;
         let c = self.sources.geometry.client();
         let mut output = Vec::with_capacity(self.domains.len());
         for mut domain in std::mem::take(&mut self.domains) {
@@ -157,9 +159,7 @@ where
             }
             output.push(wet_depth_refinement::advance(
                 self.sources,
-                &self.witness,
-                self.point_limit,
-                &mut self.callback_points,
+                &mut self.invocation,
                 domain,
                 &tolerance,
             )?);

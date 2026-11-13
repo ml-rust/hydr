@@ -90,7 +90,7 @@ where
             .iter()
             .map(|domain| support::snapshot(pair, domain))
             .collect::<Result<Vec<_>>>()?;
-        let points = located.callback_points;
+        let points = located.callback_points();
         let evidence_count = located.evidence.len();
         let before = work.snapshot();
         let session = hydraulic(refine_wet_depth(pair, located))?;
@@ -260,7 +260,7 @@ where
         |pair, work| {
             let rows = support::rows::<R>(client, &[0])?;
             let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
-            let points = located.callback_points;
+            let points = located.callback_points();
             let session = hydraulic(refine_wet_depth(pair, located))?;
             assert_eq!(session.domains().len(), 1);
             let first = session.domains()[0].iterations;

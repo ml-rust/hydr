@@ -57,14 +57,14 @@ where
             assert_eq!(result.status.shape(), [0]);
             assert_eq!(result.invocation_rows.shape(), [0]);
             assert!(result.domains.is_empty() && result.evidence.is_empty());
-            assert_eq!(result.callback_points, 0);
+            assert_eq!(result.callback_points(), 0);
             assert_eq!((cache(pair)?, work.snapshot()), before);
             let result = hydraulic(locate_wet_roots(pair, &parents, 1))?;
             assert_eq!(
                 result.status.try_to_vec::<i64>()?,
                 [WetRootStatus::Located as i64]
             );
-            assert_eq!(result.callback_points, 1);
+            assert_eq!(result.callback_points(), 1);
             assert_eq!(work.snapshot().residual_points, 1);
             super::certificates::check(pair, &result)
         },

@@ -30,7 +30,9 @@ where
 {
     /// Retain possible wet-wave positions without selecting a trace or accepting a stationary discontinuity.
     pub(super) fn certify_wet_waves(&mut self) -> HydraulicResult<Vec<WetWaveDomain<R>>> {
-        self.sources.check_root_witness(&self.witness)?;
+        self.sources
+            .check_root_witness(self.invocation.source_witness())?;
+        self.check_domains()?;
         let stars = self.certify_wet_star()?;
         let c = self.sources.geometry.client();
         let mut result = Vec::with_capacity(stars.len());

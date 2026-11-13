@@ -1,6 +1,6 @@
 use super::{
     paired_sources::PairedSources,
-    source_binding::RootSourceWitness,
+    root_invocation::{RootInvocation, RootInvocationWitness},
     wet_root_types::{WetRootDomain, WetRootEvidence},
 };
 use crate::channel::section::SupportedAreaQuery;
@@ -29,12 +29,14 @@ pub(super) enum DepthRefinementState<R: Runtime<DType = DType>> {
 }
 
 pub(super) struct InitializedDepthState<R: Runtime<DType = DType>> {
+    pub(super) invocation_witness: RootInvocationWitness,
     pub(super) continuation: CertifiedRootContinuation<R>,
     pub(super) chart: SupportedAreaQuery<R>,
 }
 
 /// Physical certificates retain their area expression independently of normalized-depth projection.
 pub(super) struct WetDepthDomain<R: Runtime<DType = DType>> {
+    pub(super) invocation_witness: RootInvocationWitness,
     pub(super) invocation_owner: Tensor<R>,
     pub(super) parent_rows: Tensor<R>,
     pub(super) query: SupportedAreaQuery<R>,
@@ -48,6 +50,21 @@ pub(super) struct WetDepthDomain<R: Runtime<DType = DType>> {
 }
 
 impl<R: Runtime<DType = DType>> WetDepthDomain<R> {
+    pub(super) fn check_invocation(
+        &self,
+        invocation: &RootInvocation,
+    ) -> crate::channel::flow::surveyed::error::HydraulicResult<()> {
+        invocation.check(&self.invocation_witness)?;
+        match &self.refinement {
+            DepthRefinementState::Deferred { original } => {
+                invocation.check(&original.invocation_witness)
+            }
+            DepthRefinementState::Initialized { state } => {
+                invocation.check(&state.invocation_witness)
+            }
+        }
+    }
+
     pub(super) fn is_deferred(&self) -> bool {
         matches!(self.refinement, DepthRefinementState::Deferred { .. })
     }
@@ -56,17 +73,24 @@ impl<R: Runtime<DType = DType>> WetDepthDomain<R> {
 /// Own depth evidence and numerical continuations while exclusively borrowing the fixed source graph.
 pub(super) struct WetDepthSession<'s, 'a, R: Runtime<DType = DType>> {
     pub(super) sources: &'s mut PairedSources<'a, R>,
-    pub(super) witness: RootSourceWitness,
+    pub(super) invocation: RootInvocation,
     pub(super) invocation_rows: Tensor<R>,
     pub(super) locator_status: Tensor<R>,
     pub(super) evidence: Vec<WetRootEvidence<R>>,
     pub(super) domains: Vec<WetDepthDomain<R>>,
-    pub(super) point_limit: usize,
-    pub(super) callback_points: usize,
     pub(super) tolerance: CertifiedRootTolerance,
 }
 
 impl<'s, 'a, R: Runtime<DType = DType>> WetDepthSession<'s, 'a, R> {
+    pub(super) fn check_domains(
+        &self,
+    ) -> crate::channel::flow::surveyed::error::HydraulicResult<()> {
+        for domain in &self.domains {
+            domain.check_invocation(&self.invocation)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn sources(&self) -> &PairedSources<'a, R> {
         self.sources
     }
@@ -83,10 +107,10 @@ impl<'s, 'a, R: Runtime<DType = DType>> WetDepthSession<'s, 'a, R> {
         &self.domains
     }
     pub(super) fn point_limit(&self) -> usize {
-        self.point_limit
+        self.invocation.point_limit()
     }
     pub(super) fn callback_points(&self) -> usize {
-        self.callback_points
+        self.invocation.callback_points()
     }
     pub(super) fn tolerance(&self) -> &CertifiedRootTolerance {
         &self.tolerance

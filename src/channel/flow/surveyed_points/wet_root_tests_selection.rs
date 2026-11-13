@@ -68,7 +68,7 @@ where
             ]
         );
         super::certificates::check(pair, &result)?;
-        assert_eq!(work.snapshot().residual_points, result.callback_points);
+        assert_eq!(work.snapshot().residual_points, result.callback_points());
         let physical = result
             .domains
             .iter()
@@ -118,9 +118,9 @@ where
             let after = work.snapshot();
             assert_eq!(
                 after.residual_points - before_work.residual_points,
-                result.callback_points
+                result.callback_points()
             );
-            assert!(result.callback_points >= 2);
+            assert!(result.callback_points() >= 2);
             let current = cache(pair)?;
             for (entry, original) in current.iter().zip(&before) {
                 assert_eq!(entry.ready[1..], original.ready[1..]);
@@ -164,8 +164,8 @@ where
                 WetRootStatus::WorkLimit as i64,
             ];
             assert_eq!(result.status.try_to_vec::<i64>()?, expected);
-            assert_eq!(result.callback_points, if budget == 3 { 3 } else { 1 });
-            assert_eq!(work.snapshot().residual_points, result.callback_points);
+            assert_eq!(result.callback_points(), if budget == 3 { 3 } else { 1 });
+            assert_eq!(work.snapshot().residual_points, result.callback_points());
             super::certificates::check(pair, &result)
         })?;
     }
@@ -180,7 +180,7 @@ where
                 result.status.try_to_vec::<i64>()?,
                 [WetRootStatus::WorkLimit as i64; 3]
             );
-            assert_eq!(result.callback_points, 0);
+            assert_eq!(result.callback_points(), 0);
             assert_eq!(work.snapshot().residual_points, 0);
             assert!(result.domains.is_empty() && result.evidence.is_empty());
             Ok(())
@@ -206,8 +206,8 @@ where
                 let rows = Tensor::from_slice(&[0_i64], &[1], client.device())?;
                 let result = hydraulic(locate_wet_roots(pair, &rows, budget))?;
                 let counts = work.snapshot();
-                assert_eq!(result.callback_points, counts.residual_points);
-                assert!(result.callback_points <= budget);
+                assert_eq!(result.callback_points(), counts.residual_points);
+                assert!(result.callback_points() <= budget);
                 assert!(counts.bracket_solves > 0);
                 if budget == 4 {
                     assert_eq!(

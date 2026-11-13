@@ -177,13 +177,22 @@ where
         .ok_or_else(|| HydraulicError::Numerical {
             context: "Wet root bracket admission overflows usize. Split the invocation".into(),
         })?;
-    if needed > locator.remaining()? {
+    if needed > locator.output.invocation.remaining()? {
         locator.set_status(c, owner, WetRootStatus::WorkLimit)?;
         return Ok(());
     }
     let rows = c.index_select(&locator.output.invocation_rows, 0, owner)?;
-    let result = bracket_chart(parent, &rows, &query, seed, locator.remaining()?)?;
-    locator.add_points(result.result.callback_points())?;
+    let result = bracket_chart(
+        parent,
+        &rows,
+        &query,
+        seed,
+        locator.output.invocation.remaining()?,
+    )?;
+    locator
+        .output
+        .invocation
+        .add_points(result.result.callback_points())?;
     let limited_code = Tensor::from_slice(
         &[CertifiedUpperBracketStatus::WorkLimit as i64],
         &[],
@@ -237,6 +246,7 @@ where
             )?,
         )?;
         Ok(WetRootDomain {
+            invocation_witness: locator.output.invocation.witness(),
             invocation_owner,
             parent_rows: result.bracket_rows,
             query: result.query,

@@ -33,6 +33,7 @@ mod potential_range_tests;
 mod potential_sonic;
 #[cfg(test)]
 mod potential_underflow_tests;
+mod root_invocation;
 mod shock_points;
 mod source_binding;
 pub(crate) mod source_velocity;

@@ -3,7 +3,7 @@ use std::cell::{Cell, RefCell};
 use super::{
     chart_admission, chart_root_callback, chart_root_derivative,
     paired_sources::PairedSources,
-    source_binding::RootSourceWitness,
+    root_invocation::RootInvocation,
     wet_depth_mapping,
     wet_depth_types::{
         DepthRefinementState, InitializedDepthState, WetDepthDomain, WetDepthStatus,
@@ -32,9 +32,7 @@ use solvr::{
 
 pub(super) fn advance<R>(
     sources: &mut PairedSources<'_, R>,
-    witness: &RootSourceWitness,
-    point_limit: usize,
-    used_points: &mut usize,
+    invocation: &mut RootInvocation,
     mut domain: WetDepthDomain<R>,
     tolerance: &CertifiedRootTolerance,
 ) -> HydraulicResult<WetDepthDomain<R>>
@@ -50,10 +48,10 @@ where
         + CertifiedSimpsonAlgorithms<R>
         + CertifiedMappedBisectionAlgorithms<R>,
 {
-    sources.check_root_witness(witness)?;
-    let remaining = point_limit
-        .checked_sub(*used_points)
-        .ok_or_else(|| inconsistent("callback points exceed the captured invocation limit"))?;
+    sources.check_root_witness(invocation.source_witness())?;
+    domain.check_invocation(invocation)?;
+    let remaining = invocation.remaining()?;
+    let witness = invocation.source_witness();
     let c = sources.geometry.client();
     if domain.is_deferred() {
         let admission = domain
@@ -72,6 +70,7 @@ where
         }
     }
     let WetDepthDomain {
+        invocation_witness,
         invocation_owner,
         parent_rows,
         query,
@@ -120,6 +119,7 @@ where
         }
         DepthRefinementState::Initialized { state } => {
             let InitializedDepthState {
+                invocation_witness: _,
                 continuation,
                 chart,
             } = *state;
@@ -163,16 +163,9 @@ where
     let additional_points = callback_points
         .checked_sub(previous_points)
         .ok_or_else(|| inconsistent("cumulative residual points decreased"))?;
-    let total = used_points
-        .checked_add(additional_points)
-        .ok_or_else(|| inconsistent("cumulative residual points overflow usize"))?;
-    if total > point_limit {
-        return Err(inconsistent(
-            "native residual points exceed the captured invocation limit",
-        ));
-    }
+    invocation.check_add_points(additional_points)?;
     work.finish_root_progress(additional_iterations, iterations)?;
-    *used_points = total;
+    invocation.add_points(additional_points)?;
     let (query, mut status) = checked::<R, _>(c, "wet depth retained native domains", |a| {
         let lower = c.index_put(
             query.query.parameter.lower(),
@@ -242,6 +235,7 @@ where
         Ok(c.where_cond(&accepted, &passed, &other)?)
     })?;
     Ok(WetDepthDomain {
+        invocation_witness: invocation_witness.clone(),
         invocation_owner,
         parent_rows,
         query,
@@ -253,6 +247,7 @@ where
         mapped_points,
         refinement: DepthRefinementState::Initialized {
             state: Box::new(InitializedDepthState {
+                invocation_witness,
                 continuation,
                 chart,
             }),

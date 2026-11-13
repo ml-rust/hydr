@@ -47,9 +47,9 @@ where
                 .iter()
                 .all(|point| f64::from_bits(point[2]) > 0.0)
         );
-        assert!(result.callback_points > 0);
-        assert!(result.callback_points <= config.root.max_points);
-        assert_eq!(work.snapshot().residual_points, result.callback_points);
+        assert!(result.callback_points() > 0);
+        assert!(result.callback_points() <= config.root.max_points);
+        assert_eq!(work.snapshot().residual_points, result.callback_points());
         Ok(())
     })
 }
