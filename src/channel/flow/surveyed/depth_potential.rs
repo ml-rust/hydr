@@ -10,6 +10,12 @@ use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::Interval;
 
+#[cfg(test)]
+#[path = "depth_potential_wet.rs"]
+mod wet;
+#[cfg(test)]
+pub(crate) use wet::WetDepthPotential;
+
 pub(super) struct DepthPotential<'input, R: Runtime<DType = DType>> {
     lanes: &'input IntegrationLanes<R>,
     owner: &'input Tensor<R>,
@@ -40,16 +46,7 @@ where
 
     pub(super) fn value(&self, a: &mut Arithmetic<'_, R>) -> HydraulicResult<Interval<R>> {
         let (n, d, prefactor) = coefficients(a, self.lanes, self.owner, self.parameter)?;
-        let zero = scalar(a, 0.0)?;
-        reject_mask(
-            a,
-            &a.client().le(d[0].lower(), zero.lower())?,
-            PrismaticRiemannRejection::QuadratureUnresolved,
-            "Surveyed integrand denominator lacks a positive lower bound. Refine geometry or inspect shallow conditioning",
-        )?;
-        let ratio = a.div_positive_interval(&n[0], &d[0])?;
-        let root = a.sqrt_nonnegative(&ratio)?;
-        Ok(a.mul(&prefactor, &root)?)
+        value_from_coefficients(a, &n, &d, &prefactor)
     }
 
     pub(super) fn fourth_derivative(
@@ -58,46 +55,93 @@ where
     ) -> HydraulicResult<Interval<R>> {
         let (n, d, prefactor) = coefficients(a, self.lanes, self.owner, self.parameter)?;
         let zero = scalar(a, 0.0)?;
-        reject_mask(
-            a,
-            &a.client().le(d[0].lower(), zero.lower())?,
-            PrismaticRiemannRejection::QuadratureUnresolved,
-            "Surveyed derivative denominator lacks a positive lower bound. Refine geometry or inspect shallow conditioning",
-        )?;
-        // At every x, N = D*Q. Induction encloses Q^(k)(x)/k! throughout the complete panel.
-        let mut ratio = Vec::with_capacity(5);
-        for k in 0..=4 {
-            let mut numerator = a.bounds(n[k].lower(), n[k].upper())?;
-            for j in 1..=k {
-                let product = a.mul(&d[j], &ratio[k - j])?;
-                numerator = a.sub(&numerator, &product)?;
-            }
-            ratio.push(a.div_positive_interval(&numerator, &d[0])?);
-        }
-        let y0 = a.sqrt_nonnegative(&ratio[0])?;
-        reject_mask(
-            a,
-            &a.client().le(y0.lower(), zero.lower())?,
-            PrismaticRiemannRejection::QuadratureUnresolved,
-            "Surveyed derivative square root lacks a positive lower bound. Refine geometry or inspect shallow conditioning",
-        )?;
-        let denominator = scale(a, &y0, 2.0)?;
-        let mut root = Vec::with_capacity(5);
-        root.push(y0);
-        // Q = Y*Y gives 2*Y0*Yk = Qk - sum(Yj*Y(k-j)), pointwise for each derivative order.
-        for k in 1..=4 {
-            let mut numerator = a.bounds(ratio[k].lower(), ratio[k].upper())?;
-            for j in 1..k {
-                let product = a.mul(&root[j], &root[k - j])?;
-                numerator = a.sub(&numerator, &product)?;
-            }
-            root.push(a.div_positive_interval(&numerator, &denominator)?);
-        }
-        let coefficient = a.mul(&prefactor, &root[4])?;
-        let fourth = scale(a, &coefficient, 24.0)?;
+        let fourth = fourth_from_coefficients(a, &n, &d, &prefactor, &zero)?;
         let active = a.client().index_select(&self.lanes.active, 0, self.owner)?;
         choose(a, &active, &fourth, &zero)
     }
+}
+
+fn value_from_coefficients<R>(
+    a: &mut Arithmetic<'_, R>,
+    n: &[Interval<R>; 5],
+    d: &[Interval<R>; 5],
+    prefactor: &Interval<R>,
+) -> HydraulicResult<Interval<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    let zero = scalar(a, 0.0)?;
+    reject_mask(
+        a,
+        &a.client().le(d[0].lower(), zero.lower())?,
+        PrismaticRiemannRejection::QuadratureUnresolved,
+        "Surveyed integrand denominator lacks a positive lower bound. Refine geometry or inspect shallow conditioning",
+    )?;
+    let ratio = a.div_positive_interval(&n[0], &d[0])?;
+    let root = a.sqrt_nonnegative(&ratio)?;
+    Ok(a.mul(prefactor, &root)?)
+}
+
+fn fourth_from_coefficients<R>(
+    a: &mut Arithmetic<'_, R>,
+    n: &[Interval<R>; 5],
+    d: &[Interval<R>; 5],
+    prefactor: &Interval<R>,
+    zero: &Interval<R>,
+) -> HydraulicResult<Interval<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    reject_mask(
+        a,
+        &a.client().le(d[0].lower(), zero.lower())?,
+        PrismaticRiemannRejection::QuadratureUnresolved,
+        "Surveyed derivative denominator lacks a positive lower bound. Refine geometry or inspect shallow conditioning",
+    )?;
+    // At every x, N = D*Q. Induction encloses Q^(k)(x)/k! throughout the complete panel.
+    let mut ratio = Vec::with_capacity(5);
+    for k in 0..=4 {
+        let mut numerator = a.bounds(n[k].lower(), n[k].upper())?;
+        for j in 1..=k {
+            let product = a.mul(&d[j], &ratio[k - j])?;
+            numerator = a.sub(&numerator, &product)?;
+        }
+        ratio.push(a.div_positive_interval(&numerator, &d[0])?);
+    }
+    let y0 = a.sqrt_nonnegative(&ratio[0])?;
+    reject_mask(
+        a,
+        &a.client().le(y0.lower(), zero.lower())?,
+        PrismaticRiemannRejection::QuadratureUnresolved,
+        "Surveyed derivative square root lacks a positive lower bound. Refine geometry or inspect shallow conditioning",
+    )?;
+    let denominator = scale(a, &y0, 2.0)?;
+    let mut root = Vec::with_capacity(5);
+    root.push(y0);
+    // Q = Y*Y gives 2*Y0*Yk = Qk - sum(Yj*Y(k-j)), pointwise for each derivative order.
+    for k in 1..=4 {
+        let mut numerator = a.bounds(ratio[k].lower(), ratio[k].upper())?;
+        for j in 1..k {
+            let product = a.mul(&root[j], &root[k - j])?;
+            numerator = a.sub(&numerator, &product)?;
+        }
+        root.push(a.div_positive_interval(&numerator, &denominator)?);
+    }
+    let coefficient = a.mul(prefactor, &root[4])?;
+    let fourth = scale(a, &coefficient, 24.0)?;
+    Ok(fourth)
 }
 
 type Coefficients<R> = ([Interval<R>; 5], [Interval<R>; 5], Interval<R>);

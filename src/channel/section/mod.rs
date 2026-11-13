@@ -37,3 +37,10 @@ pub use recovery_config::CrossSectionRecoveryConfig;
 pub use recovery_query::{CrossSectionRecoveredProperties, CrossSectionRecovery};
 
 pub(crate) use prismatic::{Constitutive, GatheredBands, HydraulicGeometry};
+
+#[cfg(test)]
+pub(crate) use prismatic::{
+    AreaAnchor, AreaDirection, AreaQuery, BoundaryAreas, ClippedBandEndpoints,
+    ConditionalBandSegments, PhysicalEndpoint, PreparedAreaPrefix, SupportedAreaQuery,
+    WetDepthGeometry, source_difference,
+};

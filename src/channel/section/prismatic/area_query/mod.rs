@@ -10,6 +10,8 @@ mod boundaries;
 #[cfg(test)]
 mod chart;
 #[cfg(test)]
+pub(crate) mod conditional_band;
+#[cfg(test)]
 mod endpoints;
 #[cfg(test)]
 pub(super) mod evaluation;
@@ -33,7 +35,11 @@ mod support;
 #[cfg(test)]
 pub(crate) use chart::{AreaAnchor, AreaDirection, AreaQuery, SupportedAreaQuery};
 #[cfg(test)]
+pub(crate) use endpoints::PhysicalEndpoint;
+#[cfg(test)]
 pub(crate) use evaluation::AreaQueryGeometry;
+#[cfg(test)]
+pub(crate) use source_difference::source_difference;
 
 #[cfg(test)]
 pub(super) mod tests;

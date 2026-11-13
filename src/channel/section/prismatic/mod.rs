@@ -46,8 +46,21 @@ pub use query::{PrismaticSectionQuery, PrismaticSectionRecovery};
 
 mod hydraulic_evaluation;
 mod hydraulic_geometry;
+#[cfg(test)]
+mod point_riemann_input;
 mod riemann;
 pub(crate) use hydraulic_geometry::{Constitutive, GatheredBands, HydraulicGeometry};
+
+#[cfg(test)]
+pub(crate) use area_query::conditional_band::{
+    ClippedBandEndpoints, ConditionalBandSegments, PreparedAreaPrefix, WetDepthGeometry,
+};
+#[cfg(test)]
+pub(crate) use area_query::{
+    AreaAnchor, AreaDirection, AreaQuery, PhysicalEndpoint, SupportedAreaQuery, source_difference,
+};
+#[cfg(test)]
+pub(crate) use boundary_area::BoundaryAreas;
 
 #[cfg(test)]
 mod hydraulic_geometry_tests;

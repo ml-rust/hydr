@@ -59,6 +59,11 @@ pub(crate) struct Constitutive<R: Runtime<DType = DType>> {
 }
 
 impl<R: Runtime<DType = DType>> HydraulicGeometry<R> {
+    #[cfg(test)]
+    pub(crate) fn same_model(&self, bands: &GatheredBands<R>) -> bool {
+        Arc::ptr_eq(&self.context, &bands.model)
+    }
+
     pub(crate) fn from_batch(batch: &PrismaticSectionBatch<R>) -> Self {
         Self {
             context: Arc::clone(&batch.context),

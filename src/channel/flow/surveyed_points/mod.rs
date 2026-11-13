@@ -1,0 +1,40 @@
+//! Exact conserved-point sources for surveyed Riemann calculations.
+
+pub(crate) mod analytic_bottom;
+mod analytic_bottom_arithmetic;
+mod analytic_endpoint;
+#[cfg(test)]
+mod analytic_endpoint_tests;
+mod potential_absolute;
+mod potential_analytic;
+#[cfg(test)]
+mod potential_band_retention_tests;
+pub(crate) mod potential_callbacks;
+mod potential_increment;
+#[cfg(test)]
+mod potential_lanes;
+mod potential_numerical;
+mod potential_range;
+#[cfg(test)]
+mod potential_range_tests;
+mod potential_sonic;
+#[cfg(test)]
+mod potential_underflow_tests;
+pub(crate) mod source_velocity;
+#[cfg(test)]
+mod source_velocity_binding_tests;
+pub(crate) mod types;
+
+#[cfg(test)]
+#[path = "source_tests.rs"]
+mod source_tests;
+
+#[cfg(test)]
+#[path = "analytic_bottom_tests.rs"]
+mod analytic_bottom_tests;
+
+#[cfg(test)]
+mod potential_analytic_tests;
+
+#[cfg(test)]
+mod potential_sonic_tests;

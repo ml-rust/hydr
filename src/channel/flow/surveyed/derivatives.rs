@@ -9,6 +9,52 @@ use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::Interval;
 
+#[cfg(test)]
+pub(crate) use super::depth_potential::WetDepthPotential;
+
+#[cfg(test)]
+pub(crate) fn wet_integrand<R>(
+    a: &mut Arithmetic<'_, R>,
+    geometry: &crate::channel::section::WetDepthGeometry<R>,
+    owner: &Tensor<R>,
+    parameter: &Interval<R>,
+    gravity: f64,
+) -> HydraulicResult<Interval<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    WetDepthPotential::from_geometry(a, geometry, owner, parameter, gravity)?.value(a)
+}
+
+#[cfg(test)]
+pub(crate) fn wet_fourth_bound<R>(
+    a: &mut Arithmetic<'_, R>,
+    geometry: &crate::channel::section::WetDepthGeometry<R>,
+    owner: &Tensor<R>,
+    parameter: &Interval<R>,
+    gravity: f64,
+) -> HydraulicResult<Tensor<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    let fourth = WetDepthPotential::from_geometry(a, geometry, owner, parameter, gravity)?
+        .fourth_derivative(a)?;
+    let c = a.client();
+    Ok(c.maximum(&c.abs(fourth.lower())?, &c.abs(fourth.upper())?)?)
+}
+
 pub(crate) fn panel_fourth_bound<R>(
     a: &mut Arithmetic<'_, R>,
     lanes: &IntegrationLanes<R>,
