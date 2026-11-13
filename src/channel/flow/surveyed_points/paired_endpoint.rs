@@ -2,7 +2,7 @@ use super::paired_sources::{PairedSources, SelectedRows};
 use super::potential_absolute::endpoint_potential;
 use super::potential_range::{PotentialContext, PotentialEvaluation};
 use super::wave_curve;
-use super::wave_curve_types::{CurveValue, scatter_value, unavailable};
+use super::wave_curve_types::{CurveValue, EndpointCurve, scatter_value, unavailable};
 use crate::channel::{
     flow::surveyed::error::{HydraulicResult, checked},
     section::{PhysicalEndpoint, SupportedAreaQuery, source_difference},
@@ -18,6 +18,22 @@ use numr::{
 };
 use solvr::integrate::CertifiedSimpsonAlgorithms;
 
+#[derive(Clone, Copy)]
+pub(super) enum EndpointEvidenceMode {
+    Discard,
+    Retain,
+}
+
+pub(super) struct LocalEndpointEvidence<R: Runtime<DType = DType>> {
+    pub(super) rows: Tensor<R>,
+    pub(super) endpoint: EndpointCurve<R>,
+}
+
+pub(super) struct EndpointWaveEvidence<R: Runtime<DType = DType>> {
+    pub(super) far_rarefaction: [Tensor<R>; 2],
+    pub(super) local: [Option<LocalEndpointEvidence<R>>; 2],
+}
+
 pub(super) struct EndpointTerms<R: Runtime<DType = DType>> {
     pub(super) stage: SelectedRows<R>,
     pub(super) target_query: SupportedAreaQuery<R>,
@@ -25,6 +41,7 @@ pub(super) struct EndpointTerms<R: Runtime<DType = DType>> {
     pub(super) local: [CurveValue<R>; 2],
     pub(super) far_sources: [CurveValue<R>; 2],
     pub(super) target_value: CurveValue<R>,
+    pub(super) local_evidence: [Option<LocalEndpointEvidence<R>>; 2],
 }
 
 pub(super) fn prepare<R>(
@@ -32,6 +49,7 @@ pub(super) fn prepare<R>(
     rows: &Tensor<R>,
     query: &SupportedAreaQuery<R>,
     endpoint: PhysicalEndpoint,
+    evidence: EndpointEvidenceMode,
 ) -> HydraulicResult<EndpointTerms<R>>
 where
     R: Runtime<DType = DType>,
@@ -80,6 +98,7 @@ where
         checked(c, "paired left local placeholder", |a| unavailable(a, n))?,
         checked(c, "paired right local placeholder", |a| unavailable(a, n))?,
     ];
+    let mut local_evidence = [None, None];
     for (side, rows) in local_rows.iter().enumerate() {
         if rows.numel() == 0 {
             continue;
@@ -104,12 +123,27 @@ where
                 work: parent.evaluation.work,
             },
         )?;
-        let value = wave_curve::endpoint(&context, PhysicalEndpoint::Lower)?.curve;
-        let dense = checked(c, "paired local wave assembly", |a| {
-            let empty = unavailable(a, n)?;
-            scatter_value(a, empty, rows, &value)
-        })?;
-        local[side] = dense;
+        let value = wave_curve::endpoint(&context, PhysicalEndpoint::Lower)?;
+        let assemble = |curve: &CurveValue<R>| {
+            checked(c, "paired local wave assembly", |a| {
+                let empty = unavailable(a, n)?;
+                scatter_value(a, empty, rows, curve)
+            })
+        };
+        local[side] = match evidence {
+            EndpointEvidenceMode::Discard => {
+                let curve = discard_evidence(value);
+                assemble(&curve)?
+            }
+            EndpointEvidenceMode::Retain => {
+                let dense = assemble(&value.curve)?;
+                local_evidence[side] = Some(LocalEndpointEvidence {
+                    rows: rows.clone(),
+                    endpoint: value,
+                });
+                dense
+            }
+        };
     }
     let global_far = checked::<R, _>(c, "paired source cache parent rows", |a| {
         Ok([
@@ -175,5 +209,10 @@ where
         local,
         far_sources,
         target_value,
+        local_evidence,
     })
+}
+
+fn discard_evidence<R: Runtime<DType = DType>>(value: EndpointCurve<R>) -> CurveValue<R> {
+    value.curve
 }

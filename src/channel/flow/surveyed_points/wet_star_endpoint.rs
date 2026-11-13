@@ -35,7 +35,13 @@ where
         + RuntimeClient<R>
         + CertifiedSimpsonAlgorithms<R>,
 {
-    let terms = paired_endpoint::prepare(sources, rows, query, endpoint)?;
+    let terms = paired_endpoint::prepare(
+        sources,
+        rows,
+        query,
+        endpoint,
+        paired_endpoint::EndpointEvidenceMode::Retain,
+    )?;
     let c = sources.geometry.client();
     checked(c, "wet star anchored endpoint", |a| {
         let stage = &terms.stage;
@@ -154,11 +160,18 @@ where
         Ok(WetStarEndpoint {
             area,
             sides: [left, right],
+            waves: paired_endpoint::EndpointWaveEvidence {
+                far_rarefaction: terms.far,
+                local: terms.local_evidence,
+            },
         })
     })
 }
 
-fn exact_zero<R>(a: &Arithmetic<'_, R>, value: &CertifiedExpansion<R>) -> HydraulicResult<Tensor<R>>
+pub(super) fn exact_zero<R>(
+    a: &Arithmetic<'_, R>,
+    value: &CertifiedExpansion<R>,
+) -> HydraulicResult<Tensor<R>>
 where
     R: Runtime<DType = DType>,
     R::Client: TensorOps<R>

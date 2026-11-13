@@ -27,6 +27,7 @@ pub(super) struct WetStarSideEndpoint<R: Runtime<DType = DType>> {
 pub(super) struct WetStarEndpoint<R: Runtime<DType = DType>> {
     pub(super) area: CertifiedExpansion<R>,
     pub(super) sides: [WetStarSideEndpoint<R>; 2],
+    pub(super) waves: super::paired_endpoint::EndpointWaveEvidence<R>,
 }
 
 /// Range operands include the complete root domain, without discharge endpoint-extrema assumptions.

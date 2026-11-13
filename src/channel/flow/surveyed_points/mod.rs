@@ -58,6 +58,11 @@ mod wet_roots;
 mod wet_star;
 mod wet_star_endpoint;
 mod wet_star_types;
+mod wet_wave_types;
+mod wet_waves;
+mod wet_waves_endpoint;
+mod wet_waves_regions;
+mod wet_waves_side;
 
 #[cfg(test)]
 #[path = "source_tests.rs"]

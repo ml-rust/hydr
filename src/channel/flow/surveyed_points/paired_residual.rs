@@ -32,7 +32,13 @@ where
         + RuntimeClient<R>
         + CertifiedSimpsonAlgorithms<R>,
 {
-    let terms = super::paired_endpoint::prepare(parent, rows, query, endpoint)?;
+    let terms = super::paired_endpoint::prepare(
+        parent,
+        rows,
+        query,
+        endpoint,
+        super::paired_endpoint::EndpointEvidenceMode::Discard,
+    )?;
     let super::paired_endpoint::EndpointTerms {
         stage,
         far,
