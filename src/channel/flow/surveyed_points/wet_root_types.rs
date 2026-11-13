@@ -42,9 +42,11 @@ pub(super) struct WetRootDomain<R: Runtime<DType = DType>> {
 }
 
 pub(super) struct WetRootDomains<R: Runtime<DType = DType>> {
+    pub(super) witness: super::source_binding::RootSourceWitness,
     pub(super) invocation_rows: Tensor<R>,
     pub(super) status: Tensor<R>,
     pub(super) domains: Vec<WetRootDomain<R>>,
     pub(super) evidence: Vec<WetRootEvidence<R>>,
     pub(super) callback_points: usize,
+    pub(super) point_limit: usize,
 }

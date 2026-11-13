@@ -1,0 +1,194 @@
+use super::{
+    paired_sources::PairedSources,
+    wet_depth_mapping, wet_depth_refinement, wet_depth_selection,
+    wet_depth_types::{DepthRefinementState, WetDepthDomain, WetDepthSession, WetDepthStatus},
+    wet_root_types::WetRootDomains,
+};
+use crate::channel::flow::surveyed::error::{HydraulicError, HydraulicResult, checked};
+use numr::{
+    dtype::DType,
+    ops::{
+        BinaryOps, CompareOps, MidpointOps, NextRepresentableOps, ScalarOps, SortingOps, TensorOps,
+        TwoSumOps,
+    },
+    runtime::{Runtime, RuntimeClient},
+    tensor::Tensor,
+};
+use solvr::{
+    integrate::CertifiedSimpsonAlgorithms,
+    optimize::{CertifiedMappedBisectionAlgorithms, CertifiedRootTolerance},
+};
+
+/// Check physical depth while preserving root evidence for later, stricter stopping phases.
+pub(super) fn refine_wet_depth<'s, 'a, R>(
+    sources: &'s mut PairedSources<'a, R>,
+    located: WetRootDomains<R>,
+) -> HydraulicResult<WetDepthSession<'s, 'a, R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>,
+{
+    sources.check_root_witness(&located.witness)?;
+    if located.callback_points > located.point_limit {
+        return Err(HydraulicError::Numerical { context: "Located root work exceeds its captured point limit. Discard inconsistent root evidence".into() });
+    }
+    let tolerance = CertifiedRootTolerance {
+        atol: located.witness.config().root.atol,
+        rtol: located.witness.config().root.rtol,
+    };
+    let c = sources.geometry.client();
+    let mut domains = Vec::with_capacity(located.domains.len());
+    for original in located.domains {
+        let (depth, normalized_depth) =
+            wet_depth_mapping::certificates(sources, &original.parent_rows, &original.query)?;
+        let (query, invocation_owner, parent_rows) =
+            checked::<R, _>(c, "wet depth original bracket capture", |a| {
+                let selected = sources.select_sources(a, &original.parent_rows)?;
+                let query = original.query.with_parameter_bounds(
+                    a,
+                    &selected.bands,
+                    &original.query.query.parameter,
+                )?;
+                let owners =
+                    Tensor::empty(original.invocation_owner.shape(), DType::I64, c.device())?;
+                c.copy_into(&owners, &original.invocation_owner)?;
+                Ok((query, owners, selected.rows))
+            })?;
+        domains.push(WetDepthDomain {
+            invocation_owner,
+            parent_rows,
+            query,
+            depth,
+            normalized_depth,
+            status: Tensor::full_scalar(
+                original.parent_rows.shape(),
+                DType::I64,
+                WetDepthStatus::Unresolved as i64 as f64,
+                c.device(),
+            )?,
+            iterations: 0,
+            callback_points: 0,
+            mapped_points: 0,
+            refinement: DepthRefinementState::Deferred {
+                original: Box::new(original),
+            },
+        });
+    }
+    WetDepthSession {
+        sources,
+        witness: located.witness,
+        invocation_rows: located.invocation_rows,
+        locator_status: located.status,
+        evidence: located.evidence,
+        domains,
+        point_limit: located.point_limit,
+        callback_points: located.callback_points,
+        tolerance,
+    }
+    .refine_depth_to(tolerance)
+}
+
+impl<'s, 'a, R> WetDepthSession<'s, 'a, R>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>,
+{
+    /// Request no looser precision than the original configured normalized-depth allowances.
+    pub(super) fn refine_depth_to(
+        mut self,
+        tolerance: CertifiedRootTolerance,
+    ) -> HydraulicResult<Self> {
+        self.sources.check_root_witness(&self.witness)?;
+        check_tolerance(&tolerance, &self.witness.config().root)?;
+        let c = self.sources.geometry.client();
+        let mut output = Vec::with_capacity(self.domains.len());
+        for mut domain in std::mem::take(&mut self.domains) {
+            let accepted = checked::<R, _>(c, "wet depth stopping criterion", |a| {
+                wet_depth_mapping::satisfied(a, &domain.normalized_depth, &tolerance)
+            })?;
+            let passing = c.nonzero(&accepted)?.flatten()?;
+            if passing.numel() == domain.parent_rows.numel() {
+                domain.status = Tensor::full_scalar(
+                    domain.parent_rows.shape(),
+                    DType::I64,
+                    WetDepthStatus::DepthConverged as i64 as f64,
+                    c.device(),
+                )?;
+                output.push(domain);
+                continue;
+            }
+            if domain.is_deferred() && passing.numel() != 0 {
+                let zero = Tensor::zeros(accepted.shape(), accepted.dtype(), c.device())?;
+                let failing = c.nonzero(&c.eq(&accepted, &zero)?)?.flatten()?;
+                let (pass, fail) = checked::<R, _>(c, "wet depth deferred partition", |a| {
+                    Ok((
+                        wet_depth_selection::deferred(
+                            a,
+                            &domain,
+                            &passing,
+                            WetDepthStatus::DepthConverged,
+                        )?,
+                        wet_depth_selection::deferred(
+                            a,
+                            &domain,
+                            &failing,
+                            WetDepthStatus::Unresolved,
+                        )?,
+                    ))
+                })?;
+                output.push(pass);
+                domain = fail;
+            }
+            output.push(wet_depth_refinement::advance(
+                self.sources,
+                &self.witness,
+                self.point_limit,
+                &mut self.callback_points,
+                domain,
+                &tolerance,
+            )?);
+        }
+        self.domains = output;
+        self.tolerance = tolerance;
+        Ok(self)
+    }
+}
+
+fn check_tolerance(
+    tolerance: &CertifiedRootTolerance,
+    original: &solvr::optimize::CertifiedBisectionOptions,
+) -> HydraulicResult<()> {
+    for (name, value, limit) in [
+        ("atol", tolerance.atol, original.atol),
+        ("rtol", tolerance.rtol, original.rtol),
+    ] {
+        if !value.is_finite() || value < 0.0 || value > limit {
+            return Err(HydraulicError::Numerical {
+                context: format!(
+                    "Wet depth {name}={value} exceeds original finite nonnegative allowance={limit}. Request an allowance within the original ceiling"
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "wet_depth_tests.rs"]
+mod tests;

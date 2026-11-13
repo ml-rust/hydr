@@ -1,5 +1,6 @@
 use super::paired_source_cache::{self, SourcePotentialCache};
 use super::potential_range::{PotentialEvaluation, admit_evaluation, source_query};
+use super::source_binding::{RootSourceIdentity, RootSourceWitness};
 use super::types::SourceVelocity;
 use super::wave_curve_types::CurveValue;
 use crate::channel::{
@@ -19,6 +20,7 @@ use numr::{
     tensor::Tensor,
 };
 use solvr::integrate::CertifiedSimpsonAlgorithms;
+use std::sync::Arc;
 
 /// One immutable source graph and two fixed source-potential caches serve every target callback.
 pub(super) struct PairedSources<'a, R: Runtime<DType = DType>> {
@@ -30,6 +32,8 @@ pub(super) struct PairedSources<'a, R: Runtime<DType = DType>> {
     pub(super) evaluation: PotentialEvaluation<'a>,
     pub(super) original_rows: Tensor<R>,
     pub(super) cache: [SourcePotentialCache<R>; 2],
+    identity: Arc<RootSourceIdentity>,
+    construction_witness: RootSourceWitness,
 }
 
 pub(super) struct PairedRange<R: Runtime<DType = DType>> {
@@ -161,6 +165,8 @@ where
                 SourcePotentialCache::new(a, right, original_rows.numel())?,
             ])
         })?;
+        let identity = Arc::new(RootSourceIdentity);
+        let construction_witness = RootSourceWitness::capture(&identity, &evaluation);
         Ok(Self {
             geometry,
             bands,
@@ -170,7 +176,24 @@ where
             evaluation,
             original_rows,
             cache,
+            identity,
+            construction_witness,
         })
+    }
+
+    pub(super) fn root_witness(&self) -> HydraulicResult<RootSourceWitness> {
+        self.check_construction_policy()?;
+        Ok(self.construction_witness.clone())
+    }
+
+    pub(super) fn check_root_witness(&self, witness: &RootSourceWitness) -> HydraulicResult<()> {
+        self.check_construction_policy()?;
+        witness.check(&self.identity, &self.evaluation)
+    }
+
+    fn check_construction_policy(&self) -> HydraulicResult<()> {
+        self.construction_witness
+            .check(&self.identity, &self.evaluation)
     }
 
     pub(super) fn select_rows(
@@ -326,6 +349,7 @@ where
         &mut self,
         rows: [&Tensor<R>; 2],
     ) -> HydraulicResult<[CurveValue<R>; 2]> {
+        self.check_construction_policy()?;
         let [left, right] = &mut self.cache;
         Ok([
             paired_source_cache::ensure(

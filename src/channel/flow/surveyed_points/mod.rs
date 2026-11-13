@@ -33,6 +33,7 @@ mod potential_sonic;
 #[cfg(test)]
 mod potential_underflow_tests;
 mod shock_points;
+mod source_binding;
 pub(crate) mod source_velocity;
 #[cfg(test)]
 mod source_velocity_binding_tests;
@@ -41,6 +42,11 @@ mod wave_curve;
 #[cfg(test)]
 mod wave_curve_tests;
 mod wave_curve_types;
+mod wet_depth;
+mod wet_depth_mapping;
+mod wet_depth_refinement;
+mod wet_depth_selection;
+mod wet_depth_types;
 mod wet_root_charts;
 mod wet_root_direct;
 mod wet_root_search;

@@ -99,7 +99,50 @@ where
     R: Runtime<DType = DType>,
     R::Client: Client<R> + CertifiedSimpsonAlgorithms<R> + CertifiedBisectionAlgorithms<R>,
 {
-    let geometry = HydraulicGeometry::from_batch(&section);
+    with_inputs_ref(client, &section, owners, inputs, config, operation)
+}
+
+pub(super) fn with_inputs_ref<R, T>(
+    client: &R::Client,
+    section: &PrismaticSectionBatch<R>,
+    owners: Tensor<R>,
+    inputs: Vec<CertifiedExpansion<R>>,
+    config: &PrismaticRiemannConfig,
+    operation: impl FnOnce(&mut PairedSources<'_, R>, &WorkLedger) -> Result<T>,
+) -> Result<T>
+where
+    R: Runtime<DType = DType>,
+    R::Client: Client<R> + CertifiedSimpsonAlgorithms<R> + CertifiedBisectionAlgorithms<R>,
+{
+    with_inputs_ref_policy(
+        client,
+        section,
+        owners,
+        inputs,
+        config,
+        config,
+        |pair, _, work| operation(pair, work),
+    )
+}
+
+pub(super) fn with_inputs_ref_policy<R, T>(
+    client: &R::Client,
+    section: &PrismaticSectionBatch<R>,
+    owners: Tensor<R>,
+    inputs: Vec<CertifiedExpansion<R>>,
+    config: &PrismaticRiemannConfig,
+    replacement: &PrismaticRiemannConfig,
+    operation: impl for<'a> FnOnce(
+        &mut PairedSources<'a, R>,
+        &'a PrismaticRiemannConfig,
+        &WorkLedger,
+    ) -> Result<T>,
+) -> Result<T>
+where
+    R: Runtime<DType = DType>,
+    R::Client: Client<R> + CertifiedSimpsonAlgorithms<R> + CertifiedBisectionAlgorithms<R>,
+{
+    let geometry = HydraulicGeometry::from_batch(section);
     let captured = hydraulic(
         section.capture_riemann_points(&owners, &inputs[0], &inputs[1], &inputs[2], &inputs[3]),
     )?;
@@ -139,7 +182,7 @@ where
         },
         &originals,
     ))?;
-    operation(&mut pair, &work)
+    operation(&mut pair, replacement, &work)
 }
 
 pub(super) fn rectangle<R>(

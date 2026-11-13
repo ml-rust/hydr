@@ -91,12 +91,28 @@ impl WorkLedger {
         Ok(())
     }
     pub(crate) fn finish_root(&self, iterations: usize) -> HydraulicResult<()> {
+        self.finish_root_progress(iterations, iterations)
+    }
+    pub(crate) fn finish_root_progress(
+        &self,
+        additional_iterations: usize,
+        cumulative_session_iterations: usize,
+    ) -> HydraulicResult<()> {
+        if additional_iterations > cumulative_session_iterations {
+            return Err(HydraulicError::Numerical {
+                context: format!(
+                    "Root additional_iterations={additional_iterations} exceeds cumulative_session_iterations={cumulative_session_iterations}. Discard inconsistent root progress"
+                ),
+            });
+        }
         let mut counts = self.snapshot();
         counts.root_iterations = counts
             .root_iterations
-            .checked_add(iterations)
+            .checked_add(additional_iterations)
             .ok_or_else(|| self.exceeded())?;
-        counts.maximum_root_iterations = counts.maximum_root_iterations.max(iterations);
+        counts.maximum_root_iterations = counts
+            .maximum_root_iterations
+            .max(cumulative_session_iterations);
         self.counts.set(counts);
         Ok(())
     }
@@ -133,6 +149,10 @@ impl WorkLedger {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "work_progress_tests.rs"]
+mod progress_tests;
 
 #[cfg(test)]
 mod tests {

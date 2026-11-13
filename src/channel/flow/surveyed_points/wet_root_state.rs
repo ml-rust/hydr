@@ -30,11 +30,17 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>,
 {
-    pub(super) fn new(client: &R::Client, rows: Tensor<R>, limit: usize) -> HydraulicResult<Self> {
+    pub(super) fn new(
+        client: &R::Client,
+        rows: Tensor<R>,
+        limit: usize,
+        witness: super::source_binding::RootSourceWitness,
+    ) -> HydraulicResult<Self> {
         checked::<R, _>(client, "wet root locator storage", |a| {
             let n = rows.numel();
             Ok(Self {
                 output: WetRootDomains {
+                    witness,
                     invocation_rows: rows,
                     status: Tensor::full_scalar(
                         &[n],
@@ -45,6 +51,7 @@ where
                     domains: Vec::new(),
                     evidence: Vec::new(),
                     callback_points: 0,
+                    point_limit: limit,
                 },
                 pending: Tensor::ones(&[n], a.dtype(), client.device())?,
                 f0: unavailable(a, n)?,

@@ -67,7 +67,7 @@ where
         a.client().copy_into(&owned, &selected.rows)?;
         Ok(owned)
     })?;
-    let mut locator = Locator::new(c, rows, max_points)?;
+    let mut locator = Locator::new(c, rows, max_points, sources.root_witness()?)?;
     wet_root_direct::singleton(sources, &mut locator, &selected, false)?;
     wet_root_direct::dry_limit(sources, &mut locator)?;
     wet_root_direct::singleton(sources, &mut locator, &selected, true)?;
