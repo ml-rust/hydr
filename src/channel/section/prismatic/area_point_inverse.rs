@@ -1,7 +1,8 @@
 use super::{
     area_point_input::{Inputs, difference},
     area_point_query::PrismaticAreaPointBandCoordinates,
-    band_geometry::{BandRows, intersect, masked},
+    area_query::inverse::{self as area_query_inverse, LocalInverse},
+    band_geometry::{BandRows, masked},
     context::Context,
     query_input::{Arithmetic, QueryResult, reject},
 };
@@ -12,6 +13,9 @@ use numr::ops::{
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use solvr::common::arithmetic::Interval;
+
+#[cfg(test)]
+use super::area_query::inverse::pointed_depth;
 
 pub(super) fn recover<R>(
     a: &mut Arithmetic<'_, R>,
@@ -30,7 +34,6 @@ where
 {
     let c = a.client();
     let zero = &context.source.zero;
-    let one = &context.source.one;
     let count = inputs.owners.numel();
     let valid = c.mul(&rows.valid, &inputs.wet.reshape(&[count, 1])?)?;
     let high = c.where_cond(&valid, &inputs.areas.high().reshape(&[count, 1])?, zero)?;
@@ -49,111 +52,13 @@ where
             &c.ge(upper_delta.upper(), zero)?,
         )?,
     )?;
-    let (lower_delta, candidate) = intersect(
-        a,
-        &candidate,
-        &lower_delta,
-        zero,
-        rows.area_increment.upper(),
-        zero,
-    )?;
-    let (upper_delta, candidate) = intersect(
-        a,
-        &candidate,
-        &upper_delta,
-        zero,
-        rows.area_increment.upper(),
-        zero,
-    )?;
-    let linear = c.mul(&candidate, &c.eq(rows.slope.upper(), zero)?)?;
-    let pointed = c.mul(&candidate, &rows.pointed)?;
-    let curved = c.mul(&candidate, &c.eq(&c.maximum(&linear, &pointed)?, zero)?)?;
-    let delta = masked(a, &linear, &lower_delta, zero)?;
-    let width = masked(a, &linear, &rows.start_width, one)?;
-    let linear_depth = a.div_positive_interval(&delta, &width)?;
-    let pointed_depth = if context.source.any(&pointed)? {
-        let delta = masked(a, &pointed, &lower_delta, zero)?;
-        let slope = masked(a, &pointed, &rows.slope, one)?;
-        pointed_depth(a, &delta, &slope)?
-    } else {
-        a.point(&c.mul_scalar(&candidate, 0.0)?)?
-    };
-    let curved_depth = if context.source.any(&curved)? {
-        let delta = masked(a, &curved, &lower_delta, zero)?;
-        let slope = masked(a, &curved, &rows.slope, zero)?;
-        let width = masked(a, &curved, &rows.start_width, one)?;
-        let square = a.mul(&width, &width)?;
-        let product = a.mul(&slope, &delta)?;
-        let twice_product = a.add(&product, &product)?;
-        let discriminant = a.add(&square, &twice_product)?;
-        let root = a.sqrt_nonnegative(&discriminant)?;
-        let denominator = a.add(&width, &root)?;
-        let numerator = a.add(&delta, &delta)?;
-        a.div_positive_interval(&numerator, &denominator)?
-    } else {
-        a.point(&c.mul_scalar(&candidate, 0.0)?)?
-    };
-    let h = a.bounds(
-        &c.where_cond(
-            &linear,
-            linear_depth.lower(),
-            &c.where_cond(&pointed, pointed_depth.lower(), curved_depth.lower())?,
-        )?,
-        &c.where_cond(
-            &linear,
-            linear_depth.upper(),
-            &c.where_cond(&pointed, pointed_depth.upper(), curved_depth.upper())?,
-        )?,
-    )?;
-    let (h, candidate) = intersect(a, &candidate, &h, zero, rows.thickness.upper(), zero)?;
-    let width = masked(a, &candidate, &rows.start_width, one)?;
-    let slope = masked(a, &candidate, &rows.slope, zero)?;
-    let thickness = masked(a, &candidate, &rows.thickness, zero)?;
-    let slope_h = a.mul(&slope, &h)?;
-    let at_h = a.add(&width, &slope_h)?;
-    let slope_end = a.mul(&slope, &thickness)?;
-    let at_end = a.add(&width, &slope_end)?;
-    let two = c.mul_scalar(one, 2.0)?;
-    // Half each endpoint before adding, so the represented mean cannot overflow.
-    let half_h = a.div_positive(&at_h, &two)?;
-    let half_end = a.div_positive(&at_end, &two)?;
-    let mean = a.add(&half_h, &half_end)?;
-    let mean = masked(a, &candidate, &mean, one)?;
-    let delta = masked(a, &candidate, &upper_delta, zero)?;
-    let e = a.div_positive_interval(&delta, &mean)?;
-    let (e, candidate) = intersect(a, &candidate, &e, zero, rows.thickness.upper(), zero)?;
-    let from_upper = a.sub(&thickness, &e)?;
-    let (h, candidate) = intersect(
-        a,
-        &candidate,
-        &h,
-        from_upper.lower(),
-        from_upper.upper(),
-        zero,
-    )?;
-    let from_lower = a.sub(&thickness, &h)?;
-    let (e, candidate) = intersect(
-        a,
-        &candidate,
-        &e,
-        from_lower.lower(),
-        from_lower.upper(),
-        zero,
-    )?;
-    let start = masked(a, &candidate, &rows.start_depth, zero)?;
-    let end = masked(a, &candidate, &rows.end_depth, zero)?;
-    let h_for_depth = masked(a, &candidate, &h, zero)?;
-    let e_for_depth = masked(a, &candidate, &e, zero)?;
-    let from_start = a.add(&start, &h_for_depth)?;
-    let from_end = a.sub(&end, &e_for_depth)?;
-    let (_, candidate) = intersect(
-        a,
-        &candidate,
-        &from_start,
-        from_end.lower(),
-        from_end.upper(),
-        zero,
-    )?;
+    let LocalInverse {
+        candidate,
+        area_above_start: lower_delta,
+        area_below_end: upper_delta,
+        depth_above_start: h,
+        depth_below_end: e,
+    } = area_query_inverse::recover(a, context, rows, &candidate, &lower_delta, &upper_delta)?;
     let missing = c.mul(&inputs.wet, &c.eq(&c.max(&candidate, &[1], false)?, zero)?)?;
     reject(
         context,
@@ -208,33 +113,6 @@ where
         depth_below_end,
         candidate: c.maximum(&candidate, &dry_candidate)?,
     })
-}
-
-pub(super) fn pointed_depth<R>(
-    a: &mut Arithmetic<'_, R>,
-    delta: &Interval<R>,
-    slope: &Interval<R>,
-) -> QueryResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    let c = a.client();
-    let root_delta = a.sqrt_nonnegative(delta)?;
-    let root_slope = a.sqrt_nonnegative(slope)?;
-    let ratio = a.div_positive_interval(&root_delta, &root_slope)?;
-    let two = a.point(&numr::tensor::Tensor::from_slice(
-        &[2.0_f64],
-        &[],
-        c.device(),
-    )?)?;
-    let root_two = a.sqrt_nonnegative(&two)?;
-    Ok(a.mul(&ratio, &root_two)?)
 }
 
 pub(super) fn absolute_depth<R>(

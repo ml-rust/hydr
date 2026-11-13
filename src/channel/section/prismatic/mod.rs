@@ -6,6 +6,7 @@ mod area_point_inverse;
 mod area_point_projection;
 mod area_point_query;
 mod area_point_recovery;
+mod area_query;
 mod band_geometry;
 mod batch;
 mod compilation;

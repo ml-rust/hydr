@@ -1,6 +1,8 @@
 use super::fixtures::{CASES, FORMULAS, GEOMETRY_ORDER, LOCAL_ORDER, PROFILES};
 use super::support::{self, Client, Result};
-use hydr::channel::PrismaticRecoveryConfig;
+use hydr::channel::{
+    CrossSectionBatch, CrossSectionDefinition, CrossSectionPoint, PrismaticRecoveryConfig,
+};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 
@@ -264,4 +266,103 @@ fn cpu_area_points_retain_independent_geometry_and_endpoint_coordinates() -> Res
 fn cuda_area_points_retain_independent_geometry_and_endpoint_coordinates() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
     run::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+}
+
+fn unit_width_minimum_area<R>(client: R::Client) -> Result
+where
+    R: Runtime<DType = DType>,
+    R::Client: Client<R>,
+{
+    let definitions = ["unit_width_left", "unit_width_right"]
+        .into_iter()
+        .map(|id| CrossSectionDefinition {
+            id: id.into(),
+            vertical_datum: "Unit-width rectangle datum".into(),
+            points: [(0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]
+                .into_iter()
+                .map(|(station_m, elevation_m)| CrossSectionPoint {
+                    station_m,
+                    elevation_m,
+                })
+                .collect(),
+            maximum_stage_m: 1.0,
+            profile_provenance: "Exact unit-width geometry".into(),
+        })
+        .collect();
+    let batch = CrossSectionBatch::<R>::new(client.clone(), definitions)?.certify_prismatic()?;
+    let config = PrismaticRecoveryConfig::default();
+    let minimum = f64::from_bits(1);
+    let owner_values = [1_i64, 0, 1];
+    let high = [minimum, 0.0, minimum];
+    let low = [0.0, minimum, 0.0];
+    for strided in [false, true] {
+        let (owners, areas) = support::inputs::<R>(&client, &owner_values, &high, &low, strided)?;
+        let expected_high = support::bits(areas.high())?;
+        let expected_low = support::bits(areas.low())?;
+        let recovered = batch.recover_area_points_tensor(&owners, &areas, &config)?;
+        support::interval(recovered.depth_m(), &[3]);
+        let lower = support::bits(recovered.depth_m().lower())?;
+        assert_eq!(lower, [1; 3]);
+        assert_eq!(support::bits(recovered.depth_m().upper())?, [1; 3]);
+        assert!(lower.iter().all(|&bits| f64::from_bits(bits) > 0.0));
+        assert_eq!(recovered.dry_mask().try_to_vec::<f64>()?, [0.0; 3]);
+        assert_eq!(recovered.owners().try_to_vec::<i64>()?, owner_values);
+        assert_eq!(
+            support::bits(recovered.requested_areas_m2().high())?,
+            expected_high
+        );
+        assert_eq!(
+            support::bits(recovered.requested_areas_m2().low())?,
+            expected_low
+        );
+        assert_eq!(
+            recovered
+                .requested_areas_m2()
+                .abs_error()
+                .try_to_vec::<f64>()?,
+            [0.0; 3]
+        );
+        let properties = recovered.properties()?;
+        assert_eq!(properties.len(), 3);
+        for (index, row) in properties.iter().enumerate() {
+            assert!(!row.dry);
+            assert_eq!(row.depth_m.map(f64::to_bits), [1, 1]);
+            assert_eq!(row.requested_area_high_m2.to_bits(), expected_high[index]);
+            assert_eq!(row.requested_area_low_m2.to_bits(), expected_low[index]);
+        }
+        for input in [&owners, areas.high(), areas.low(), areas.abs_error()] {
+            support::overwrite::<R>(&client, input)?;
+        }
+        assert_eq!(recovered.owners().try_to_vec::<i64>()?, owner_values);
+        assert_eq!(
+            support::bits(recovered.requested_areas_m2().high())?,
+            expected_high
+        );
+        assert_eq!(
+            support::bits(recovered.requested_areas_m2().low())?,
+            expected_low
+        );
+        assert_eq!(recovered.properties()?, properties);
+        support::overwrite::<R>(&client, recovered.depth_m().lower())?;
+        let (owners, areas) = support::inputs::<R>(&client, &owner_values, &high, &low, strided)?;
+        assert_eq!(
+            batch
+                .recover_area_points_tensor(&owners, &areas, &config)?
+                .properties()?,
+            properties
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn cpu_unit_width_minimum_area_retains_exact_positive_depth() -> Result {
+    unit_width_minimum_area::<super::runtime::Runtime>(super::runtime::client())
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn cuda_unit_width_minimum_area_retains_exact_positive_depth() -> Result {
+    use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+    unit_width_minimum_area::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
 }
