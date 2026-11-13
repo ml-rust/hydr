@@ -10,7 +10,13 @@ mod boundaries;
 #[cfg(test)]
 mod chart;
 #[cfg(test)]
+mod domain_coverage;
+#[cfg(test)]
+pub(crate) use domain_coverage::{CoveredDomain, DomainCoverage, cover_domain};
+#[cfg(test)]
 pub(crate) mod conditional_band;
+#[cfg(test)]
+mod domain_coverage_tests;
 #[cfg(test)]
 mod endpoints;
 #[cfg(test)]
