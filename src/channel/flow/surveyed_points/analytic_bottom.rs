@@ -56,6 +56,10 @@ where
         &column(bands.start_width.upper())?,
     )?;
     let slope = a.bounds(&column(bands.slope.lower())?, &column(bands.slope.upper())?)?;
+    let end_depth = a.bounds(
+        &column(bands.end_depth.lower())?,
+        &column(bands.end_depth.upper())?,
+    )?;
     let (rectangular, pointed) = analytic_bottom::kinds(
         a,
         &column(&bands.valid)?,
@@ -80,6 +84,7 @@ where
             exact_area,
             complete_depth,
             width: &width,
+            depth_identity: Some((&slope, &end_depth)),
             zero: &zero,
             one: &one,
             gravity,

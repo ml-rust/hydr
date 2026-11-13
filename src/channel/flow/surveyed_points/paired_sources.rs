@@ -183,36 +183,63 @@ where
             "paired callback row admission",
             |a| {
                 let c = a.client();
-                metadata(a, rows, rows.numel(), DType::I64)?;
-                let captured = Tensor::empty(rows.shape(), DType::I64, c.device())?;
-                c.copy_into(&captured, rows)?;
-                // Velocity selection checks every row index before any remaining device gather.
-                let velocity = self.velocity.select(a, &captured)?;
-                let bands = self.bands.select(a, &captured)?;
-                let sources = [
-                    self.sources[0].select(a, &captured)?,
-                    self.sources[1].select(a, &captured)?,
-                ];
-                let boundaries = self.boundaries.select(a, &captured)?;
-                let original_rows = c.index_select(&self.original_rows, 0, &captured)?;
-                metadata(a, &query.query.original_rows, captured.numel(), DType::I64)?;
+                let selected = self.select_sources(a, rows)?;
+                metadata(
+                    a,
+                    &query.query.original_rows,
+                    selected.rows.numel(),
+                    DType::I64,
+                )?;
                 reject(
                     a,
-                    &c.ne(&query.query.original_rows, &original_rows)?,
+                    &c.ne(&query.query.original_rows, &selected.original_rows)?,
                     "paired callback original rows differ from the selected source rows. Preserve synchronized query identities",
                 )?;
-                source_difference(a, &bands, query, &sources[0], &boundaries)?;
-                source_difference(a, &bands, query, &sources[1], &boundaries)?;
-                Ok(SelectedRows {
-                    rows: captured,
-                    bands,
-                    sources,
-                    velocity,
-                    boundaries,
-                    original_rows,
-                })
+                source_difference(
+                    a,
+                    &selected.bands,
+                    query,
+                    &selected.sources[0],
+                    &selected.boundaries,
+                )?;
+                source_difference(
+                    a,
+                    &selected.bands,
+                    query,
+                    &selected.sources[1],
+                    &selected.boundaries,
+                )?;
+                Ok(selected)
             },
         )
+    }
+
+    pub(super) fn select_sources(
+        &self,
+        a: &mut Arithmetic<'_, R>,
+        rows: &Tensor<R>,
+    ) -> HydraulicResult<SelectedRows<R>> {
+        let c = a.client();
+        metadata(a, rows, rows.numel(), DType::I64)?;
+        let captured = Tensor::empty(rows.shape(), DType::I64, c.device())?;
+        c.copy_into(&captured, rows)?;
+        // Velocity selection checks every row index before any remaining device gather.
+        let velocity = self.velocity.select(a, &captured)?;
+        let bands = self.bands.select(a, &captured)?;
+        let sources = [
+            self.sources[0].select(a, &captured)?,
+            self.sources[1].select(a, &captured)?,
+        ];
+        let boundaries = self.boundaries.select(a, &captured)?;
+        let original_rows = c.index_select(&self.original_rows, 0, &captured)?;
+        Ok(SelectedRows {
+            rows: captured,
+            bands,
+            sources,
+            velocity,
+            boundaries,
+            original_rows,
+        })
     }
 }
 
@@ -288,6 +315,12 @@ where
     }
     pub(super) fn source_invariant(&mut self) -> HydraulicResult<SourceInvariant<R>> {
         super::paired_source_invariant::evaluate(self)
+    }
+    pub(super) fn source_invariant_on_rows(
+        &mut self,
+        rows: &Tensor<R>,
+    ) -> HydraulicResult<SourceInvariant<R>> {
+        super::paired_source_invariant::evaluate_on_rows(self, rows)
     }
     pub(super) fn source_values(
         &mut self,

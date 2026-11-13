@@ -15,6 +15,7 @@ pub(super) struct AnalyticOperands<'a, R: Runtime<DType = DType>> {
     pub(super) exact_area: &'a CertifiedExpansion<R>,
     pub(super) complete_depth: &'a Interval<R>,
     pub(super) width: &'a Interval<R>,
+    pub(super) depth_identity: Option<(&'a Interval<R>, &'a Interval<R>)>,
     pub(super) zero: &'a Tensor<R>,
     pub(super) one: &'a Tensor<R>,
     pub(super) gravity: f64,
@@ -42,6 +43,7 @@ where
         exact_area,
         complete_depth,
         width,
+        depth_identity,
         zero,
         one,
         gravity,
@@ -60,7 +62,12 @@ where
         &c.where_cond(&pointed, complete_depth.lower(), zero)?,
         &c.where_cond(&pointed, complete_depth.upper(), zero)?,
     )?;
-    let depth = a.expansion_from_interval(&depth)?;
+    let depth = match depth_identity {
+        Some((slope, end_depth)) => super::pointed_depth_identity::refine(
+            a, &pointed, exact_area, &depth, slope, end_depth,
+        )?,
+        None => a.expansion_from_interval(&depth)?,
+    };
     let gravity = a.expansion_point(&c.mul_scalar(one, gravity)?)?;
     let two = c.mul_scalar(one, 2.0)?;
     let four = c.mul_scalar(one, 4.0)?;

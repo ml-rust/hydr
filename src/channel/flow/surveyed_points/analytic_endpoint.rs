@@ -69,6 +69,7 @@ where
             exact_area: &safe_area,
             complete_depth: &local_depth,
             width: endpoints.compiled_bottom_width(),
+            depth_identity: None,
             zero: &zero,
             one: &one,
             gravity,

@@ -44,5 +44,5 @@ pub(crate) use prismatic::{Constitutive, GatheredBands, HydraulicGeometry};
 pub(crate) use prismatic::{
     AreaAnchor, AreaDirection, AreaQuery, BoundaryAreas, ClippedBandEndpoints,
     ConditionalBandSegments, PhysicalEndpoint, PreparedAreaPrefix, SupportedAreaQuery,
-    WetDepthGeometry, pressure_endpoint, source_difference,
+    WetDepthGeometry, cover_domain, pressure_endpoint, source_difference,
 };

@@ -87,7 +87,7 @@ where
     with_inputs(client, section, owners, inputs, config, operation)
 }
 
-fn with_inputs<R, T>(
+pub(super) fn with_inputs<R, T>(
     client: &R::Client,
     section: PrismaticSectionBatch<R>,
     owners: Tensor<R>,

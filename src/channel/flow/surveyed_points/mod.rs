@@ -16,6 +16,7 @@ mod paired_residual;
 mod paired_source_cache;
 mod paired_source_invariant;
 mod paired_sources;
+mod pointed_depth_identity;
 mod potential_absolute;
 mod potential_analytic;
 #[cfg(test)]
@@ -40,6 +41,13 @@ mod wave_curve;
 #[cfg(test)]
 mod wave_curve_tests;
 mod wave_curve_types;
+mod wet_root_charts;
+mod wet_root_direct;
+mod wet_root_search;
+mod wet_root_seeds;
+mod wet_root_state;
+mod wet_root_types;
+mod wet_roots;
 
 #[cfg(test)]
 #[path = "source_tests.rs"]

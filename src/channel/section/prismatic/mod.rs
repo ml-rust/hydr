@@ -59,8 +59,8 @@ pub(crate) use area_query::conditional_band::{
 };
 #[cfg(test)]
 pub(crate) use area_query::{
-    AreaAnchor, AreaDirection, AreaQuery, PhysicalEndpoint, SupportedAreaQuery, pressure_endpoint,
-    source_difference,
+    AreaAnchor, AreaDirection, AreaQuery, PhysicalEndpoint, SupportedAreaQuery, cover_domain,
+    pressure_endpoint, source_difference,
 };
 #[cfg(test)]
 pub(crate) use boundary_area::BoundaryAreas;
