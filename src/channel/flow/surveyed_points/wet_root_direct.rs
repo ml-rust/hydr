@@ -24,7 +24,7 @@ use solvr::integrate::CertifiedSimpsonAlgorithms;
 
 pub(super) fn singleton<R>(
     parent: &mut PairedSources<'_, R>,
-    locator: &mut Locator<R>,
+    locator: &mut Locator<'_, R>,
     initial: &SelectedRows<R>,
     cap: bool,
 ) -> HydraulicResult<()>
@@ -86,7 +86,7 @@ where
                     rows,
                     query,
                     &exact,
-                    locator.output.invocation.witness(),
+                    locator.invocation.witness(),
                 )?)
             };
             let exceeded = if cap {
@@ -121,7 +121,7 @@ where
 
 pub(super) fn dry_limit<R>(
     parent: &mut PairedSources<'_, R>,
-    locator: &mut Locator<R>,
+    locator: &mut Locator<'_, R>,
 ) -> HydraulicResult<()>
 where
     R: Runtime<DType = DType>,
@@ -167,7 +167,7 @@ where
 
 fn admit<R>(
     parent: &PairedSources<'_, R>,
-    locator: &mut Locator<R>,
+    locator: &mut Locator<'_, R>,
     owner: &Tensor<R>,
 ) -> HydraulicResult<bool>
 where
@@ -179,7 +179,7 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>,
 {
-    if owner.numel() > locator.output.invocation.remaining()? {
+    if owner.numel() > locator.invocation.remaining()? {
         locator.set_status(parent.geometry.client(), owner, WetRootStatus::WorkLimit)?;
         return Ok(false);
     }
@@ -187,6 +187,6 @@ where
         .evaluation
         .work
         .charge(QueryWork::Residual, owner.numel())?;
-    locator.output.invocation.add_points(owner.numel())?;
+    locator.invocation.add_points(owner.numel())?;
     Ok(true)
 }

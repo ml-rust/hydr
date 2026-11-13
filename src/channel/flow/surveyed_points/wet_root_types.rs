@@ -15,6 +15,7 @@ pub(super) enum WetRootStatus {
     CapExceeded = 3,
     Unresolved = 4,
     WorkLimit = 5,
+    NotRequested = 6,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,6 +44,13 @@ pub(super) struct WetRootDomain<R: Runtime<DType = DType>> {
     /// Bracket-derived values lift the complete intervals, without restoring original exact residual identity.
     pub(super) lower_retained: CertifiedExpansion<R>,
     pub(super) upper_retained: CertifiedExpansion<R>,
+}
+
+pub(super) struct WetRootResults<R: Runtime<DType = DType>> {
+    pub(super) invocation_rows: Tensor<R>,
+    pub(super) status: Tensor<R>,
+    pub(super) domains: Vec<WetRootDomain<R>>,
+    pub(super) evidence: Vec<WetRootEvidence<R>>,
 }
 
 pub(super) struct WetRootDomains<R: Runtime<DType = DType>> {

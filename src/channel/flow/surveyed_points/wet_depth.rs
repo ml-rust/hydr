@@ -1,7 +1,9 @@
 use super::{
     paired_sources::PairedSources,
     wet_depth_mapping, wet_depth_refinement, wet_depth_selection,
-    wet_depth_types::{DepthRefinementState, WetDepthDomain, WetDepthSession, WetDepthStatus},
+    wet_depth_types::{
+        DepthRefinementState, WetDepthDomain, WetDepthSession, WetDepthState, WetDepthStatus,
+    },
     wet_root_types::WetRootDomains,
 };
 use crate::channel::flow::surveyed::error::{HydraulicError, HydraulicResult, checked};
@@ -45,9 +47,48 @@ where
         atol: located.invocation.source_witness().config().root.atol,
         rtol: located.invocation.source_witness().config().root.rtol,
     };
+    let domains = capture_domains(sources, &located.invocation, located.domains)?;
     let c = sources.geometry.client();
-    let mut domains = Vec::with_capacity(located.domains.len());
-    for original in located.domains {
+    let sonic =
+        super::source_sonic_types::SourceSonicState::empty(c, located.invocation_rows.numel())?;
+    WetDepthSession {
+        sources,
+        invocation_witness: located.invocation.witness(),
+        invocation: located.invocation,
+        invocation_rows: located.invocation_rows,
+        wet: WetDepthState {
+            locator_status: located.status,
+            evidence: located.evidence,
+            domains,
+            tolerance,
+            terminal: false,
+        },
+        sonic,
+        terminal: false,
+    }
+    .refine_depth_to(tolerance)
+}
+
+pub(super) fn capture_domains<R>(
+    sources: &PairedSources<'_, R>,
+    invocation: &super::root_invocation::RootInvocation,
+    originals: Vec<super::wet_root_types::WetRootDomain<R>>,
+) -> HydraulicResult<Vec<WetDepthDomain<R>>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    for domain in &originals {
+        invocation.check(&domain.invocation_witness)?;
+    }
+    let c = sources.geometry.client();
+    let mut domains = Vec::with_capacity(originals.len());
+    for original in originals {
         let (depth, normalized_depth) =
             wet_depth_mapping::certificates(sources, &original.parent_rows, &original.query)?;
         let (query, invocation_owner, parent_rows) =
@@ -84,16 +125,7 @@ where
             },
         });
     }
-    WetDepthSession {
-        sources,
-        invocation: located.invocation,
-        invocation_rows: located.invocation_rows,
-        locator_status: located.status,
-        evidence: located.evidence,
-        domains,
-        tolerance,
-    }
-    .refine_depth_to(tolerance)
+    Ok(domains)
 }
 
 impl<'s, 'a, R> WetDepthSession<'s, 'a, R>
@@ -114,63 +146,84 @@ where
         mut self,
         tolerance: CertifiedRootTolerance,
     ) -> HydraulicResult<Self> {
+        self.refine_wet_depth_in_place(tolerance)?;
+        Ok(self)
+    }
+
+    pub(super) fn refine_wet_depth_in_place(
+        &mut self,
+        tolerance: CertifiedRootTolerance,
+    ) -> HydraulicResult<()> {
         self.sources
             .check_root_witness(self.invocation.source_witness())?;
         self.check_domains()?;
         check_tolerance(&tolerance, &self.invocation.source_witness().config().root)?;
-        let c = self.sources.geometry.client();
-        let mut output = Vec::with_capacity(self.domains.len());
-        for mut domain in std::mem::take(&mut self.domains) {
-            let accepted = checked::<R, _>(c, "wet depth stopping criterion", |a| {
-                wet_depth_mapping::satisfied(a, &domain.normalized_depth, &tolerance)
-            })?;
-            let passing = c.nonzero(&accepted)?.flatten()?;
-            if passing.numel() == domain.parent_rows.numel() {
-                domain.status = Tensor::full_scalar(
-                    domain.parent_rows.shape(),
-                    DType::I64,
-                    WetDepthStatus::DepthConverged as i64 as f64,
-                    c.device(),
-                )?;
-                output.push(domain);
-                continue;
-            }
-            if domain.is_deferred() && passing.numel() != 0 {
-                let zero = Tensor::zeros(accepted.shape(), accepted.dtype(), c.device())?;
-                let failing = c.nonzero(&c.eq(&accepted, &zero)?)?.flatten()?;
-                let (pass, fail) = checked::<R, _>(c, "wet depth deferred partition", |a| {
-                    Ok((
-                        wet_depth_selection::deferred(
-                            a,
-                            &domain,
-                            &passing,
-                            WetDepthStatus::DepthConverged,
-                        )?,
-                        wet_depth_selection::deferred(
-                            a,
-                            &domain,
-                            &failing,
-                            WetDepthStatus::Unresolved,
-                        )?,
-                    ))
-                })?;
-                output.push(pass);
-                domain = fail;
-            }
-            output.push(wet_depth_refinement::advance(
-                self.sources,
-                &mut self.invocation,
-                domain,
-                &tolerance,
-            )?);
+        if self.wet.terminal {
+            return Err(super::point_root_session::invalid(
+                "wet refinement remains sealed after an earlier numerical error",
+            ));
         }
-        self.domains = output;
-        self.tolerance = tolerance;
-        Ok(self)
+        let checkpoint = self.checkpoint();
+        let result = (|| -> HydraulicResult<()> {
+            let c = self.sources.geometry.client();
+            let mut output = Vec::with_capacity(self.wet.domains.len());
+            for mut domain in std::mem::take(&mut self.wet.domains) {
+                let accepted = checked::<R, _>(c, "wet depth stopping criterion", |a| {
+                    wet_depth_mapping::satisfied(a, &domain.normalized_depth, &tolerance)
+                })?;
+                let passing = c.nonzero(&accepted)?.flatten()?;
+                if passing.numel() == domain.parent_rows.numel() {
+                    domain.status = Tensor::full_scalar(
+                        domain.parent_rows.shape(),
+                        DType::I64,
+                        WetDepthStatus::DepthConverged as i64 as f64,
+                        c.device(),
+                    )?;
+                    output.push(domain);
+                    continue;
+                }
+                if domain.is_deferred() && passing.numel() != 0 {
+                    let zero = Tensor::zeros(accepted.shape(), accepted.dtype(), c.device())?;
+                    let failing = c.nonzero(&c.eq(&accepted, &zero)?)?.flatten()?;
+                    let (pass, fail) = checked::<R, _>(c, "wet depth deferred partition", |a| {
+                        Ok((
+                            wet_depth_selection::deferred(
+                                a,
+                                &domain,
+                                &passing,
+                                WetDepthStatus::DepthConverged,
+                            )?,
+                            wet_depth_selection::deferred(
+                                a,
+                                &domain,
+                                &failing,
+                                WetDepthStatus::Unresolved,
+                            )?,
+                        ))
+                    })?;
+                    output.push(pass);
+                    domain = fail;
+                }
+                output.push(wet_depth_refinement::advance(
+                    self.sources,
+                    &mut self.invocation,
+                    domain,
+                    &tolerance,
+                )?);
+            }
+            self.wet.domains = output;
+            self.wet.tolerance = tolerance;
+            Ok(())
+        })();
+        self.reconcile(checkpoint, result.is_ok())?;
+        if result.is_err() {
+            self.wet.terminal = true;
+        }
+        result
     }
 }
 
-fn check_tolerance(
+pub(super) fn check_tolerance(
     tolerance: &CertifiedRootTolerance,
     original: &solvr::optimize::CertifiedBisectionOptions,
 ) -> HydraulicResult<()> {

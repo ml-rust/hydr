@@ -1,5 +1,4 @@
 use super::{
-    paired_sources::PairedSources,
     root_invocation::{RootInvocation, RootInvocationWitness},
     wet_root_types::{WetRootDomain, WetRootEvidence},
 };
@@ -70,49 +69,12 @@ impl<R: Runtime<DType = DType>> WetDepthDomain<R> {
     }
 }
 
-/// Own depth evidence and numerical continuations while exclusively borrowing the fixed source graph.
-pub(super) struct WetDepthSession<'s, 'a, R: Runtime<DType = DType>> {
-    pub(super) sources: &'s mut PairedSources<'a, R>,
-    pub(super) invocation: RootInvocation,
-    pub(super) invocation_rows: Tensor<R>,
+pub(super) struct WetDepthState<R: Runtime<DType = DType>> {
     pub(super) locator_status: Tensor<R>,
     pub(super) evidence: Vec<WetRootEvidence<R>>,
     pub(super) domains: Vec<WetDepthDomain<R>>,
     pub(super) tolerance: CertifiedRootTolerance,
+    pub(super) terminal: bool,
 }
 
-impl<'s, 'a, R: Runtime<DType = DType>> WetDepthSession<'s, 'a, R> {
-    pub(super) fn check_domains(
-        &self,
-    ) -> crate::channel::flow::surveyed::error::HydraulicResult<()> {
-        for domain in &self.domains {
-            domain.check_invocation(&self.invocation)?;
-        }
-        Ok(())
-    }
-
-    pub(super) fn sources(&self) -> &PairedSources<'a, R> {
-        self.sources
-    }
-    pub(super) fn invocation_rows(&self) -> &Tensor<R> {
-        &self.invocation_rows
-    }
-    pub(super) fn locator_status(&self) -> &Tensor<R> {
-        &self.locator_status
-    }
-    pub(super) fn evidence(&self) -> &[WetRootEvidence<R>] {
-        &self.evidence
-    }
-    pub(super) fn domains(&self) -> &[WetDepthDomain<R>] {
-        &self.domains
-    }
-    pub(super) fn point_limit(&self) -> usize {
-        self.invocation.point_limit()
-    }
-    pub(super) fn callback_points(&self) -> usize {
-        self.invocation.callback_points()
-    }
-    pub(super) fn tolerance(&self) -> &CertifiedRootTolerance {
-        &self.tolerance
-    }
-}
+pub(super) type WetDepthSession<'s, 'a, R> = super::point_root_session::PointRootSession<'s, 'a, R>;

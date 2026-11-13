@@ -3,6 +3,7 @@ use super::{
     chart_admission, paired_sources::PairedSources, wet_root_direct, wet_root_search,
     wet_root_state::Locator,
 };
+use super::{root_invocation::RootInvocation, wet_root_types::WetRootResults};
 use crate::channel::flow::surveyed::error::{
     HydraulicError, HydraulicResult, PrismaticRiemannRejection, checked,
 };
@@ -48,6 +49,35 @@ where
             ),
         });
     }
+    let mut invocation = RootInvocation::new(sources.root_witness()?, max_points)?;
+    let result = locate_on_invocation(sources, parent_rows, &mut invocation)?;
+    Ok(WetRootDomains {
+        invocation,
+        invocation_rows: result.invocation_rows,
+        status: result.status,
+        domains: result.domains,
+        evidence: result.evidence,
+    })
+}
+
+pub(super) fn locate_on_invocation<R>(
+    sources: &mut PairedSources<'_, R>,
+    parent_rows: &Tensor<R>,
+    invocation: &mut RootInvocation,
+) -> HydraulicResult<WetRootResults<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>,
+{
+    sources.check_root_witness(invocation.source_witness())?;
     let c = sources.geometry.client();
     let selected = checked::<R, _>(c, "wet root invocation admission", |a| {
         let selected = sources.select_sources(a, parent_rows)?;
@@ -67,7 +97,7 @@ where
         a.client().copy_into(&owned, &selected.rows)?;
         Ok(owned)
     })?;
-    let mut locator = Locator::new(c, rows, max_points, sources.root_witness()?)?;
+    let mut locator = Locator::new(c, rows, invocation)?;
     wet_root_direct::singleton(sources, &mut locator, &selected, false)?;
     wet_root_direct::dry_limit(sources, &mut locator)?;
     wet_root_direct::singleton(sources, &mut locator, &selected, true)?;

@@ -39,7 +39,7 @@ where
             let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
             let mut session = hydraulic(refine_wet_depth(pair, located))?;
             // Exact uniform identity proves A*=1 independently of this wider supported bracket.
-            session.domains[0].query = chart_test_support::chart(
+            session.wet.domains[0].query = chart_test_support::chart(
                 session.sources(),
                 chart_test_support::Anchor::Zero,
                 [1.0_f64.to_bits(), 0],
@@ -123,7 +123,7 @@ where
                     &[[0.25, 2.25]],
                 )?
             };
-            session.domains[0].query = query;
+            session.wet.domains[0].query = query;
             let before = work.snapshot();
             let waves = hydraulic(session.certify_wet_waves())?;
             let wave = &waves[0];

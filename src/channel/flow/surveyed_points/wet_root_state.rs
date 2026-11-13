@@ -1,6 +1,7 @@
 use super::{
+    root_invocation::RootInvocation,
     wave_curve_types::{CurveValue, scatter_value, unavailable},
-    wet_root_types::{WetRootDomain, WetRootDomains, WetRootStatus},
+    wet_root_types::{WetRootDomain, WetRootResults, WetRootStatus},
 };
 use crate::channel::flow::surveyed::error::{Arithmetic, HydraulicResult, checked};
 use numr::{
@@ -13,13 +14,14 @@ use numr::{
     tensor::Tensor,
 };
 
-pub(super) struct Locator<R: Runtime<DType = DType>> {
-    pub(super) output: WetRootDomains<R>,
+pub(super) struct Locator<'i, R: Runtime<DType = DType>> {
+    pub(super) invocation: &'i mut RootInvocation,
+    pub(super) output: WetRootResults<R>,
     pub(super) pending: Tensor<R>,
     pub(super) f0: CurveValue<R>,
 }
 
-impl<R> Locator<R>
+impl<'i, R> Locator<'i, R>
 where
     R: Runtime<DType = DType>,
     R::Client: TensorOps<R>
@@ -32,14 +34,13 @@ where
     pub(super) fn new(
         client: &R::Client,
         rows: Tensor<R>,
-        limit: usize,
-        witness: super::source_binding::RootSourceWitness,
+        invocation: &'i mut RootInvocation,
     ) -> HydraulicResult<Self> {
         checked::<R, _>(client, "wet root locator storage", |a| {
             let n = rows.numel();
             Ok(Self {
-                output: WetRootDomains {
-                    invocation: super::root_invocation::RootInvocation::new(witness, limit)?,
+                invocation,
+                output: WetRootResults {
                     invocation_rows: rows,
                     status: Tensor::full_scalar(
                         &[n],

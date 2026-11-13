@@ -29,8 +29,8 @@ where
                 [1.0_f64.to_bits(), 0],
                 &[[0.25, 2.25]],
             )?;
-            session.domains[0].query = query;
-            session.domains[0].status = Tensor::full_scalar(
+            session.wet.domains[0].query = query;
+            session.wet.domains[0].status = Tensor::full_scalar(
                 &[1],
                 DType::I64,
                 WetDepthStatus::WorkLimit as i64 as f64,

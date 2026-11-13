@@ -25,7 +25,7 @@ use solvr::{
 
 pub(super) fn local<R>(
     parent: &mut PairedSources<'_, R>,
-    locator: &mut Locator<R>,
+    locator: &mut Locator<'_, R>,
     side: usize,
 ) -> HydraulicResult<()>
 where
@@ -83,7 +83,7 @@ where
 
 pub(super) fn covered<R>(
     parent: &mut PairedSources<'_, R>,
-    locator: &mut Locator<R>,
+    locator: &mut Locator<'_, R>,
 ) -> HydraulicResult<()>
 where
     R: Runtime<DType = DType>,
@@ -153,7 +153,7 @@ where
 
 fn bracket<R>(
     parent: &mut PairedSources<'_, R>,
-    locator: &mut Locator<R>,
+    locator: &mut Locator<'_, R>,
     owner: &Tensor<R>,
     query: SupportedAreaQuery<R>,
     seed: &Tensor<R>,
@@ -177,20 +177,13 @@ where
         .ok_or_else(|| HydraulicError::Numerical {
             context: "Wet root bracket admission overflows usize. Split the invocation".into(),
         })?;
-    if needed > locator.output.invocation.remaining()? {
+    if needed > locator.invocation.remaining()? {
         locator.set_status(c, owner, WetRootStatus::WorkLimit)?;
         return Ok(());
     }
     let rows = c.index_select(&locator.output.invocation_rows, 0, owner)?;
-    let result = bracket_chart(
-        parent,
-        &rows,
-        &query,
-        seed,
-        locator.output.invocation.remaining()?,
-    )?;
+    let result = bracket_chart(parent, &rows, &query, seed, locator.invocation.remaining()?)?;
     locator
-        .output
         .invocation
         .add_points(result.result.callback_points())?;
     let limited_code = Tensor::from_slice(
@@ -246,7 +239,7 @@ where
             )?,
         )?;
         Ok(WetRootDomain {
-            invocation_witness: locator.output.invocation.witness(),
+            invocation_witness: locator.invocation.witness(),
             invocation_owner,
             parent_rows: result.bracket_rows,
             query: result.query,

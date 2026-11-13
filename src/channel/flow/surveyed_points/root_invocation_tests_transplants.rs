@@ -51,6 +51,7 @@ where
             let identity = first.invocation.witness();
             let consumed = first.callback_points();
             let domain = first
+                .wet
                 .domains
                 .pop()
                 .ok_or("Missing original invocation domain")?;
@@ -66,13 +67,13 @@ where
         let points = second.callback_points();
         let limit = second.point_limit();
         if substate_only {
-            second.domains[0].refinement = foreign_domain.refinement;
+            second.wet.domains[0].refinement = foreign_domain.refinement;
             hydraulic(
                 second
                     .invocation
-                    .check(&second.domains[0].invocation_witness),
+                    .check(&second.wet.domains[0].invocation_witness),
             )?;
-            match &second.domains[0].refinement {
+            match &second.wet.domains[0].refinement {
                 DepthRefinementState::Deferred { original } => {
                     assert!(
                         second
@@ -86,7 +87,7 @@ where
                 }
             }
         } else {
-            second.domains[0] = foreign_domain;
+            second.wet.domains[0] = foreign_domain;
         }
         assert_eq!(second.callback_points(), points);
         assert_eq!(second.point_limit(), limit);
@@ -102,6 +103,7 @@ where
                 .ok_or("Foreign domain enters depth fastpath")?,
             Entry::Native => {
                 let domain = second
+                    .wet
                     .domains
                     .pop()
                     .ok_or("Missing transplanted native domain")?;

@@ -34,9 +34,14 @@ where
     pub(super) fn certify_wet_star(&mut self) -> HydraulicResult<Vec<WetStarDomain<R>>> {
         self.sources
             .check_root_witness(self.invocation.source_witness())?;
+        if self.wet.terminal {
+            return Err(super::point_root_session::invalid(
+                "wet certificates remain sealed after an earlier numerical error",
+            ));
+        }
         self.check_domains()?;
-        let mut output = Vec::with_capacity(self.domains.len());
-        for domain in &self.domains {
+        let mut output = Vec::with_capacity(self.wet.domains.len());
+        for domain in &self.wet.domains {
             let lower = wet_star_endpoint::evaluate(
                 self.sources,
                 &domain.parent_rows,
@@ -232,7 +237,7 @@ where
     ))
 }
 
-fn intersection<R>(
+pub(super) fn intersection<R>(
     a: &mut Arithmetic<'_, R>,
     first: &Interval<R>,
     second: &Interval<R>,

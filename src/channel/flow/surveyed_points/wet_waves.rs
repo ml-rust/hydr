@@ -32,6 +32,11 @@ where
     pub(super) fn certify_wet_waves(&mut self) -> HydraulicResult<Vec<WetWaveDomain<R>>> {
         self.sources
             .check_root_witness(self.invocation.source_witness())?;
+        if self.wet.terminal {
+            return Err(super::point_root_session::invalid(
+                "wet certificates remain sealed after an earlier numerical error",
+            ));
+        }
         self.check_domains()?;
         let stars = self.certify_wet_star()?;
         let c = self.sources.geometry.client();

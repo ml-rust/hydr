@@ -35,8 +35,8 @@ where
         + RuntimeClient<R>,
 {
     let c = a.client();
-    let zero = Tensor::zeros(epsilon.high().shape(), DType::F64, c.device())?;
-    let one = Tensor::ones(epsilon.high().shape(), DType::F64, c.device())?;
+    let zero = Tensor::zeros(epsilon.high().shape(), a.dtype(), c.device())?;
+    let one = Tensor::ones(epsilon.high().shape(), a.dtype(), c.device())?;
     let eligible = c.mul(
         &target.eligible,
         &c.maximum(&target.rectangular, &target.pointed)?,
