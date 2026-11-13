@@ -21,5 +21,6 @@ mod triangle_scaled_tiny_positive;
 mod triangle_touching_dry;
 pub(in crate::channel::section::prismatic) use cases::CASES;
 pub(super) use invalid::INVALID;
-pub(super) use model::{AnchorKind, Case, Chart, Extrema};
+pub(in crate::channel::section::prismatic::area_query) use model::{AnchorKind, Chart};
+pub(super) use model::{Case, Extrema};
 pub(super) use profiles::PROFILES;

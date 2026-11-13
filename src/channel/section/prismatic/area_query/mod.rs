@@ -33,6 +33,15 @@ pub(super) use selection::{
 mod source_difference;
 #[cfg(test)]
 mod support;
+#[cfg(test)]
+mod support_assessment;
+#[cfg(test)]
+mod support_selection;
+#[cfg(test)]
+pub(crate) use support_selection::SupportSelection;
+
+#[cfg(test)]
+mod support_selection_tests;
 
 #[cfg(test)]
 pub(crate) use chart::{AreaAnchor, AreaDirection, AreaQuery, SupportedAreaQuery};

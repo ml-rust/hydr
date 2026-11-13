@@ -11,7 +11,7 @@ mod admission_tests;
 #[path = "fixtures/mod.rs"]
 pub(in crate::channel::section::prismatic) mod fixtures;
 #[path = "parameter_rebinding_tests.rs"]
-mod parameter_rebinding_tests;
+pub(super) mod parameter_rebinding_tests;
 #[path = "test_support.rs"]
 pub(in crate::channel::section::prismatic) mod test_support;
 use fixtures::{AnchorKind, CASES, Case};

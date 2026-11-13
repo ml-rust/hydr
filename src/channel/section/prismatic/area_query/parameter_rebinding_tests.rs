@@ -17,7 +17,11 @@ use std::{
 };
 use support::{Client, Result, hydraulic};
 
-fn float_fields<R: Runtime<DType = DType>>(value: &SupportedAreaQuery<R>) -> Vec<&Tensor<R>> {
+pub(in crate::channel::section::prismatic::area_query) fn float_fields<
+    R: Runtime<DType = DType>,
+>(
+    value: &SupportedAreaQuery<R>,
+) -> Vec<&Tensor<R>> {
     let q = &value.query;
     let mut fields = vec![
         q.scale.high(),
@@ -63,7 +67,11 @@ fn float_fields<R: Runtime<DType = DType>>(value: &SupportedAreaQuery<R>) -> Vec
     fields
 }
 
-fn integer_fields<R: Runtime<DType = DType>>(value: &SupportedAreaQuery<R>) -> Vec<&Tensor<R>> {
+pub(in crate::channel::section::prismatic::area_query) fn integer_fields<
+    R: Runtime<DType = DType>,
+>(
+    value: &SupportedAreaQuery<R>,
+) -> Vec<&Tensor<R>> {
     let mut fields = vec![&value.query.owners, &value.query.original_rows];
     if let AreaAnchor::BandStart(index) | AreaAnchor::BandEnd(index) = &value.query.anchor {
         fields.push(index);
@@ -72,7 +80,7 @@ fn integer_fields<R: Runtime<DType = DType>>(value: &SupportedAreaQuery<R>) -> V
 }
 
 #[derive(Debug, PartialEq)]
-struct Snapshot {
+pub(in crate::channel::section::prismatic::area_query) struct Snapshot {
     floats: Vec<(Vec<usize>, Vec<u64>)>,
     integers: Vec<(Vec<usize>, Vec<i64>)>,
     anchor: &'static str,
@@ -80,7 +88,9 @@ struct Snapshot {
     bands: usize,
 }
 
-fn snapshot<R: Runtime<DType = DType>>(value: &SupportedAreaQuery<R>) -> Result<Snapshot> {
+pub(in crate::channel::section::prismatic::area_query) fn snapshot<R: Runtime<DType = DType>>(
+    value: &SupportedAreaQuery<R>,
+) -> Result<Snapshot> {
     let floats = float_fields(value)
         .into_iter()
         .map(|v| {
