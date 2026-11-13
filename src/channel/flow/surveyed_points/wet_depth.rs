@@ -191,4 +191,4 @@ fn check_tolerance(
 
 #[cfg(test)]
 #[path = "wet_depth_tests.rs"]
-mod tests;
+pub(in crate::channel::flow::surveyed_points) mod tests;

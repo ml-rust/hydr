@@ -24,7 +24,7 @@ use solvr::{
     },
 };
 
-pub(super) trait DepthClient<R: Runtime<DType = DType>>:
+pub(in crate::channel::flow::surveyed_points) trait DepthClient<R: Runtime<DType = DType>>:
     Client<R>
     + CertifiedSimpsonAlgorithms<R>
     + CertifiedBisectionAlgorithms<R>
@@ -44,7 +44,10 @@ where
 {
 }
 
-pub(super) fn rows<R>(client: &R::Client, values: &[i64]) -> Result<Tensor<R>>
+pub(in crate::channel::flow::surveyed_points) fn rows<R>(
+    client: &R::Client,
+    values: &[i64],
+) -> Result<Tensor<R>>
 where
     R: Runtime<DType = DType>,
     R::Client: Client<R>,
@@ -112,7 +115,7 @@ where
     )
 }
 
-pub(super) fn with_rectangle<R, T>(
+pub(in crate::channel::flow::surveyed_points) fn with_rectangle<R, T>(
     client: &R::Client,
     width: f64,
     cap_depth: f64,

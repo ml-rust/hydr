@@ -12,6 +12,7 @@ mod chart_root_derivative;
 mod chart_roots;
 #[cfg(test)]
 mod chart_test_support;
+mod paired_endpoint;
 mod paired_residual;
 mod paired_source_cache;
 mod paired_source_invariant;
@@ -54,6 +55,9 @@ mod wet_root_seeds;
 mod wet_root_state;
 mod wet_root_types;
 mod wet_roots;
+mod wet_star;
+mod wet_star_endpoint;
+mod wet_star_types;
 
 #[cfg(test)]
 #[path = "source_tests.rs"]

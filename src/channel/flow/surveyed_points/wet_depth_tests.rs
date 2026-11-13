@@ -11,7 +11,7 @@ mod lifecycle;
 #[path = "wet_depth_tests_partition.rs"]
 mod partition;
 #[path = "wet_depth_tests_support.rs"]
-mod support;
+pub(in crate::channel::flow::surveyed_points) mod support;
 
 fn matrix<R>(client: &R::Client) -> Result
 where
