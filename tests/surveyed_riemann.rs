@@ -10,5 +10,7 @@ mod data;
 mod exact_width;
 #[path = "surveyed_riemann/support.rs"]
 mod support;
+#[path = "surveyed_riemann/wave_domains.rs"]
+mod wave_domains;
 #[path = "surveyed_riemann/work_budgets.rs"]
 mod work_budgets;
