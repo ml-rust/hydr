@@ -57,6 +57,8 @@ mod source_sonic_certificates;
 mod source_sonic_charts;
 mod source_sonic_refinement;
 mod source_sonic_residual;
+mod source_sonic_selected_fields;
+mod source_sonic_selection;
 mod source_sonic_start;
 mod source_sonic_types;
 pub(crate) mod source_velocity;

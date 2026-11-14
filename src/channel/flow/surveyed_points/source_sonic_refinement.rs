@@ -33,8 +33,71 @@ pub(super) fn advance<R>(
     sources: &mut PairedSources<'_, R>,
     invocation: &mut RootInvocation,
     request_binding: &SourceSonicBinding<R>,
+    domain: SourceSonicDomain<R>,
+    tolerance: &CertifiedRootTolerance,
+) -> HydraulicResult<SourceSonicDomain<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>,
+{
+    advance_with_selection(
+        sources,
+        invocation,
+        request_binding,
+        domain,
+        tolerance,
+        None,
+    )
+}
+
+pub(super) fn advance_selected<R>(
+    sources: &mut PairedSources<'_, R>,
+    invocation: &mut RootInvocation,
+    request_binding: &SourceSonicBinding<R>,
+    domain: SourceSonicDomain<R>,
+    tolerance: &CertifiedRootTolerance,
+    rows: &Tensor<R>,
+) -> HydraulicResult<SourceSonicDomain<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>,
+{
+    if domain.refinement.is_none() {
+        return Err(inconsistent("selected resume has no native continuation"));
+    }
+    advance_with_selection(
+        sources,
+        invocation,
+        request_binding,
+        domain,
+        tolerance,
+        Some(rows),
+    )
+}
+
+fn advance_with_selection<R>(
+    sources: &mut PairedSources<'_, R>,
+    invocation: &mut RootInvocation,
+    request_binding: &SourceSonicBinding<R>,
     mut domain: SourceSonicDomain<R>,
     tolerance: &CertifiedRootTolerance,
+    selection: Option<&Tensor<R>>,
 ) -> HydraulicResult<SourceSonicDomain<R>>
 where
     R: Runtime<DType = DType>,
@@ -80,9 +143,9 @@ where
         query,
         epsilon,
         classification,
-        depth: _,
-        normalized_depth: _,
-        status: _,
+        depth: old_depth,
+        normalized_depth: old_normalized,
+        status: old_status,
         iterations: previous_iterations,
         callback_points: previous_points,
         mapped_points: _,
@@ -156,25 +219,32 @@ where
             let cause = Cell::new(None);
             work.begin_root()?;
             let borrowed = RefCell::new(&mut *sources);
-            let progress = c.resume_certified_mapped(
-                |value| {
-                    source_sonic_callback::evaluate(
-                        &borrowed,
-                        &parent_rows,
-                        &chart,
-                        &epsilon,
-                        side,
-                        value,
-                        &cause,
-                    )
-                },
-                |bounds| {
-                    wet_depth_mapping::evaluate(&borrowed, &parent_rows, &chart, bounds, &cause)
-                },
-                continuation,
-                tolerance,
-                &allowance,
-            );
+            let residual = |value: &solvr::optimize::CertifiedRootQuery<R>| {
+                source_sonic_callback::evaluate(
+                    &borrowed,
+                    &parent_rows,
+                    &chart,
+                    &epsilon,
+                    side,
+                    value,
+                    &cause,
+                )
+            };
+            let mapping = |bounds: &solvr::optimize::CertifiedRootDomainQuery<R>| {
+                wet_depth_mapping::evaluate(&borrowed, &parent_rows, &chart, bounds, &cause)
+            };
+            let progress = if let Some(rows) = selection {
+                c.resume_certified_mapped_selected(
+                    residual,
+                    mapping,
+                    continuation,
+                    rows,
+                    tolerance,
+                    &allowance,
+                )
+            } else {
+                c.resume_certified_mapped(residual, mapping, continuation, tolerance, &allowance)
+            };
             (chart, resolve_root(progress, cause.take())?)
         }
     };
@@ -196,74 +266,101 @@ where
     invocation.check_add_points(additional_points)?;
     work.finish_root_progress(additional_iterations, iterations)?;
     invocation.add_points(additional_points)?;
-    let (query, mut status) = checked::<R, _>(c, "source sonic retained native domains", |a| {
-        let lower = c.index_put(
-            query.query.parameter.lower(),
-            0,
-            result.root_owner(),
-            result.root_lower(),
+    let (query, depth, normalized_depth, status) = if let Some(rows) = selection {
+        let cached = super::source_sonic_selected_fields::Cached {
+            query,
+            depth: old_depth,
+            normalized: old_normalized,
+            status: old_status,
+        };
+        let updated = super::source_sonic_selected_fields::update(
+            sources,
+            &parent_rows,
+            cached,
+            &result,
+            rows,
+            tolerance,
         )?;
-        let upper = c.index_put(
-            query.query.parameter.upper(),
-            0,
-            result.root_owner(),
-            result.root_upper(),
-        )?;
-        let parameter = a.bounds(&lower, &upper)?;
-        let selected = sources.select_sources(a, &parent_rows)?;
-        let query = query.with_parameter_bounds(a, &selected.bands, &parameter)?;
-        let mut status = Tensor::full_scalar(
-            parent_rows.shape(),
-            DType::I64,
-            WetDepthStatus::Unresolved as i64 as f64,
-            c.device(),
-        )?;
-        for (native, physical) in [
-            (
-                CertifiedRootStatus::Converged,
-                WetDepthStatus::DepthConverged,
-            ),
-            (
-                CertifiedRootStatus::AccuracyFloor,
-                WetDepthStatus::AccuracyFloor,
-            ),
-            (CertifiedRootStatus::WorkLimit, WetDepthStatus::WorkLimit),
-        ] {
-            let code = Tensor::full_scalar(&[], DType::I64, native as i64 as f64, c.device())?;
-            let target = Tensor::full_scalar(
+        (
+            updated.query,
+            updated.depth,
+            updated.normalized,
+            updated.status,
+        )
+    } else {
+        let (query, mut status) =
+            checked::<R, _>(c, "source sonic retained native domains", |a| {
+                let lower = c.index_put(
+                    query.query.parameter.lower(),
+                    0,
+                    result.root_owner(),
+                    result.root_lower(),
+                )?;
+                let upper = c.index_put(
+                    query.query.parameter.upper(),
+                    0,
+                    result.root_owner(),
+                    result.root_upper(),
+                )?;
+                let parameter = a.bounds(&lower, &upper)?;
+                let selected = sources.select_sources(a, &parent_rows)?;
+                let query = query.with_parameter_bounds(a, &selected.bands, &parameter)?;
+                let mut status = Tensor::full_scalar(
+                    parent_rows.shape(),
+                    DType::I64,
+                    WetDepthStatus::Unresolved as i64 as f64,
+                    c.device(),
+                )?;
+                for (native, physical) in [
+                    (
+                        CertifiedRootStatus::Converged,
+                        WetDepthStatus::DepthConverged,
+                    ),
+                    (
+                        CertifiedRootStatus::AccuracyFloor,
+                        WetDepthStatus::AccuracyFloor,
+                    ),
+                    (CertifiedRootStatus::WorkLimit, WetDepthStatus::WorkLimit),
+                ] {
+                    let code =
+                        Tensor::full_scalar(&[], DType::I64, native as i64 as f64, c.device())?;
+                    let target = Tensor::full_scalar(
+                        parent_rows.shape(),
+                        DType::I64,
+                        physical as i64 as f64,
+                        c.device(),
+                    )?;
+                    status = c.where_cond(&c.eq(result.status(), &code)?, &target, &status)?;
+                }
+                Ok((query, status))
+            })?;
+        let (depth, normalized_depth) =
+            wet_depth_mapping::certificates(sources, &parent_rows, &query)?;
+        status = checked::<R, _>(c, "source sonic final physical criterion", |a| {
+            let accepted = wet_depth_mapping::satisfied(a, &normalized_depth, tolerance)?;
+            let passed = Tensor::full_scalar(
                 parent_rows.shape(),
                 DType::I64,
-                physical as i64 as f64,
+                WetDepthStatus::DepthConverged as i64 as f64,
                 c.device(),
             )?;
-            status = c.where_cond(&c.eq(result.status(), &code)?, &target, &status)?;
-        }
-        Ok((query, status))
-    })?;
-    let (depth, normalized_depth) = wet_depth_mapping::certificates(sources, &parent_rows, &query)?;
-    status = checked::<R, _>(c, "source sonic final physical criterion", |a| {
-        let accepted = wet_depth_mapping::satisfied(a, &normalized_depth, tolerance)?;
-        let passed = Tensor::full_scalar(
-            parent_rows.shape(),
-            DType::I64,
-            WetDepthStatus::DepthConverged as i64 as f64,
-            c.device(),
-        )?;
-        let converged_code = Tensor::full_scalar(
-            &[],
-            DType::I64,
-            WetDepthStatus::DepthConverged as i64 as f64,
-            c.device(),
-        )?;
-        let unresolved = Tensor::full_scalar(
-            parent_rows.shape(),
-            DType::I64,
-            WetDepthStatus::Unresolved as i64 as f64,
-            c.device(),
-        )?;
-        let other = c.where_cond(&c.eq(&status, &converged_code)?, &unresolved, &status)?;
-        Ok(c.where_cond(&accepted, &passed, &other)?)
-    })?;
+            let converged_code = Tensor::full_scalar(
+                &[],
+                DType::I64,
+                WetDepthStatus::DepthConverged as i64 as f64,
+                c.device(),
+            )?;
+            let unresolved = Tensor::full_scalar(
+                parent_rows.shape(),
+                DType::I64,
+                WetDepthStatus::Unresolved as i64 as f64,
+                c.device(),
+            )?;
+            let other = c.where_cond(&c.eq(&status, &converged_code)?, &unresolved, &status)?;
+            Ok(c.where_cond(&accepted, &passed, &other)?)
+        })?;
+        (query, depth, normalized_depth, status)
+    };
     Ok(SourceSonicDomain {
         binding: binding.clone(),
         invocation_owner,

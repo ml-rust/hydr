@@ -162,6 +162,89 @@ where
         }
         super::source_sonic_certificates::evaluate(self)
     }
+
+    pub(super) fn refine_source_sonic_selected(
+        &mut self,
+        owners: &Tensor<R>,
+        side: SonicSide,
+        tolerance: CertifiedRootTolerance,
+    ) -> HydraulicResult<()> {
+        self.sources
+            .check_root_witness(self.invocation.source_witness())?;
+        self.check_domains()?;
+        super::wet_depth::check_tolerance(
+            &tolerance,
+            &self.invocation.source_witness().config().root,
+        )?;
+        if self.sonic.requests.iter().any(|request| request.terminal) {
+            return Err(super::point_root_session::invalid(
+                "selected source sonic refinement remains sealed after an earlier numerical error",
+            ));
+        }
+        let c = self.sources.geometry.client();
+        let demand = checked::<R, _>(c, "source sonic selected complete request admission", |a| {
+            let (owners, _) = super::dry_vacuum_evidence::owners(a, self, owners)?;
+            let status = c.index_select(&self.sonic.status[side.index()], 0, &owners)?;
+            let unrequested = Tensor::full_scalar(
+                &[],
+                DType::I64,
+                SourceSonicStatus::NotRequested as i64 as f64,
+                c.device(),
+            )?;
+            if c.nonzero(&c.eq(&status, &unrequested)?)?.numel() != 0 {
+                return Err(super::point_root_session::invalid(
+                    "selected sonic refinement includes an unstarted owner and side",
+                ));
+            }
+            let demand = c.index_put(
+                &Tensor::zeros(self.invocation_rows.shape(), a.dtype(), c.device())?,
+                0,
+                &owners,
+                &Tensor::ones(owners.shape(), a.dtype(), c.device())?,
+            )?;
+            for request in &self.sonic.requests {
+                if request.binding.side == side
+                    && c.nonzero(&c.index_select(&demand, 0, &request.binding.owners)?)?
+                        .numel()
+                        != 0
+                    && (tolerance.atol > request.tolerance.atol
+                        || tolerance.rtol > request.tolerance.rtol)
+                {
+                    return Err(super::point_root_session::invalid(
+                        "selected sonic tolerance exceeds the current request allowance",
+                    ));
+                }
+            }
+            Ok(demand)
+        })?;
+        let checkpoint = self.checkpoint();
+        let result = (|| -> HydraulicResult<()> {
+            for request in &mut self.sonic.requests {
+                if request.binding.side != side {
+                    continue;
+                }
+                if c.nonzero(&c.index_select(&demand, 0, &request.binding.owners)?)?
+                    .numel()
+                    == 0
+                {
+                    continue;
+                }
+                if let Err(error) = super::source_sonic_selection::refine(
+                    self.sources,
+                    &mut self.invocation,
+                    request,
+                    &demand,
+                    &tolerance,
+                ) {
+                    request.terminal = true;
+                    return Err(error);
+                }
+            }
+            Ok(())
+        })();
+        self.reconcile(checkpoint, result.is_ok())?;
+        result
+    }
 }
 
 fn refine_request<R>(
@@ -234,3 +317,7 @@ where
 #[cfg(test)]
 #[path = "source_sonic_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "source_sonic_tests_selection.rs"]
+mod selected_tests;
