@@ -10,12 +10,16 @@ use numr::{
     dtype::DType,
     ops::{
         BinaryOps, CompareOps, IndexingOps, NextRepresentableOps, ScalarOps, SortingOps, TensorOps,
-        TwoSumOps, TypeConversionOps,
+        TwoSumOps, TypeConversionOps, UtilityOps,
     },
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
 use solvr::common::arithmetic::CertifiedExpansion;
+
+#[cfg(test)]
+#[path = "domain_coverage_order_tests.rs"]
+mod order_tests;
 
 /// Coverage decisions in invocation order. These decisions do not establish root existence.
 pub(crate) struct DomainCoverage<R: Runtime<DType = DType>> {
@@ -113,8 +117,8 @@ where
         });
     }
 
-    let lower = align(a, lower, &common, common_owner.numel(), "lower")?;
-    let cap = align(a, cap, &common, common_owner.numel(), "cap")?;
+    let lower = align(a, lower, &common, &common_owner, "lower")?;
+    let cap = align(a, cap, &common, &common_owner, "cap")?;
     let cap_minus_lower = selection::expansion(a, &candidates.cap_minus_lower, &common_owner)?;
     let cap_minus_deficit = selection::expansion(a, &candidates.cap_minus_deficit, &common_owner)?;
     let overlap_gap = selection::expansion(a, &candidates.overlap_gap, &common_owner)?;
@@ -220,7 +224,7 @@ fn align<R>(
     a: &mut Arithmetic<'_, R>,
     support: SupportSelection<R>,
     common: &Tensor<R>,
-    count: usize,
+    common_owner: &Tensor<R>,
     name: &str,
 ) -> HydraulicResult<SupportedAreaQuery<R>>
 where
@@ -233,21 +237,50 @@ where
         + RuntimeClient<R>,
 {
     let c = a.client();
-    let positions = c
-        .nonzero(&c.index_select(common, 0, &support.owner)?)?
-        .flatten()?;
-    if positions.numel() != count {
-        return Err(HydraulicError::Numerical {
-            context: format!(
-                "Domain coverage {name} selection has {} rows, expected {count}. Discard the inconsistent cover",
-                positions.numel(),
-            ),
-        });
+    let count = common.numel();
+    admission::metadata(a, common, &[count], a.dtype())?;
+    admission::metadata(a, &support.proved, &[count], a.dtype())?;
+    admission::metadata(a, &support.owner, &[support.owner.numel()], DType::I64)?;
+    admission::metadata(a, common_owner, &[common_owner.numel()], DType::I64)?;
+    let invalid_indexing = || HydraulicError::Numerical {
+        context: format!(
+            "Domain coverage {name} count={count}, supported={} exceeds exact owner indexing. Split the coverage batch",
+            support.owner.numel(),
+        ),
+    };
+    let limit = i64::try_from(count).map_err(|_| invalid_indexing())?;
+    if support.owner.numel() as u128 > (1_u128 << f64::MANTISSA_DIGITS) {
+        return Err(invalid_indexing());
+    }
+    let zero = Tensor::from_slice(&[0_i64], &[], c.device())?;
+    let upper = Tensor::from_slice(&[limit], &[], c.device())?;
+    for owner in [&support.owner, common_owner] {
+        let invalid = c.maximum(&c.lt(owner, &zero)?, &c.ge(owner, &upper)?)?;
+        admission::reject(
+            a,
+            &c.cast(&invalid, a.dtype())?,
+            "domain coverage owner lies outside its invocation. Supply admitted owner indices",
+        )?;
     }
     let query = support.query.ok_or_else(|| HydraulicError::Numerical {
         context: format!(
             "Domain coverage has common rows but no supported {name} query. Discard the inconsistent cover",
         ),
     })?;
+    admission::metadata(a, &query.query.owners, &[support.owner.numel()], DType::I64)?;
+    let inverse = Tensor::from_slice(&[-1_i64], &[], c.device())?
+        .broadcast_to(&[count])?
+        .contiguous()?;
+    let positions = c.arange(0.0, support.owner.numel() as f64, 1.0, DType::I64)?;
+    // select_supported proves unique support owners. Their positions follow the supported query, not mask compaction order.
+    let inverse = c.index_put(&inverse, 0, &support.owner, &positions)?;
+    let positions = c.index_select(&inverse, 0, common_owner)?;
+    if c.nonzero(&c.lt(&positions, &zero)?)?.numel() != 0 {
+        return Err(HydraulicError::Numerical {
+            context: format!(
+                "Domain coverage {name} common owner lacks a supported query. Discard the inconsistent cover",
+            ),
+        });
+    }
     query.select(a, &positions)
 }
