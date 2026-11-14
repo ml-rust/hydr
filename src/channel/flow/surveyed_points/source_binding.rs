@@ -18,6 +18,26 @@ pub(super) struct RootSourceWitness {
     work: *const WorkLedger,
 }
 
+/// Authenticated panel policy for one immutable source graph. This token owns no cache or work allowance.
+#[derive(Clone)]
+pub(super) struct SourcePanelLevel {
+    witness: RootSourceWitness,
+    index: usize,
+    panels: usize,
+}
+
+impl SourcePanelLevel {
+    pub(super) fn index(&self) -> usize {
+        self.index
+    }
+    pub(super) fn panels(&self) -> usize {
+        self.panels
+    }
+    pub(super) fn witness(&self) -> &RootSourceWitness {
+        &self.witness
+    }
+}
+
 impl RootSourceWitness {
     pub(super) fn capture(
         identity: &Arc<RootSourceIdentity>,
@@ -28,6 +48,53 @@ impl RootSourceWitness {
             config: evaluation.config.clone(),
             panels: evaluation.panels,
             work: std::ptr::from_ref(evaluation.work),
+        }
+    }
+
+    pub(super) fn panel_level(&self, index: usize) -> HydraulicResult<SourcePanelLevel> {
+        if !self.panels.is_power_of_two()
+            || self.panels > self.config.max_simpson_panels
+            || !self.config.max_simpson_panels.is_power_of_two()
+        {
+            return Err(self.panel_error(
+                index,
+                "captured panels are not an admitted positive power of two",
+            ));
+        }
+        let mut panels = self.panels;
+        if index > self.config.max_refinements || index >= usize::BITS as usize {
+            return Err(self.panel_error(
+                index,
+                "requested level exceeds the refinement or integer-doubling ceiling",
+            ));
+        }
+        for _ in 0..index {
+            panels = panels
+                .checked_mul(2)
+                .ok_or_else(|| self.panel_error(index, "panel doubling overflows usize"))?;
+            if panels > self.config.max_simpson_panels {
+                return Err(self.panel_error(
+                    index,
+                    &format!("requested panels={panels} exceed the panel ceiling"),
+                ));
+            }
+        }
+        Ok(SourcePanelLevel {
+            witness: self.clone(),
+            index,
+            panels,
+        })
+    }
+
+    fn panel_error(&self, index: usize, detail: &str) -> HydraulicError {
+        HydraulicError::Numerical {
+            context: format!(
+                "Source panel level={index}, captured_panels={}, max_refinements={}, max_panels={}, integer_doubling_limit={}: {detail}. Request a level within every captured ceiling",
+                self.panels,
+                self.config.max_refinements,
+                self.config.max_simpson_panels,
+                usize::BITS - 1,
+            ),
         }
     }
 

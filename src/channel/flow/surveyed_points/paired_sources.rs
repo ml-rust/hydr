@@ -32,6 +32,7 @@ pub(super) struct PairedSources<'a, R: Runtime<DType = DType>> {
     pub(super) evaluation: PotentialEvaluation<'a>,
     pub(super) original_rows: Tensor<R>,
     pub(super) cache: [SourcePotentialCache<R>; 2],
+    pub(super) panel_cache: Vec<(usize, [SourcePotentialCache<R>; 2])>,
     identity: Arc<RootSourceIdentity>,
     construction_witness: RootSourceWitness,
 }
@@ -176,6 +177,7 @@ where
             evaluation,
             original_rows,
             cache,
+            panel_cache: Vec::new(),
             identity,
             construction_witness,
         })

@@ -23,9 +23,10 @@ use numr::{
     tensor::Tensor,
 };
 use solvr::integrate::CertifiedSimpsonAlgorithms;
+use std::sync::Arc;
 
 pub(super) struct SourcePotentialCache<R: Runtime<DType = DType>> {
-    pub(super) query: SupportedAreaQuery<R>,
+    pub(super) query: Arc<SupportedAreaQuery<R>>,
     pub(super) ready: Tensor<R>,
     pub(super) value: PotentialValue<R>,
 }
@@ -45,15 +46,23 @@ where
         query: SupportedAreaQuery<R>,
         count: usize,
     ) -> HydraulicResult<Self> {
+        Self::with_query(a, Arc::new(query), count)
+    }
+
+    pub(super) fn with_query(
+        a: &mut Arithmetic<'_, R>,
+        query: Arc<SupportedAreaQuery<R>>,
+        count: usize,
+    ) -> HydraulicResult<Self> {
         let zero = Tensor::zeros(&[count], a.dtype(), a.client().device())?;
         Ok(Self {
             query,
-            ready: zero.clone(),
             value: PotentialValue {
                 retained: a.expansion_point(&zero)?,
                 physical: a.point(&zero)?,
                 analytic: None,
             },
+            ready: zero,
         })
     }
 }

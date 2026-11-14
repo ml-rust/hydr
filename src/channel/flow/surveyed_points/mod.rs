@@ -21,6 +21,7 @@ mod paired_endpoint;
 mod paired_residual;
 mod paired_source_cache;
 mod paired_source_invariant;
+mod paired_source_panels;
 mod paired_sources;
 mod point_candidate_types;
 mod point_candidates;
