@@ -19,9 +19,15 @@ mod diagnostics;
 #[path = "point_candidates_fixture_export.rs"]
 mod fixture_export;
 #[path = "point_candidates_fixture_model.rs"]
-mod fixture_model;
+pub(in crate::channel::flow::surveyed_points) mod fixture_model;
 #[path = "point_candidates_fixtures.rs"]
-mod fixtures;
+pub(in crate::channel::flow::surveyed_points) mod fixtures;
+#[path = "point_flux_fixture_export.rs"]
+mod flux_fixture_export;
+#[path = "point_flux_fixture_model.rs"]
+pub(in crate::channel::flow::surveyed_points) mod flux_fixture_model;
+#[path = "point_flux_fixtures.rs"]
+pub(in crate::channel::flow::surveyed_points) mod flux_fixtures;
 #[path = "point_candidates_tests_membership.rs"]
 mod membership;
 #[path = "point_candidates_tests_support.rs"]
@@ -42,6 +48,11 @@ mod work;
 #[test]
 fn point_candidate_reference_fixture_export() -> Result {
     fixture_export::emit(&fixtures::executions())
+}
+
+#[test]
+fn point_flux_reference_fixture_export() -> Result {
+    flux_fixture_export::emit()
 }
 
 fn matrix<R>(client: &R::Client) -> Result

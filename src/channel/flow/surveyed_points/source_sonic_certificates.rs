@@ -1,8 +1,6 @@
 use super::{
     paired_sources::PairedSources,
     point_root_session::PointRootSession,
-    potential_absolute::endpoint_potential,
-    potential_increment::endpoint_increment,
     potential_range::{PotentialContext, PotentialEvaluation},
     source_sonic_types::{
         SonicFanMembership, SonicSide, SourceSonicCertificate, SourceSonicCertificates,
@@ -242,27 +240,8 @@ where
                 work: sources.evaluation.work,
             },
         )?;
-        let potential = endpoint_potential(&context, PhysicalEndpoint::Lower)?;
-        let increment = endpoint_increment(&context, PhysicalEndpoint::Lower)?;
         let (velocity, change) =
-            checked::<R, _>(c, "source sonic retained trace invariant", |a| {
-                if domain.side == SonicSide::Left {
-                    let zero = a.expansion_point(&Tensor::zeros(
-                        domain.parent_rows.shape(),
-                        a.dtype(),
-                        c.device(),
-                    )?)?;
-                    Ok((
-                        a.expansion_sub(domain.epsilon, &potential.retained)?,
-                        a.expansion_sub(&zero, &increment.retained)?,
-                    ))
-                } else {
-                    Ok((
-                        a.expansion_sub(&potential.retained, domain.epsilon)?,
-                        increment.retained,
-                    ))
-                }
-            })?;
+            super::source_sonic_invariant::endpoint(&context, domain.side, domain.epsilon)?;
         endpoint_velocity.push(velocity);
         endpoint_change.push(change);
         endpoint_residual.push(super::source_sonic_residual::endpoint(

@@ -260,4 +260,4 @@ where
 
 #[cfg(test)]
 #[path = "point_candidates_tests.rs"]
-mod tests;
+pub(in crate::channel::flow::surveyed_points) mod tests;

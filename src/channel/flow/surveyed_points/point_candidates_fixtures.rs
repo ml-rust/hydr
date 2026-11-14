@@ -1,5 +1,5 @@
 use super::fixture_model::{Config, Execution};
-pub(super) const CONFIGS: &[Config] = &[
+pub(in crate::channel::flow::surveyed_points) const CONFIGS: &[Config] = &[
     Config {
         floats: [
             0x3ff0000000000000,
@@ -151,7 +151,7 @@ mod uniform_sections;
 mod vacuum_limits;
 #[path = "point_candidates_fixture_wet_fans.rs"]
 mod wet_fans;
-pub(super) fn executions() -> Vec<Execution> {
+pub(in crate::channel::flow::surveyed_points) fn executions() -> Vec<Execution> {
     let mut rows = Vec::with_capacity(70);
     rows.extend_from_slice(uniform_sections::ROWS);
     rows.extend_from_slice(depth_transitions::ROWS);

@@ -62,19 +62,33 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>,
 {
+    flux_acceptance_mask(a, &solution.water_flux, &solution.momentum_flux, config)
+}
+
+pub(crate) fn flux_acceptance_mask<R>(
+    a: &mut Arithmetic<'_, R>,
+    water: &Interval<R>,
+    momentum: &Interval<R>,
+    config: &PrismaticRiemannConfig,
+) -> HydraulicResult<Tensor<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
     let c = a.client();
-    if solution.water_flux.lower().numel() == 0 {
+    if water.lower().numel() == 0 {
         return Ok(Tensor::zeros(&[0], DType::F64, c.device())?);
     }
-    let (water_width, water_allowance) = width_bounds(
-        a,
-        &solution.water_flux,
-        config.water_flux_atol_m3_per_s,
-        config.flux_rtol,
-    )?;
+    let (water_width, water_allowance) =
+        width_bounds(a, water, config.water_flux_atol_m3_per_s, config.flux_rtol)?;
     let (momentum_width, momentum_allowance) = width_bounds(
         a,
-        &solution.momentum_flux,
+        momentum,
         config.momentum_flux_atol_m4_per_s2,
         config.flux_rtol,
     )?;

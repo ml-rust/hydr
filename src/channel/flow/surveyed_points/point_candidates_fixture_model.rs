@@ -1,11 +1,11 @@
 use crate::channel::flow::surveyed::PrismaticRiemannConfig;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Config {
-    pub(super) floats: [u64; 8],
-    pub(super) counts: [usize; 7],
+pub(in crate::channel::flow::surveyed_points) struct Config {
+    pub(in crate::channel::flow::surveyed_points) floats: [u64; 8],
+    pub(in crate::channel::flow::surveyed_points) counts: [usize; 7],
 }
 impl Config {
-    pub(super) fn build(&self) -> PrismaticRiemannConfig {
+    pub(in crate::channel::flow::surveyed_points) fn build(&self) -> PrismaticRiemannConfig {
         let f = self.floats.map(f64::from_bits);
         let n = self.counts;
         PrismaticRiemannConfig {
@@ -32,31 +32,31 @@ impl Config {
     }
 }
 #[derive(Clone, Copy)]
-pub(super) struct State {
-    pub(super) label: &'static str,
-    pub(super) area: [u64; 2],
-    pub(super) depth: Option<[u64; 2]>,
-    pub(super) velocity: Option<[u64; 2]>,
-    pub(super) discharge: [u64; 2],
-    pub(super) velocity_provenance: &'static str,
+pub(in crate::channel::flow::surveyed_points) struct State {
+    pub(in crate::channel::flow::surveyed_points) label: &'static str,
+    pub(in crate::channel::flow::surveyed_points) area: [u64; 2],
+    pub(in crate::channel::flow::surveyed_points) depth: Option<[u64; 2]>,
+    pub(in crate::channel::flow::surveyed_points) velocity: Option<[u64; 2]>,
+    pub(in crate::channel::flow::surveyed_points) discharge: [u64; 2],
+    pub(in crate::channel::flow::surveyed_points) velocity_provenance: &'static str,
 }
 #[derive(Clone, Copy)]
-pub(super) struct Edge {
-    pub(super) label: &'static str,
-    pub(super) bounds: [u64; 2],
+pub(in crate::channel::flow::surveyed_points) struct Edge {
+    pub(in crate::channel::flow::surveyed_points) label: &'static str,
+    pub(in crate::channel::flow::surveyed_points) bounds: [u64; 2],
 }
 #[derive(Clone, Copy)]
-pub(super) struct Execution {
-    pub(super) config_identity: &'static str,
-    pub(super) expected_identity: &'static str,
-    pub(super) id: &'static str,
-    pub(super) config: usize,
-    pub(super) source_group: &'static str,
-    pub(super) group: &'static str,
-    pub(super) declared: &'static str,
-    pub(super) outcome: &'static str,
-    pub(super) physical: &'static str,
-    pub(super) traces: &'static [State],
-    pub(super) star: Option<State>,
-    pub(super) edges: &'static [Edge],
+pub(in crate::channel::flow::surveyed_points) struct Execution {
+    pub(in crate::channel::flow::surveyed_points) config_identity: &'static str,
+    pub(in crate::channel::flow::surveyed_points) expected_identity: &'static str,
+    pub(in crate::channel::flow::surveyed_points) id: &'static str,
+    pub(in crate::channel::flow::surveyed_points) config: usize,
+    pub(in crate::channel::flow::surveyed_points) source_group: &'static str,
+    pub(in crate::channel::flow::surveyed_points) group: &'static str,
+    pub(in crate::channel::flow::surveyed_points) declared: &'static str,
+    pub(in crate::channel::flow::surveyed_points) outcome: &'static str,
+    pub(in crate::channel::flow::surveyed_points) physical: &'static str,
+    pub(in crate::channel::flow::surveyed_points) traces: &'static [State],
+    pub(in crate::channel::flow::surveyed_points) star: Option<State>,
+    pub(in crate::channel::flow::surveyed_points) edges: &'static [Edge],
 }
