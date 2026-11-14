@@ -1,8 +1,6 @@
 use super::{
-    dry_vacuum_types::{
-        DryVacuumCandidate, DryVacuumDry, DryVacuumExterior, DryVacuumPendingFan,
-        DryVacuumPossibilities,
-    },
+    dry_vacuum_types::{DryVacuumCandidate, DryVacuumPendingFan, DryVacuumPossibilities},
+    point_candidate_types::DryPoint,
     point_root_session::PointRootSession,
     source_sonic_types::{SonicSide, SourceSonicCertificate, SourceSonicStatus},
 };
@@ -97,47 +95,15 @@ where
             let rows = c.nonzero(&exterior)?;
             let rows = rows.reshape(&[rows.numel()])?;
             if rows.numel() != 0 {
-                let selected_parent = c.index_select(parent, 0, &rows)?;
-                let selected = session.sources.select_sources(a, &selected_parent)?;
-                let query = super::potential_range::source_query(
-                    session.sources.geometry,
-                    &selected.bands,
-                    &selected.sources[i],
-                    &selected.original_rows,
-                )?;
-                let input = selected.velocity.input();
-                let area = if i == 0 {
-                    &input.left_area
-                } else {
-                    &input.right_area
-                };
-                let discharge = if i == 0 {
-                    &input.left_discharge
-                } else {
-                    &input.right_discharge
-                };
-                let velocity = if i == 0 {
-                    &selected.velocity.left
-                } else {
-                    &selected.velocity.right
-                };
-                let area = a.expansion_bounds(area.high(), area.low(), area.abs_error())?;
-                let discharge =
-                    a.expansion_bounds(discharge.high(), discharge.low(), discharge.abs_error())?;
-                let velocity =
-                    a.expansion_bounds(velocity.high(), velocity.low(), velocity.abs_error())?;
-                let [left, right] = selected.sources;
-                let recovery = if i == 0 { left } else { right };
-                output.push(DryVacuumCandidate::Exterior(Box::new(DryVacuumExterior {
-                    invocation_owner: c.index_select(owners, 0, &rows)?,
-                    parent_rows: selected_parent,
-                    side,
-                    query,
-                    area,
-                    discharge,
-                    velocity,
-                    recovery,
-                })));
+                output.push(DryVacuumCandidate::Exterior(Box::new(
+                    super::point_candidates_source::exterior(
+                        a,
+                        session.sources,
+                        &c.index_select(owners, 0, &rows)?,
+                        &c.index_select(parent, 0, &rows)?,
+                        side,
+                    )?,
+                )));
             }
             let valid = c.maximum(
                 &source,
@@ -180,7 +146,7 @@ where
             )?;
             c.copy_into(&query.original_rows, &selected.original_rows)?;
             let query = query.prove_support(a, &selected.bands)?;
-            output.push(DryVacuumCandidate::Dry(Box::new(DryVacuumDry {
+            output.push(DryVacuumCandidate::Dry(Box::new(DryPoint {
                 invocation_owner: c.index_select(owners, 0, &rows)?,
                 parent_rows: selected_parent,
                 query,

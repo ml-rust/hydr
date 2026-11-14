@@ -39,6 +39,21 @@ where
         }
         self.check_domains()?;
         let stars = self.certify_wet_star()?;
+        self.wet_waves_from(stars)
+    }
+
+    pub(super) fn certify_wet_waves_selected(
+        &mut self,
+        demand: &Tensor<R>,
+    ) -> HydraulicResult<Vec<WetWaveDomain<R>>> {
+        let stars = self.certify_wet_star_selected(demand)?;
+        self.wet_waves_from(stars)
+    }
+
+    fn wet_waves_from(
+        &mut self,
+        stars: Vec<super::wet_star_types::WetStarDomain<R>>,
+    ) -> HydraulicResult<Vec<WetWaveDomain<R>>> {
         let c = self.sources.geometry.client();
         let mut result = Vec::with_capacity(stars.len());
         for star in stars {

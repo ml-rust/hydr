@@ -1,0 +1,107 @@
+use super::super::fixture_model::{Edge, Execution, State};
+pub(super) const ROWS: &[Execution] = &[
+    Execution {
+        config_identity: "26d1239de8e8f786b72c7d733c30c2b724869844c3279a3a5b02f17090436122",
+        expected_identity: "0514b7db8e59b141c246aa5b1d1c0be6ee652456804cc77cc01dd04d241d60a5",
+        id: "trace_origin_after_retained_history_face_193",
+        config: 6,
+        source_group: "existing_expanded_trace_22",
+        group: "f311f7d62b8c516006b9f83e6a29b9b4c8fe9931f4745c17c6e62cd0a29180e4",
+        declared: "wet_wet",
+        outcome: "resolved",
+        physical: "wet_wet",
+        traces: &[State {
+            label: "star",
+            area: [0x402bffffffffffff, 0x402c000000000000],
+            depth: Some([0x4007ffffffffffff, 0x4008000000000000]),
+            velocity: Some([0x3c8b706c91b2f8d9, 0x3c8b706c91b2f8da]),
+            discharge: [0x3cc8025eff7c99be, 0x3cc8025eff7c99bf],
+            velocity_provenance: "direct",
+        }],
+        star: Some(State {
+            label: "star",
+            area: [0x402bffffffffffff, 0x402c000000000000],
+            depth: Some([0x4007ffffffffffff, 0x4008000000000000]),
+            velocity: Some([0x3c8b706c91b2f8d9, 0x3c8b706c91b2f8da]),
+            discharge: [0x3cc8025eff7c99be, 0x3cc8025eff7c99bf],
+            velocity_provenance: "direct",
+        }),
+        edges: &[
+            Edge {
+                label: "edge_0",
+                bounds: [0xbff52a7fa9d2f8ea, 0xbff52a7fa9d2f8e9],
+            },
+            Edge {
+                label: "edge_1",
+                bounds: [0xbff52a7fa9d2f8ea, 0xbff52a7fa9d2f8e9],
+            },
+            Edge {
+                label: "edge_2",
+                bounds: [0x3ff52a7fa9d2f8e9, 0x3ff52a7fa9d2f8ea],
+            },
+            Edge {
+                label: "edge_3",
+                bounds: [0x3ff52a7fa9d2f8e9, 0x3ff52a7fa9d2f8ea],
+            },
+        ],
+    },
+    Execution {
+        config_identity: "26d1239de8e8f786b72c7d733c30c2b724869844c3279a3a5b02f17090436122",
+        expected_identity: "c3e56b284caceda22741090ae09b70bbcd66d27270ce4b07a81647b3d8fe2bfd",
+        id: "trace_origin_after_retained_history_face_194",
+        config: 6,
+        source_group: "existing_expanded_trace_22",
+        group: "3ad200db44015e56398a9c55cb54432ca856f785beb855e5a3edae889a5981ad",
+        declared: "wet_wet",
+        outcome: "resolved",
+        physical: "wet_wet",
+        traces: &[State {
+            label: "star",
+            area: [0x402bfffffffffea0, 0x402bfffffffffea1],
+            depth: Some([0x4007ffffffffff50, 0x4007ffffffffff51]),
+            velocity: Some([0x3d309eb4f1d5965c, 0x3d309eb4f1d5965d]),
+            discharge: [0x3d6d15bca735c5b4, 0x3d6d15bca735c5b5],
+            velocity_provenance: "direct",
+        }],
+        star: Some(State {
+            label: "star",
+            area: [0x402bfffffffffea0, 0x402bfffffffffea1],
+            depth: Some([0x4007ffffffffff50, 0x4007ffffffffff51]),
+            velocity: Some([0x3d309eb4f1d5965c, 0x3d309eb4f1d5965d]),
+            discharge: [0x3d6d15bca735c5b4, 0x3d6d15bca735c5b5],
+            velocity_provenance: "direct",
+        }),
+        edges: &[
+            Edge {
+                label: "edge_0",
+                bounds: [0xbff52a7fa9d2f8ea, 0xbff52a7fa9d2f8e9],
+            },
+            Edge {
+                label: "edge_1",
+                bounds: [0xbff52a7fa9d2f7b3, 0xbff52a7fa9d2f7b2],
+            },
+            Edge {
+                label: "edge_2",
+                bounds: [0x3ff52a7fa9d2f9c5, 0x3ff52a7fa9d2f9c6],
+            },
+            Edge {
+                label: "edge_3",
+                bounds: [0x3ff52a7fa9d2f9c5, 0x3ff52a7fa9d2f9c6],
+            },
+        ],
+    },
+    Execution {
+        config_identity: "26d1239de8e8f786b72c7d733c30c2b724869844c3279a3a5b02f17090436122",
+        expected_identity: "5b24ef376c035f1a78c1b2f75fa0c4538e496bfefe72ae4e7e1ed63484088a1c",
+        id: "trace_history_final_retained_face_190",
+        config: 6,
+        source_group: "existing_expanded_trace_22",
+        group: "47688ae0d674f08694694f05e9d1bc8c02a92cd33efbde0fe7783a24ef030ac3",
+        declared: "negative_cap_residual",
+        outcome: "physical_cap_rejection",
+        physical: "negative_cap_residual",
+        traces: &[],
+        star: None,
+        edges: &[],
+    },
+];

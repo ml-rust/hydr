@@ -1,0 +1,138 @@
+use super::super::fixture_model::{Edge, Execution, State};
+pub(super) const ROWS: &[Execution] = &[
+    Execution {
+        config_identity: "5fb5d3b9a5f8e8a6f5563c734651e35479a28fee5d7c5257deb08ed5614b0d32",
+        expected_identity: "3dba940be33af728e9026de2a3497895818d37f8e06f380bfad523d75093ce01",
+        id: "scalar_three_bands_cap_rest",
+        config: 0,
+        source_group: "existing_scalar_37",
+        group: "e7dceff061b983c7f3f20c23d91b691baf1bec9c148e687f026af32da3d79e08",
+        declared: "wet_wet",
+        outcome: "resolved",
+        physical: "wet_wet",
+        traces: &[State {
+            label: "star",
+            area: [0x4037000000000000, 0x4037000000000000],
+            depth: Some([0x4010000000000000, 0x4010000000000000]),
+            velocity: Some([0x0000000000000000, 0x0000000000000000]),
+            discharge: [0x0000000000000000, 0x0000000000000000],
+            velocity_provenance: "Q_over_A",
+        }],
+        star: Some(State {
+            label: "star",
+            area: [0x4037000000000000, 0x4037000000000000],
+            depth: Some([0x4010000000000000, 0x4010000000000000]),
+            velocity: Some([0x0000000000000000, 0x0000000000000000]),
+            discharge: [0x0000000000000000, 0x0000000000000000],
+            velocity_provenance: "Q_over_A",
+        }),
+        edges: &[
+            Edge {
+                label: "edge_0",
+                bounds: [0xbff993e89c9eb01e, 0xbff993e89c9eb01d],
+            },
+            Edge {
+                label: "edge_1",
+                bounds: [0xbff993e89c9eb01e, 0xbff993e89c9eb01d],
+            },
+            Edge {
+                label: "edge_2",
+                bounds: [0xbff993e89c9eb01e, 0xbff993e89c9eb01d],
+            },
+            Edge {
+                label: "edge_3",
+                bounds: [0x3ff993e89c9eb01d, 0x3ff993e89c9eb01e],
+            },
+            Edge {
+                label: "edge_4",
+                bounds: [0x3ff993e89c9eb01d, 0x3ff993e89c9eb01e],
+            },
+            Edge {
+                label: "edge_5",
+                bounds: [0x3ff993e89c9eb01d, 0x3ff993e89c9eb01e],
+            },
+        ],
+    },
+    Execution {
+        config_identity: "fcf9b6bf731b21920858fee96d990d3f08b249a79a3c0c84478e355dce84121c",
+        expected_identity: "46e7ae07240b5209da32096f952ff2b45e3c37e303c2f06d145a7ea64c113118",
+        id: "scalar_three_bands_cap_compression",
+        config: 0,
+        source_group: "existing_scalar_37",
+        group: "f3147735184e80bb1b622215865c27e33fb543ed8282fefa4cd96db7f65b5b22",
+        declared: "cap_exceeded",
+        outcome: "CapExceeded",
+        physical: "cap_exceeded",
+        traces: &[],
+        star: None,
+        edges: &[],
+    },
+    Execution {
+        config_identity: "f28b70825443a8ff9e0e05e59f36ae05496a4abeabe08bd7abba4157eff11dee",
+        expected_identity: "a21b9ef3a898d388c710fd10ecedb9fafff2b4d0b5407d1c8378f49912c51df6",
+        id: "scalar_three_bands_loose_recovery_allowance",
+        config: 4,
+        source_group: "existing_scalar_37",
+        group: "a5b1f9b3185a273ef8b353e6c2da25ed23c69f6df1ca5ea67b45eb95d3722c9a",
+        declared: "wet_wet",
+        outcome: "resolved",
+        physical: "wet_wet",
+        traces: &[State {
+            label: "left-sonic",
+            area: [0x4013f08ac385e532, 0x4013f08ac385e533],
+            depth: Some([0x3ffaefa8a3a38101, 0x3ffaefa8a3a38102]),
+            velocity: Some([0x3fedd625462a7e0a, 0x3fedd625462a7e0b]),
+            discharge: [0x4012976d9b060300, 0x4012976d9b060301],
+            velocity_provenance: "Q_over_A",
+        }],
+        star: None,
+        edges: &[
+            Edge {
+                label: "edge_0",
+                bounds: [0xbff3ff9e3d8e5993, 0xbff3ff9e3d8e5992],
+            },
+            Edge {
+                label: "edge_1",
+                bounds: [0x3fec814e12bd64f7, 0x3fec814e12bd64f8],
+            },
+            Edge {
+                label: "edge_2",
+                bounds: [0x3fff28c06d8037ba, 0x3fff28c06d8037bb],
+            },
+        ],
+    },
+    Execution {
+        config_identity: "f29f8ee3da70db53994c3261e30fe61bad513baca412fbf4252e98dce95f3e42",
+        expected_identity: "26df44619fd023eb524e747e7659295f061edb881ecdb5cfbcf5a6314ff5aeec",
+        id: "scalar_three_bands_zero_work_budget",
+        config: 5,
+        source_group: "existing_scalar_37",
+        group: "a5b1f9b3185a273ef8b353e6c2da25ed23c69f6df1ca5ea67b45eb95d3722c9a",
+        declared: "wet_wet",
+        outcome: "WorkLimit",
+        physical: "wet_wet",
+        traces: &[State {
+            label: "left-sonic",
+            area: [0x4013f08ac385e532, 0x4013f08ac385e533],
+            depth: Some([0x3ffaefa8a3a38101, 0x3ffaefa8a3a38102]),
+            velocity: Some([0x3fedd625462a7e0a, 0x3fedd625462a7e0b]),
+            discharge: [0x4012976d9b060300, 0x4012976d9b060301],
+            velocity_provenance: "Q_over_A",
+        }],
+        star: None,
+        edges: &[
+            Edge {
+                label: "edge_0",
+                bounds: [0xbff3ff9e3d8e5993, 0xbff3ff9e3d8e5992],
+            },
+            Edge {
+                label: "edge_1",
+                bounds: [0x3fec814e12bd64f7, 0x3fec814e12bd64f8],
+            },
+            Edge {
+                label: "edge_2",
+                bounds: [0x3fff28c06d8037ba, 0x3fff28c06d8037bb],
+            },
+        ],
+    },
+];

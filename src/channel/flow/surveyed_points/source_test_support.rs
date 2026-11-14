@@ -18,6 +18,13 @@ pub(in crate::channel::flow::surveyed_points) fn cases() -> &'static [super::fix
     super::fixtures::CASES
 }
 
+pub(in crate::channel::flow::surveyed_points) fn profiles()
+-> impl Iterator<Item = (&'static str, u64, &'static [[u64; 2]])> {
+    PROFILES
+        .iter()
+        .map(|profile| (profile.id, profile.cap_stage, profile.coordinates))
+}
+
 pub(in crate::channel::flow::surveyed_points) trait Client<R: Runtime<DType = DType>>:
     TensorOps<R>
     + CompareOps<R>
