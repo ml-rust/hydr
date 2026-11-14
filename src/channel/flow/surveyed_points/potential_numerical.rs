@@ -6,7 +6,7 @@ use crate::channel::{
     flow::surveyed::{
         derivatives::WetDepthPotential,
         equation_ops::{scalar, scale},
-        error::{HydraulicResult, checked},
+        error::{HydraulicError, HydraulicResult, checked},
         lane_quadrature::numerical_contributions,
     },
     section::ConditionalBandSegments,
@@ -17,10 +17,14 @@ use numr::{
         BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
         ScalarOps, SortingOps, TensorOps, TwoSumOps, UnaryOps, UtilityOps,
     },
-    runtime::{Runtime, RuntimeClient},
+    runtime::{Device, Runtime, RuntimeClient},
     tensor::Tensor,
 };
 use solvr::integrate::{CertifiedSimpsonAlgorithms, CertifiedSimpsonOptions};
+
+#[cfg(test)]
+#[path = "potential_numerical_order_tests.rs"]
+mod tests;
 
 /// Selected faces retain all physical bands in their original order, including zero lanes.
 pub(super) fn wet_contributions<R>(
@@ -43,20 +47,62 @@ where
     let band_count = context.bands.band_count;
     let selected = checked(c, "point wet potential face selection", |a| {
         let n = context.bands.section_owner.numel();
-        let mask = Tensor::zeros(&[n], DType::F64, c.device())?;
-        let mask = c.index_put(
-            &mask,
-            0,
-            faces,
-            &Tensor::ones(&[faces.numel()], DType::F64, c.device())?,
+        if faces.shape() != [faces.numel()]
+            || faces.dtype() != DType::I64
+            || !faces.device().is_same(c.device())
+        {
+            return Err(HydraulicError::Numerical {
+                context: format!(
+                    "point wet potential face metadata shape={:?}, dtype={:?}, device={}: supply rank-one I64 faces on device={}",
+                    faces.shape(),
+                    faces.dtype(),
+                    faces.device().id(),
+                    c.device().id(),
+                ),
+            });
+        }
+        let invalid_shape = || HydraulicError::Numerical {
+            context: format!(
+                "point wet potential shape faces={n}, selected={}, bands={band_count} exceeds exact lane indexing. Split the face batch",
+                faces.numel(),
+            ),
+        };
+        let total = n.checked_mul(band_count).ok_or_else(invalid_shape)?;
+        i64::try_from(total).map_err(|_| invalid_shape())?;
+        let limit = i64::try_from(n).map_err(|_| invalid_shape())?;
+        if faces.numel() != 0 {
+            let zero = Tensor::from_slice(&[0_i64], &[], c.device())?;
+            let upper = Tensor::from_slice(&[limit], &[], c.device())?;
+            let invalid = c.maximum(&c.lt(faces, &zero)?, &c.ge(faces, &upper)?)?;
+            let invalid = c.nonzero(&invalid)?.flatten()?;
+            if invalid.numel() != 0 {
+                let first = invalid.narrow(0, 0, 1)?;
+                let face = c.index_select(faces, 0, &first)?.item::<i64>()?;
+                return Err(HydraulicError::Numerical {
+                    context: format!(
+                        "point wet potential face={face} lies outside 0..{n}. Supply an admitted face",
+                    ),
+                });
+            }
+        }
+        let count = faces
+            .numel()
+            .checked_mul(band_count)
+            .ok_or_else(invalid_shape)?;
+        let exact_range_limit = 1_u128 << f64::MANTISSA_DIGITS;
+        if band_count as u128 > exact_range_limit || count as u128 > exact_range_limit {
+            return Err(invalid_shape());
+        }
+        let stride = Tensor::from_slice(
+            &[i64::try_from(band_count).map_err(|_| invalid_shape())?],
+            &[],
+            c.device(),
         )?;
-        let repeated = c.mul(
-            &mask.unsqueeze(1)?,
-            &Tensor::ones(&[n, band_count], DType::F64, c.device())?,
-        )?;
-        let rows = c
-            .nonzero(&repeated.reshape(&[n * band_count])?)?
-            .flatten()?;
+        let first = c.mul(&faces.unsqueeze(1)?, &stride)?;
+        let bands = c
+            .arange(0.0, band_count as f64, 1.0, DType::I64)?
+            .unsqueeze(0)?;
+        let rows = c.add(&first, &bands)?.reshape(&[count])?;
         segments.select(a, &rows)
     })?;
     let count = selected.owners().numel();
