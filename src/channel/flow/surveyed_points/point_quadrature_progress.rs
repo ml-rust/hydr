@@ -1,5 +1,5 @@
 use super::{
-    point_quadrature_types::{PointQuadratureOutcome, PointQuadratureProgress},
+    point_quadrature_types::{PointQuadratureOutcome, PointQuadratureProgress, TIGHTEST_DEPTH},
     point_root_session::{PointRootSession, invalid},
     source_sonic_types::SonicSide,
 };
@@ -10,12 +10,13 @@ use crate::channel::flow::surveyed::{
 use numr::{
     dtype::DType,
     ops::{
-        BinaryOps, CompareOps, ConditionalOps, IndexingOps, NextRepresentableOps, ScalarOps,
-        TensorOps, TwoSumOps,
+        BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
+        ScalarOps, SortingOps, TensorOps, TwoSumOps,
     },
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
+use solvr::common::arithmetic::Interval;
 
 /// Admitted owners start as `NotApplicable` at level -1 and charge no work.
 pub(super) fn start<R>(
@@ -246,4 +247,90 @@ where
             &code::<R>(c, rows, PointQuadratureOutcome::Advanced)?,
         )?,
     )?)
+}
+
+/// Domain rows that the demand reaches, whose depth converged, and that miss the tightest
+/// depth tolerance.
+pub(super) fn open_rows<R>(
+    c: &R::Client,
+    context: &'static str,
+    demand: &Tensor<R>,
+    owners: &Tensor<R>,
+    status: &Tensor<R>,
+    normalized_depth: &Interval<R>,
+) -> HydraulicResult<Tensor<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    checked::<R, _>(c, context, |a| {
+        let demanded = c.index_select(demand, 0, owners)?;
+        let converged = super::point_flux_masks::equals(
+            a,
+            status,
+            super::wet_depth_types::WetDepthStatus::DepthConverged as i64,
+        )?;
+        let met = super::point_root_depth::satisfied(a, normalized_depth, &TIGHTEST_DEPTH)?;
+        let open = super::point_flux_masks::flag(
+            a,
+            &c.eq(&met, &Tensor::zeros(&[], met.dtype(), c.device())?)?,
+        )?;
+        Ok(c.nonzero(&c.mul(&c.mul(&demanded, &converged)?, &open)?)?
+            .flatten()?)
+    })
+}
+
+/// The resumed rows of one domain after a tightening call.
+pub(super) struct Resumed<'a, R: Runtime<DType = DType>> {
+    pub(super) rows: &'a Tensor<R>,
+    pub(super) levels: &'a Tensor<R>,
+    pub(super) old_bounds: [&'a Tensor<R>; 2],
+    pub(super) owners: &'a Tensor<R>,
+    pub(super) bounds: [&'a Tensor<R>; 2],
+    pub(super) status: &'a Tensor<R>,
+}
+
+/// Records the resumed rows at their unchanged level with their committed outcome.
+pub(super) fn record_resumed<R>(
+    c: &R::Client,
+    context: &'static str,
+    association: &Tensor<R>,
+    progress: &mut PointQuadratureProgress<R>,
+    resumed: Resumed<'_, R>,
+) -> HydraulicResult<()>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    checked::<R, _>(c, context, |a| {
+        let owners = c.index_select(resumed.owners, 0, resumed.rows)?;
+        let lower = c.index_select(resumed.bounds[0], 0, resumed.rows)?;
+        let upper = c.index_select(resumed.bounds[1], 0, resumed.rows)?;
+        let improved = improved(c, resumed.old_bounds, [&lower, &upper])?;
+        let status = c.index_select(resumed.status, 0, resumed.rows)?;
+        let outcome = committed(c, resumed.rows, &status)?;
+        record(
+            a,
+            association,
+            progress,
+            Record {
+                owners: &owners,
+                old: resumed.levels,
+                new: resumed.levels,
+                outcome: &outcome,
+                improved: &improved,
+            },
+        )
+    })
 }

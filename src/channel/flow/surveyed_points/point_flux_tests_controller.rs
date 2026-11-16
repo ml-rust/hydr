@@ -18,7 +18,8 @@ where
 {
     ceiling::<R>(client)?;
     exhausted::<R>(client)?;
-    non_fan::<R>(client)?;
+    star_terminal::<R>(client)?;
+    star_level_limit::<R>(client)?;
     Ok(())
 }
 
@@ -160,9 +161,10 @@ where
         assert_eq!(result.rounds, 1);
         assert_eq!(result.selections.len(), 2);
         assert_eq!(result.sonic_level.try_to_vec::<i64>()?, [1]);
+        // Level 1 is the last admissible level, so the outcome names the level ceiling.
         assert_eq!(
             result.sonic_outcome.try_to_vec::<i64>()?,
-            [Outcome::Advanced as i64]
+            [Outcome::LevelLimit as i64]
         );
         let executed = work.snapshot();
         assert_eq!(executed.refinements, 1);
@@ -210,8 +212,9 @@ where
     })
 }
 
-/// A zero flux budget leaves a non-fan row over budget, with no advance work.
-fn non_fan<R>(client: &R::Client) -> Result
+/// A zero flux budget refines a star row in every round, up to the refinement ceiling.
+/// The row stays over budget, and its sonic continuation never runs.
+fn star_terminal<R>(client: &R::Client) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
@@ -226,30 +229,75 @@ where
         let mut session = hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
         let result = hydraulic(session.resolve_point_fluxes(&owners))?;
         coherent(&session, &result)?;
-        assert_eq!(result.selections.len(), 1);
         let kinds = result.selections[0]
             .selected
             .iter()
             .map(|point| point.kind)
             .collect::<Vec<_>>();
-        assert_eq!(kinds.len(), 1);
-        assert!(
-            !matches!(kinds[0], PointFluxKind::Fan(_)),
-            "{id} selects {kinds:?}"
-        );
+        assert_eq!(kinds, [PointFluxKind::Star], "{id} selects {kinds:?}");
         assert_eq!(
             result.status.try_to_vec::<i64>()?,
             [PointFluxStatus::FluxBudgetExceeded as i64]
         );
-        assert_eq!(result.rounds, 0);
+        let star_level = result.star_level.try_to_vec::<i64>()?;
+        eprintln!(
+            "POINT_FLUX_STAR_TERMINAL\t{id}\trounds={}\tstar_outcome={:?}\tstar_level={star_level:?}",
+            result.rounds,
+            result.star_outcome.try_to_vec::<i64>()?
+        );
+        // The last round reaches the refinement ceiling, so the outcome names the level ceiling.
+        assert_eq!(
+            result.star_outcome.try_to_vec::<i64>()?,
+            [Outcome::LevelLimit as i64]
+        );
+        assert_eq!(star_level, [i64::try_from(config.max_refinements)?]);
+        assert_eq!(result.rounds, config.max_refinements);
+        assert_eq!(result.selections.len(), result.rounds + 1);
         assert_eq!(
             result.sonic_outcome.try_to_vec::<i64>()?,
             [Outcome::NotApplicable as i64]
         );
         assert_eq!(result.sonic_level.try_to_vec::<i64>()?, [-1]);
-        assert_eq!(result.callback_points, result.selections[0].callback_points);
         let executed = work.snapshot();
-        assert_eq!(executed.refinements, 0);
+        assert_eq!(executed.refinements, result.rounds);
+        assert!(executed.maximum_simpson_panels <= config.max_simpson_panels);
+        assert_eq!(session.callback_points(), executed.residual_points);
+        Ok(())
+    })
+}
+
+/// A panel ceiling below the round ceiling makes the star continuation terminal first.
+/// The round after the last level advances nothing, so the loop stops there.
+fn star_level_limit<R>(client: &R::Client) -> Result
+where
+    R: Runtime<DType = DType>,
+    R::Client: support::DepthClient<R>,
+{
+    let id = "scalar_rectangle_depth_jump";
+    let mut config = config(id)?;
+    config.water_flux_atol_m3_per_s = 0.;
+    config.momentum_flux_atol_m4_per_s2 = 0.;
+    config.flux_rtol = 0.;
+    config.max_simpson_panels = config.initial_simpson_panels * 4;
+    chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+        let owners = support::rows::<R>(client, &[0])?;
+        let mut session = hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
+        let result = hydraulic(session.resolve_point_fluxes(&owners))?;
+        coherent(&session, &result)?;
+        assert_eq!(
+            result.status.try_to_vec::<i64>()?,
+            [PointFluxStatus::FluxBudgetExceeded as i64]
+        );
+        assert_eq!(
+            result.star_outcome.try_to_vec::<i64>()?,
+            [Outcome::LevelLimit as i64]
+        );
+        assert_eq!(result.star_level.try_to_vec::<i64>()?, [2]);
+        assert_eq!(result.rounds, 2);
+        assert_eq!(result.selections.len(), 3);
+        let executed = work.snapshot();
+        assert_eq!(executed.refinements, 2);
+        assert_eq!(executed.maximum_simpson_panels, config.max_simpson_panels);
         assert_eq!(session.callback_points(), executed.residual_points);
         Ok(())
     })

@@ -92,7 +92,14 @@ where
     let domain = if domain.is_deferred() {
         super::wet_depth_refinement::advance(sources, invocation, domain, tolerance)?
     } else {
-        super::wet_depth_refresh::refresh_selected(sources, invocation, domain, tolerance, &rows)?
+        super::wet_depth_refresh::refresh_selected(
+            sources,
+            invocation,
+            domain,
+            tolerance,
+            &rows,
+            super::wet_depth_refresh::SelectedContinuation::Refresh,
+        )?
     };
     let old = old_levels.levels().clone();
     let new = domain.levels.selected(c, &rows)?.levels().clone();
@@ -199,7 +206,7 @@ where
 }
 
 /// Splits a deferred domain into its admitted rows and the rest, keeping each row's status.
-fn split<R>(
+pub(super) fn split<R>(
     c: &R::Client,
     domain: &WetDepthDomain<R>,
     todo: &Tensor<R>,

@@ -2,7 +2,7 @@
 
 use super::{
     point_candidate_types::{PointCandidateCertificates, PointRegime},
-    point_flux_controller::{equals, flag},
+    point_flux_masks::{equals, flag},
     point_flux_types::{PointFluxCertificates, PointFluxStatus},
     wave_curve_types::CurveValue,
     wet_wave_types::{WetWaveSide, WetWaveStatus},

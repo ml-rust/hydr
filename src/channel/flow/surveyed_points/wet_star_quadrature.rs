@@ -29,13 +29,6 @@ where
     /// Advances each requested wet star row one Simpson level and re-refines its root bracket.
     /// Rows without a wet depth domain record `NotApplicable`. Star endpoints and candidates
     /// follow the new level at the next selection.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the point flux controller does not drive star rows yet"
-        )
-    )]
     pub(super) fn advance_wet_star_quadrature(
         &mut self,
         owners: &Tensor<R>,
@@ -98,7 +91,10 @@ where
     }
 }
 
-fn mapped<R: Runtime<DType = DType>>(domains: &[WetDepthDomain<R>]) -> HydraulicResult<usize> {
+/// Mapped-coordinate work summed over every wet domain.
+pub(super) fn mapped<R: Runtime<DType = DType>>(
+    domains: &[WetDepthDomain<R>],
+) -> HydraulicResult<usize> {
     domains.iter().try_fold(0usize, |sum, domain| {
         sum.checked_add(domain.mapped_points)
             .ok_or_else(|| invalid("wet mapped work sum overflows usize"))

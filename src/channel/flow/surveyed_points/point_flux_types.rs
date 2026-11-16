@@ -10,9 +10,9 @@ pub(super) enum PointFluxStatus {
     PendingCandidates = 1,
     PendingPositiveArea = 2,
     FluxBudgetExceeded = 3,
-    /// Only the controller reports this: the sonic continuation reached its work ceiling.
+    /// Only the controller reports this: a star or sonic continuation reached its work ceiling.
     WorkLimit = 4,
-    /// Only the controller reports this: the refined sonic root stays unresolved.
+    /// Only the controller reports this: a refined star or sonic root stays unresolved.
     RootBracketUnresolved = 5,
     /// Only the controller reports this: a possible wave branch lacks a certified speed.
     WaveEnvelopeUnresolved = 6,
@@ -112,7 +112,7 @@ pub(super) struct PointPositiveSupport<R: Runtime<DType = DType>> {
     pub(super) point_limit: usize,
 }
 
-/// Face-order fluxes after the sonic-fan continuation.
+/// Face-order fluxes after the star and sonic-fan continuations.
 /// Each face keeps the values of its last selection, taken from one coherent trace.
 #[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
 pub(super) struct ResolvedPointFluxes<R: Runtime<DType = DType>> {
@@ -133,6 +133,10 @@ pub(super) struct ResolvedPointFluxes<R: Runtime<DType = DType>> {
     pub(super) sonic_outcome: Tensor<R>,
     /// Sonic panel level per face after its last advance. -1 when never advanced.
     pub(super) sonic_level: Tensor<R>,
+    /// Last wet star `PointQuadratureOutcome` per face. `NotApplicable` when never advanced.
+    pub(super) star_outcome: Tensor<R>,
+    /// Wet star panel level per face after its last advance. -1 when never advanced.
+    pub(super) star_level: Tensor<R>,
     /// Signal speeds from the owning selection's certificates: lower is left, upper is right.
     /// Faces with `wave_valid` zero hold [0, 0], which certifies nothing.
     pub(super) wave_speed_m_per_s: Interval<R>,

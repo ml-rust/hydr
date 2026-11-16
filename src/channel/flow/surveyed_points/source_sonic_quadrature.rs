@@ -98,7 +98,9 @@ where
         Ok(progress)
     }
 }
-fn mapped<R: Runtime<DType = DType>>(
+
+/// Mapped-coordinate work summed over every sonic domain.
+pub(super) fn mapped<R: Runtime<DType = DType>>(
     requests: &[super::source_sonic_types::SourceSonicRequest<R>],
 ) -> HydraulicResult<usize> {
     requests

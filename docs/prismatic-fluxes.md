@@ -86,8 +86,8 @@ Any face that stays unaccepted rejects the whole call as `PrismaticRiemannError:
 | `CapExceeded` | The star state needs more water than the section holds |
 | `SamplingUnresolved` | A wave branch or trace stays unresolved, or lacks a certified signal speed |
 | `FluxBudgetExceeded` | Flux bounds stay wider than the allowances |
-| `RootBracketUnresolved` | The sonic root stays unresolved |
-| `WorkLimit` | The sonic fan refinement reaches its point ceiling |
+| `RootBracketUnresolved` | A refined star or sonic root stays unresolved |
+| `WorkLimit` | The star or sonic fan refinement reaches its point ceiling |
 | `GeometryUnresolved` | A selected trace area or discharge lacks strict positivity |
 
 The next actions match [Act on rejection](#act-on-rejection).

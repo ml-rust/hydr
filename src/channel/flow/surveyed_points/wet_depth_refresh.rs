@@ -26,8 +26,17 @@ use solvr::{
     },
 };
 
-/// Resumes the selected local rows after their residual panel level changed.
-/// The domain levels already hold the new level. Undemanded rows keep every stored bit.
+/// Why the selected rows of an initialized domain continue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SelectedContinuation {
+    /// The residual panel level changed. The domain levels already hold the new level.
+    Refresh,
+    /// Only the tolerance tightened. The residual and its panel level stay fixed.
+    Resume,
+}
+
+/// Continues the selected local rows of an initialized domain.
+/// Undemanded rows keep every stored bit.
 /// An error consumes the continuation, so the caller must seal its session.
 pub(super) fn refresh_selected<R>(
     sources: &mut PairedSources<'_, R>,
@@ -35,6 +44,7 @@ pub(super) fn refresh_selected<R>(
     domain: WetDepthDomain<R>,
     tolerance: &CertifiedRootTolerance,
     rows: &Tensor<R>,
+    mode: SelectedContinuation,
 ) -> HydraulicResult<WetDepthDomain<R>>
 where
     R: Runtime<DType = DType>,
@@ -92,25 +102,37 @@ where
     let cause = Cell::new(None);
     work.begin_root()?;
     let borrowed = RefCell::new(&mut *sources);
-    let progress = c.refresh_certified_mapped_selected(
-        |value: &CertifiedRootQuery<R>| {
-            chart_root_callback::evaluate(
-                &borrowed,
-                &parent_rows,
-                Some(&levels),
-                &chart,
-                value,
-                &cause,
-            )
-        },
-        |bounds: &CertifiedRootDomainQuery<R>| {
-            wet_depth_mapping::evaluate(&borrowed, &parent_rows, &chart, bounds, &cause)
-        },
-        continuation,
-        rows,
-        tolerance,
-        &allowance,
-    );
+    let residual = |value: &CertifiedRootQuery<R>| {
+        chart_root_callback::evaluate(
+            &borrowed,
+            &parent_rows,
+            Some(&levels),
+            &chart,
+            value,
+            &cause,
+        )
+    };
+    let mapping = |bounds: &CertifiedRootDomainQuery<R>| {
+        wet_depth_mapping::evaluate(&borrowed, &parent_rows, &chart, bounds, &cause)
+    };
+    let progress = match mode {
+        SelectedContinuation::Refresh => c.refresh_certified_mapped_selected(
+            residual,
+            mapping,
+            continuation,
+            rows,
+            tolerance,
+            &allowance,
+        ),
+        SelectedContinuation::Resume => c.resume_certified_mapped_selected(
+            residual,
+            mapping,
+            continuation,
+            rows,
+            tolerance,
+            &allowance,
+        ),
+    };
     let progress = resolve_root(progress, cause.take())?;
     let mapped_points = progress.mapped_points();
     let (result, continuation) = progress.into_parts();

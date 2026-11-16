@@ -19,6 +19,9 @@ use numr::{
 use solvr::common::arithmetic::CertifiedExpansion;
 use std::collections::BTreeMap;
 
+#[path = "point_riemann_entry_tests_star.rs"]
+mod star;
+
 /// Runs one batch of frozen source cases through the public point entry.
 fn call<R>(
     client: &R::Client,
