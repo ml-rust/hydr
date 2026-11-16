@@ -53,11 +53,13 @@ where
             )?;
             let before = work.snapshot();
             let points = session.callback_points();
+            let level = hydraulic(session.sources.panel_level(0))?;
             let star = hydraulic(wet_candidates_star::evaluate(
                 session.sources,
                 &owners,
                 &owners,
                 &star,
+                &level,
             ))?;
             assert_eq!(
                 star.status.try_to_vec::<i64>()?,

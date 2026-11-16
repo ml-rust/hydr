@@ -29,6 +29,8 @@ pub(super) struct Operands<R: Runtime<DType = DType>> {
     pub(super) discharge: Interval<R>,
     pub(super) captured: Option<[CertifiedExpansion<R>; 2]>,
     pub(super) numerical: Option<super::source_sonic_numerical::SourceSonicNumericalEvidence<R>>,
+    /// Panel level of a star candidate's rows.
+    pub(super) star_level: Option<super::source_binding::SourcePanelLevel>,
 }
 
 pub(super) fn candidate<R>(
@@ -98,6 +100,7 @@ where
                 discharge: q,
                 captured: None,
                 numerical: None,
+                star_level: Some(wave.star.level.clone()),
             }));
         }
         PointCandidate::Fan(f) => {
@@ -132,6 +135,7 @@ where
         } else {
             None
         },
+        star_level: None,
     }))
 }
 
@@ -171,6 +175,7 @@ where
             .as_ref()
             .map(|proof| proof.selected(a, rows))
             .transpose()?,
+        star_level: operand.star_level.clone(),
     })
 }
 

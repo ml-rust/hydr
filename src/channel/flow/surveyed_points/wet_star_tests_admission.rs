@@ -86,11 +86,13 @@ where
                 pair.sources[0],
                 &pair.original_rows,
             ))?;
+            let level = hydraulic(pair.panel_level(0))?;
             let endpoint = hydraulic(wet_star_endpoint::evaluate(
                 pair,
                 &rows,
                 &query,
                 PhysicalEndpoint::Lower,
+                &level,
             ))?;
             for side in &endpoint.sides {
                 assert_eq!(side.unchanged.try_to_vec::<f64>()?, [1.0]);

@@ -1,6 +1,7 @@
 use super::paired_sources::{PairedSources, SelectedRows};
 use super::potential_absolute::endpoint_potential;
 use super::potential_range::{PotentialContext, PotentialEvaluation};
+use super::source_binding::SourcePanelLevel;
 use super::wave_curve;
 use super::wave_curve_types::{CurveValue, EndpointCurve, scatter_value, unavailable};
 use crate::channel::{
@@ -50,6 +51,7 @@ pub(super) fn prepare<R>(
     query: &SupportedAreaQuery<R>,
     endpoint: PhysicalEndpoint,
     evidence: EndpointEvidenceMode,
+    level: &SourcePanelLevel,
 ) -> HydraulicResult<EndpointTerms<R>>
 where
     R: Runtime<DType = DType>,
@@ -62,6 +64,7 @@ where
         + RuntimeClient<R>
         + CertifiedSimpsonAlgorithms<R>,
 {
+    parent.check_root_witness(level.witness())?;
     let stage = parent.select_rows(rows, query)?;
     let c = parent.geometry.client();
     let n = stage.original_rows.numel();
@@ -119,7 +122,7 @@ where
             &boundaries,
             PotentialEvaluation {
                 config: parent.evaluation.config,
-                panels: parent.evaluation.panels,
+                panels: level.panels(),
                 work: parent.evaluation.work,
             },
         )?;
@@ -151,7 +154,9 @@ where
             a.client().index_select(&stage.rows, 0, &far_rows[1])?,
         ])
     })?;
-    let source_values = parent.source_values([&global_far[0], &global_far[1]])?;
+    let source_values = parent
+        .source_values_at_level(level, [&global_far[0], &global_far[1]])?
+        .values;
     let mut far_sources = [
         checked(c, "paired left source placeholder", |a| unavailable(a, n))?,
         checked(c, "paired right source placeholder", |a| unavailable(a, n))?,
@@ -184,7 +189,7 @@ where
             &boundaries,
             PotentialEvaluation {
                 config: parent.evaluation.config,
-                panels: parent.evaluation.panels,
+                panels: level.panels(),
                 work: parent.evaluation.work,
             },
         )?;

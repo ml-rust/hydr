@@ -1,5 +1,6 @@
 use super::{
     paired_sources::PairedSources,
+    source_binding::SourcePanelLevel,
     wet_star::{intersection, ordered_bounds, take_pair},
     wet_star_endpoint,
     wet_star_types::{WetStarDomain, WetStarSideRange, WetStarStatus},
@@ -24,6 +25,7 @@ pub(super) fn evaluate<R>(
     owners: &Tensor<R>,
     parent_rows: &Tensor<R>,
     supported_query: &SupportedAreaQuery<R>,
+    level: &SourcePanelLevel,
 ) -> HydraulicResult<WetStarDomain<R>>
 where
     R: Runtime<DType = DType>,
@@ -41,12 +43,14 @@ where
         parent_rows,
         supported_query,
         PhysicalEndpoint::Lower,
+        level,
     )?;
     let upper = wet_star_endpoint::evaluate(
         sources,
         parent_rows,
         supported_query,
         PhysicalEndpoint::Upper,
+        level,
     )?;
     let c = sources.geometry.client();
     checked(c, "wet star physical root-state enclosure", |a| {
@@ -185,6 +189,7 @@ where
             velocity,
             discharge,
             status,
+            level: level.clone(),
         })
     })
 }

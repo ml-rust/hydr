@@ -57,7 +57,7 @@ where
         unavailable(a, parents.numel())
     })?;
     for index in numerical.policies() {
-        let rows = policy_rows::<R>(c, numerical, *index)?;
+        let rows = policy_rows::<R>(c, numerical.levels(), *index)?;
         if rows.numel() == 0 {
             continue;
         }
@@ -116,7 +116,7 @@ where
         ))
     })?;
     for index in numerical.policies() {
-        let rows = policy_rows::<R>(c, numerical, *index)?;
+        let rows = policy_rows::<R>(c, numerical.levels(), *index)?;
         if rows.numel() == 0 {
             continue;
         }
@@ -186,9 +186,9 @@ where
     super::source_sonic_invariant::endpoint(&context, side, epsilon)
 }
 
-fn policy_rows<R>(
+pub(super) fn policy_rows<R>(
     c: &R::Client,
-    numerical: &SourceSonicNumericalEvidence<R>,
+    levels: &Tensor<R>,
     index: usize,
 ) -> HydraulicResult<Tensor<R>>
 where
@@ -196,5 +196,5 @@ where
     R::Client: TensorOps<R> + CompareOps<R> + RuntimeClient<R>,
 {
     let level = Tensor::full_scalar(&[], DType::I64, index as f64, c.device())?;
-    Ok(c.nonzero(&c.eq(numerical.levels(), &level)?)?.flatten()?)
+    Ok(c.nonzero(&c.eq(levels, &level)?)?.flatten()?)
 }

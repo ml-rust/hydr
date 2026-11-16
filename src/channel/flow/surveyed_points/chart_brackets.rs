@@ -70,7 +70,9 @@ where
     let cause = Cell::new(None);
     let borrowed = RefCell::new(&mut *sources);
     let result = c.bracket_upper_certified(
-        |query| chart_root_callback::evaluate(&borrowed, &invocation_rows, &chart, query, &cause),
+        |query| {
+            chart_root_callback::evaluate(&borrowed, &invocation_rows, None, &chart, query, &cause)
+        },
         chart.query.parameter.lower(),
         &initial_upper,
         chart.query.parameter.upper(),

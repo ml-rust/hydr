@@ -77,6 +77,7 @@ where
         depth: _,
         normalized_depth: _,
         status: _,
+        levels,
         iterations: previous_iterations,
         callback_points: previous_points,
         mapped_points: _,
@@ -105,7 +106,14 @@ where
             let borrowed = RefCell::new(&mut *sources);
             let progress = c.bisect_certified_mapped(
                 |value| {
-                    chart_root_callback::evaluate(&borrowed, &parent_rows, &chart, value, &cause)
+                    chart_root_callback::evaluate(
+                        &borrowed,
+                        &parent_rows,
+                        Some(&levels),
+                        &chart,
+                        value,
+                        &cause,
+                    )
                 },
                 |bounds| {
                     wet_depth_mapping::evaluate(&borrowed, &parent_rows, &chart, bounds, &cause)
@@ -141,7 +149,14 @@ where
             let borrowed = RefCell::new(&mut *sources);
             let progress = c.resume_certified_mapped(
                 |value| {
-                    chart_root_callback::evaluate(&borrowed, &parent_rows, &chart, value, &cause)
+                    chart_root_callback::evaluate(
+                        &borrowed,
+                        &parent_rows,
+                        Some(&levels),
+                        &chart,
+                        value,
+                        &cause,
+                    )
                 },
                 |bounds| {
                     wet_depth_mapping::evaluate(&borrowed, &parent_rows, &chart, bounds, &cause)
@@ -242,6 +257,7 @@ where
         depth,
         normalized_depth,
         status,
+        levels,
         iterations,
         callback_points,
         mapped_points,

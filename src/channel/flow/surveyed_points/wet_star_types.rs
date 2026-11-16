@@ -80,4 +80,6 @@ pub(super) struct WetStarDomain<R: Runtime<DType = DType>> {
     pub(super) velocity: Interval<R>,
     pub(super) discharge: Interval<R>,
     pub(super) status: Tensor<R>,
+    /// Every row of one star domain shares this Simpson panel level.
+    pub(super) level: super::source_binding::SourcePanelLevel,
 }

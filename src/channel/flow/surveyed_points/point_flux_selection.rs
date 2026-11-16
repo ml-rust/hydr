@@ -96,7 +96,7 @@ where
         PointFluxKind::Exterior(side) | PointFluxKind::Fan(side) => side,
         _ => SonicSide::Left,
     };
-    let (discharge_evaluation, discharge_invariant_velocity, captured_identity) =
+    let (discharge_evaluation, discharge_invariant_velocity, captured_identity, star_discharge) =
         if let Some([_, q]) = &operand.captured {
             checked::<R, _>(c, "captured point discharge", |a| {
                 let stage = sources.select_rows(&operand.parent, &query)?;
@@ -109,6 +109,7 @@ where
                     a.expansion_bounds(q.high(), q.low(), q.abs_error())?,
                     a.expansion_bounds(velocity.high(), velocity.low(), velocity.abs_error())?,
                     Tensor::ones(q.high().shape(), a.dtype(), c.device())?,
+                    None,
                 ))
             })?
         } else if let PointFluxKind::Fan(side) = operand.kind {
@@ -120,13 +121,17 @@ where
                 fan_discharge(sources, &operand.parent, &query, side, numerical)?;
             let identity =
                 Tensor::zeros(operand.parent.shape(), discharge.high().dtype(), c.device())?;
-            (discharge, velocity, identity)
+            (discharge, velocity, identity, None)
         } else {
+            let level = operand.star_level.as_ref().ok_or_else(|| {
+                super::point_root_session::invalid("selected star panel level is absent")
+            })?;
             let endpoint = super::wet_star_endpoint::evaluate(
                 sources,
                 &operand.parent,
                 &query,
                 PhysicalEndpoint::Lower,
+                level,
             )?;
             checked::<R, _>(c, "uniform point captured discharge identity", |a| {
                 let stage = sources.select_rows(&operand.parent, &query)?;
@@ -138,10 +143,13 @@ where
                     &c.where_cond(&stage.velocity.uniform, source.abs_error(), q.abs_error())?,
                 )?;
                 let velocity = &endpoint.sides[0].velocity;
+                // The candidate holds both sides' root-bracket discharges intersected. It encloses Q*.
+                let star = a.bounds(operand.discharge.lower(), operand.discharge.upper())?;
                 Ok((
                     discharge,
                     a.expansion_bounds(velocity.high(), velocity.low(), velocity.abs_error())?,
                     copy_tensor(a, &stage.velocity.uniform)?,
+                    Some(star),
                 ))
             })?
         };
@@ -170,10 +178,17 @@ where
                 "selected-side anchored discharge and invariant product are disjoint. Discard the inconsistent point",
             ));
         }
-        let discharge_physical = a.bounds(
+        let mut discharge_physical = a.bounds(
             &c.where_cond(&captured_identity, anchored.lower(), intersection.lower())?,
             &c.where_cond(&captured_identity, anchored.upper(), intersection.upper())?,
         )?;
+        // A star state takes the two-sided Q* enclosure, not the left value at the selected area.
+        if let Some(star) = &star_discharge {
+            discharge_physical = a.bounds(
+                &c.where_cond(&captured_identity, anchored.lower(), star.lower())?,
+                &c.where_cond(&captured_identity, anchored.upper(), star.upper())?,
+            )?;
+        }
         let projection = choose(
             a,
             &discharge_evaluation,

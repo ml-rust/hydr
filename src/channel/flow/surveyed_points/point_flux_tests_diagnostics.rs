@@ -160,7 +160,12 @@ where
                     .all(|bits| f64::from_bits(*bits).is_finite())
             );
             ordered(q_product[row]);
-            encloses(q_eval[row], q_physical[row]);
+            if point.kind == PointFluxKind::Star {
+                // A star state takes the two-sided Q* enclosure of its candidate.
+                encloses(physical_q[output], q_physical[row]);
+            } else {
+                encloses(q_eval[row], q_physical[row]);
+            }
             assert_eq!(&velocity[row][..2], &u_arithmetic[row][..2]);
             assert_eq!(&momentum[row][..2], &j_arithmetic[row][..2]);
             encloses(joint_q[output], q_bounds[row]);

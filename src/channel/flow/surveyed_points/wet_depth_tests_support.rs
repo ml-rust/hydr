@@ -59,7 +59,7 @@ where
     )?)
 }
 
-pub(super) fn with_section<R, T>(
+pub(in crate::channel::flow::surveyed_points) fn with_section<R, T>(
     client: &R::Client,
     section: &PrismaticSectionBatch<R>,
     states: &[[f64; 4]],

@@ -3,6 +3,7 @@ use super::wet_root_types::WetRootEvidence;
 use super::{
     root_invocation::{RootInvocation, RootInvocationWitness},
     wet_root_types::WetRootDomain,
+    wet_star_levels::WetStarLevels,
 };
 use crate::channel::section::SupportedAreaQuery;
 use numr::{dtype::DType, runtime::Runtime, tensor::Tensor};
@@ -44,6 +45,8 @@ pub(super) struct WetDepthDomain<R: Runtime<DType = DType>> {
     pub(super) depth: Interval<R>,
     pub(super) normalized_depth: Interval<R>,
     pub(super) status: Tensor<R>,
+    /// Simpson panel level of each row's star residual and star endpoints.
+    pub(super) levels: WetStarLevels<R>,
     pub(super) iterations: usize,
     pub(super) callback_points: usize,
     #[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]

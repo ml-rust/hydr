@@ -117,6 +117,7 @@ mod wet_root_types;
 mod wet_roots;
 mod wet_star;
 mod wet_star_endpoint;
+mod wet_star_levels;
 mod wet_star_types;
 mod wet_wave_types;
 mod wet_waves;

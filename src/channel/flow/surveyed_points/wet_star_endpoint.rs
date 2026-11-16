@@ -1,6 +1,7 @@
 use super::{
     paired_endpoint,
     paired_sources::PairedSources,
+    source_binding::SourcePanelLevel,
     wet_star_types::{WetStarEndpoint, WetStarSideEndpoint},
 };
 use crate::channel::{
@@ -23,6 +24,7 @@ pub(super) fn evaluate<R>(
     rows: &Tensor<R>,
     query: &SupportedAreaQuery<R>,
     endpoint: PhysicalEndpoint,
+    level: &SourcePanelLevel,
 ) -> HydraulicResult<WetStarEndpoint<R>>
 where
     R: Runtime<DType = DType>,
@@ -41,6 +43,7 @@ where
         query,
         endpoint,
         paired_endpoint::EndpointEvidenceMode::Retain,
+        level,
     )?;
     let c = sources.geometry.client();
     checked(c, "wet star anchored endpoint", |a| {

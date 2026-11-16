@@ -117,6 +117,10 @@ where
                 WetDepthStatus::Unresolved as i64 as f64,
                 c.device(),
             )?,
+            levels: super::wet_star_levels::WetStarLevels::initial(
+                c,
+                original.parent_rows.numel(),
+            )?,
             iterations: 0,
             callback_points: 0,
             mapped_points: 0,

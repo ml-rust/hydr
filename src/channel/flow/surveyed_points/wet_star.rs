@@ -1,4 +1,9 @@
-use super::{wet_depth_types::WetDepthSession, wet_star_types::WetStarDomain};
+use super::{
+    paired_sources::PairedSources,
+    source_binding::SourcePanelLevel,
+    wet_depth_types::{WetDepthDomain, WetDepthSession},
+    wet_star_types::WetStarDomain,
+};
 use crate::channel::flow::surveyed::error::{Arithmetic, HydraulicResult, checked};
 use numr::{
     dtype::DType,
@@ -58,6 +63,7 @@ where
             Vec::with_capacity(self.wet.domains.len())
         };
         for domain in &self.wet.domains {
+            let mut selection = None;
             if let Some(mask) = demand {
                 let active = c.index_select(mask, 0, &domain.invocation_owner)?;
                 let rows = c.nonzero(&active)?;
@@ -66,32 +72,77 @@ where
                     continue;
                 }
                 if rows.numel() != domain.invocation_owner.numel() {
-                    let (owners, parent, query) =
-                        checked::<R, _>(c, "wet star immutable selected operands", |a| {
-                            Ok((
-                                c.index_select(&domain.invocation_owner, 0, &rows)?,
-                                c.index_select(&domain.parent_rows, 0, &rows)?,
-                                domain.query.select(a, &rows)?,
-                            ))
-                        })?;
-                    output.push(super::wet_candidates_star::evaluate(
-                        self.sources,
-                        &owners,
-                        &parent,
-                        &query,
-                    )?);
-                    continue;
+                    selection = Some(rows);
                 }
             }
-            output.push(super::wet_candidates_star::evaluate(
-                self.sources,
-                &domain.invocation_owner,
-                &domain.parent_rows,
-                &domain.query,
-            )?);
+            if let [index] = domain.levels.policies() {
+                let level = self.sources.panel_level(*index)?;
+                output.push(star_group(
+                    self.sources,
+                    domain,
+                    selection.as_ref(),
+                    &level,
+                )?);
+                continue;
+            }
+            // Each output domain holds the rows of one panel level.
+            let levels = match &selection {
+                Some(rows) => domain.levels.selected(c, rows)?,
+                None => domain.levels.clone(),
+            };
+            for index in levels.policies() {
+                let group = levels.rows_at(c, *index)?;
+                if group.numel() == 0 {
+                    continue;
+                }
+                let rows = match &selection {
+                    Some(rows) => c.index_select(rows, 0, &group)?,
+                    None => group,
+                };
+                let level = self.sources.panel_level(*index)?;
+                output.push(star_group(self.sources, domain, Some(&rows), &level)?);
+            }
         }
         Ok(output)
     }
+}
+
+fn star_group<R>(
+    sources: &mut PairedSources<'_, R>,
+    domain: &WetDepthDomain<R>,
+    rows: Option<&Tensor<R>>,
+    level: &SourcePanelLevel,
+) -> HydraulicResult<WetStarDomain<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>
+        + CertifiedSimpsonAlgorithms<R>,
+{
+    let Some(rows) = rows else {
+        return super::wet_candidates_star::evaluate(
+            sources,
+            &domain.invocation_owner,
+            &domain.parent_rows,
+            &domain.query,
+            level,
+        );
+    };
+    let c = sources.geometry.client();
+    let (owners, parent, query) =
+        checked::<R, _>(c, "wet star immutable selected operands", |a| {
+            Ok((
+                c.index_select(&domain.invocation_owner, 0, rows)?,
+                c.index_select(&domain.parent_rows, 0, rows)?,
+                domain.query.select(a, rows)?,
+            ))
+        })?;
+    super::wet_candidates_star::evaluate(sources, &owners, &parent, &query, level)
 }
 
 pub(super) fn take_pair<T>(values: Vec<T>) -> HydraulicResult<[T; 2]> {

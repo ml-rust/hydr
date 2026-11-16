@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 
-use super::paired_sources::PairedSources;
+use super::{paired_sources::PairedSources, wet_star_levels::WetStarLevels};
 use crate::channel::{
     flow::surveyed::{
         error::{HydraulicError, HydraulicResult, checked},
@@ -25,6 +25,7 @@ use solvr::{
 pub(super) fn evaluate<R>(
     sources: &RefCell<&mut PairedSources<'_, R>>,
     invocation_rows: &Tensor<R>,
+    levels: Option<&WetStarLevels<R>>,
     chart: &SupportedAreaQuery<R>,
     query: &CertifiedRootQuery<R>,
     cause: &Cell<Option<HydraulicError>>,
@@ -57,7 +58,18 @@ where
             let target = chart.with_parameter_bounds(a, &bands, &parameter)?;
             Ok((rows, target))
         })?;
-        let value = pair.endpoint_on_rows(&rows, &target, PhysicalEndpoint::Lower)?;
+        // Absent levels mean every invocation row is at the initial panel level.
+        let value = match levels {
+            Some(levels) => super::paired_residual::endpoint_at_levels(
+                &mut pair,
+                &rows,
+                &target,
+                PhysicalEndpoint::Lower,
+                levels,
+                &query.owner,
+            )?,
+            None => pair.endpoint_on_rows(&rows, &target, PhysicalEndpoint::Lower)?,
+        };
         checked::<R, _>(pair.geometry.client(), "point chart root residual", |a| {
             let zero = Tensor::zeros(&[], a.dtype(), a.client().device())?;
             if a.client()

@@ -298,13 +298,15 @@ where
         )?;
         self.endpoint_on_rows(&rows, query, endpoint)
     }
+    /// Rows evaluate at the initial panel level.
     pub(super) fn endpoint_on_rows(
         &mut self,
         rows: &Tensor<R>,
         query: &SupportedAreaQuery<R>,
         endpoint: PhysicalEndpoint,
     ) -> HydraulicResult<CurveValue<R>> {
-        super::paired_residual::endpoint(self, rows, query, endpoint)
+        let level = self.panel_level(0)?;
+        super::paired_residual::endpoint_at_level(self, rows, query, endpoint, &level)
     }
     #[cfg(test)]
     pub(super) fn range(

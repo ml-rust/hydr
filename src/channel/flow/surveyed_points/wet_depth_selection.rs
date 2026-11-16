@@ -52,6 +52,7 @@ where
         depth: select_interval(a, &domain.depth, rows)?,
         normalized_depth: select_interval(a, &domain.normalized_depth, rows)?,
         status: Tensor::full_scalar(rows.shape(), DType::I64, outcome as i64 as f64, c.device())?,
+        levels: domain.levels.selected(c, rows)?,
         iterations: 0,
         callback_points: 0,
         mapped_points: 0,
