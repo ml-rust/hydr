@@ -18,6 +18,11 @@ pub(super) fn values(a: &[f64], b: &[f64]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.to_bits() == b.to_bits())
 }
 
+/// Compare both parts of a two-part state bit for bit.
+pub(super) fn point(high: &[f64], low: &[f64], other_high: &[f64], other_low: &[f64]) -> bool {
+    values(high, other_high) && values(low, other_low)
+}
+
 pub(super) fn initial(a: &ChannelInitialState, b: &ChannelInitialState) -> bool {
     a.time_s.to_bits() == b.time_s.to_bits()
         && values(&a.volume_m3, &b.volume_m3)

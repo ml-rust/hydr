@@ -304,7 +304,7 @@ fn accounting_receipt(
     let last = Arc::make_mut(accepted.accepted.last.as_mut().ok_or_else(|| {
         ChannelError::input("missing retained interval: calculate the accounting fixture")
     })?);
-    last.previous_volume = accepted.context.tensor(&[previous])?;
+    last.previous_volume.high = accepted.context.tensor(&[previous])?;
     last.face_volume = accepted.context.tensor(&[left, right])?;
     last.forcing.lateral.has_nonzero_values = active_lateral;
     last.lateral_water_assembly_bound = accepted.context.tensor(&[0.125])?;

@@ -412,3 +412,124 @@ fn reservoir_forcing_identity_retains_head_coefficient_and_policy_bits() {
         assert!(!super::check::forcing(&forcing, &changed));
     }
 }
+
+fn walled_reach() -> Result<ChannelReach<CpuRuntime>, ChannelError> {
+    let definition = ChannelReachDefinition {
+        vertical_datum: "synthetic datum".into(),
+        provenance: "two-part state fixture".into(),
+        lateral_bindings: Vec::new(),
+        geometry: crate::channel::ChannelGeometry::Rectangular {
+            cells: vec![RectangularChannelCell {
+                id: "cell".into(),
+                length_m: 1.0,
+                width_m: 2.0,
+                bed_elevation_m: 0.0,
+                maximum_depth_m: 4.0,
+                manning_n: 0.0,
+            }],
+        },
+        config: ChannelConfig::default(),
+    };
+    let initial = ChannelInitialState {
+        time_s: 0.0,
+        volume_m3: vec![2.0],
+        longitudinal_momentum_m4_per_s: vec![0.0],
+    };
+    ChannelReach::new(CpuClient::new(CpuDevice::new()), definition, initial)
+}
+
+fn advanced(reach: &ChannelReach<CpuRuntime>) -> Result<ChannelReach<CpuRuntime>, ChannelError> {
+    let start = reach.time();
+    Ok(reach
+        .step(
+            start + 0.01,
+            &ChannelForcingInterval {
+                start_s: start,
+                end_s: start + 0.01,
+                left: ChannelBoundary::Wall,
+                right: ChannelBoundary::Wall,
+                lateral_inputs: Vec::new(),
+            },
+        )?
+        .next)
+}
+
+#[test]
+fn snapshot_round_trip_keeps_current_and_previous_low_bits() -> Result<(), ChannelError> {
+    let origin = walled_reach()?;
+    let current = advanced(&advanced(&origin)?)?;
+    let data = current.snapshot_data()?;
+    let interval = data
+        .last_interval
+        .as_ref()
+        .ok_or_else(|| ChannelError::input("test interval absent: retain the accepted step"))?;
+    assert_eq!(data.volume_low_m3[0].to_bits(), 0.0_f64.to_bits());
+    assert_eq!(
+        data.longitudinal_momentum_low_m4_per_s[0].to_bits(),
+        0.0_f64.to_bits()
+    );
+    assert_eq!(
+        interval.previous_volume_low_m3[0].to_bits(),
+        0.0_f64.to_bits()
+    );
+    assert_eq!(
+        interval.previous_longitudinal_momentum_low_m4_per_s[0].to_bits(),
+        0.0_f64.to_bits()
+    );
+    assert_eq!(origin.import_snapshot(&data)?.snapshot_data()?, data);
+    Ok(())
+}
+
+#[test]
+fn unnormalized_low_is_rejected_on_import() -> Result<(), ChannelError> {
+    let origin = walled_reach()?;
+    let data = advanced(&origin)?.snapshot_data()?;
+    let mut current = data.clone();
+    current.volume_low_m3[0] = 0.5;
+    assert_eq!(
+        origin
+            .import_snapshot(&current)
+            .err()
+            .and_then(|e| e.cell()),
+        Some(0)
+    );
+    let mut previous = data.clone();
+    if let Some(interval) = previous.last_interval.as_mut() {
+        interval.previous_longitudinal_momentum_low_m4_per_s[0] = f64::NAN;
+    }
+    assert!(origin.import_snapshot(&previous).is_err());
+    let mut zero_step = origin.snapshot_data()?;
+    zero_step.longitudinal_momentum_low_m4_per_s[0] = 3.0;
+    assert!(origin.import_snapshot(&zero_step).is_err());
+    Ok(())
+}
+
+#[test]
+fn rectangular_reach_rejects_a_nonzero_normalized_low() -> Result<(), ChannelError> {
+    let origin = walled_reach()?;
+    let data = advanced(&origin)?.snapshot_data()?;
+    let mut current = data.clone();
+    current.volume_low_m3[0] = 1e-20;
+    assert_eq!(
+        origin
+            .import_snapshot(&current)
+            .err()
+            .and_then(|e| e.cell()),
+        Some(0)
+    );
+    let mut previous = data;
+    if let Some(interval) = previous.last_interval.as_mut() {
+        interval.previous_volume_low_m3[0] = 1e-20;
+    }
+    assert!(origin.import_snapshot(&previous).is_err());
+    Ok(())
+}
+
+#[test]
+fn state_volume_equals_the_high_bits() -> Result<(), ChannelError> {
+    let reach = advanced(&walled_reach()?)?;
+    let data = reach.snapshot_data()?;
+    let state = reach.state()?;
+    assert_eq!(state[0].volume_m3.to_bits(), data.volume_m3[0].to_bits());
+    Ok(())
+}

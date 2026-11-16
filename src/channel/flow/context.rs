@@ -100,6 +100,13 @@ impl<R: Runtime<DType = DType>> Context<R> {
         self.definition.geometry.len()
     }
 
+    pub fn surveyed(&self) -> bool {
+        matches!(
+            self.definition.geometry,
+            super::ChannelGeometry::PrismaticSurveyed { .. }
+        )
+    }
+
     pub fn tensor(&self, values: &[f64]) -> Result<Tensor<R>, ChannelError> {
         Ok(Tensor::from_slice(
             values,

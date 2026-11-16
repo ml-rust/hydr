@@ -1,5 +1,6 @@
 use super::{
     ChannelError, ChannelStepDiagnostics, ChannelWaterLedger,
+    conserved_point::ConservedPoint,
     forcing::BoundChannelForcing,
     riemann_diagnostics::RiemannDiagnosticState,
     sources::{LateralContext, LateralReceipt, LateralState},
@@ -14,8 +15,8 @@ use numr::tensor::Tensor;
 
 #[derive(Clone, Debug)]
 pub(super) struct LastInterval<R: Runtime<DType = DType>> {
-    pub previous_volume: Tensor<R>,
-    pub previous_momentum: Tensor<R>,
+    pub previous_volume: ConservedPoint<R>,
+    pub previous_momentum: ConservedPoint<R>,
     pub previous_lateral: LateralState<R>,
     pub previous_ledger: ChannelWaterLedger,
     pub previous_time: f64,

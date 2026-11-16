@@ -137,14 +137,15 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         for momentum in [-2.0, 2.0] {
             let reach = reach(momentum, 0.03)?;
-            let next =
-                reach
-                    .context
-                    .friction(&reach.accepted.volume, &reach.accepted.momentum, 0.1)?;
+            let next = reach.context.friction(
+                &reach.accepted.volume.high,
+                &reach.accepted.momentum.high,
+                0.1,
+            )?;
             let expected =
                 momentum / (1.0 + 0.1 * 9.81 * 0.03_f64.powi(2) / 0.5_f64.powf(4.0 / 3.0));
             assert!((next.item::<f64>()? - expected).abs() <= 1e-12);
-            assert_eq!(reach.accepted.volume.item::<f64>()?, 2.0);
+            assert_eq!(reach.accepted.volume.high.item::<f64>()?, 2.0);
         }
         Ok(())
     }
@@ -185,14 +186,14 @@ mod tests {
                     },
                 )?;
                 let next = reach.context.friction(
-                    &reach.accepted.volume,
-                    &reach.accepted.momentum,
+                    &reach.accepted.volume.high,
+                    &reach.accepted.momentum.high,
                     0.1,
                 )?;
                 let expected = area * velocity
                     / (1.0 + 0.1 * 9.81 * 0.03_f64.powi(2) / radius.powf(4.0 / 3.0));
                 assert!((next.item::<f64>()? - expected).abs() <= 1e-12);
-                assert_eq!(reach.accepted.volume.item::<f64>()?, area);
+                assert_eq!(reach.accepted.volume.high.item::<f64>()?, area);
                 let dry = reach.context.tensor(&[0.0])?;
                 assert_eq!(reach.context.friction(&dry, &dry, 0.1)?.item::<f64>()?, 0.0);
             }
@@ -205,9 +206,11 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let moving = reach(2.0, 1e-200)?;
         assert!(matches!(
-            moving
-                .context
-                .friction(&moving.accepted.volume, &moving.accepted.momentum, 0.1),
+            moving.context.friction(
+                &moving.accepted.volume.high,
+                &moving.accepted.momentum.high,
+                0.1
+            ),
             Err(ChannelError::Numerical { .. })
         ));
         for roughness in [1e-200, 1e200] {
@@ -216,8 +219,8 @@ mod tests {
                 stationary
                     .context
                     .friction(
-                        &stationary.accepted.volume,
-                        &stationary.accepted.momentum,
+                        &stationary.accepted.volume.high,
+                        &stationary.accepted.momentum.high,
                         0.1
                     )?
                     .item::<f64>()?,
@@ -240,11 +243,15 @@ mod tests {
         assert_eq!(
             extreme
                 .context
-                .friction(&extreme.accepted.volume, &extreme.accepted.momentum, 100.0)?
+                .friction(
+                    &extreme.accepted.volume.high,
+                    &extreme.accepted.momentum.high,
+                    100.0
+                )?
                 .item::<f64>()?,
             0.0
         );
-        assert_eq!(extreme.accepted.volume.item::<f64>()?, 2e-100);
+        assert_eq!(extreme.accepted.volume.high.item::<f64>()?, 2e-100);
         Ok(())
     }
 }

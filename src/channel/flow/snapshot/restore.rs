@@ -1,6 +1,8 @@
 use super::check::{self, require};
 use super::{ChannelSnapshot, ChannelSnapshotData};
-use crate::channel::flow::{ChannelError, ChannelInitialState, ChannelReach};
+use crate::channel::flow::{
+    ChannelError, ChannelInitialState, ChannelReach, conserved_point::check_parts,
+};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
@@ -74,6 +76,14 @@ where
                 && (data.accepted_steps == 0) == data.last_interval.is_none(),
             "accepted count, time, and final interval presence disagree",
         )?;
+        let surveyed = self.context.surveyed();
+        check_parts("volume", &data.volume_m3, &data.volume_low_m3, surveyed)?;
+        check_parts(
+            "momentum",
+            &data.longitudinal_momentum_m4_per_s,
+            &data.longitudinal_momentum_low_m4_per_s,
+            surveyed,
+        )?;
         let original_storage = self.accepted.ledger.initial_storage_m3;
         if data.accepted_steps == 0 {
             require(
@@ -85,7 +95,13 @@ where
                     ),
                 "zero-step state differs from the original epoch",
             )?;
-            let original = self.checked_start(&data.initial)?;
+            let zeros = vec![0.0; data.volume_m3.len()];
+            require(
+                check::values(&data.volume_low_m3, &zeros)
+                    && check::values(&data.longitudinal_momentum_low_m4_per_s, &zeros),
+                "zero-step low parts differ from the original epoch",
+            )?;
+            let original = self.checked_start(&data.initial, &zeros, &zeros)?;
             require(
                 check::ledger(&original.accepted.ledger, &data.ledger)
                     && check::lateral_state(
@@ -119,7 +135,11 @@ where
                 .clone(),
         };
         let starts_at_origin = check::initial(&data.initial, &previous_initial);
-        let mut previous = self.checked_start(&previous_initial)?;
+        let mut previous = self.checked_start(
+            &previous_initial,
+            &interval.previous_volume_low_m3,
+            &interval.previous_longitudinal_momentum_low_m4_per_s,
+        )?;
         let initial_lateral = self
             .context
             .lateral
@@ -176,13 +196,17 @@ where
         require(
             replayed.accepted.time.to_bits() == data.time_s.to_bits()
                 && replayed.accepted.steps == data.accepted_steps
-                && check::values(
-                    &replayed.accepted.volume.try_to_vec::<f64>()?,
+                && check::point(
+                    &replayed.accepted.volume.high.try_to_vec::<f64>()?,
+                    &replayed.accepted.volume.low.try_to_vec::<f64>()?,
                     &data.volume_m3,
+                    &data.volume_low_m3,
                 )
-                && check::values(
-                    &replayed.accepted.momentum.try_to_vec::<f64>()?,
+                && check::point(
+                    &replayed.accepted.momentum.high.try_to_vec::<f64>()?,
+                    &replayed.accepted.momentum.low.try_to_vec::<f64>()?,
                     &data.longitudinal_momentum_m4_per_s,
+                    &data.longitudinal_momentum_low_m4_per_s,
                 )
                 && check::ledger(&replayed.accepted.ledger, &data.ledger),
             "accepted state or cumulative accounting differs from the replayed final interval",
@@ -225,10 +249,15 @@ where
         Ok(replayed)
     }
 
-    fn checked_start(&self, initial: &ChannelInitialState) -> Result<Self, ChannelError>
+    fn checked_start(
+        &self,
+        initial: &ChannelInitialState,
+        volume_low: &[f64],
+        momentum_low: &[f64],
+    ) -> Result<Self, ChannelError>
     where
         R::Client: TensorOps<R> + NextRepresentableOps<R>,
     {
-        Self::from_context(Arc::clone(&self.context), initial)
+        Self::from_parts(Arc::clone(&self.context), initial, volume_low, momentum_low)
     }
 }

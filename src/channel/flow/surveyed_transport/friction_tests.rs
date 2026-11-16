@@ -99,8 +99,8 @@ where
         let before = reach.snapshot_data()?;
         let context = &reach.context;
         let trial = context.friction_trial(
-            &reach.accepted.volume,
-            &reach.accepted.momentum,
+            &reach.accepted.volume.high,
+            &reach.accepted.momentum.high,
             operands[6],
         )?;
         let actual = trial.momentum.item::<f64>()?;
@@ -242,8 +242,8 @@ fn active_manning_retains_duration_and_arithmetic_rejections() -> TestResult {
     let normal = reach(ordinary, 0.03)?;
     for duration in [-1.0, f64::NAN, f64::INFINITY] {
         let result = normal.context.friction_trial(
-            &normal.accepted.volume,
-            &normal.accepted.momentum,
+            &normal.accepted.volume.high,
+            &normal.accepted.momentum.high,
             duration,
         );
         let error = result
@@ -253,18 +253,19 @@ fn active_manning_retains_duration_and_arithmetic_rejections() -> TestResult {
     }
     for roughness in [f64::from_bits(1), f64::MAX] {
         let reach = reach(ordinary, roughness)?;
-        let result =
-            reach
-                .context
-                .friction_trial(&reach.accepted.volume, &reach.accepted.momentum, 0.1);
+        let result = reach.context.friction_trial(
+            &reach.accepted.volume.high,
+            &reach.accepted.momentum.high,
+            0.1,
+        );
         let error = result
             .err()
             .ok_or("Unrepresented active Manning arithmetic requires rejection")?;
         assert!(error.to_string().contains("roughness"), "{error}");
     }
     let result = normal.context.friction_trial(
-        &normal.accepted.volume,
-        &normal.accepted.momentum,
+        &normal.accepted.volume.high,
+        &normal.accepted.momentum.high,
         f64::from_bits(1),
     );
     let error = result
@@ -286,7 +287,11 @@ fn normal_roughness_distinguishes_equal_area_bank_perimeters() -> TestResult {
         outputs.push(
             reach
                 .context
-                .friction_trial(&reach.accepted.volume, &reach.accepted.momentum, 0.1)?
+                .friction_trial(
+                    &reach.accepted.volume.high,
+                    &reach.accepted.momentum.high,
+                    0.1,
+                )?
                 .momentum
                 .item::<f64>()?,
         );

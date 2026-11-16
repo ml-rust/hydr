@@ -1,8 +1,8 @@
 use super::{
     ChannelError, ChannelForcingInterval, ChannelReach, ChannelStep, ChannelStepDiagnostics,
     ChannelTensorForcingInterval, accounting::Impulses, boundary::assembly::is_scalar,
-    engine::Accepted, forcing::BoundChannelForcing, interval::IntervalControl,
-    receipt::LastInterval,
+    conserved_point::ConservedPoint, engine::Accepted, forcing::BoundChannelForcing,
+    interval::IntervalControl, receipt::LastInterval,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -141,21 +141,22 @@ where
                     reason,
                 });
             }
-            let fields = context.fields(&self.accepted.volume, &self.accepted.momentum)?;
+            let fields =
+                context.fields(&self.accepted.volume.high, &self.accepted.momentum.high)?;
             let flux = context.flux(&fields, &forcing.left, &forcing.right)?;
             let start_cfl = context.cfl_limit(&flux.speed, flux.internal_speed.as_ref())?;
             let prepared = context.lateral.prepare(
                 c,
                 &forcing.lateral,
                 &self.accepted.lateral,
-                &self.accepted.volume,
+                &self.accepted.volume.high,
                 &fields.velocity,
                 dt,
             )?;
             let outgoing = context.outgoing_rate(&flux.water)?;
             let reservation = if prepared.has_nonzero_values {
                 Some(context.combined_depletion_limit(
-                    &self.accepted.volume,
+                    &self.accepted.volume.high,
                     &outgoing,
                     &prepared.withdrawal_volume,
                     &prepared.withdrawal_volume_bound,
@@ -167,7 +168,7 @@ where
             let (depletion_limit, donor_admitted) = if let Some(reservation) = &reservation {
                 (reservation.limit_s, reservation.admitted)
             } else {
-                let limit = context.face_depletion_limit(&self.accepted.volume, &outgoing)?;
+                let limit = context.face_depletion_limit(&self.accepted.volume.high, &outgoing)?;
                 (limit, dt <= limit)
             };
             let limit = start_cfl.min(depletion_limit);
@@ -191,8 +192,8 @@ where
             }
             let application = match context.lateral.apply_lateral_and_transport(
                 c,
-                &self.accepted.volume,
-                &self.accepted.momentum,
+                &self.accepted.volume.high,
+                &self.accepted.momentum.high,
                 &transport.water_delta,
                 &transport.momentum_delta,
                 &prepared,
@@ -372,8 +373,8 @@ where
                 next: Self {
                     context: Arc::clone(context),
                     accepted: Accepted {
-                        volume: application.volume,
-                        momentum,
+                        volume: ConservedPoint::from_high(context, application.volume)?,
+                        momentum: ConservedPoint::from_high(context, momentum)?,
                         lateral,
                         time: end,
                         ledger: balance.ledger,

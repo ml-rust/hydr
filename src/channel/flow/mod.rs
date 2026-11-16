@@ -6,6 +6,7 @@ mod boundary;
 mod boundary_config;
 mod boundary_trace;
 mod config;
+mod conserved_point;
 mod context;
 mod coupling;
 mod definition;

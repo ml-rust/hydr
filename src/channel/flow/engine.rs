@@ -1,7 +1,8 @@
 use super::{
     ChannelCellResult, ChannelConfig, ChannelError, ChannelInitialState, ChannelLateralLedger,
-    ChannelReachDefinition, ChannelStepDiagnostics, ChannelWaterLedger, context::Context,
-    receipt::LastInterval, sources::LateralState,
+    ChannelReachDefinition, ChannelStepDiagnostics, ChannelWaterLedger,
+    conserved_point::ConservedPoint, context::Context, receipt::LastInterval,
+    sources::LateralState,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -9,7 +10,6 @@ use numr::ops::{
     NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
-use numr::tensor::Tensor;
 use std::sync::Arc;
 
 /// Accepted one-dimensional channel state on the caller's runtime.
@@ -21,8 +21,8 @@ pub struct ChannelReach<R: Runtime<DType = DType>> {
 
 #[derive(Clone, Debug)]
 pub(super) struct Accepted<R: Runtime<DType = DType>> {
-    pub volume: Tensor<R>,
-    pub momentum: Tensor<R>,
+    pub volume: ConservedPoint<R>,
+    pub momentum: ConservedPoint<R>,
     pub lateral: LateralState<R>,
     pub time: f64,
     pub ledger: ChannelWaterLedger,
@@ -102,9 +102,25 @@ where
     where
         R::Client: TensorOps<R> + NextRepresentableOps<R>,
     {
+        let zeros = vec![0.0; context.count()];
+        Self::from_parts(context, initial, &zeros, &zeros)
+    }
+
+    /// Build accepted state from the initial high parts and explicit low parts.
+    pub(super) fn from_parts(
+        context: Arc<Context<R>>,
+        initial: &ChannelInitialState,
+        volume_low: &[f64],
+        momentum_low: &[f64],
+    ) -> Result<Self, ChannelError>
+    where
+        R::Client: TensorOps<R> + NextRepresentableOps<R>,
+    {
         if !initial.time_s.is_finite()
             || initial.volume_m3.len() != context.count()
             || initial.longitudinal_momentum_m4_per_s.len() != context.count()
+            || volume_low.len() != context.count()
+            || momentum_low.len() != context.count()
         {
             return Err(ChannelError::input(format!(
                 "initial time={}, volume count={}, momentum count={}, cells={}: supply finite time and one value per cell",
@@ -114,10 +130,16 @@ where
                 context.count()
             )));
         }
-        let volume = context.tensor(&initial.volume_m3)?;
-        let momentum = context.tensor(&initial.longitudinal_momentum_m4_per_s)?;
-        context.fields(&volume, &momentum)?;
-        let storage = context.total(&volume)?;
+        let volume =
+            ConservedPoint::from_parts(&context, "volume", &initial.volume_m3, volume_low)?;
+        let momentum = ConservedPoint::from_parts(
+            &context,
+            "momentum",
+            &initial.longitudinal_momentum_m4_per_s,
+            momentum_low,
+        )?;
+        context.fields(&volume.high, &momentum.high)?;
+        let storage = context.total(&volume.high)?;
         let time = initial.time_s;
         let lateral = context.lateral.initial_state(&context.client)?;
         Ok(Self {
@@ -152,9 +174,9 @@ where
     {
         let fields = self
             .context
-            .fields(&self.accepted.volume, &self.accepted.momentum)?;
-        let volume = self.accepted.volume.try_to_vec::<f64>()?;
-        let momentum = self.accepted.momentum.try_to_vec::<f64>()?;
+            .fields(&self.accepted.volume.high, &self.accepted.momentum.high)?;
+        let volume = self.accepted.volume.high.try_to_vec::<f64>()?;
+        let momentum = self.accepted.momentum.high.try_to_vec::<f64>()?;
         let depth = fields.depth.try_to_vec::<f64>()?;
         let velocity = fields.velocity.try_to_vec::<f64>()?;
         let discharge = fields.discharge.try_to_vec::<f64>()?;

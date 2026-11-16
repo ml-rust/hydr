@@ -59,7 +59,7 @@ where
         let left_volume = impulses.water.narrow(0, 0, count)?;
         let right_volume = impulses.water.narrow(0, 1, count)?;
         let local = c.sub(
-            &c.sub(volume, &previous.volume)?,
+            &c.sub(volume, &previous.volume.high)?,
             &c.sub(&left_volume, &right_volume)?,
         )?;
         let local = if impulses.lateral.has_nonzero_values {
@@ -103,7 +103,7 @@ where
         )?;
         let local_momentum = c.sub(
             &c.sub(
-                &c.sub(momentum, &previous.momentum)?,
+                &c.sub(momentum, &previous.momentum.high)?,
                 &c.sub(&left_momentum, &right_momentum)?,
             )?,
             impulses.friction,
@@ -123,7 +123,7 @@ where
         let max_momentum = c
             .max(&c.abs(&local_momentum)?, &[0], false)?
             .item::<f64>()?;
-        let scale = c.maximum(&c.abs(&previous.momentum)?, &c.abs(momentum)?)?;
+        let scale = c.maximum(&c.abs(&previous.momentum.high)?, &c.abs(momentum)?)?;
         let scale = c.maximum(&scale, &c.abs(&left_momentum)?)?;
         let scale = c.maximum(&scale, &c.abs(&right_momentum)?)?;
         let scale = c.maximum(&scale, &c.abs(impulses.friction)?)?;

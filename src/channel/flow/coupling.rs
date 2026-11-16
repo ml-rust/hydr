@@ -60,6 +60,8 @@ pub(crate) struct ChannelCouplingEndpoints<R: Runtime<DType = DType>> {
 /// Borrowed native accounting operands for the parent's cached reductions.
 pub(crate) struct ChannelCouplingAccounting<'a, R: Runtime<DType = DType>> {
     pub cell_volume_m3: &'a Tensor<R>,
+    #[expect(dead_code, reason = "no reader of the low part yet")]
+    pub cell_volume_low_m3: &'a Tensor<R>,
     pub lateral_volume_m3: &'a Tensor<R>,
     pub lateral_interval_volume_m3: Option<&'a Tensor<R>>,
     pub lateral_inflow_mask: &'a Tensor<R>,
@@ -70,7 +72,8 @@ pub(crate) struct ChannelCouplingAccounting<'a, R: Runtime<DType = DType>> {
 impl<R: Runtime<DType = DType>> ChannelReach<R> {
     pub(crate) fn coupling_accounting(&self) -> ChannelCouplingAccounting<'_, R> {
         ChannelCouplingAccounting {
-            cell_volume_m3: &self.accepted.volume,
+            cell_volume_m3: &self.accepted.volume.high,
+            cell_volume_low_m3: &self.accepted.volume.low,
             lateral_volume_m3: &self.accepted.lateral.cumulative_volume,
             lateral_interval_volume_m3: self
                 .accepted
@@ -126,7 +129,7 @@ where
                     self.context
                         .bound_add(&bound, &last.lateral_water_assembly_bound)
                 } else {
-                    let (volume, addition_low) = c.two_sum(&last.previous_volume, &delta)?;
+                    let (volume, addition_low) = c.two_sum(&last.previous_volume.high, &delta)?;
                     self.context
                         .finite(&volume, "channel transported water volume")?;
                     self.context

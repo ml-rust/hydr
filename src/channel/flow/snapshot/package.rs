@@ -21,8 +21,12 @@ pub struct ChannelSnapshotData {
     pub time_s: f64,
     /// Authoritative current cell water volumes, in m³.
     pub volume_m3: Vec<f64>,
+    /// Normalized low parts of the current volumes, in m³.
+    pub volume_low_m3: Vec<f64>,
     /// Authoritative current longitudinal momenta, in m⁴/s.
     pub longitudinal_momentum_m4_per_s: Vec<f64>,
+    /// Normalized low parts of the current momenta, in m⁴/s.
+    pub longitudinal_momentum_low_m4_per_s: Vec<f64>,
     /// Cumulative external-water accounting.
     pub ledger: ChannelWaterLedger,
     /// Authoritative lateral counters and their conservative numerical bounds.
@@ -40,8 +44,12 @@ pub struct ChannelIntervalSnapshotData {
     pub previous_time_s: f64,
     /// Previous authoritative water volumes, in m³.
     pub previous_volume_m3: Vec<f64>,
+    /// Normalized low parts of the previous volumes, in m³.
+    pub previous_volume_low_m3: Vec<f64>,
     /// Previous authoritative longitudinal momenta, in m⁴/s.
     pub previous_longitudinal_momentum_m4_per_s: Vec<f64>,
+    /// Normalized low parts of the previous momenta, in m⁴/s.
+    pub previous_longitudinal_momentum_low_m4_per_s: Vec<f64>,
     /// Previous cumulative external-water accounting.
     pub previous_ledger: ChannelWaterLedger,
     /// Previous authoritative lateral counters and numerical bounds.
@@ -63,6 +71,11 @@ impl ChannelSnapshotData {
             (Some(a), Some(b)) => {
                 a.previous_time_s.to_bits() == b.previous_time_s.to_bits()
                     && super::check::values(&a.previous_volume_m3, &b.previous_volume_m3)
+                    && super::check::values(&a.previous_volume_low_m3, &b.previous_volume_low_m3)
+                    && super::check::values(
+                        &a.previous_longitudinal_momentum_low_m4_per_s,
+                        &b.previous_longitudinal_momentum_low_m4_per_s,
+                    )
                     && super::check::values(
                         &a.previous_longitudinal_momentum_m4_per_s,
                         &b.previous_longitudinal_momentum_m4_per_s,
@@ -81,6 +94,11 @@ impl ChannelSnapshotData {
             && super::check::initial(&self.initial, &other.initial)
             && self.time_s.to_bits() == other.time_s.to_bits()
             && super::check::values(&self.volume_m3, &other.volume_m3)
+            && super::check::values(&self.volume_low_m3, &other.volume_low_m3)
+            && super::check::values(
+                &self.longitudinal_momentum_low_m4_per_s,
+                &other.longitudinal_momentum_low_m4_per_s,
+            )
             && super::check::values(
                 &self.longitudinal_momentum_m4_per_s,
                 &other.longitudinal_momentum_m4_per_s,
@@ -150,9 +168,15 @@ where
         let last_interval = if let Some(last) = &self.accepted.last {
             Some(ChannelIntervalSnapshotData {
                 previous_time_s: last.previous_time,
-                previous_volume_m3: last.previous_volume.try_to_vec::<f64>()?,
+                previous_volume_m3: last.previous_volume.high.try_to_vec::<f64>()?,
+                previous_volume_low_m3: last.previous_volume.low.try_to_vec::<f64>()?,
                 previous_longitudinal_momentum_m4_per_s: last
                     .previous_momentum
+                    .high
+                    .try_to_vec::<f64>()?,
+                previous_longitudinal_momentum_low_m4_per_s: last
+                    .previous_momentum
+                    .low
                     .try_to_vec::<f64>()?,
                 previous_ledger: last.previous_ledger.clone(),
                 previous_lateral: self
@@ -175,8 +199,10 @@ where
             definition: (*self.context.definition).clone(),
             initial: self.context.original_initial.clone(),
             time_s: self.accepted.time,
-            volume_m3: self.accepted.volume.try_to_vec::<f64>()?,
-            longitudinal_momentum_m4_per_s: self.accepted.momentum.try_to_vec::<f64>()?,
+            volume_m3: self.accepted.volume.high.try_to_vec::<f64>()?,
+            volume_low_m3: self.accepted.volume.low.try_to_vec::<f64>()?,
+            longitudinal_momentum_m4_per_s: self.accepted.momentum.high.try_to_vec::<f64>()?,
+            longitudinal_momentum_low_m4_per_s: self.accepted.momentum.low.try_to_vec::<f64>()?,
             ledger: self.accepted.ledger.clone(),
             lateral: self
                 .context
