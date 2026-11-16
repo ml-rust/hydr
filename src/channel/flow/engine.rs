@@ -139,7 +139,7 @@ where
             momentum_low,
         )?;
         context.fields(&volume.high, &momentum.high)?;
-        let storage = context.total(&volume.high)?;
+        let storage = context.storage(&volume)?;
         let time = initial.time_s;
         let lateral = context.lateral.initial_state(&context.client)?;
         Ok(Self {
@@ -160,6 +160,7 @@ where
                     lateral_assembly_abs_bound_m3: 0.0,
                     residual_m3: 0.0,
                     numerical_transfer_underflow_bound_m3: 0.0,
+                    storage_selection_abs_bound_m3: 0.0,
                 },
                 steps: 0,
                 last: None,

@@ -141,6 +141,7 @@ pub(super) fn ledger(a: &ChannelWaterLedger, b: &ChannelWaterLedger) -> bool {
             a.lateral_assembly_abs_bound_m3,
             a.residual_m3,
             a.numerical_transfer_underflow_bound_m3,
+            a.storage_selection_abs_bound_m3,
         ],
         &[
             b.initial_storage_m3,
@@ -153,6 +154,7 @@ pub(super) fn ledger(a: &ChannelWaterLedger, b: &ChannelWaterLedger) -> bool {
             b.lateral_assembly_abs_bound_m3,
             b.residual_m3,
             b.numerical_transfer_underflow_bound_m3,
+            b.storage_selection_abs_bound_m3,
         ],
     )
 }
@@ -209,6 +211,9 @@ pub(super) fn diagnostics(a: &ChannelStepDiagnostics, b: &ChannelStepDiagnostics
             ],
         )
         && values(&a.face_volume_m3, &b.face_volume_m3)
+        && values(&a.face_volume_low_m3, &b.face_volume_low_m3)
+        && values(&a.storage_selection_bound_m3, &b.storage_selection_bound_m3)
+        && values(&a.face_momentum_low_m4_per_s, &b.face_momentum_low_m4_per_s)
         && values(
             &a.face_transfer_underflow_bound_m3,
             &b.face_transfer_underflow_bound_m3,
@@ -256,6 +261,7 @@ pub(super) fn ledger_admission(
             ledger.lateral_assembly_abs_bound_m3,
             ledger.residual_m3,
             ledger.numerical_transfer_underflow_bound_m3,
+            ledger.storage_selection_abs_bound_m3,
         ]
         .iter()
         .all(|x| x.is_finite())
@@ -267,7 +273,12 @@ pub(super) fn ledger_admission(
             && ledger.lateral_out_m3 >= 0.0
             && ledger.lateral_counter_abs_bound_m3 >= 0.0
             && ledger.lateral_assembly_abs_bound_m3 >= 0.0
-            && ledger.numerical_transfer_underflow_bound_m3 >= 0.0,
+            && ledger.numerical_transfer_underflow_bound_m3 >= 0.0
+            && ledger.storage_selection_abs_bound_m3 >= 0.0
+            && (matches!(
+                definition.geometry,
+                super::super::ChannelGeometry::PrismaticSurveyed { .. }
+            ) || ledger.storage_selection_abs_bound_m3.to_bits() == 0),
         "ledger storage, original epoch, or external counters disagree",
     )?;
     let residual = (storage - original_storage)
@@ -285,6 +296,7 @@ pub(super) fn ledger_admission(
         ledger.numerical_transfer_underflow_bound_m3,
         ledger.lateral_counter_abs_bound_m3,
         ledger.lateral_assembly_abs_bound_m3,
+        ledger.storage_selection_abs_bound_m3,
     ] {
         charged_residual = crate::soil::admission::add_adjustment_charge(charged_residual, charge)
             .map_err(|error| ChannelError::input(format!(

@@ -1,4 +1,6 @@
 use super::super::ChannelError;
+use super::super::conserved_point::ConservedPoint;
+use super::super::conserved_update::{ExpansionClient, Parts, select_sum};
 use super::arithmetic::{
     add_bounds, product_roundoff, propagated_bound, scalar_charge, upper_sum, zeros,
 };
@@ -38,6 +40,10 @@ where
             return Ok(SourceApplication {
                 volume: client.add(original_volume, face_water_delta)?,
                 momentum: client.add(original_momentum, face_momentum_delta)?,
+                volume_low: zeros(client, self.cells())?,
+                momentum_low: zeros(client, self.cells())?,
+                water_selection_bound: zeros(client, self.cells())?,
+                momentum_selection_bound: zeros(client, self.cells())?,
                 water_assembly_bound: zeros(client, self.cells())?,
                 momentum_assembly_bound: zeros(client, self.cells())?,
                 water_assembly_charge_m3: 0.0,
@@ -172,9 +178,61 @@ where
         Ok(SourceApplication {
             volume,
             momentum,
+            volume_low: zeros(client, self.cells())?,
+            momentum_low: zeros(client, self.cells())?,
+            water_selection_bound: zeros(client, self.cells())?,
+            momentum_selection_bound: zeros(client, self.cells())?,
             water_assembly_bound,
             momentum_assembly_bound,
             water_assembly_charge_m3,
+        })
+    }
+}
+
+impl<R: Runtime<DType = DType>> LateralContext<R>
+where
+    R::Client: ExpansionClient<R>,
+{
+    /// Apply surveyed transfers without lateral exchange as two-part expansion sums.
+    ///
+    /// Each state selects its center once. The discarded radius is the selection bound.
+    pub fn apply_transport_expanded(
+        &self,
+        client: &R::Client,
+        original_volume: &ConservedPoint<R>,
+        original_momentum: &ConservedPoint<R>,
+        water: &Parts<R>,
+        momentum: &Parts<R>,
+    ) -> Result<SourceApplication<R>, ChannelError> {
+        let state = |point: &ConservedPoint<R>| -> Result<Parts<R>, ChannelError> {
+            Ok(Parts {
+                high: point.high.clone(),
+                low: point.low.clone(),
+                bound: zeros(client, self.cells())?,
+            })
+        };
+        let (volume, water_selection_bound) = select_sum(
+            client,
+            &state(original_volume)?,
+            water,
+            "surveyed water transfer",
+        )?;
+        let (momentum, momentum_selection_bound) = select_sum(
+            client,
+            &state(original_momentum)?,
+            momentum,
+            "surveyed momentum transfer",
+        )?;
+        Ok(SourceApplication {
+            volume: volume.high,
+            momentum: momentum.high,
+            volume_low: volume.low,
+            momentum_low: momentum.low,
+            water_selection_bound,
+            momentum_selection_bound,
+            water_assembly_bound: zeros(client, self.cells())?,
+            momentum_assembly_bound: zeros(client, self.cells())?,
+            water_assembly_charge_m3: 0.0,
         })
     }
 }

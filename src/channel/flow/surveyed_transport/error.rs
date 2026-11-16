@@ -1,7 +1,7 @@
 use crate::channel::flow::{ChannelError, surveyed::PrismaticRiemannError};
 use solvr::common::arithmetic::ArithmeticError;
 
-pub(super) fn arithmetic_error(error: ArithmeticError) -> ChannelError {
+pub(in crate::channel::flow) fn arithmetic_error(error: ArithmeticError) -> ChannelError {
     let context = error.to_string();
     match error {
         ArithmeticError::Numr(error) => ChannelError::from(error),

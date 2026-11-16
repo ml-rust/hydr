@@ -2,14 +2,14 @@ use super::{
     ChannelPoolError, ChannelPoolSetup, accounting_math::nonnegative, context_types::ReductionPlans,
 };
 use crate::channel::{ChannelGeometry, ChannelLateralDirection, ChannelReach};
-use crate::numerics::water_transfers::{AggregationKind, TransferTree, upward_add};
+use crate::numerics::water_transfers::{AggregationKind, TransferTree, reject, upward_add};
 use crate::storage::LevelPoolBatch;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
     UnaryOps,
 };
-use numr::runtime::Runtime;
+use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 
 impl<R: Runtime<DType = DType>> ReductionPlans<R>
@@ -133,8 +133,21 @@ where
         pools: &LevelPoolBatch<R>,
     ) -> Result<(Tensor<R>, Tensor<R>), ChannelPoolError> {
         let mut values = Vec::with_capacity(reaches.len() + 1);
+        let mut lows = Vec::with_capacity(reaches.len());
         for reach in reaches {
-            values.push(reach.coupling_accounting().cell_volume_m3);
+            let accounting = reach.coupling_accounting();
+            values.push(accounting.cell_volume_m3);
+            lows.push(accounting.cell_volume_low_m3);
+        }
+        // The storage tree sums the high parts only, so every low part must be zero.
+        if !lows.is_empty() {
+            let lows = client.cat(&lows, 0)?;
+            let zero = Tensor::<R>::zeros(&[1], DType::F64, client.device())?;
+            reject(
+                client,
+                &client.ne(&lows, &zero)?,
+                "coupled channel cell volume has a nonzero low part: couple only reaches with single-part storage",
+            )?;
         }
         values.push(pools.coupling_native_accounting().volume_m3);
         let packed = client.cat(&values, 0)?;

@@ -40,7 +40,10 @@ where
         &self,
         previous: &Accepted<R>,
         evaluation: &NativeEvaluation<R>,
-    ) -> Result<NativeIntervalAccounting<R>, ChannelPoolError> {
+    ) -> Result<NativeIntervalAccounting<R>, ChannelPoolError>
+    where
+        R::Client: numr::ops::TensorOps<R> + numr::ops::NextRepresentableOps<R>,
+    {
         self.check_interval_pairing(evaluation)?;
         let c = &self.client;
         let (storage_before_m3, before_bound) =

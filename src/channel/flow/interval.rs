@@ -1,4 +1,10 @@
-use super::{ChannelError, context::Context, geometry::TensorGeometry};
+use super::{
+    ChannelError,
+    conserved_point::ConservedPoint,
+    conserved_update::{ExpansionClient, lower_bound, outgoing_upper},
+    context::Context,
+    geometry::TensorGeometry,
+};
 use crate::numerics::subcatchment::bounds::rounding_with_client;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TwoSumOps, UnaryOps};
@@ -141,8 +147,18 @@ where
         + ReduceOps<R>
         + ScalarOps<R>
         + TwoSumOps<R>
-        + UnaryOps<R>,
+        + UnaryOps<R>
+        + ExpansionClient<R>,
 {
+    /// Water each cell can donate: the lower bound of its two-part volume on surveyed geometry.
+    pub fn donor_volume(&self, volume: &ConservedPoint<R>) -> Result<Tensor<R>, ChannelError> {
+        if self.surveyed() {
+            lower_bound(&self.client, volume)
+        } else {
+            Ok(volume.high.clone())
+        }
+    }
+
     pub fn combined_depletion_limit(
         &self,
         volume: &Tensor<R>,
@@ -199,8 +215,14 @@ where
         &self,
         remaining_lower: &Tensor<R>,
         face_volume: &Tensor<R>,
+        face_volume_low: &Tensor<R>,
     ) -> Result<bool, ChannelError> {
         let c = &self.client;
+        if self.surveyed() {
+            let outgoing_upper = outgoing_upper(c, face_volume, face_volume_low, self.count())?;
+            self.finite(&outgoing_upper, "actual outgoing shared face volumes")?;
+            return self.all(&c.le(&outgoing_upper, remaining_lower)?);
+        }
         let zero = self.constant(remaining_lower, 0.0)?;
         let right_outgoing = c.maximum(&face_volume.narrow(0, 1, self.count())?, &zero)?;
         let left_outgoing = c.maximum(&c.neg(&face_volume.narrow(0, 0, self.count())?)?, &zero)?;

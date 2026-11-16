@@ -2,7 +2,7 @@ use super::{
     ChannelError, ChannelForcingInterval, ChannelReach, ChannelStep, ChannelStepDiagnostics,
     ChannelTensorForcingInterval, accounting::Impulses, boundary::assembly::is_scalar,
     conserved_point::ConservedPoint, engine::Accepted, forcing::BoundChannelForcing,
-    interval::IntervalControl, receipt::LastInterval,
+    interval::IntervalControl, receipt::LastInterval, surveyed_residuals::ExpandedImpulses,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -127,6 +127,7 @@ where
         }
         let mut dt = endpoint - self.time();
         let mut reason = String::new();
+        let donor = context.donor_volume(&self.accepted.volume)?;
         for retries in 0..=config.max_retries {
             let end = if retries == 0 {
                 endpoint
@@ -156,7 +157,7 @@ where
             let outgoing = context.outgoing_rate(&flux.water)?;
             let reservation = if prepared.has_nonzero_values {
                 Some(context.combined_depletion_limit(
-                    &self.accepted.volume.high,
+                    &donor,
                     &outgoing,
                     &prepared.withdrawal_volume,
                     &prepared.withdrawal_volume_bound,
@@ -168,7 +169,7 @@ where
             let (depletion_limit, donor_admitted) = if let Some(reservation) = &reservation {
                 (reservation.limit_s, reservation.admitted)
             } else {
-                let limit = context.face_depletion_limit(&self.accepted.volume.high, &outgoing)?;
+                let limit = context.face_depletion_limit(&donor, &outgoing)?;
                 (limit, dt <= limit)
             };
             let limit = start_cfl.min(depletion_limit);
@@ -184,20 +185,26 @@ where
                 && !context.actual_outgoing_admitted(
                     &reservation.remaining_lower,
                     &transport.face_volume,
+                    &transport.face_volume_low,
                 )?
             {
                 reason = "actual outgoing shared face volumes exceed reserved original donor water: recompute a shorter interval".into();
                 dt = control.shorten(dt, 0.95 * dt, retries, reason.clone())?;
                 continue;
             }
-            let application = match context.lateral.apply_lateral_and_transport(
-                c,
-                &self.accepted.volume.high,
-                &self.accepted.momentum.high,
-                &transport.water_delta,
-                &transport.momentum_delta,
-                &prepared,
-            ) {
+            let application = if context.surveyed() {
+                context.surveyed_application(&self.accepted, &transport, &prepared)
+            } else {
+                context.lateral.apply_lateral_and_transport(
+                    c,
+                    &self.accepted.volume.high,
+                    &self.accepted.momentum.high,
+                    &transport.water_delta.high,
+                    &transport.momentum_delta.high,
+                    &prepared,
+                )
+            };
+            let application = match application {
                 Ok(application) => application,
                 Err(error @ ChannelError::Numerical { .. }) => {
                     reason = error.to_string();
@@ -248,10 +255,43 @@ where
                     }
                     Err(error) => return Err(error),
                 };
-            let momentum = friction_trial.momentum;
-            let friction = c.sub(&momentum, &application.momentum)?;
+            let friction_to = friction_trial.momentum;
+            let friction = c.sub(&friction_to, &application.momentum)?;
+            let volume = ConservedPoint {
+                high: application.volume.clone(),
+                low: application.volume_low.clone(),
+            };
+            let (momentum, momentum_bound, max_momentum_bound) = if context.surveyed() {
+                let (point, friction_selection) = match context
+                    .surveyed_friction_point(&friction_to, &application.momentum_low)
+                {
+                    Ok(selected) => selected,
+                    Err(error @ ChannelError::Numerical { .. }) => {
+                        reason = error.to_string();
+                        dt = control.shorten(dt, dt * 0.5, retries, reason.clone())?;
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                };
+                let bound = context.bound_add(
+                    &transport.momentum_underflow_bound,
+                    &application.momentum_selection_bound,
+                )?;
+                let bound = context.bound_add(&bound, &friction_selection)?;
+                let max = c.max(&bound, &[0], false)?.item::<f64>()?;
+                (point, bound, max)
+            } else {
+                (
+                    ConservedPoint {
+                        high: friction_to.clone(),
+                        low: application.momentum_low.clone(),
+                    },
+                    transport.momentum_underflow_bound.clone(),
+                    transport.max_momentum_underflow_bound,
+                )
+            };
             let has_scalar_boundary = is_scalar(&forcing.left) || is_scalar(&forcing.right);
-            let final_fields = match context.fields(&application.volume, &momentum) {
+            let final_fields = match context.fields(&application.volume, &momentum.high) {
                 Ok(fields) => fields,
                 Err(error @ ChannelError::Numerical { .. }) if has_scalar_boundary => {
                     reason = error.to_string();
@@ -283,9 +323,16 @@ where
             let lateral = context
                 .lateral
                 .finalize_state(&prepared, application.water_assembly_charge_m3)?;
+            let expanded = context.surveyed().then_some(ExpandedImpulses {
+                face_volume_low: &transport.face_volume_low,
+                face_momentum_low: &transport.face_momentum_low,
+                friction_from: &application.momentum,
+                friction_to: &friction_to,
+                selection_bound: &application.water_selection_bound,
+            });
             let balance = match context.balance(
                 &self.accepted,
-                &application.volume,
+                &volume,
                 &momentum,
                 Impulses {
                     water: &transport.face_volume,
@@ -293,11 +340,12 @@ where
                     left_pressure: &transport.left_pressure,
                     right_pressure: &transport.right_pressure,
                     friction: &friction,
-                    momentum_underflow_bound: &transport.momentum_underflow_bound,
+                    momentum_underflow_bound: &momentum_bound,
                     transfer_underflow_bound: &transport.transfer_underflow_bound,
                     lateral: &prepared,
                     application: &application,
                     next_lateral: &lateral,
+                    expanded,
                 },
             ) {
                 Ok(balance) => balance,
@@ -333,9 +381,12 @@ where
                 residual_m3: balance.residual,
                 max_local_residual_m3: balance.max_local,
                 max_local_momentum_residual_m4_per_s: balance.max_momentum,
-                max_momentum_underflow_bound_m4_per_s: transport.max_momentum_underflow_bound,
+                max_momentum_underflow_bound_m4_per_s: max_momentum_bound,
                 face_volume_m3: Vec::new(),
+                face_volume_low_m3: Vec::new(),
+                storage_selection_bound_m3: Vec::new(),
                 face_momentum_m4_per_s: Vec::new(),
+                face_momentum_low_m4_per_s: Vec::new(),
                 left_pressure_impulse_m4_per_s: Vec::new(),
                 right_pressure_impulse_m4_per_s: Vec::new(),
                 friction_impulse_m4_per_s: Vec::new(),
@@ -359,11 +410,14 @@ where
                 friction_geometry: friction_trial.geometry,
                 boundary_traces: flux.boundary_traces,
                 face_volume: transport.face_volume,
+                face_volume_low: transport.face_volume_low,
                 face_momentum: transport.face_momentum,
+                face_momentum_low: transport.face_momentum_low,
+                storage_selection_bound: application.water_selection_bound,
                 left_pressure: transport.left_pressure,
                 right_pressure: transport.right_pressure,
                 friction,
-                momentum_underflow_bound: transport.momentum_underflow_bound,
+                momentum_underflow_bound: momentum_bound,
                 transfer_underflow_bound: transport.transfer_underflow_bound,
                 lateral_receipt: prepared.receipt,
                 lateral_momentum_bound: application.momentum_assembly_bound,
@@ -373,8 +427,8 @@ where
                 next: Self {
                     context: Arc::clone(context),
                     accepted: Accepted {
-                        volume: ConservedPoint::from_high(context, application.volume)?,
-                        momentum: ConservedPoint::from_high(context, momentum)?,
+                        volume,
+                        momentum,
                         lateral,
                         time: end,
                         ledger: balance.ledger,

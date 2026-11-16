@@ -55,6 +55,12 @@ pub(in crate::channel::flow) struct PreparedLateral<R: Runtime<DType = DType>> {
 pub(in crate::channel::flow) struct SourceApplication<R: Runtime<DType = DType>> {
     pub volume: Tensor<R>,
     pub momentum: Tensor<R>,
+    /// Low parts of the updated state. Zero outside the surveyed expansion update.
+    pub volume_low: Tensor<R>,
+    pub momentum_low: Tensor<R>,
+    /// Radii discarded when the updated state selects its center, per cell.
+    pub water_selection_bound: Tensor<R>,
+    pub momentum_selection_bound: Tensor<R>,
     pub water_assembly_bound: Tensor<R>,
     pub momentum_assembly_bound: Tensor<R>,
     pub water_assembly_charge_m3: f64,

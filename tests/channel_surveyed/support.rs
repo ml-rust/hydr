@@ -194,6 +194,7 @@ where
         ledger.numerical_transfer_underflow_bound_m3,
         ledger.lateral_counter_abs_bound_m3,
         ledger.lateral_assembly_abs_bound_m3,
+        ledger.storage_selection_abs_bound_m3,
     ] {
         assert!(charge.is_finite() && charge >= 0.0);
     }
@@ -202,6 +203,7 @@ where
             + ledger.numerical_transfer_underflow_bound_m3
             + ledger.lateral_counter_abs_bound_m3
             + ledger.lateral_assembly_abs_bound_m3
+            + ledger.storage_selection_abs_bound_m3
             <= tolerance
     );
     let state = reach.state()?;

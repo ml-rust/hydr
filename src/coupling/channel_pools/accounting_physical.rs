@@ -30,7 +30,10 @@ where
     pub(super) fn physical_charges(
         &self,
         evaluation: &NativeEvaluation<R>,
-    ) -> Result<Tensor<R>, ChannelPoolError> {
+    ) -> Result<Tensor<R>, ChannelPoolError>
+    where
+        R::Client: numr::ops::TensorOps<R> + numr::ops::NextRepresentableOps<R>,
+    {
         let c = &self.client;
         let mut faces = Vec::with_capacity(evaluation.reaches.len());
         let mut assemblies = Vec::with_capacity(evaluation.reaches.len());

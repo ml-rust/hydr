@@ -13,12 +13,6 @@ pub(super) struct ConservedPoint<R: Runtime<DType = DType>> {
 }
 
 impl<R: Runtime<DType = DType>> ConservedPoint<R> {
-    /// Hold a high part with a zero low part.
-    pub fn from_high(context: &Context<R>, high: Tensor<R>) -> Result<Self, ChannelError> {
-        let low = context.constant(&high, 0.0)?;
-        Ok(Self { high, low })
-    }
-
     /// Upload host parts after checking the low part against the geometry and the high part.
     pub fn from_parts(
         context: &Context<R>,

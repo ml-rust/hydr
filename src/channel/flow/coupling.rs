@@ -3,6 +3,7 @@
 use super::{
     ChannelBoundary, ChannelError, ChannelLateralInput, ChannelReach, ChannelTensorBoundary,
     ChannelTensorLateralInput,
+    conserved_update::{exact, expanded, magnitude, transfer},
     forcing::{BoundChannelForcing, BoundLateralInputs},
 };
 use numr::dtype::DType;
@@ -60,7 +61,7 @@ pub(crate) struct ChannelCouplingEndpoints<R: Runtime<DType = DType>> {
 /// Borrowed native accounting operands for the parent's cached reductions.
 pub(crate) struct ChannelCouplingAccounting<'a, R: Runtime<DType = DType>> {
     pub cell_volume_m3: &'a Tensor<R>,
-    #[expect(dead_code, reason = "no reader of the low part yet")]
+    /// Low parts of the cell volumes. The storage inventory requires them to be zero.
     pub cell_volume_low_m3: &'a Tensor<R>,
     pub lateral_volume_m3: &'a Tensor<R>,
     pub lateral_interval_volume_m3: Option<&'a Tensor<R>>,
@@ -100,8 +101,11 @@ where
         + ReduceOps<R>
         + ScalarOps<R>
         + TwoSumOps<R>
-        + UnaryOps<R>,
+        + UnaryOps<R>
+        + numr::ops::TensorOps<R>
+        + numr::ops::NextRepresentableOps<R>,
 {
+    /// Bound on the water the stored interval update differs from its exact expansion update.
     pub(crate) fn coupling_water_assembly_bound_m3(
         &self,
     ) -> Result<Option<Tensor<R>>, ChannelError> {
@@ -113,28 +117,56 @@ where
                 let count = self.context.count();
                 let left = last.face_volume.narrow(0, 0, count)?;
                 let right = last.face_volume.narrow(0, 1, count)?;
-                let (delta, delta_low) = c.two_sum(&left, &c.neg(&right)?)?;
+                // The stored update used these rounded values.
+                let delta = c.sub(&left, &right)?;
                 self.context
                     .finite(&delta, "channel transport water delta")?;
+                let stored = (!last.forcing.lateral.has_nonzero_values)
+                    .then(|| c.add(&last.previous_volume.high, &delta))
+                    .transpose()?;
+                if let Some(stored) = &stored {
+                    self.context
+                        .finite(stored, "channel transported water volume")?;
+                }
+                let (delta_error, stored_error) =
+                    expanded(c, "channel transport water assembly", |a| {
+                        let faces = exact(a, &last.face_volume, &last.face_volume_low)?;
+                        let transfer = transfer(a, &faces, count)?;
+                        let rounded = a.expansion_point(&delta)?;
+                        let difference = a.expansion_sub(&transfer, &rounded)?;
+                        let delta_error = magnitude(a, &difference)?;
+                        let stored_error = match &stored {
+                            Some(stored) => {
+                                let previous = exact(
+                                    a,
+                                    &last.previous_volume.high,
+                                    &last.previous_volume.low,
+                                )?;
+                                let update = a.expansion_add(&previous, &transfer)?;
+                                let stored = a.expansion_point(stored)?;
+                                let difference = a.expansion_sub(&update, &stored)?;
+                                Some(magnitude(a, &difference)?)
+                            }
+                            None => None,
+                        };
+                        Ok((delta_error, stored_error))
+                    })?;
                 self.context
-                    .finite(&delta_low, "channel transport subtraction low")?;
-                let bound = c.abs(&delta_low)?;
-                self.context
-                    .finite(&bound, "channel transport subtraction bound")?;
-                if last.forcing.lateral.has_nonzero_values {
-                    self.context.finite(
-                        &last.lateral_water_assembly_bound,
-                        "channel lateral water assembly bound",
-                    )?;
-                    self.context
-                        .bound_add(&bound, &last.lateral_water_assembly_bound)
-                } else {
-                    let (volume, addition_low) = c.two_sum(&last.previous_volume.high, &delta)?;
-                    self.context
-                        .finite(&volume, "channel transported water volume")?;
-                    self.context
-                        .finite(&addition_low, "channel water addition low")?;
-                    self.context.bound_add(&bound, &c.abs(&addition_low)?)
+                    .finite(&delta_error, "channel transport subtraction bound")?;
+                match stored_error {
+                    Some(bound) => {
+                        self.context
+                            .finite(&bound, "channel water addition bound")?;
+                        Ok(bound)
+                    }
+                    None => {
+                        self.context.finite(
+                            &last.lateral_water_assembly_bound,
+                            "channel lateral water assembly bound",
+                        )?;
+                        self.context
+                            .bound_add(&delta_error, &last.lateral_water_assembly_bound)
+                    }
                 }
             })
             .transpose()

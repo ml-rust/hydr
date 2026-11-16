@@ -162,6 +162,7 @@ fields!(
     lateral_assembly_abs_bound_m3,
     residual_m3,
     numerical_transfer_underflow_bound_m3,
+    storage_selection_abs_bound_m3,
 );
 
 fields!(
@@ -188,9 +189,12 @@ fields!(
     max_local_momentum_residual_m4_per_s,
     max_momentum_underflow_bound_m4_per_s,
     face_volume_m3,
+    face_volume_low_m3,
+    storage_selection_bound_m3,
     face_transfer_underflow_bound_m3,
     transfer_underflow_bound_m3,
     face_momentum_m4_per_s,
+    face_momentum_low_m4_per_s,
     left_pressure_impulse_m4_per_s,
     right_pressure_impulse_m4_per_s,
     friction_impulse_m4_per_s,

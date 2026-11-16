@@ -43,6 +43,9 @@ pub struct ChannelWaterLedger {
     /// Cumulative cellwise charge for detected numerical flux-integral underflow, in m³.
     /// This bound consumes the unchanged water tolerance and excludes total water-solution error.
     pub numerical_transfer_underflow_bound_m3: f64,
+    /// Cumulative cellwise radius discarded when surveyed two-part states select their centers, in m³.
+    /// Charged apart from the transfer underflow bound. Zero on rectangular and triangular geometry.
+    pub storage_selection_abs_bound_m3: f64,
 }
 
 /// Explicit host projection of the last accepted interval's bounded receipts.
@@ -95,13 +98,20 @@ pub struct ChannelStepDiagnostics {
     pub max_momentum_underflow_bound_m4_per_s: f64,
     /// Shared face water volumes in m³, ordered left to right and positive toward increasing x.
     pub face_volume_m3: Vec<f64>,
+    /// Low parts of the shared face water volumes in m³. Zero outside surveyed geometry.
+    pub face_volume_low_m3: Vec<f64>,
+    /// Radius discarded when each cell's two-part volume selects its center, in m³, one per cell.
+    pub storage_selection_bound_m3: Vec<f64>,
     /// Detected numerical flux-integral underflow bounds in m³, one per ordered face.
+    /// Surveyed bounds also hold the face product radius.
     pub face_transfer_underflow_bound_m3: Vec<f64>,
     /// Interval cellwise underflow charge in m³, counting interior face bounds twice.
     /// This bound consumes the unchanged water tolerance and excludes total water-solution error.
     pub transfer_underflow_bound_m3: f64,
     /// Shared homogeneous momentum transfers in m⁴/s, ordered left to right.
     pub face_momentum_m4_per_s: Vec<f64>,
+    /// Low parts of the shared momentum transfers in m⁴/s. Zero outside surveyed geometry.
+    pub face_momentum_low_m4_per_s: Vec<f64>,
     /// Left-side hydrostatic pressure corrections times duration in m⁴/s, one per face.
     pub left_pressure_impulse_m4_per_s: Vec<f64>,
     /// Right-side hydrostatic pressure corrections times duration in m⁴/s, one per face.
@@ -109,6 +119,7 @@ pub struct ChannelStepDiagnostics {
     /// Signed Manning momentum changes in m⁴/s, one per ordered cell.
     pub friction_impulse_m4_per_s: Vec<f64>,
     /// Cell bounds on observed erased pressure/momentum products in the final interval, in m⁴/s.
+    /// Surveyed bounds also hold the face product radii and the momentum selection radii.
     /// These exclude other rounding and truncation errors.
     pub momentum_underflow_bound_m4_per_s: Vec<f64>,
     /// Conservative lateral momentum assembly bounds in m⁴/s, one per ordered cell.

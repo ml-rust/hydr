@@ -2,7 +2,7 @@
 
 mod cfl;
 mod diagnostics;
-mod error;
+pub(super) mod error;
 mod faces;
 mod flux;
 mod friction;
