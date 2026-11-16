@@ -27,8 +27,15 @@ pub(super) const JUMP_FRACTION: CertifiedRootTolerance = CertifiedRootTolerance 
     rtol: 0.,
 };
 
-/// Per-row jump scale J = |A_R - A_L| + A_max |u_R - u_L| / c, in square metres.
+/// The jump scale floor as a fraction of the larger source area.
+/// With `JUMP_FRACTION`, a bracket at the floor is near the two-part rounding of that area,
+/// so a narrower bracket moves the selected area by less than its own rounding.
+const AREA_RESOLUTION: f64 = 1. / (1u64 << 62) as f64;
+
+/// Per-row jump scale J = max(|A_R - A_L| + A_max |u_R - u_L| / c, A_max AREA_RESOLUTION),
+/// in square metres.
 ///
+/// The floor bounds the sharpening rounds when the jump lies far below the area resolution.
 /// It only sets where bisection stops, so it is an F64 value, never a certificate.
 /// Each term takes its outward magnitude, and c takes the lower bound of the smaller
 /// source celerity. A row without a positive celerity bound holds +inf, so it never sharpens.
@@ -77,7 +84,10 @@ where
             &zero,
             &c.where_cond(&positive, &quotient, &infinite)?,
         )?;
-        let jump = c.add(&area, &term)?;
+        let jump = c.maximum(
+            &c.add(&area, &term)?,
+            &c.mul_scalar(&largest, AREA_RESOLUTION)?,
+        )?;
         let uniform = Tensor::empty(stage.velocity.uniform.shape(), a.dtype(), c.device())?;
         c.copy_into(&uniform, &stage.velocity.uniform)?;
         Ok((jump, uniform))

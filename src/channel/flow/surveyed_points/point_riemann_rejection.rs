@@ -114,7 +114,7 @@ where
     } else if status == PointFluxStatus::WorkLimit as i64 {
         rejected(
             PrismaticRiemannRejection::WorkLimit,
-            "the sonic fan continuation reached its point ceiling. Inspect work counters before raising root.max_points".into(),
+            "a star or sonic fan continuation reached its root iteration or point ceiling. Inspect work counters before raising root.max_iterations or root.max_points".into(),
         )?
     } else if status == PointFluxStatus::RootBracketUnresolved as i64 {
         rejected(

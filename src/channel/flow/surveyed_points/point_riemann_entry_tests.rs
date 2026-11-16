@@ -21,6 +21,8 @@ use std::collections::BTreeMap;
 
 #[path = "point_riemann_entry_tests_exterior.rs"]
 mod exterior;
+#[path = "point_riemann_entry_tests_sharpening.rs"]
+mod sharpening;
 #[path = "point_riemann_entry_tests_star.rs"]
 mod star;
 

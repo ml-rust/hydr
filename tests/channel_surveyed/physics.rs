@@ -5,13 +5,15 @@ use numr::dtype::DType;
 use numr::runtime::Runtime;
 
 /// Doubling meshes for the convergence gates, each dividing the frozen 400-cell reference.
-const MESHES: [usize; 3] = [20, 40, 80];
+const MESHES: [usize; 3] = [100, 200, 400];
 /// Time of the frozen exact references.
 const REFERENCE_TIME_S: f64 = 2.0;
 /// Step shared by every spatial mesh.
 const SPATIAL_STEP_S: f64 = 0.1;
 /// Fixed spacing for the temporal gate, which compares successive runs.
 const TEMPORAL_CELLS: usize = 10;
+/// Mesh for the native advancement check on each runtime.
+const NATIVE_CELLS: usize = 20;
 
 struct Measurement {
     errors: [f64; 2],
@@ -267,7 +269,6 @@ fn multiband_wet_spatial_cell_averages_converge() -> TestResult {
 }
 
 #[test]
-#[ignore = "a capped cell rounds back to the surveyed cap; needs two-part conserved storage"]
 fn rounded_multiband_wet_fan_spatial_cell_averages_converge() -> TestResult {
     spatial_convergence(spatial_case("original_rounded_wet_fan")?)
 }
@@ -397,7 +398,7 @@ where
     R::Client: support::Client<R>,
 {
     let case = *CASES.first().ok_or("Missing surveyed transport case")?;
-    let result = run::<R>(client, case, MESHES[0], 0.5)?;
+    let result = run::<R>(client, case, NATIVE_CELLS, 0.5)?;
     assert!(result.conserved.iter().all(|state| state[0] > 0.0));
     assert!(result.conserved.iter().any(|state| state[1] != 0.0));
     Ok(())
