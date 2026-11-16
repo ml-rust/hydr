@@ -1,5 +1,5 @@
 use super::super::super::{
-    point_output::PrismaticPointTraceKind,
+    point_output::{PrismaticPointRiemannResult, PrismaticPointTraceKind},
     source_tests::support::{self as frozen, Result},
     wet_depth::tests::support,
 };
@@ -108,6 +108,84 @@ where
         assert_eq!(forward[index], reverse[1 - index], "d={d:e}");
     }
     Ok(())
+}
+
+/// One rest face with the two-part areas 14 - dL and 14 - dR and zero discharge.
+fn rest_face<R>(
+    client: &R::Client,
+    section: &PrismaticSectionBatch<R>,
+    [left, right]: [f64; 2],
+) -> Result<PrismaticPointRiemannResult<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: support::DepthClient<R>,
+{
+    let owners = support::rows::<R>(client, &[0])?;
+    let area =
+        |d: f64| frozen::expansion::<R>(client, &[[14.0_f64.to_bits(), (-d).to_bits(), 0]], true);
+    let zero = frozen::expansion::<R>(client, &[[0, 0, 0]], true)?;
+    let config = PrismaticRiemannConfig {
+        gravity_m_per_s2: 1.0,
+        ..PrismaticRiemannConfig::default()
+    };
+    section
+        .riemann_flux_points_tensor(&owners, &area(left)?, &zero, &area(right)?, &zero, &config)
+        .map_err(|error| {
+            format!("rest star face dL={left:e} dR={right:e} rejects: {error:?}").into()
+        })
+}
+
+/// Rest faces between two cap deficits select the star state to second order in the jump.
+///
+/// The deeper side sends a rarefaction and the shallower side a shock, so water flows
+/// toward the shallower side. With c = √1.75 the linearized star state is
+/// A* = 14 - (dL + dR)/2, Q* = c(dR - dL)/2, and M* = 17 - 1.75(dL + dR)/2.
+/// The dropped terms are below 1e-33.
+fn rest_star<R>(client: &R::Client) -> Result
+where
+    R: Runtime<DType = DType>,
+    R::Client: support::DepthClient<R>,
+{
+    let section = rounded_wet_fan::<R>(client)?;
+    let celerity = 1.75_f64.sqrt();
+    for [left, right] in [OFFSETS, [OFFSETS[1], OFFSETS[0]]] {
+        let result = rest_face::<R>(client, &section, [left, right])?;
+        let kinds = result.trace_kind().try_to_vec::<i64>()?;
+        assert_eq!(kinds, vec![PrismaticPointTraceKind::Star as i64]);
+        let [mh, ml, _] =
+            frozen::components(result.momentum_flux_m4_per_s2())?[0].map(f64::from_bits);
+        let [qh, ql, _] = frozen::components(result.water_flux_m3_per_s())?[0].map(f64::from_bits);
+        // The high part lies within one ulp of 17, so mh - 17 is exact.
+        let momentum = ((mh - 17.0) + ml) + 1.75 * (left + right) / 2.0;
+        let discharge = (qh - celerity * (right - left) / 2.0) + ql;
+        let work = result.work();
+        eprintln!(
+            "POINT_RIEMANN_REST_STAR\tdL={left:e}\tdR={right:e}\tmomentum_error={momentum:e}\tdischarge_error={discharge:e}\trefinements={}\troot_iterations={}\tresidual_points={}",
+            work.refinements, work.root_iterations, work.residual_points
+        );
+        assert!(
+            momentum.abs() <= 1e-20,
+            "dL={left:e} dR={right:e} momentum error {momentum:e}"
+        );
+        assert!(
+            discharge.abs() <= 1e-20,
+            "dL={left:e} dR={right:e} discharge error {discharge:e}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn configured_cpu_public_point_rest_star_selects_the_jump_scaled_state() -> Result {
+    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime};
+    rest_star::<CpuRuntime>(&CpuClient::new(CpuDevice::new()))
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn actual_cuda_public_point_rest_star_selects_the_jump_scaled_state() -> Result {
+    use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+    rest_star::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?)
 }
 
 #[test]

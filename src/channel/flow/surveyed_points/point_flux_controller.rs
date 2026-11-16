@@ -38,6 +38,7 @@ where
     /// over its flux budget. Each round advances the star rows once and each fan side once,
     /// then reselects the demanded faces. The rounds stop when every face is settled or no
     /// face advances, and never exceed `max_refinements`.
+    /// Accepted star faces then sharpen their star bracket to the scale of their jump.
     /// Each face then takes the wave-speed envelope of its owning selection.
     pub(super) fn resolve_point_fluxes(
         &mut self,
@@ -94,6 +95,7 @@ where
                 faces.overwrite(a, count, reselected)
             })?;
         }
+        self.sharpen_star_faces(&mut faces, count)?;
         let last_level = self.last_level()?;
         checked::<R, _>(c, "point flux controller level ceiling", |a| {
             faces.close_ceiling(a, last_level)

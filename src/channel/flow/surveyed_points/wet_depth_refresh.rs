@@ -27,15 +27,18 @@ use solvr::{
 };
 
 /// Why the selected rows of an initialized domain continue.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum SelectedContinuation {
+pub(super) enum SelectedContinuation<'s, R: Runtime<DType = DType>> {
     /// The residual panel level changed. The domain levels already hold the new level.
     Refresh,
     /// Only the tolerance tightened. The residual and its panel level stay fixed.
     Resume,
+    /// The stopping coordinate becomes the area parameter over each row's jump scale.
+    /// The tensor holds one scale per domain row. The residual and its panel level stay fixed.
+    Sharpen(&'s Tensor<R>),
 }
 
 /// Continues the selected local rows of an initialized domain.
+/// `tolerance` is the depth tolerance of the cached status. `Sharpen` stops on its own.
 /// Undemanded rows keep every stored bit.
 /// An error consumes the continuation, so the caller must seal its session.
 pub(super) fn refresh_selected<R>(
@@ -44,7 +47,7 @@ pub(super) fn refresh_selected<R>(
     domain: WetDepthDomain<R>,
     tolerance: &CertifiedRootTolerance,
     rows: &Tensor<R>,
-    mode: SelectedContinuation,
+    mode: SelectedContinuation<'_, R>,
 ) -> HydraulicResult<WetDepthDomain<R>>
 where
     R: Runtime<DType = DType>,
@@ -112,10 +115,13 @@ where
             &cause,
         )
     };
-    let mapping = |bounds: &CertifiedRootDomainQuery<R>| {
-        wet_depth_mapping::evaluate(&borrowed, &parent_rows, &chart, bounds, &cause)
+    let mapping = |bounds: &CertifiedRootDomainQuery<R>| match &mode {
+        SelectedContinuation::Sharpen(scale) => {
+            super::wet_star_jump::evaluate(&borrowed, scale, bounds, &cause)
+        }
+        _ => wet_depth_mapping::evaluate(&borrowed, &parent_rows, &chart, bounds, &cause),
     };
-    let progress = match mode {
+    let progress = match &mode {
         SelectedContinuation::Refresh => c.refresh_certified_mapped_selected(
             residual,
             mapping,
@@ -130,6 +136,14 @@ where
             continuation,
             rows,
             tolerance,
+            &allowance,
+        ),
+        SelectedContinuation::Sharpen(_) => c.resume_certified_mapped_selected(
+            residual,
+            mapping,
+            continuation,
+            rows,
+            &super::wet_star_jump::JUMP_FRACTION,
             &allowance,
         ),
     };
