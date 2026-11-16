@@ -125,6 +125,7 @@ where
                     previous_momentum: &previous.momentum,
                     face_volume: impulses.water,
                     face_momentum: impulses.momentum,
+                    friction: impulses.friction,
                     expanded,
                     lateral,
                 },

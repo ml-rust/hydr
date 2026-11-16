@@ -76,7 +76,7 @@ where
 }
 
 /// Exact expansion that reuses a caller-owned zero radius of the same shape.
-fn exact_over<R>(
+pub(super) fn exact_over<R>(
     a: &mut Arithmetic<'_, R>,
     high: &Tensor<R>,
     low: &Tensor<R>,

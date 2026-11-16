@@ -198,6 +198,7 @@ fields!(
     left_pressure_impulse_m4_per_s,
     right_pressure_impulse_m4_per_s,
     friction_impulse_m4_per_s,
+    friction_impulse_low_m4_per_s,
     momentum_underflow_bound_m4_per_s,
     lateral_momentum_abs_bound_m4_per_s,
     lateral_receipts,

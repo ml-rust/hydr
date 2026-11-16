@@ -13,10 +13,8 @@ use numr::tensor::Tensor;
 pub(super) struct ExpandedImpulses<'a, R: Runtime<DType = DType>> {
     pub face_volume_low: &'a Tensor<R>,
     pub face_momentum_low: &'a Tensor<R>,
-    /// Momentum high part before friction.
-    pub friction_from: &'a Tensor<R>,
-    /// Momentum high part after friction.
-    pub friction_to: &'a Tensor<R>,
+    /// Low part of the friction impulse.
+    pub friction_low: &'a Tensor<R>,
     /// Per-cell radius discarded by the water state selection.
     pub selection_bound: &'a Tensor<R>,
 }
@@ -29,6 +27,8 @@ pub(super) struct ResidualInputs<'a, R: Runtime<DType = DType>> {
     pub previous_momentum: &'a ConservedPoint<R>,
     pub face_volume: &'a Tensor<R>,
     pub face_momentum: &'a Tensor<R>,
+    /// High part of the friction impulse.
+    pub friction: &'a Tensor<R>,
     pub expanded: &'a ExpandedImpulses<'a, R>,
     /// Lateral exchange, when it is active.
     pub lateral: Option<LateralImpulses<'a, R>>,
@@ -74,9 +74,7 @@ where
         let change = a.expansion_sub(&momentum, &previous)?;
         let faces = exact(a, input.face_momentum, input.expanded.face_momentum_low)?;
         let transfer_momentum = transfer(a, &faces, count)?;
-        let to = a.expansion_point(input.expanded.friction_to)?;
-        let from = a.expansion_point(input.expanded.friction_from)?;
-        let friction = a.expansion_sub(&to, &from)?;
+        let friction = exact(a, input.friction, input.expanded.friction_low)?;
         let change = a.expansion_sub(&change, &transfer_momentum)?;
         let mut momentum = a.expansion_sub(&change, &friction)?;
 

@@ -229,6 +229,10 @@ pub(super) fn diagnostics(a: &ChannelStepDiagnostics, b: &ChannelStepDiagnostics
         )
         && values(&a.friction_impulse_m4_per_s, &b.friction_impulse_m4_per_s)
         && values(
+            &a.friction_impulse_low_m4_per_s,
+            &b.friction_impulse_low_m4_per_s,
+        )
+        && values(
             &a.momentum_underflow_bound_m4_per_s,
             &b.momentum_underflow_bound_m4_per_s,
         )

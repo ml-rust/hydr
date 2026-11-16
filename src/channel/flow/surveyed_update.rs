@@ -3,16 +3,17 @@
 use super::{
     ChannelError,
     conserved_point::ConservedPoint,
-    conserved_update::{ExpansionClient, Parts, select_sum},
+    conserved_update::ExpansionClient,
     context::Context,
     engine::Accepted,
     sources::{PreparedLateral, SourceApplication},
+    surveyed_transport::friction::SurveyedFriction,
     transport::Transport,
 };
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
-    UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
+    ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -23,6 +24,7 @@ where
         + CompareOps<R>
         + ConditionalOps<R>
         + IndexingOps<R>
+        + MidpointOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + ShapeOps<R>
@@ -57,27 +59,30 @@ where
         )
     }
 
-    /// Rejoin the low momentum part after friction changes the high part.
+    /// Apply Manning friction to both momentum parts through one expansion division.
     pub fn surveyed_friction_point(
         &self,
-        friction_to: &Tensor<R>,
-        momentum_low: &Tensor<R>,
-    ) -> Result<(ConservedPoint<R>, Tensor<R>), ChannelError> {
-        let zero = self.constant(&self.length, 0.0)?;
-        select_sum(
-            &self.client,
-            &Parts {
-                high: friction_to.clone(),
-                low: zero.clone(),
-                bound: zero.clone(),
-            },
-            &Parts {
-                high: momentum_low.clone(),
-                low: zero.clone(),
-                bound: zero,
-            },
-            "surveyed momentum after friction",
-        )
+        volume: &Tensor<R>,
+        momentum: &ConservedPoint<R>,
+        dt: f64,
+    ) -> Result<SurveyedFriction<R>, ChannelError> {
+        let drag = self.surveyed_drag(volume, &momentum.high, dt)?;
+        let Some(divisor) = drag.divisor else {
+            let zero = self.constant(&momentum.high, 0.0)?;
+            return Ok(SurveyedFriction {
+                point: momentum.clone(),
+                impulse: ConservedPoint {
+                    high: zero.clone(),
+                    low: zero.clone(),
+                },
+                radius: zero,
+                geometry: drag.trial.geometry,
+            });
+        };
+        Ok(SurveyedFriction {
+            geometry: drag.trial.geometry,
+            ..self.surveyed_friction_division(momentum, &divisor)?
+        })
     }
 }
 
@@ -134,6 +139,19 @@ pub(super) mod tests {
         R: Runtime<DType = DType>,
         R::Client: Client<R>,
     {
+        reach_with_roughness(client, volumes, &vec![0.0; volumes.len()])
+    }
+
+    /// Same survey with one Manning roughness per cell.
+    pub(in crate::channel::flow) fn reach_with_roughness<R>(
+        client: R::Client,
+        volumes: &[f64],
+        roughness: &[f64],
+    ) -> TestResult<ChannelReach<R>>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
         Ok(ChannelReach::new(
             client,
             ChannelReachDefinition {
@@ -153,11 +171,13 @@ pub(super) mod tests {
                         maximum_stage_m: 3.5,
                         profile_provenance: "Two-metre rectangular survey".into(),
                     },
-                    cells: (0..volumes.len())
-                        .map(|index| SurveyedChannelCell {
+                    cells: roughness
+                        .iter()
+                        .enumerate()
+                        .map(|(index, manning_n)| SurveyedChannelCell {
                             id: format!("cell-{index}"),
                             length_m: 5.0,
-                            manning_n: 0.0,
+                            manning_n: *manning_n,
                         })
                         .collect(),
                     numerical: ChannelSurveyedConfig::default(),
@@ -173,7 +193,7 @@ pub(super) mod tests {
         )?)
     }
 
-    fn walls(start_s: f64, end_s: f64) -> ChannelForcingInterval {
+    pub(in crate::channel::flow) fn walls(start_s: f64, end_s: f64) -> ChannelForcingInterval {
         ChannelForcingInterval {
             start_s,
             end_s,
@@ -288,8 +308,7 @@ pub(super) mod tests {
                 expanded: Some(ExpandedImpulses {
                     face_volume_low: &transport.face_volume_low,
                     face_momentum_low: &transport.face_momentum_low,
-                    friction_from: &application.momentum,
-                    friction_to: &application.momentum,
+                    friction_low: &friction,
                     selection_bound: &application.water_selection_bound,
                 }),
             },

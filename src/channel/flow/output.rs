@@ -118,6 +118,8 @@ pub struct ChannelStepDiagnostics {
     pub right_pressure_impulse_m4_per_s: Vec<f64>,
     /// Signed Manning momentum changes in m⁴/s, one per ordered cell.
     pub friction_impulse_m4_per_s: Vec<f64>,
+    /// Low parts of the Manning momentum changes in m⁴/s. Zero outside surveyed geometry.
+    pub friction_impulse_low_m4_per_s: Vec<f64>,
     /// Cell bounds on observed erased pressure/momentum products in the final interval, in m⁴/s.
     /// Surveyed bounds also hold the face product radii and the momentum selection radii.
     /// These exclude other rounding and truncation errors.

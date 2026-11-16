@@ -245,27 +245,21 @@ where
             } else {
                 None
             };
-            let friction_trial =
-                match context.friction_trial(&application.volume, &application.momentum, dt) {
-                    Ok(trial) => trial,
-                    Err(error @ ChannelError::Numerical { .. }) => {
-                        reason = error.to_string();
-                        dt = control.shorten(dt, dt * 0.5, retries, reason.clone())?;
-                        continue;
-                    }
-                    Err(error) => return Err(error),
-                };
-            let friction_to = friction_trial.momentum;
-            let friction = c.sub(&friction_to, &application.momentum)?;
             let volume = ConservedPoint {
                 high: application.volume.clone(),
                 low: application.volume_low.clone(),
             };
+            let friction_geometry;
+            let friction;
+            let friction_low;
             let (momentum, momentum_bound, max_momentum_bound) = if context.surveyed() {
-                let (point, friction_selection) = match context
-                    .surveyed_friction_point(&friction_to, &application.momentum_low)
+                let before = ConservedPoint {
+                    high: application.momentum.clone(),
+                    low: application.momentum_low.clone(),
+                };
+                let trial = match context.surveyed_friction_point(&application.volume, &before, dt)
                 {
-                    Ok(selected) => selected,
+                    Ok(trial) => trial,
                     Err(error @ ChannelError::Numerical { .. }) => {
                         reason = error.to_string();
                         dt = control.shorten(dt, dt * 0.5, retries, reason.clone())?;
@@ -277,13 +271,29 @@ where
                     &transport.momentum_underflow_bound,
                     &application.momentum_selection_bound,
                 )?;
-                let bound = context.bound_add(&bound, &friction_selection)?;
+                let bound = context.bound_add(&bound, &trial.radius)?;
                 let max = c.max(&bound, &[0], false)?.item::<f64>()?;
-                (point, bound, max)
+                friction = trial.impulse.high;
+                friction_low = trial.impulse.low;
+                friction_geometry = trial.geometry;
+                (trial.point, bound, max)
             } else {
+                let trial =
+                    match context.friction_trial(&application.volume, &application.momentum, dt) {
+                        Ok(trial) => trial,
+                        Err(error @ ChannelError::Numerical { .. }) => {
+                            reason = error.to_string();
+                            dt = control.shorten(dt, dt * 0.5, retries, reason.clone())?;
+                            continue;
+                        }
+                        Err(error) => return Err(error),
+                    };
+                friction = c.sub(&trial.momentum, &application.momentum)?;
+                friction_low = context.constant(&friction, 0.0)?;
+                friction_geometry = trial.geometry;
                 (
                     ConservedPoint {
-                        high: friction_to.clone(),
+                        high: trial.momentum,
                         low: application.momentum_low.clone(),
                     },
                     transport.momentum_underflow_bound.clone(),
@@ -326,8 +336,7 @@ where
             let expanded = context.surveyed().then_some(ExpandedImpulses {
                 face_volume_low: &transport.face_volume_low,
                 face_momentum_low: &transport.face_momentum_low,
-                friction_from: &application.momentum,
-                friction_to: &friction_to,
+                friction_low: &friction_low,
                 selection_bound: &application.water_selection_bound,
             });
             let balance = match context.balance(
@@ -390,6 +399,7 @@ where
                 left_pressure_impulse_m4_per_s: Vec::new(),
                 right_pressure_impulse_m4_per_s: Vec::new(),
                 friction_impulse_m4_per_s: Vec::new(),
+                friction_impulse_low_m4_per_s: Vec::new(),
                 momentum_underflow_bound_m4_per_s: Vec::new(),
                 face_transfer_underflow_bound_m3: Vec::new(),
                 transfer_underflow_bound_m3: balance.transfer_charge,
@@ -407,7 +417,7 @@ where
                 requested_end: requested_end_s,
                 scalar,
                 riemann: flux.riemann,
-                friction_geometry: friction_trial.geometry,
+                friction_geometry,
                 boundary_traces: flux.boundary_traces,
                 face_volume: transport.face_volume,
                 face_volume_low: transport.face_volume_low,
@@ -417,6 +427,7 @@ where
                 left_pressure: transport.left_pressure,
                 right_pressure: transport.right_pressure,
                 friction,
+                friction_low,
                 momentum_underflow_bound: momentum_bound,
                 transfer_underflow_bound: transport.transfer_underflow_bound,
                 lateral_receipt: prepared.receipt,

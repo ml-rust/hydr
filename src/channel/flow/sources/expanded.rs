@@ -375,7 +375,13 @@ mod tests {
                 receipt.face_momentum_m4_per_s[faces],
                 receipt.face_momentum_low_m4_per_s[faces],
             ]);
-            terms.extend(receipt.friction_impulse_m4_per_s.iter().map(|f| -f));
+            terms.extend(
+                receipt
+                    .friction_impulse_m4_per_s
+                    .iter()
+                    .chain(&receipt.friction_impulse_low_m4_per_s)
+                    .map(|f| -f),
+            );
             terms.extend(
                 receipt
                     .lateral_receipts
