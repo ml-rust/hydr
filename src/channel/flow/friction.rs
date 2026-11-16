@@ -1,4 +1,6 @@
-use super::{ChannelError, context::Context, geometry::TensorGeometry};
+use super::{
+    ChannelError, conserved_point::ConservedPoint, context::Context, geometry::TensorGeometry,
+};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps,
@@ -29,7 +31,11 @@ where
         if matches!(&self.geometry, TensorGeometry::Surveyed(_)) {
             return Ok(self.surveyed_friction(volume, momentum, dt)?.momentum);
         }
-        let fields = self.fields(volume, momentum)?;
+        // Analytic geometry stores `+0.0` low parts.
+        let fields = self.fields(
+            &ConservedPoint::from_high(volume)?,
+            &ConservedPoint::from_high(momentum)?,
+        )?;
         let c = &self.client;
         let zero = self.constant(volume, 0.0)?;
         let one = self.constant(volume, 1.0)?;

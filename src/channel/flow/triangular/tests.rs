@@ -109,7 +109,7 @@ fn reflected_wall_water_is_exact_zero_and_rest_pressure_uses_triangular_section(
         return Err("triangular geometry required".into());
     };
     for velocity in [-1.0, 0.0, 1.0] {
-        let fields = ctx.fields(&ctx.tensor(&[1.0])?, &ctx.tensor(&[velocity])?)?;
+        let fields = ctx.fields_high(&ctx.tensor(&[1.0])?, &ctx.tensor(&[velocity])?)?;
         let flux = native_flux(
             &ctx,
             geometry,
@@ -125,7 +125,7 @@ fn reflected_wall_water_is_exact_zero_and_rest_pressure_uses_triangular_section(
             }
         }
     }
-    let dry = ctx.fields(&ctx.tensor(&[0.0])?, &ctx.tensor(&[0.0])?)?;
+    let dry = ctx.fields_high(&ctx.tensor(&[0.0])?, &ctx.tensor(&[0.0])?)?;
     let flux = native_flux(
         &ctx,
         geometry,
@@ -144,7 +144,7 @@ fn one_sided_motion_retains_finite_flux_for_extreme_represented_velocity() -> Te
     let TensorGeometry::Triangular(geometry) = &ctx.geometry else {
         return Err("triangular geometry required".into());
     };
-    let fields = ctx.fields(&ctx.tensor(&[1e-300])?, &ctx.tensor(&[1e-100])?)?;
+    let fields = ctx.fields_high(&ctx.tensor(&[1e-300])?, &ctx.tensor(&[1e-100])?)?;
     let boundary = ChannelBoundary::Exterior {
         depth_m: 1e-150,
         velocity_m_per_s: 1e200,
@@ -165,7 +165,7 @@ fn erased_pressure_retains_a_positive_momentum_charge() -> TestResult {
     let TensorGeometry::Triangular(geometry) = &ctx.geometry else {
         return Err("triangular geometry required".into());
     };
-    let fields = ctx.fields(&ctx.tensor(&[1e-300])?, &ctx.tensor(&[0.0])?)?;
+    let fields = ctx.fields_high(&ctx.tensor(&[1e-300])?, &ctx.tensor(&[0.0])?)?;
     let boundary = ChannelBoundary::Exterior {
         depth_m: 1e-150,
         velocity_m_per_s: 0.0,
@@ -210,7 +210,7 @@ fn certified_vacuum_interface_selects_both_zero_fluxes_and_keeps_original_wave_b
         return Err("triangular geometry required".into());
     };
     let velocity = 10.0;
-    let fields = ctx.fields(&ctx.tensor(&[1.0])?, &ctx.tensor(&[velocity])?)?;
+    let fields = ctx.fields_high(&ctx.tensor(&[1.0])?, &ctx.tensor(&[velocity])?)?;
     let left = ChannelBoundary::Exterior {
         depth_m: 1.0,
         velocity_m_per_s: -velocity,
@@ -278,7 +278,7 @@ fn exact_vacuum_discards_only_shared_flux_underflow_charges() -> TestResult {
     let TensorGeometry::Triangular(geometry) = &ctx.geometry else {
         return Err("triangular geometry required".into());
     };
-    let fields = ctx.fields(&ctx.tensor(&[1e-300])?, &ctx.tensor(&[1e-300])?)?;
+    let fields = ctx.fields_high(&ctx.tensor(&[1e-300])?, &ctx.tensor(&[1e-300])?)?;
     let left = ChannelBoundary::Exterior {
         depth_m: 1e-150,
         velocity_m_per_s: -1.0,
@@ -318,7 +318,7 @@ fn interface_flux(
         return Err("triangular geometry required".into());
     };
     let area = right_depth * right_depth;
-    let fields = ctx.fields(
+    let fields = ctx.fields_high(
         &ctx.tensor(&[area])?,
         &ctx.tensor(&[area * right_velocity])?,
     )?;
@@ -448,7 +448,7 @@ fn finite_extreme_upwind_flux_skips_unselected_sonic_residuals() -> TestResult {
     let TensorGeometry::Triangular(geometry) = &ctx.geometry else {
         return Err("triangular geometry required".into());
     };
-    let fields = ctx.fields(&ctx.tensor(&[tiny])?, &ctx.tensor(&[tiny])?)?;
+    let fields = ctx.fields_high(&ctx.tensor(&[tiny])?, &ctx.tensor(&[tiny])?)?;
     let depth = fields.depth.item::<f64>()?;
     let exterior = ChannelBoundary::Exterior {
         depth_m: depth,

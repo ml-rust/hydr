@@ -27,6 +27,8 @@ pub(in crate::channel::flow) struct SurveyedGeometry<R: Runtime<DType = DType>> 
     pub riemann: PrismaticRiemannConfig,
     pub cell_owners: Tensor<R>,
     pub face_owners: Tensor<R>,
+    /// Upper bound of each cell's certified cap area, in m².
+    pub cap_area_upper: Tensor<R>,
 }
 
 pub(in crate::channel::flow) fn section_error(error: CrossSectionError) -> ChannelError {
@@ -86,7 +88,7 @@ where
             Tensor::from_slice(&vec![0i64; face_count], &[face_count], client.device())?;
         let owner = Tensor::from_slice(&[0i64], &[1], client.device())?;
         let geometry = HydraulicGeometry::from_batch(&section);
-        checked(client, "surveyed reach capacity", |a| {
+        let cap_area_upper = checked(client, "surveyed reach capacity", |a| {
             let bands = geometry.gather(a, &owner)?;
             let lengths = a.point(length)?;
             let capacity = a.mul(&bands.cap_area, &lengths)?;
@@ -94,7 +96,7 @@ where
             if client.min(&client.gt(capacity.lower(), &zero)?, &[0], false)?.item::<f64>()? != 1.0 {
                 return Err(HydraulicError::Numerical { context: "surveyed cap volume has no finite positive certificate: rescale profile or lengths".into() });
             }
-            Ok(())
+            Ok(geometry.gather(a, &cell_owners)?.cap_area.upper().clone())
         }).map_err(hydraulic_error)?;
         Ok(Self {
             section,
@@ -103,6 +105,7 @@ where
             riemann,
             cell_owners,
             face_owners,
+            cap_area_upper,
         })
     }
 }

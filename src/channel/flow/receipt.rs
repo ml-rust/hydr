@@ -36,6 +36,8 @@ pub(super) struct LastInterval<R: Runtime<DType = DType>> {
     pub face_momentum: Tensor<R>,
     pub face_momentum_low: Tensor<R>,
     pub storage_selection_bound: Tensor<R>,
+    pub recovery_selection_bound: Tensor<R>,
+    pub discharge_recovery_selection_bound: Tensor<R>,
     pub left_pressure: Tensor<R>,
     pub right_pressure: Tensor<R>,
     pub friction: Tensor<R>,
@@ -79,6 +81,10 @@ where
         result.face_volume_m3 = self.face_volume.try_to_vec::<f64>()?;
         result.face_volume_low_m3 = self.face_volume_low.try_to_vec::<f64>()?;
         result.storage_selection_bound_m3 = self.storage_selection_bound.try_to_vec::<f64>()?;
+        result.recovery_selection_bound_m2 = self.recovery_selection_bound.try_to_vec::<f64>()?;
+        result.discharge_recovery_selection_bound_m3_per_s = self
+            .discharge_recovery_selection_bound
+            .try_to_vec::<f64>()?;
         result.face_momentum_m4_per_s = self.face_momentum.try_to_vec::<f64>()?;
         result.face_momentum_low_m4_per_s = self.face_momentum_low.try_to_vec::<f64>()?;
         result.left_pressure_impulse_m4_per_s = self.left_pressure.try_to_vec::<f64>()?;

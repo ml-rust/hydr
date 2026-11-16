@@ -46,7 +46,7 @@ fn rounded_numerical_transfers_preserve_water_and_consume_tolerance()
     };
     let fields = reach
         .context
-        .fields(&reach.accepted.volume.high, &reach.accepted.momentum.high)?;
+        .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
     let flux = native_flux(&reach.context, &fields, &forcing.left, &forcing.right)?;
     let original_rate = flux.water.narrow(0, 1, 1)?.item::<f64>()?;
     assert!(original_rate > 0.0);
@@ -168,7 +168,7 @@ fn rounded_pressure_impulses_consume_the_configured_momentum_tolerance()
     };
     let fields = reach
         .context
-        .fields(&reach.accepted.volume.high, &reach.accepted.momentum.high)?;
+        .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
     let flux = native_flux(&reach.context, &fields, &forcing.left, &forcing.right)?;
     assert!(flux.water.narrow(0, 1, 1)?.item::<f64>()? * forcing.end_s > 0.0);
     let original_pressure = flux.momentum.narrow(0, 1, 1)?.item::<f64>()?;
@@ -245,7 +245,7 @@ fn positive_wave_speed_cannot_disappear_during_width_weighting()
     };
     let fields = reach
         .context
-        .fields(&reach.accepted.volume.high, &reach.accepted.momentum.high)?;
+        .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
     let flux = native_flux(&reach.context, &fields, &forcing.left, &forcing.right)?;
     let speed = flux.speed.narrow(0, 0, 1)?.item::<f64>()?;
     assert!(speed > 0.0);
@@ -304,7 +304,7 @@ fn prescribed_endpoint_rates_retain_longitudinal_bits_without_width_round_trip()
     let reach = scalar_endpoint_reach()?;
     let fields = reach
         .context
-        .fields(&reach.accepted.volume.high, &reach.accepted.momentum.high)?;
+        .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
     let target: f64 = 0.48600000000000004;
     assert_ne!((target / 3.0 * 3.0).to_bits(), target.to_bits());
     for rate in [target, -target, 0.0, -0.0] {
@@ -336,7 +336,7 @@ fn prescribed_endpoint_transfer_rejects_disappearing_nonzero_volume()
     let reach = scalar_endpoint_reach()?;
     let fields = reach
         .context
-        .fields(&reach.accepted.volume.high, &reach.accepted.momentum.high)?;
+        .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
     let boundary = ChannelBoundary::Discharge {
         discharge_m3_per_s: 1e-200,
     };
@@ -385,7 +385,7 @@ fn scalar_only_rectangular_faces_preserve_full_section_motion()
     let before = reach.snapshot_data()?;
     let fields = reach
         .context
-        .fields(&reach.accepted.volume.high, &reach.accepted.momentum.high)?;
+        .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
     assert!(fields.discharge.item::<f64>()? > 0.0);
     assert_eq!(
         fields.depth.item::<f64>()? * fields.velocity.item::<f64>()?,

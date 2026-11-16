@@ -191,6 +191,8 @@ fields!(
     face_volume_m3,
     face_volume_low_m3,
     storage_selection_bound_m3,
+    recovery_selection_bound_m2,
+    discharge_recovery_selection_bound_m3_per_s,
     face_transfer_underflow_bound_m3,
     transfer_underflow_bound_m3,
     face_momentum_m4_per_s,

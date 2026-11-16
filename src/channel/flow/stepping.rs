@@ -142,8 +142,7 @@ where
                     reason,
                 });
             }
-            let fields =
-                context.fields(&self.accepted.volume.high, &self.accepted.momentum.high)?;
+            let fields = context.fields(&self.accepted.volume, &self.accepted.momentum)?;
             let flux = context.flux(&fields, &forcing.left, &forcing.right)?;
             let start_cfl = context.cfl_limit(&flux.speed, flux.internal_speed.as_ref())?;
             let prepared = context.lateral.prepare(
@@ -213,8 +212,15 @@ where
                 }
                 Err(error) => return Err(error),
             };
-            let candidate_fields = match context.fields(&application.volume, &application.momentum)
-            {
+            let volume = ConservedPoint {
+                high: application.volume.clone(),
+                low: application.volume_low.clone(),
+            };
+            let candidate_momentum = ConservedPoint {
+                high: application.momentum.clone(),
+                low: application.momentum_low.clone(),
+            };
+            let candidate_fields = match context.fields(&volume, &candidate_momentum) {
                 Ok(fields) => fields,
                 Err(error @ ChannelError::Numerical { .. }) => {
                     reason = error.to_string();
@@ -245,20 +251,15 @@ where
             } else {
                 None
             };
-            let volume = ConservedPoint {
-                high: application.volume.clone(),
-                low: application.volume_low.clone(),
-            };
             let friction_geometry;
             let friction;
             let friction_low;
             let (momentum, momentum_bound, max_momentum_bound) = if context.surveyed() {
-                let before = ConservedPoint {
-                    high: application.momentum.clone(),
-                    low: application.momentum_low.clone(),
-                };
-                let trial = match context.surveyed_friction_point(&application.volume, &before, dt)
-                {
+                let trial = match context.surveyed_friction_point(
+                    &application.volume,
+                    &candidate_momentum,
+                    dt,
+                ) {
                     Ok(trial) => trial,
                     Err(error @ ChannelError::Numerical { .. }) => {
                         reason = error.to_string();
@@ -301,7 +302,7 @@ where
                 )
             };
             let has_scalar_boundary = is_scalar(&forcing.left) || is_scalar(&forcing.right);
-            let final_fields = match context.fields(&application.volume, &momentum.high) {
+            let final_fields = match context.fields(&volume, &momentum) {
                 Ok(fields) => fields,
                 Err(error @ ChannelError::Numerical { .. }) if has_scalar_boundary => {
                     reason = error.to_string();
@@ -394,6 +395,8 @@ where
                 face_volume_m3: Vec::new(),
                 face_volume_low_m3: Vec::new(),
                 storage_selection_bound_m3: Vec::new(),
+                recovery_selection_bound_m2: Vec::new(),
+                discharge_recovery_selection_bound_m3_per_s: Vec::new(),
                 face_momentum_m4_per_s: Vec::new(),
                 face_momentum_low_m4_per_s: Vec::new(),
                 left_pressure_impulse_m4_per_s: Vec::new(),
@@ -424,6 +427,8 @@ where
                 face_momentum: transport.face_momentum,
                 face_momentum_low: transport.face_momentum_low,
                 storage_selection_bound: application.water_selection_bound,
+                recovery_selection_bound: final_fields.area_selection_bound,
+                discharge_recovery_selection_bound: final_fields.discharge_selection_bound,
                 left_pressure: transport.left_pressure,
                 right_pressure: transport.right_pressure,
                 friction,

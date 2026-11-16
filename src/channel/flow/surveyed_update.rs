@@ -263,7 +263,7 @@ pub(super) mod tests {
         };
         let transport = context.integrate_transport(&flux, 1.0)?;
         let forcing = context.lateral.bind_host(c, &walls(0.0, 1.0))?;
-        let fields = context.fields(&reach.accepted.volume.high, &reach.accepted.momentum.high)?;
+        let fields = context.fields(&reach.accepted.volume, &reach.accepted.momentum)?;
         let prepared = context.lateral.prepare(
             c,
             &forcing.lateral,

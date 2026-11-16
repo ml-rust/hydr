@@ -13,6 +13,14 @@ pub(super) struct ConservedPoint<R: Runtime<DType = DType>> {
 }
 
 impl<R: Runtime<DType = DType>> ConservedPoint<R> {
+    /// Point with a `+0.0` low part on the high part's device.
+    pub fn from_high(high: &Tensor<R>) -> Result<Self, ChannelError> {
+        Ok(Self {
+            high: high.clone(),
+            low: Tensor::zeros(high.shape(), high.dtype(), high.device())?,
+        })
+    }
+
     /// Upload host parts after checking the low part against the geometry and the high part.
     pub fn from_parts(
         context: &Context<R>,

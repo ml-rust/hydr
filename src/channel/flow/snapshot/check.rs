@@ -213,6 +213,14 @@ pub(super) fn diagnostics(a: &ChannelStepDiagnostics, b: &ChannelStepDiagnostics
         && values(&a.face_volume_m3, &b.face_volume_m3)
         && values(&a.face_volume_low_m3, &b.face_volume_low_m3)
         && values(&a.storage_selection_bound_m3, &b.storage_selection_bound_m3)
+        && values(
+            &a.recovery_selection_bound_m2,
+            &b.recovery_selection_bound_m2,
+        )
+        && values(
+            &a.discharge_recovery_selection_bound_m3_per_s,
+            &b.discharge_recovery_selection_bound_m3_per_s,
+        )
         && values(&a.face_momentum_low_m4_per_s, &b.face_momentum_low_m4_per_s)
         && values(
             &a.face_transfer_underflow_bound_m3,

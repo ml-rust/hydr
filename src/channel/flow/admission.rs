@@ -1,4 +1,4 @@
-use super::{ChannelError, context::Context};
+use super::{ChannelError, conserved_point::ConservedPoint, context::Context};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
@@ -7,11 +7,22 @@ use numr::ops::{
 use numr::runtime::{Device, Runtime};
 use numr::tensor::Tensor;
 
+/// Recovered cell fields. The F64 values are the selected high parts.
 pub(super) struct Fields<R: Runtime<DType = DType>> {
     pub area: Tensor<R>,
     pub depth: Tensor<R>,
     pub velocity: Tensor<R>,
     pub discharge: Tensor<R>,
+    /// Two-part area in m². The low part is `+0.0` outside surveyed geometry.
+    #[cfg_attr(not(test), expect(dead_code, reason = "the point flux reads it"))]
+    pub area_point: ConservedPoint<R>,
+    /// Two-part discharge in m³/s. The low part is `+0.0` outside surveyed geometry.
+    #[cfg_attr(not(test), expect(dead_code, reason = "the point flux reads it"))]
+    pub discharge_point: ConservedPoint<R>,
+    /// Radius discarded when the area point is selected, in m². A diagnostic only.
+    pub area_selection_bound: Tensor<R>,
+    /// Radius discarded when the discharge point is selected, in m³/s. A diagnostic only.
+    pub discharge_selection_bound: Tensor<R>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -36,7 +47,7 @@ where
         Ok(self.client.min(mask, &[0], false)?.item::<f64>()? == 1.0)
     }
 
-    fn first_rejected(&self, admitted: &Tensor<R>) -> Result<usize, ChannelError> {
+    pub(super) fn first_rejected(&self, admitted: &Tensor<R>) -> Result<usize, ChannelError> {
         let rejected = self.client.eq(admitted, &self.constant(admitted, 0.0)?)?;
         let selected = self.client.argmax(&rejected, 0, false)?.item::<i64>()?;
         usize::try_from(selected)
@@ -89,31 +100,39 @@ where
         + ScalarOps<R>
         + TwoSumOps<R>,
 {
+    /// Recover fields from both parts of the conserved state.
+    ///
+    /// Surveyed geometry divides the two-part values. Other geometry reads the high parts only.
     pub fn fields(
         &self,
-        volume: &Tensor<R>,
-        momentum: &Tensor<R>,
+        volume_point: &ConservedPoint<R>,
+        momentum_point: &ConservedPoint<R>,
     ) -> Result<Fields<R>, ChannelError> {
-        for (value, name) in [
-            (volume, "cell water volume"),
-            (momentum, "cell longitudinal momentum"),
+        let volume = &volume_point.high;
+        let momentum = &momentum_point.high;
+        for (point, name) in [
+            (volume_point, "cell water volume"),
+            (momentum_point, "cell longitudinal momentum"),
         ] {
-            if value.shape() != [self.count()]
-                || value.dtype() != DType::F64
-                || !value.device().is_same(self.length.device())
-            {
-                return Err(ChannelError::input(
-                    "channel state requires equal F64 cell arrays on the configured device: rebuild state with this client",
-                ));
+            for value in [&point.high, &point.low] {
+                if value.shape() != [self.count()]
+                    || value.dtype() != DType::F64
+                    || !value.device().is_same(self.length.device())
+                {
+                    return Err(ChannelError::input(
+                        "channel state requires equal F64 cell arrays on the configured device: rebuild state with this client",
+                    ));
+                }
             }
-            self.finite(value, name)?;
+            self.finite(&point.high, name)?;
         }
         let c = &self.client;
         let zero = self.constant(volume, 0.0)?;
         let one = self.constant(volume, 1.0)?;
         let wet = c.gt(volume, &zero)?;
-        let area = c.div(volume, &self.length)?;
-        if matches!(&self.geometry, super::geometry::TensorGeometry::Surveyed(_)) {
+        let mut area = c.div(volume, &self.length)?;
+        let mut points = None;
+        if let super::geometry::TensorGeometry::Surveyed(geometry) = &self.geometry {
             let nonnegative_volume = c.ge(volume, &zero)?;
             let nonnegative_area = c.ge(&area, &zero)?;
             let finite_area = c.le(&c.abs(&area)?, &self.constant(&area, f64::MAX)?)?;
@@ -129,11 +148,41 @@ where
                     read(volume)?, read(&self.length)?, read(&area)?
                 )).at(index));
             }
+            let recovered =
+                self.surveyed_points(volume_point, momentum_point, &geometry.cap_area_upper)?;
+            area = recovered.area.high.clone();
+            points = Some(recovered);
         }
         let depth = self.section_depth(&area)?;
-        let safe_volume = c.where_cond(&wet, volume, &one)?;
-        let velocity = c.div(momentum, &safe_volume)?;
-        let discharge = c.div(momentum, &self.length)?;
+        let (velocity, discharge, area_point, discharge_point, area_bound, discharge_bound) =
+            match points {
+                Some(points) => (
+                    points.velocity,
+                    points.discharge.high.clone(),
+                    points.area,
+                    points.discharge,
+                    points.area_bound,
+                    points.discharge_bound,
+                ),
+                None => {
+                    let safe_volume = c.where_cond(&wet, volume, &one)?;
+                    let discharge = c.div(momentum, &self.length)?;
+                    (
+                        c.div(momentum, &safe_volume)?,
+                        discharge.clone(),
+                        ConservedPoint {
+                            high: area.clone(),
+                            low: zero.clone(),
+                        },
+                        ConservedPoint {
+                            high: discharge,
+                            low: zero.clone(),
+                        },
+                        zero.clone(),
+                        zero.clone(),
+                    )
+                }
+            };
         let mut admitted = c.ge(volume, &zero)?;
         admitted = c.mul(&admitted, &c.maximum(&wet, &c.eq(momentum, &zero)?)?)?;
         for value in [&velocity, &discharge] {
@@ -174,6 +223,23 @@ where
             depth,
             velocity,
             discharge,
+            area_point,
+            discharge_point,
+            area_selection_bound: area_bound,
+            discharge_selection_bound: discharge_bound,
         })
+    }
+
+    /// Fields of a state with `+0.0` low parts.
+    #[cfg(test)]
+    pub fn fields_high(
+        &self,
+        volume: &Tensor<R>,
+        momentum: &Tensor<R>,
+    ) -> Result<Fields<R>, ChannelError> {
+        self.fields(
+            &ConservedPoint::from_high(volume)?,
+            &ConservedPoint::from_high(momentum)?,
+        )
     }
 }

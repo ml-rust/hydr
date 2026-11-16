@@ -102,6 +102,12 @@ pub struct ChannelStepDiagnostics {
     pub face_volume_low_m3: Vec<f64>,
     /// Radius discarded when each cell's two-part volume selects its center, in m³, one per cell.
     pub storage_selection_bound_m3: Vec<f64>,
+    /// Radius discarded when each cell's final two-part area selects its center, in m², one per cell.
+    /// A diagnostic, not a conservation charge. Zero outside surveyed geometry.
+    pub recovery_selection_bound_m2: Vec<f64>,
+    /// Radius discarded when each cell's final two-part discharge selects its center, in m³/s.
+    /// A diagnostic, not a conservation charge. Zero outside surveyed geometry.
+    pub discharge_recovery_selection_bound_m3_per_s: Vec<f64>,
     /// Detected numerical flux-integral underflow bounds in m³, one per ordered face.
     /// Surveyed bounds also hold the face product radius.
     pub face_transfer_underflow_bound_m3: Vec<f64>,

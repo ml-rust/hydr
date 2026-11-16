@@ -268,7 +268,7 @@ mod tests {
                 longitudinal_momentum_m4_per_s: momentum.clone(),
             },
         )?;
-        let fields = context.fields(&context.tensor(&volume)?, &context.tensor(&momentum)?)?;
+        let fields = context.fields_high(&context.tensor(&volume)?, &context.tensor(&momentum)?)?;
         Ok((context, fields))
     }
 

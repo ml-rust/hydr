@@ -51,7 +51,7 @@ fn check_rejected_candidate(volume: f64) -> TestResult {
     let candidate = reach.context.tensor(&[volume])?;
     let result = reach
         .context
-        .fields(&candidate, &reach.accepted.momentum.high);
+        .fields_high(&candidate, &reach.accepted.momentum.high);
     let error = result
         .err()
         .ok_or("Candidate requires numerical rejection")?;
@@ -86,7 +86,7 @@ fn surveyed_candidate_shape_error_remains_invalid_input() -> TestResult {
     let candidate = reach.context.tensor(&[0.25, 0.25])?;
     let result = reach
         .context
-        .fields(&candidate, &reach.accepted.momentum.high);
+        .fields_high(&candidate, &reach.accepted.momentum.high);
     let error = result
         .err()
         .ok_or("Candidate shape requires input rejection")?;

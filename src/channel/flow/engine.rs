@@ -138,7 +138,7 @@ where
             &initial.longitudinal_momentum_m4_per_s,
             momentum_low,
         )?;
-        context.fields(&volume.high, &momentum.high)?;
+        context.fields(&volume, &momentum)?;
         let storage = context.storage(&volume)?;
         let time = initial.time_s;
         let lateral = context.lateral.initial_state(&context.client)?;
@@ -175,7 +175,7 @@ where
     {
         let fields = self
             .context
-            .fields(&self.accepted.volume.high, &self.accepted.momentum.high)?;
+            .fields(&self.accepted.volume, &self.accepted.momentum)?;
         let volume = self.accepted.volume.high.try_to_vec::<f64>()?;
         let momentum = self.accepted.momentum.high.try_to_vec::<f64>()?;
         let depth = fields.depth.try_to_vec::<f64>()?;

@@ -17,6 +17,15 @@ pub enum ChannelError {
         /// Numerical quantity and corrective action.
         context: String,
     },
+    /// Water at or below the certified cap volume recovers an area above the cap area.
+    ///
+    /// The area selection radius exceeds the cap deficit. The area is never clipped.
+    CapUnresolved {
+        /// Ordered cell index.
+        cell: usize,
+        /// Volume parts, cap, recovered area, and corrective action.
+        context: String,
+    },
     /// The selected runtime cannot execute a required operation.
     Runtime {
         /// Ordered cell index when known.
@@ -53,6 +62,7 @@ impl ChannelError {
             Self::InvalidInput { cell, .. }
             | Self::Numerical { cell, .. }
             | Self::Runtime { cell, .. } => *cell,
+            Self::CapUnresolved { cell, .. } => Some(*cell),
             Self::RecomputeInterval { .. } | Self::Unresolved { .. } => None,
         }
     }
@@ -76,6 +86,7 @@ impl ChannelError {
             Self::InvalidInput { cell, .. }
             | Self::Numerical { cell, .. }
             | Self::Runtime { cell, .. } => *cell = Some(index),
+            Self::CapUnresolved { cell, .. } => *cell = index,
             Self::RecomputeInterval { .. } | Self::Unresolved { .. } => {}
         }
         self
@@ -90,6 +101,9 @@ impl fmt::Display for ChannelError {
             }
             Self::Numerical { cell, context } => {
                 write!(f, "channel numerical, cell={cell:?}: {context}")
+            }
+            Self::CapUnresolved { cell, context } => {
+                write!(f, "channel cap unresolved, cell={cell}: {context}")
             }
             Self::Runtime { cell, context } => {
                 write!(f, "channel runtime, cell={cell:?}: {context}")
