@@ -1,8 +1,6 @@
 use crate::channel::flow::surveyed::error::Arithmetic;
 use numr::dtype::DType;
-use numr::ops::{
-    CompareOps, ConditionalOps, NextRepresentableOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps,
-};
+use numr::ops::{CompareOps, NextRepresentableOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps};
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, CertifiedExpansion};
@@ -70,30 +68,6 @@ where
         let middle_depth = a.expansion_mul(&middle, depth)?;
         a.expansion_add(&self.six_integral, &middle_depth)
     }
-}
-
-/// Select `yes` where `mask` is one and `no` elsewhere, component by component.
-pub(super) fn choose<R>(
-    a: &mut Arithmetic<'_, R>,
-    mask: &Tensor<R>,
-    yes: &CertifiedExpansion<R>,
-    no: &CertifiedExpansion<R>,
-) -> ArithmeticResult<CertifiedExpansion<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    let c = a.client();
-    a.expansion_bounds(
-        &c.where_cond(mask, yes.high(), no.high())?,
-        &c.where_cond(mask, yes.low(), no.low())?,
-        &c.where_cond(mask, yes.abs_error(), no.abs_error())?,
-    )
 }
 
 /// Exact F64 point with the shape of `like`.

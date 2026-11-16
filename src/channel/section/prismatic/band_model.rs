@@ -1,6 +1,7 @@
-use super::band_terms::{BandTerms, choose, stack};
+use super::band_terms::{BandTerms, stack};
 use super::boundary_area::knot;
 use super::inputs::{Inputs, column};
+use crate::channel::flow::surveyed::equation_ops::choose_expansion;
 use crate::channel::flow::surveyed::error::Arithmetic;
 use numr::dtype::DType;
 use numr::ops::{
@@ -110,7 +111,7 @@ where
                 &zeros,
             )?;
             let start_point = a.expansion_point(&start)?;
-            let mean = choose(a, &admitted, &knot.mean_width, &zero)?;
+            let mean = choose_expansion(a, &admitted, &knot.mean_width, &zero)?;
             // m = 2(mean - w)/t, so the area polynomial meets the band area at depth t.
             let excess = a.expansion_sub(&mean, &start_point)?;
             let twice = a.expansion_add(&excess, &excess)?;
@@ -125,11 +126,11 @@ where
             let active = c.mul(&c.mul(&valid, &usable)?, &c.gt(height.lower(), &zeros)?)?;
             let width = c.where_cond(&active, &start, &zeros)?;
             let width_point = a.expansion_point(&width)?;
-            let twice = choose(a, &active, &twice, &zero)?;
-            let divisor = choose(a, &active, &knot.height, &one)?;
+            let twice = choose_expansion(a, &active, &twice, &zero)?;
+            let divisor = choose_expansion(a, &active, &knot.height, &one)?;
             let slope = a.expansion_div_positive(&twice, &divisor)?;
-            let slope = choose(a, &active, &slope, &zero)?;
-            let thickness = choose(a, &active, &knot.height, &zero)?;
+            let slope = choose_expansion(a, &active, &slope, &zero)?;
+            let thickness = choose_expansion(a, &active, &knot.height, &zero)?;
             let terms = BandTerms {
                 area: a.expansion_bounds(area.high(), area.low(), area.abs_error())?,
                 six_integral: a.expansion_bounds(
@@ -141,7 +142,7 @@ where
                 slope,
             };
             let next = terms.six_integral_at(a, &thickness)?;
-            six_integral = choose(a, &active, &next, &terms.six_integral)?;
+            six_integral = choose_expansion(a, &active, &next, &terms.six_integral)?;
             area = a.expansion_add(&area, &knot.increment)?;
             columns.area.push(terms.area);
             columns.six_integral.push(terms.six_integral);

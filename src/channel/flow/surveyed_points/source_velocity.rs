@@ -1,4 +1,5 @@
 use super::types::CapturedPointInput;
+use crate::channel::flow::surveyed::equation_ops::choose_expansion;
 use crate::channel::flow::surveyed::error::{Arithmetic, HydraulicResult, checked};
 use numr::dtype::DType;
 use numr::ops::{
@@ -133,8 +134,8 @@ where
         let fallback_left = masked(a, &fallback, &left, &zero, &zero)?;
         let fallback_right = masked(a, &fallback, &right, &zero, &zero)?;
         let independent = a.expansion_sub(&fallback_right, &fallback_left)?;
-        let difference = select(a, &right_mask, &right_difference, &independent)?;
-        let difference = select(a, &left_mask, &left_difference, &difference)?;
+        let difference = choose_expansion(a, &right_mask, &right_difference, &independent)?;
+        let difference = choose_expansion(a, &left_mask, &left_difference, &difference)?;
         Ok(SourceVelocity {
             input: Arc::clone(input),
             left,
@@ -217,29 +218,6 @@ where
         &c.where_cond(active, value.high(), fallback)?,
         &c.where_cond(active, value.low(), zero)?,
         &c.where_cond(active, value.abs_error(), zero)?,
-    )?)
-}
-
-fn select<R>(
-    a: &mut Arithmetic<'_, R>,
-    active: &Tensor<R>,
-    chosen: &CertifiedExpansion<R>,
-    otherwise: &CertifiedExpansion<R>,
-) -> HydraulicResult<CertifiedExpansion<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    let c = a.client();
-    Ok(a.expansion_bounds(
-        &c.where_cond(active, chosen.high(), otherwise.high())?,
-        &c.where_cond(active, chosen.low(), otherwise.low())?,
-        &c.where_cond(active, chosen.abs_error(), otherwise.abs_error())?,
     )?)
 }
 

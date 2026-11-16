@@ -1,7 +1,7 @@
 use super::wave_curve_types::{CurveValue, ShockDomain, ShockOffset};
 use crate::channel::flow::surveyed::{
     PrismaticRiemannRejection,
-    equation_ops::reject_mask,
+    equation_ops::{choose_expansion, reject_mask},
     error::{Arithmetic, HydraulicResult},
 };
 use crate::channel::section::PressureEndpoint;
@@ -107,7 +107,7 @@ where
     let safe_contraction = a.expansion_div_positive(&ratio_gap, &ratio_target)?;
     let safe_offset = masked(a, &multiply_contraction, &offset, &one, &zero)?;
     let ratio_first = a.expansion_mul(&safe_contraction, &safe_offset)?;
-    let retained = select(a, &divide_offset, &gap_first, &ratio_first)?;
+    let retained = choose_expansion(a, &divide_offset, &gap_first, &ratio_first)?;
     let projected = a.expansion_interval(&retained)?;
     let direct = a.mul(&physical_contraction, &offset_bounds)?;
     let physical = a.bounds(
@@ -279,7 +279,7 @@ where
     let qs = masked(a, &quotient_first, &source_root, &one, &zero)?;
     let quotient = a.expansion_div_positive(&qa, &qs)?;
     let quotient = a.expansion_mul(&qk, &quotient)?;
-    select(a, &product_first, &product, &quotient)
+    Ok(choose_expansion(a, &product_first, &product, &quotient)?)
 }
 
 fn masked<R>(
@@ -303,28 +303,5 @@ where
         &c.where_cond(mask, value.high(), fallback)?,
         &c.where_cond(mask, value.low(), zero)?,
         &c.where_cond(mask, value.abs_error(), zero)?,
-    )?)
-}
-
-fn select<R>(
-    a: &mut Arithmetic<'_, R>,
-    mask: &Tensor<R>,
-    yes: &CertifiedExpansion<R>,
-    no: &CertifiedExpansion<R>,
-) -> HydraulicResult<CertifiedExpansion<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    let c = a.client();
-    Ok(a.expansion_bounds(
-        &c.where_cond(mask, yes.high(), no.high())?,
-        &c.where_cond(mask, yes.low(), no.low())?,
-        &c.where_cond(mask, yes.abs_error(), no.abs_error())?,
     )?)
 }

@@ -4,11 +4,11 @@ use super::{
     wet_star_endpoint::exact_zero,
     wet_star_types::{WetStarDomain, WetStarStatus},
     wet_wave_types::WetWaveSide,
-    wet_waves_endpoint::{offsets, select},
+    wet_waves_endpoint::offsets,
 };
 use crate::channel::{
     flow::surveyed::{
-        equation_ops::{gravity_depth_root, scalar},
+        equation_ops::{choose_expansion, gravity_depth_root, scalar},
         error::{Arithmetic, HydraulicResult},
     },
     section::source_difference,
@@ -147,13 +147,13 @@ where
     let upper = offsets(a, star, 1, side)?;
     // Convex pressure holds globally: certified banks reject benches, and pressure derivatives join continuously.
     // K(A,As), A/As, and B increase on A>=As. B(As) equals source sound.
-    let lower_offset = select(
+    let lower_offset = choose_expansion(
         a,
         &lower.actual.available,
         &lower.actual.retained,
         &source_sound.retained,
     )?;
-    let upper_offset = select(
+    let upper_offset = choose_expansion(
         a,
         &upper.actual.available,
         &upper.actual.retained,

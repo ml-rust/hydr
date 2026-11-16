@@ -7,7 +7,7 @@ use numr::ops::{
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
-use solvr::common::arithmetic::Interval;
+use solvr::common::arithmetic::{ArithmeticResult, CertifiedExpansion, Interval};
 
 pub(crate) fn scalar<R>(a: &mut Arithmetic<'_, R>, value: f64) -> HydraulicResult<Interval<R>>
 where
@@ -125,6 +125,30 @@ where
     )?)
 }
 
+/// Select `yes` where `mask` is one and `no` elsewhere, component by component.
+pub(crate) fn choose_expansion<R>(
+    a: &mut Arithmetic<'_, R>,
+    mask: &Tensor<R>,
+    yes: &CertifiedExpansion<R>,
+    no: &CertifiedExpansion<R>,
+) -> ArithmeticResult<CertifiedExpansion<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    let c = a.client();
+    a.expansion_bounds(
+        &c.where_cond(mask, yes.high(), no.high())?,
+        &c.where_cond(mask, yes.low(), no.low())?,
+        &c.where_cond(mask, yes.abs_error(), no.abs_error())?,
+    )
+}
+
 pub(crate) fn hull<R>(
     a: &mut Arithmetic<'_, R>,
     first: &Interval<R>,
@@ -175,4 +199,36 @@ where
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::channel::flow::surveyed::error::checked;
+    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime};
+
+    #[test]
+    fn choose_expansion_picks_each_side_per_component() -> HydraulicResult<()> {
+        let client = CpuClient::new(CpuDevice::new());
+        checked::<CpuRuntime, _>(&client, "select expansion test", |a| {
+            let device = a.client().device().clone();
+            let part = |values: [f64; 2]| Tensor::<CpuRuntime>::from_slice(&values, &[2], &device);
+            let yes = a.expansion_bounds(
+                &part([1.0, 2.0])?,
+                &part([1e-20, 2e-20])?,
+                &part([0.5, 0.25])?,
+            )?;
+            let no = a.expansion_bounds(
+                &part([3.0, 4.0])?,
+                &part([3e-20, 4e-20])?,
+                &part([0.75, 0.125])?,
+            )?;
+            let mask = part([1.0, 0.0])?;
+            let picked = choose_expansion(a, &mask, &yes, &no)?;
+            assert_eq!(picked.high().to_vec::<f64>(), vec![1.0, 4.0]);
+            assert_eq!(picked.low().to_vec::<f64>(), vec![1e-20, 4e-20]);
+            assert_eq!(picked.abs_error().to_vec::<f64>(), vec![0.5, 0.125]);
+            Ok(())
+        })
+    }
 }

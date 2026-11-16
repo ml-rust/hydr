@@ -12,14 +12,10 @@ use crate::channel::{
 };
 use numr::{
     dtype::DType,
-    ops::{
-        CompareOps, ConditionalOps, MidpointOps, NextRepresentableOps, ScalarOps, TensorOps,
-        TwoSumOps,
-    },
+    ops::{CompareOps, MidpointOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps},
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
-use solvr::common::arithmetic::CertifiedExpansion;
 
 pub(super) struct EndpointOffsets<R: Runtime<DType = DType>> {
     pub(super) actual: CurveValue<R>,
@@ -94,28 +90,4 @@ where
         make(PhysicalEndpoint::Lower)?,
         make(PhysicalEndpoint::Upper)?,
     ])
-}
-
-pub(super) fn select<R>(
-    a: &mut Arithmetic<'_, R>,
-    mask: &Tensor<R>,
-    yes: &CertifiedExpansion<R>,
-    no: &CertifiedExpansion<R>,
-) -> HydraulicResult<CertifiedExpansion<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + MidpointOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    let c = a.client();
-    Ok(a.expansion_bounds(
-        &c.where_cond(mask, yes.high(), no.high())?,
-        &c.where_cond(mask, yes.low(), no.low())?,
-        &c.where_cond(mask, yes.abs_error(), no.abs_error())?,
-    )?)
 }

@@ -1,10 +1,11 @@
 use super::{
     area_point_input::Inputs,
     area_point_query::PrismaticAreaPointBandCoordinates,
-    band_terms::{BandTerms, choose, constant},
+    band_terms::{BandTerms, constant},
     context::Context,
     query_input::{Arithmetic, QueryResult},
 };
+use crate::channel::flow::surveyed::equation_ops::choose_expansion;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, NextRepresentableOps, ReduceOps, ScalarOps,
@@ -125,8 +126,8 @@ where
             &c.le(&magnitude, &c.mul(width_bounds.lower(), &thickness)?)?,
         )?;
         resolved = c.mul(&resolved, &bounded)?;
-        let residual = choose(a, &resolved, &residual, &zero)?;
-        let width = choose(a, &resolved, &width, &one)?;
+        let residual = choose_expansion(a, &resolved, &residual, &zero)?;
+        let width = choose_expansion(a, &resolved, &width, &one)?;
         let step = a.expansion_div_positive(&residual, &width)?;
         depth = a.expansion_sub(&depth, &step)?;
     }
@@ -135,7 +136,7 @@ where
     let value = a.expansion_div_positive(&six_value, &six)?;
     // Dry rows carry a zero certified interval, so the lift gives exact zero.
     let fallback = a.expansion_from_interval(integral)?;
-    Ok(choose(a, &resolved, &value, &fallback)?)
+    Ok(choose_expansion(a, &resolved, &value, &fallback)?)
 }
 
 #[cfg(test)]
