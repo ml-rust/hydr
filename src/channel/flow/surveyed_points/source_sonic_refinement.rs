@@ -5,7 +5,9 @@ use super::{
     point_root_depth as wet_depth_mapping,
     root_invocation::RootInvocation,
     source_sonic_callback, source_sonic_charts,
-    source_sonic_types::{SourceSonicBinding, SourceSonicContinuation, SourceSonicDomain},
+    source_sonic_types::{
+        SourceSonicBinding, SourceSonicContinuation, SourceSonicDomain, SourceSonicNativeLimits,
+    },
     wet_depth_types::WetDepthStatus,
 };
 use crate::channel::flow::surveyed::{
@@ -15,8 +17,8 @@ use crate::channel::flow::surveyed::{
 use numr::{
     dtype::DType,
     ops::{
-        CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps, ScalarOps,
-        TensorOps, TwoSumOps,
+        BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
+        ScalarOps, TensorOps, TwoSumOps,
     },
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
@@ -55,6 +57,7 @@ where
         domain,
         tolerance,
         None,
+        false,
     )
 }
 
@@ -88,6 +91,38 @@ where
         domain,
         tolerance,
         Some(rows),
+        false,
+    )
+}
+
+pub(super) fn refresh_selected<R>(
+    sources: &mut PairedSources<'_, R>,
+    invocation: &mut RootInvocation,
+    request_binding: &SourceSonicBinding<R>,
+    domain: SourceSonicDomain<R>,
+    tolerance: &CertifiedRootTolerance,
+    rows: &Tensor<R>,
+) -> HydraulicResult<SourceSonicDomain<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>,
+{
+    advance_with_selection(
+        sources,
+        invocation,
+        request_binding,
+        domain,
+        tolerance,
+        Some(rows),
+        true,
     )
 }
 
@@ -98,6 +133,7 @@ fn advance_with_selection<R>(
     mut domain: SourceSonicDomain<R>,
     tolerance: &CertifiedRootTolerance,
     selection: Option<&Tensor<R>>,
+    refresh: bool,
 ) -> HydraulicResult<SourceSonicDomain<R>>
 where
     R: Runtime<DType = DType>,
@@ -113,8 +149,16 @@ where
 {
     sources.check_root_witness(invocation.source_witness())?;
     request_binding.check(invocation, domain.side, &domain.binding)?;
+    domain
+        .numerical
+        .check(sources, invocation, &domain.binding)?;
     if let Some(state) = &domain.refinement {
         request_binding.check(invocation, domain.side, &state.binding)?;
+        domain.numerical.check_history(
+            sources,
+            &state.levels,
+            if refresh { selection } else { None },
+        )?;
     }
     let remaining = invocation.remaining()?;
     let witness = invocation.source_witness();
@@ -141,7 +185,7 @@ where
         parent_rows,
         side,
         query,
-        epsilon,
+        numerical,
         classification,
         depth: old_depth,
         normalized_depth: old_normalized,
@@ -153,7 +197,7 @@ where
     } = domain;
     let work = sources.evaluation.work;
     let before = work.snapshot().residual_points;
-    let (chart, progress) = match refinement {
+    let (chart, progress, limits) = match refinement {
         None => {
             let selected = sources.select_rows(&parent_rows, &query)?;
             let (chart, derivative) = checked::<R, _>(c, "source sonic native admission", |a| {
@@ -172,6 +216,7 @@ where
             options.atol = tolerance.atol;
             options.rtol = tolerance.rtol;
             options.max_points = remaining;
+            let limits = SourceSonicNativeLimits::capture(&options);
             let cause = Cell::new(None);
             work.begin_root()?;
             let borrowed = RefCell::new(&mut *sources);
@@ -181,7 +226,7 @@ where
                         &borrowed,
                         &parent_rows,
                         &chart,
-                        &epsilon,
+                        &numerical,
                         side,
                         value,
                         &cause,
@@ -195,13 +240,15 @@ where
                 &derivative,
                 &options,
             );
-            (chart, resolve_root(progress, cause.take())?)
+            (chart, resolve_root(progress, cause.take())?, limits)
         }
         Some(state) => {
             let SourceSonicContinuation {
                 binding: _,
                 continuation,
                 chart,
+                levels: _,
+                limits,
             } = state;
             sources.select_rows(&parent_rows, &chart)?;
             let rounds = witness
@@ -224,7 +271,7 @@ where
                     &borrowed,
                     &parent_rows,
                     &chart,
-                    &epsilon,
+                    &numerical,
                     side,
                     value,
                     &cause,
@@ -234,18 +281,29 @@ where
                 wet_depth_mapping::evaluate(&borrowed, &parent_rows, &chart, bounds, &cause)
             };
             let progress = if let Some(rows) = selection {
-                c.resume_certified_mapped_selected(
-                    residual,
-                    mapping,
-                    continuation,
-                    rows,
-                    tolerance,
-                    &allowance,
-                )
+                if refresh {
+                    c.refresh_certified_mapped_selected(
+                        residual,
+                        mapping,
+                        continuation,
+                        rows,
+                        tolerance,
+                        &allowance,
+                    )
+                } else {
+                    c.resume_certified_mapped_selected(
+                        residual,
+                        mapping,
+                        continuation,
+                        rows,
+                        tolerance,
+                        &allowance,
+                    )
+                }
             } else {
                 c.resume_certified_mapped(residual, mapping, continuation, tolerance, &allowance)
             };
-            (chart, resolve_root(progress, cause.take())?)
+            (chart, resolve_root(progress, cause.take())?, limits)
         }
     };
     let mapped_points = progress.mapped_points();
@@ -361,13 +419,15 @@ where
         })?;
         (query, depth, normalized_depth, status)
     };
+    let levels = Tensor::empty(numerical.levels().shape(), DType::I64, c.device())?;
+    c.copy_into(&levels, numerical.levels())?;
     Ok(SourceSonicDomain {
         binding: binding.clone(),
         invocation_owner,
         parent_rows,
         side,
         query,
-        epsilon,
+        numerical,
         classification,
         depth,
         normalized_depth,
@@ -379,6 +439,8 @@ where
             binding,
             continuation,
             chart,
+            levels,
+            limits,
         }),
     })
 }

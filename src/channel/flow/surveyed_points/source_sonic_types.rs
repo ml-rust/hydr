@@ -1,5 +1,6 @@
 use super::{
     root_invocation::{RootInvocation, RootInvocationWitness},
+    source_sonic_numerical::SourceSonicNumericalEvidence,
     wave_curve_types::CurveValue,
 };
 use crate::channel::{
@@ -110,9 +111,43 @@ impl<R: Runtime<DType = DType>> SourceSonicBinding<R> {
     }
 }
 
+/// Immutable ceilings copied from the exact options supplied to the native initialization call.
+pub(super) struct SourceSonicNativeLimits {
+    max_iterations: usize,
+    max_points: usize,
+}
+impl SourceSonicNativeLimits {
+    pub(super) fn capture(options: &solvr::optimize::CertifiedBisectionOptions) -> Self {
+        Self {
+            max_iterations: options.max_iterations,
+            max_points: options.max_points,
+        }
+    }
+    pub(super) fn permits(
+        &self,
+        iterations: usize,
+        points: usize,
+        requested_points: usize,
+    ) -> HydraulicResult<bool> {
+        let rounds = self.max_iterations.checked_sub(iterations).ok_or_else(|| {
+            super::point_root_session::invalid(
+                "sonic iterations exceed their actual original native ceiling",
+            )
+        })?;
+        let remaining = self.max_points.checked_sub(points).ok_or_else(|| {
+            super::point_root_session::invalid(
+                "sonic points exceed their actual original native ceiling",
+            )
+        })?;
+        Ok(rounds != 0 && remaining != 0 && requested_points <= remaining)
+    }
+}
+
 pub(super) struct SourceSonicContinuation<R: Runtime<DType = DType>> {
     pub(super) binding: SourceSonicBinding<R>,
     pub(super) continuation: CertifiedRootContinuation<R>,
+    pub(super) levels: Tensor<R>,
+    pub(super) limits: SourceSonicNativeLimits,
     pub(super) chart: SupportedAreaQuery<R>,
 }
 
@@ -122,7 +157,7 @@ pub(super) struct SourceSonicDomain<R: Runtime<DType = DType>> {
     pub(super) parent_rows: Tensor<R>,
     pub(super) side: SonicSide,
     pub(super) query: SupportedAreaQuery<R>,
-    pub(super) epsilon: CertifiedExpansion<R>,
+    pub(super) numerical: SourceSonicNumericalEvidence<R>,
     pub(super) classification: SourceSonicStatus,
     pub(super) depth: Interval<R>,
     pub(super) normalized_depth: Interval<R>,
@@ -171,6 +206,7 @@ pub(super) struct SourceSonicCertificate<R: Runtime<DType = DType>> {
     pub(super) invocation_owner: Tensor<R>,
     pub(super) parent_rows: Tensor<R>,
     pub(super) side: SonicSide,
+    pub(super) numerical: SourceSonicNumericalEvidence<R>,
     pub(super) query: SupportedAreaQuery<R>,
     pub(super) depth: Interval<R>,
     pub(super) normalized_depth: Interval<R>,

@@ -131,10 +131,16 @@ where
             request
                 .binding
                 .check(&session.invocation, domain.side, &domain.binding)?;
+            domain
+                .numerical
+                .check(session.sources, &session.invocation, &domain.binding)?;
             if let Some(state) = &domain.refinement {
                 request
                     .binding
                     .check(&session.invocation, domain.side, &state.binding)?;
+                domain
+                    .numerical
+                    .check_history(session.sources, &state.levels, None)?;
             }
         }
     }

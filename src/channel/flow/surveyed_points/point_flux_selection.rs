@@ -4,7 +4,6 @@ use super::{
     point_flux_pressure::selected as selected_pressure,
     point_flux_projection::{center, choose},
     point_flux_types::{PointFluxKind, SelectedPointFlux},
-    potential_range::{PotentialContext, PotentialEvaluation},
     source_sonic_types::SonicSide,
 };
 use crate::channel::{
@@ -113,7 +112,12 @@ where
                 ))
             })?
         } else if let PointFluxKind::Fan(side) = operand.kind {
-            let (discharge, velocity) = fan_discharge(sources, &operand.parent, &query, side)?;
+            let numerical = operand.numerical.as_ref().ok_or_else(|| {
+                super::point_root_session::invalid("selected fan numerical evidence is absent")
+            })?;
+            numerical.check_rows(sources, side, &operand.owners, &operand.parent)?;
+            let (discharge, velocity) =
+                fan_discharge(sources, &operand.parent, &query, side, numerical)?;
             let identity =
                 Tensor::zeros(operand.parent.shape(), discharge.high().dtype(), c.device())?;
             (discharge, velocity, identity)
@@ -240,6 +244,7 @@ fn fan_discharge<R>(
     parent: &Tensor<R>,
     query: &crate::channel::section::SupportedAreaQuery<R>,
     side: SonicSide,
+    numerical: &super::source_sonic_numerical::SourceSonicNumericalEvidence<R>,
 ) -> HydraulicResult<(
     solvr::common::arithmetic::CertifiedExpansion<R>,
     solvr::common::arithmetic::CertifiedExpansion<R>,
@@ -256,34 +261,9 @@ where
         + CertifiedSimpsonAlgorithms<R>,
 {
     let c = sources.geometry.client();
-    let empty = Tensor::empty(&[0], DType::I64, c.device())?;
-    let [left, right] = if side == SonicSide::Left {
-        sources.source_values([parent, &empty])?
-    } else {
-        sources.source_values([&empty, parent])?
-    };
-    let potential = if side == SonicSide::Left { left } else { right };
     let stage = sources.select_rows(parent, query)?;
-    let epsilon = checked::<R, _>(c, "selected fan source invariant", |a| {
-        if side == SonicSide::Left {
-            Ok(a.expansion_add(&stage.velocity.left, &potential.retained)?)
-        } else {
-            Ok(a.expansion_sub(&potential.retained, &stage.velocity.right)?)
-        }
-    })?;
-    let context = PotentialContext::new(
-        sources.geometry,
-        &stage.bands,
-        &stage.sources[side.index()],
-        query,
-        &stage.boundaries,
-        PotentialEvaluation {
-            config: sources.evaluation.config,
-            panels: sources.evaluation.panels,
-            work: sources.evaluation.work,
-        },
-    )?;
-    let (velocity, change) = super::source_sonic_invariant::endpoint(&context, side, &epsilon)?;
+    let (velocity, change) =
+        super::source_sonic_policy::invariant(sources, parent, query, side, numerical)?;
     checked::<R, _>(c, "selected fan anchored discharge", |a| {
         let source_velocity = if side == SonicSide::Left {
             &stage.velocity.left

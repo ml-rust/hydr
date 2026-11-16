@@ -28,6 +28,7 @@ pub(super) struct Operands<R: Runtime<DType = DType>> {
     pub(super) query: SupportedAreaQuery<R>,
     pub(super) discharge: Interval<R>,
     pub(super) captured: Option<[CertifiedExpansion<R>; 2]>,
+    pub(super) numerical: Option<super::source_sonic_numerical::SourceSonicNumericalEvidence<R>>,
 }
 
 pub(super) fn candidate<R>(
@@ -96,6 +97,7 @@ where
                 query: wave.star.query.select(a, &s.rows)?,
                 discharge: q,
                 captured: None,
+                numerical: None,
             }));
         }
         PointCandidate::Fan(f) => {
@@ -125,6 +127,11 @@ where
         query: query.select(a, &rows)?,
         discharge,
         captured,
+        numerical: if let PointCandidate::Fan(f) = candidate {
+            Some(f.certificate.numerical.selected(a, &rows)?)
+        } else {
+            None
+        },
     }))
 }
 
@@ -159,6 +166,11 @@ where
         query: operand.query.select(a, rows)?,
         discharge: select_interval(a, &operand.discharge, rows)?,
         captured,
+        numerical: operand
+            .numerical
+            .as_ref()
+            .map(|proof| proof.selected(a, rows))
+            .transpose()?,
     })
 }
 

@@ -1,0 +1,131 @@
+# Reusable test workflow: lint, format, docs, reference tools, tests, MSRV.
+#
+# Called by:
+#   - ci.yml (PR checks and manual dispatch)
+#
+# Runs through `workflow_call` only.
+#
+# numr and solvr resolve from crates.io. No job checks out a sibling
+# repository. Local path patches live in the ignored `.cargo/config.toml`.
+#
+# No job builds the `cuda` feature: no hosted runner has a GPU. The `wgpu`
+# feature is compile-checked only.
+#
+# Every third-party action is pinned to a commit SHA, with its release in a
+# trailing comment.
+
+name: Test
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint, Format & Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          prefix-key: lint
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Run clippy (CPU)
+        run: cargo clippy --all-targets --no-default-features -- -D warnings
+
+      - name: Check WGPU feature compilation
+        run: cargo check --all-targets --no-default-features --features wgpu
+
+      - name: Build docs
+        run: cargo doc --no-deps --no-default-features
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      - name: Run doctests
+        run: cargo test --doc --no-default-features
+
+  reference:
+    name: Reference Tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Test SWMM runoff reference
+        run: python3 -m unittest discover -s tools/reference -p test_swmm_runoff.py
+
+      - name: Test subcatchment temporal reference
+        run: python3 -m unittest discover -s tools/reference -p test_subcatchment_temporal.py
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          prefix-key: test
+
+      - name: Run tests (CPU)
+        run: cargo test --all-targets --no-default-features
+
+      - name: Run grid example
+        run: cargo run --example grid
+
+      - name: Run rain basin example
+        run: cargo run --example rain_basin
+
+  # The MSRV comes from `rust-version` in Cargo.toml, so the manifest and this
+  # job cannot drift apart.
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read MSRV from Cargo.toml
+        id: msrv
+        run: |
+          set -euo pipefail
+          MSRV=$(grep -m1 '^rust-version = ' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          if [[ -z "$MSRV" ]]; then
+            echo "::error::Cargo.toml declares no rust-version"
+            exit 1
+          fi
+          echo "Declared MSRV: $MSRV"
+          echo "version=$MSRV" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust ${{ steps.msrv.outputs.version }}
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          prefix-key: msrv-${{ steps.msrv.outputs.version }}
+
+      # Library only. Dev-dependencies are not part of the contract.
+      - name: Check MSRV (CPU)
+        run: cargo check --no-default-features

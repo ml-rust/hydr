@@ -60,9 +60,9 @@ where
                     domain.depth.upper(),
                     domain.normalized_depth.lower(),
                     domain.normalized_depth.upper(),
-                    domain.epsilon.high(),
-                    domain.epsilon.low(),
-                    domain.epsilon.abs_error(),
+                    domain.numerical.epsilon().high(),
+                    domain.numerical.epsilon().low(),
+                    domain.numerical.epsilon().abs_error(),
                 ] {
                     fields.push(
                         tensor

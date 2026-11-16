@@ -1,8 +1,8 @@
 use super::{
     paired_sources::PairedSources,
-    potential_range::select_expansion,
     root_invocation::RootInvocation,
-    source_sonic_callback, source_sonic_charts, source_sonic_residual,
+    source_sonic_callback, source_sonic_charts,
+    source_sonic_numerical::SourceSonicNumericalEvidence,
     source_sonic_types::{SonicSide, SourceSonicDomain, SourceSonicRequest, SourceSonicStatus},
     wave_curve_types::{CurveValue, scatter_value},
     wet_depth_types::WetDepthStatus,
@@ -26,7 +26,6 @@ use numr::{
     tensor::Tensor,
 };
 use solvr::{
-    common::arithmetic::CertifiedExpansion,
     integrate::CertifiedSimpsonAlgorithms,
     optimize::{
         CertifiedUpperBracketAlgorithms, CertifiedUpperBracketOptions, CertifiedUpperBracketStatus,
@@ -93,43 +92,38 @@ where
         .work
         .charge(QueryWork::Residual, endpoint_points)?;
     let empty = Tensor::empty(&[0], DType::I64, c.device())?;
+    let level = sources.panel_level(0)?;
     let values = match side {
-        SonicSide::Left => sources.source_values([&parent_rows, &empty])?,
-        SonicSide::Right => sources.source_values([&empty, &parent_rows])?,
+        SonicSide::Left => sources.source_values_at_level(&level, [&parent_rows, &empty])?,
+        SonicSide::Right => sources.source_values_at_level(&level, [&empty, &parent_rows])?,
     };
-    let [left, right] = values;
-    let potential = if side == SonicSide::Left { left } else { right };
-    let (epsilon, dry) = checked::<R, _>(c, "source sonic retained outgoing invariant", |a| {
-        let selected = sources.select_sources(a, &parent_rows)?;
-        let velocity = if side == SonicSide::Left {
-            &selected.velocity.left
-        } else {
-            &selected.velocity.right
-        };
-        let epsilon = if side == SonicSide::Left {
-            a.expansion_add(velocity, &potential.retained)?
-        } else {
-            a.expansion_sub(&potential.retained, velocity)?
-        };
+    let owners = c.index_select(&request.binding.owners, 0, &wet)?;
+    let binding = request.binding.selected(owners, parent_rows.clone());
+    let numerical = SourceSonicNumericalEvidence::issue(sources, &binding, &values)?;
+    let epsilon = numerical.epsilon();
+    let dry = checked::<R, _>(c, "source sonic retained outgoing invariant", |a| {
+        let potential = values.checked_side(sources, side.index(), &parent_rows)?;
         let zero =
             a.expansion_point(&Tensor::zeros(parent_rows.shape(), a.dtype(), c.device())?)?;
-        let retained = a.expansion_sub(&zero, &epsilon)?;
-        let dry = CurveValue {
+        let retained = a.expansion_sub(&zero, epsilon)?;
+        Ok(CurveValue {
             physical: a.expansion_interval(&retained)?,
             retained,
-            available: potential.available,
-        };
-        Ok((epsilon, dry))
+            available: c.minimum(
+                &potential.available,
+                &Tensor::ones(parent_rows.shape(), a.dtype(), c.device())?,
+            )?,
+        })
     })?;
     let one = Tensor::ones(parent_rows.shape(), epsilon.high().dtype(), c.device())?;
     let source_chart = source_sonic_charts::chart(sources, &parent_rows, side, &one, &one)?;
-    let source = source_sonic_residual::endpoint(
+    let source = super::source_sonic_policy::residual(
         sources,
         &parent_rows,
         &source_chart,
         PhysicalEndpoint::Lower,
         side,
-        &epsilon,
+        &numerical,
     )?;
     invocation.add_points(endpoint_points)?;
     request.endpoint_points = endpoint_points;
@@ -192,12 +186,12 @@ where
         }
         let request_rows = c.index_select(&wet, 0, selected)?;
         let parents = c.index_select(&parent_rows, 0, selected)?;
-        let epsilon = checked::<R, _>(c, "source sonic contact invariant", |a| {
-            select_expansion(a, &epsilon, selected)
+        let numerical = checked::<R, _>(c, "source sonic contact invariant", |a| {
+            numerical.selected(a, selected)
         })?;
         let point = Tensor::full_scalar(
             selected.shape(),
-            epsilon.high().dtype(),
+            numerical.epsilon().high().dtype(),
             parameter,
             c.device(),
         )?;
@@ -208,16 +202,17 @@ where
             &request_rows,
             parents,
             query,
-            epsilon,
+            numerical,
             classification,
         )?;
     }
     if positive.numel() != 0 {
         let request_rows = c.index_select(&wet, 0, &positive)?;
         let parents = c.index_select(&parent_rows, 0, &positive)?;
-        let epsilon = checked::<R, _>(c, "source sonic positive invariant", |a| {
-            select_expansion(a, &epsilon, &positive)
+        let numerical = checked::<R, _>(c, "source sonic positive invariant", |a| {
+            numerical.selected(a, &positive)
         })?;
+        let epsilon = numerical.epsilon();
         let zero = Tensor::zeros(positive.shape(), epsilon.high().dtype(), c.device())?;
         let one = Tensor::ones(positive.shape(), epsilon.high().dtype(), c.device())?;
         let mut query = source_sonic_charts::chart(sources, &parents, side, &zero, &one)?;
@@ -235,7 +230,7 @@ where
                 let result = c.bracket_upper_certified(
                     |value| {
                         source_sonic_callback::evaluate(
-                            &borrowed, &parents, &query, &epsilon, side, value, &cause,
+                            &borrowed, &parents, &query, &numerical, side, value, &cause,
                         )
                     },
                     query.query.parameter.lower(),
@@ -280,7 +275,7 @@ where
             &request_rows,
             parents,
             query,
-            epsilon,
+            numerical,
             SourceSonicStatus::PositiveRoot,
         )?;
     }
@@ -293,7 +288,7 @@ fn push_domain<R>(
     request_rows: &Tensor<R>,
     parent_rows: Tensor<R>,
     query: SupportedAreaQuery<R>,
-    epsilon: CertifiedExpansion<R>,
+    numerical: SourceSonicNumericalEvidence<R>,
     classification: SourceSonicStatus,
 ) -> HydraulicResult<()>
 where
@@ -338,7 +333,7 @@ where
         parent_rows,
         side: request.binding.side,
         query,
-        epsilon,
+        numerical,
         classification,
         depth,
         normalized_depth,

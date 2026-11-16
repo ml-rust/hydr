@@ -1,5 +1,6 @@
 use super::{
-    paired_sources::PairedSources, potential_range::select_expansion, source_sonic_types::SonicSide,
+    paired_sources::PairedSources, source_sonic_numerical::SourceSonicNumericalEvidence,
+    source_sonic_types::SonicSide,
 };
 use crate::channel::{
     flow::surveyed::{
@@ -18,7 +19,6 @@ use numr::{
     tensor::Tensor,
 };
 use solvr::{
-    common::arithmetic::CertifiedExpansion,
     integrate::CertifiedSimpsonAlgorithms,
     optimize::{CertifiedRootQuery, CertifiedRootValues},
 };
@@ -28,7 +28,7 @@ pub(super) fn evaluate<R>(
     sources: &RefCell<&mut PairedSources<'_, R>>,
     rows: &Tensor<R>,
     chart: &SupportedAreaQuery<R>,
-    epsilon: &CertifiedExpansion<R>,
+    numerical: &SourceSonicNumericalEvidence<R>,
     side: SonicSide,
     query: &CertifiedRootQuery<R>,
     cause: &Cell<Option<HydraulicError>>,
@@ -53,7 +53,7 @@ where
             .work
             .charge(QueryWork::Residual, query.point.numel())?;
         let c = sources.geometry.client();
-        let (parents, target, epsilon) =
+        let (parents, target, numerical) =
             checked::<R, _>(c, "source sonic callback bound query", |a| {
                 let parents = c.index_select(rows, 0, &query.owner)?;
                 let selected = sources.select_sources(a, &parents)?;
@@ -62,16 +62,16 @@ where
                 Ok((
                     parents,
                     chart.with_parameter_bounds(a, &selected.bands, &parameter)?,
-                    select_expansion(a, epsilon, &query.owner)?,
+                    numerical.selected(a, &query.owner)?,
                 ))
             })?;
-        let value = super::source_sonic_residual::endpoint(
+        let value = super::source_sonic_policy::residual(
             &mut sources,
             &parents,
             &target,
             PhysicalEndpoint::Lower,
             side,
-            &epsilon,
+            &numerical,
         )?;
         let zero = Tensor::zeros(value.available.shape(), value.available.dtype(), c.device())?;
         if c.nonzero(&c.eq(&value.available, &zero)?)?.numel() != 0 {

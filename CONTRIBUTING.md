@@ -83,16 +83,9 @@ Tests and reference executables share `tests/support/runtime.rs` for explicit se
 
 The `cuda` and `wgpu` features forward backend support into numr and solvr. WGPU rejects the current `f64` profile. CUDA admission retains its algorithm-specific arithmetic restrictions.
 
-### Checked dependency sources
+### Numerical dependencies
 
-The current numerical checks use these local source commits. Match them when reproducing the recorded results.
-
-| Dependency | Version | Source commit |
-| --- | --- | --- |
-| numr | `0.15.2` | `167652acd7798730987186efd04961aa7cd2b70b` |
-| solvr | `0.3.1` | `2a297de81fe9793c8824477ec72265e44e28f237` |
-
-Numr supplies checked square roots and fused multiply-add arithmetic for CPU and CUDA. Solvr supplies checked interval arithmetic, certified integration, and certified root solving. Package versions remain unchanged during this unpublished work.
+Numr supplies checked square roots and fused multiply-add arithmetic for CPU and CUDA. Solvr supplies checked interval arithmetic, certified integration, and certified root solving.
 
 ### Local dependency overrides
 
@@ -105,7 +98,7 @@ numr = { path = "../numr" }
 solvr = { path = "../solvr" }
 ```
 
-CI checks both dependency repositories at the recorded commits through the same local patch mechanism. Publish those dependency commits before running remote CI. Committed manifests must use published versions or explicit Git revisions. Local overrides belong in ignored `.cargo/config.toml`.
+CI resolves numr and solvr from crates.io and checks out no sibling repository. Release a dependency change before hydr CI can use it. Committed manifests use published versions. Local overrides belong in ignored `.cargo/config.toml`.
 
 ### Numerical ownership
 

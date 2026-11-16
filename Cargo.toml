@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.95"
 description = "Hydrology and hydraulic simulation on numr runtimes"
 license = "Apache-2.0"
-repository = "https://github.com/ml-rust/rivr"
+repository = "https://github.com/ml-rust/hydr"
 readme = "README.md"
 keywords = ["hydraulics", "shallow-water", "flood", "simulation"]
 categories = ["science", "simulation"]
@@ -28,6 +28,12 @@ missing_docs = "warn"
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
 
 [profile.release]
 lto = "thin"

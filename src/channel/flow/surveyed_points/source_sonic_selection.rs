@@ -22,7 +22,7 @@ use solvr::{
     optimize::{CertifiedMappedBisectionAlgorithms, CertifiedRootTolerance},
 };
 
-fn deferred<R>(
+pub(super) fn deferred<R>(
     sources: &PairedSources<'_, R>,
     domain: &SourceSonicDomain<R>,
     rows: &Tensor<R>,
@@ -58,7 +58,7 @@ where
                 parent_rows: parent,
                 side: domain.side,
                 query: domain.query.select(a, rows)?,
-                epsilon: super::potential_range::select_expansion(a, &domain.epsilon, rows)?,
+                numerical: domain.numerical.selected(a, rows)?,
                 classification: domain.classification,
                 depth: select_interval(a, &domain.depth, rows)?,
                 normalized_depth: select_interval(a, &domain.normalized_depth, rows)?,

@@ -1,7 +1,6 @@
 use super::{
     paired_sources::PairedSources,
     point_root_session::PointRootSession,
-    potential_range::{PotentialContext, PotentialEvaluation},
     source_sonic_types::{
         SonicFanMembership, SonicSide, SourceSonicCertificate, SourceSonicCertificates,
         SourceSonicDomain, SourceSonicEvidence, SourceSonicStatus,
@@ -90,7 +89,7 @@ struct Operands<'a, R: Runtime<DType = DType>> {
     parent_rows: &'a Tensor<R>,
     side: SonicSide,
     query: &'a crate::channel::section::SupportedAreaQuery<R>,
-    epsilon: &'a solvr::common::arithmetic::CertifiedExpansion<R>,
+    numerical: &'a super::source_sonic_numerical::SourceSonicNumericalEvidence<R>,
     classification: SourceSonicStatus,
     depth: &'a solvr::common::arithmetic::Interval<R>,
     normalized_depth: &'a solvr::common::arithmetic::Interval<R>,
@@ -106,7 +105,7 @@ impl<'a, R: Runtime<DType = DType>> From<&'a SourceSonicDomain<R>> for Operands<
             parent_rows: &d.parent_rows,
             side: d.side,
             query: &d.query,
-            epsilon: &d.epsilon,
+            numerical: &d.numerical,
             classification: d.classification,
             depth: &d.depth,
             normalized_depth: &d.normalized_depth,
@@ -162,13 +161,13 @@ where
             if rows.numel() == 0 {
                 continue;
             }
-            let (owners, parent, query, epsilon, depth, normalized, status) =
+            let (owners, parent, query, numerical, depth, normalized, status) =
                 checked::<R, _>(c, "source sonic demanded certificate operands", |a| {
                     Ok((
                         c.index_select(&domain.invocation_owner, 0, &rows)?,
                         c.index_select(&domain.parent_rows, 0, &rows)?,
                         domain.query.select(a, &rows)?,
-                        super::potential_range::select_expansion(a, &domain.epsilon, &rows)?,
+                        domain.numerical.selected(a, &rows)?,
                         crate::channel::flow::surveyed::equation_ops::select_interval(
                             a,
                             &domain.depth,
@@ -189,7 +188,7 @@ where
                     parent_rows: &parent,
                     side: domain.side,
                     query: &query,
-                    epsilon: &epsilon,
+                    numerical: &numerical,
                     classification: domain.classification,
                     depth: &depth,
                     normalized_depth: &normalized,
@@ -219,6 +218,12 @@ where
         + RuntimeClient<R>
         + CertifiedSimpsonAlgorithms<R>,
 {
+    domain.numerical.check_rows(
+        sources,
+        domain.side,
+        domain.invocation_owner,
+        domain.parent_rows,
+    )?;
     let c = sources.geometry.client();
     let selected = sources.select_rows(domain.parent_rows, domain.query)?;
     let mut endpoint_velocity = Vec::with_capacity(2);
@@ -228,29 +233,22 @@ where
         let query = checked::<R, _>(c, "source sonic certificate endpoint query", |a| {
             domain.query.endpoint(a, &selected.bands, endpoint)
         })?;
-        let context = PotentialContext::new(
-            sources.geometry,
-            &selected.bands,
-            &selected.sources[domain.side.index()],
+        let (velocity, change) = super::source_sonic_policy::invariant(
+            sources,
+            domain.parent_rows,
             &query,
-            &selected.boundaries,
-            PotentialEvaluation {
-                config: sources.evaluation.config,
-                panels: sources.evaluation.panels,
-                work: sources.evaluation.work,
-            },
+            domain.side,
+            domain.numerical,
         )?;
-        let (velocity, change) =
-            super::source_sonic_invariant::endpoint(&context, domain.side, domain.epsilon)?;
         endpoint_velocity.push(velocity);
         endpoint_change.push(change);
-        endpoint_residual.push(super::source_sonic_residual::endpoint(
+        endpoint_residual.push(super::source_sonic_policy::residual(
             sources,
             domain.parent_rows,
             &query,
             PhysicalEndpoint::Lower,
             domain.side,
-            domain.epsilon,
+            domain.numerical,
         )?);
     }
     checked::<R, _>(c, "source sonic physical certificates", |a| {
@@ -377,6 +375,7 @@ where
             invocation_owner: copy(domain.invocation_owner)?,
             parent_rows: copy(domain.parent_rows)?,
             side: domain.side,
+            numerical: domain.numerical.owned(a)?,
             query,
             depth: a.bounds(&copy(domain.depth.lower())?, &copy(domain.depth.upper())?)?,
             normalized_depth: a.bounds(

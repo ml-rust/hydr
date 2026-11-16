@@ -1,52 +1,26 @@
+# CI: thin wrapper over the reusable test workflow.
+#
+# Runs on each pull request and on manual dispatch. The draft guard skips draft
+# pull requests only.
+
 name: CI
 
 on:
-  push:
   pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        toolchain: ["1.95.0", stable]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: ml-rust/numr
-          ref: 167652acd7798730987186efd04961aa7cd2b70b
-          path: .ci-dependencies/numr
-      - uses: actions/checkout@v4
-        with:
-          repository: ml-rust/solvr
-          ref: 2a297de81fe9793c8824477ec72265e44e28f237
-          path: .ci-dependencies/solvr
-      - name: Configure checked numerical dependency
-        run: |
-          mkdir -p .cargo
-          cat > .cargo/config.toml <<'EOF'
-          [patch.crates-io]
-          numr = { path = ".ci-dependencies/numr" }
-          solvr = { path = ".ci-dependencies/solvr" }
-          EOF
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.toolchain }}
-          components: rustfmt, clippy
-      - run: python3 -m unittest discover -s tools/reference -p test_swmm_runoff.py
-      - run: python3 -m unittest discover -s tools/reference -p test_subcatchment_temporal.py
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets --no-default-features -- -D warnings
-      - run: cargo test --all-targets --no-default-features
-      - run: cargo test --doc --no-default-features
-      - name: Check WGPU feature compilation
-        run: cargo check --all-targets --no-default-features --features wgpu
-      - run: cargo run --example grid
-      - run: cargo run --example rain_basin
-      - run: cargo doc --no-deps --no-default-features
-        env:
-          RUSTDOCFLAGS: -D warnings
+  test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    name: Test Suite
+    uses: ./.github/workflows/test.yml

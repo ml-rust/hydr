@@ -25,13 +25,14 @@ use numr::{
 };
 use solvr::{common::arithmetic::CertifiedExpansion, integrate::CertifiedSimpsonAlgorithms};
 
-pub(super) fn endpoint<R>(
+pub(super) fn endpoint_at_level<R>(
     parent: &mut PairedSources<'_, R>,
     rows: &Tensor<R>,
     query: &SupportedAreaQuery<R>,
     endpoint: PhysicalEndpoint,
     side: SonicSide,
     epsilon: &CertifiedExpansion<R>,
+    level: &super::source_binding::SourcePanelLevel,
 ) -> HydraulicResult<CurveValue<R>>
 where
     R: Runtime<DType = DType>,
@@ -44,6 +45,7 @@ where
         + RuntimeClient<R>
         + CertifiedSimpsonAlgorithms<R>,
 {
+    parent.check_root_witness(level.witness())?;
     let stage = parent.select_rows(rows, query)?;
     let c = parent.geometry.client();
     let n = rows.numel();
@@ -160,7 +162,7 @@ where
             &boundaries,
             PotentialEvaluation {
                 config: parent.evaluation.config,
-                panels: parent.evaluation.panels,
+                panels: level.panels(),
                 work: parent.evaluation.work,
             },
         )?;
