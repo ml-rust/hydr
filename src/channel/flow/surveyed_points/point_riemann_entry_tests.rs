@@ -19,6 +19,8 @@ use numr::{
 use solvr::common::arithmetic::CertifiedExpansion;
 use std::collections::BTreeMap;
 
+#[path = "point_riemann_entry_tests_exterior.rs"]
+mod exterior;
 #[path = "point_riemann_entry_tests_star.rs"]
 mod star;
 

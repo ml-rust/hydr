@@ -82,10 +82,12 @@ impl<R: Runtime<DType = DType>> PrismaticPointRiemannResult<R> {
         &self.right_discharge
     }
     /// Immutable selected water flux point, the selected trace discharge, in original query order.
+    /// Its error scales with the face jump. `water_flux_bound_m3_per_s` holds it.
     pub fn water_flux_m3_per_s(&self) -> &CertifiedExpansion<R> {
         &self.water_flux
     }
     /// Immutable selected momentum flux point in original query order.
+    /// Its error scales with the face jump. `momentum_flux_bound_m4_per_s2` holds it.
     pub fn momentum_flux_m4_per_s2(&self) -> &CertifiedExpansion<R> {
         &self.momentum_flux
     }

@@ -45,7 +45,8 @@ where
                 frozen::endpoints(&pressure.increment.secant)?
             );
             assert!(physical[0] <= truth && truth <= physical[1]);
-            assert_eq!(pressure.proposal_contained.try_to_vec::<f64>()?, [0.]);
+            // The trace takes the model integral at its own area, not the source anchor and secant.
+            assert_eq!(pressure.proposal_contained.try_to_vec::<f64>()?, [1.]);
             assert!(physical[0] <= numerical[0] && numerical[1] <= physical[1]);
             let error = (numerical[0] - truth)
                 .abs()

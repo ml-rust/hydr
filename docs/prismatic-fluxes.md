@@ -79,6 +79,8 @@ The call returns `PrismaticPointRiemannResult<R>`, in original query order:
 | `owners()`, `left_area_m2()`, `left_discharge_m3_per_s()`, `right_area_m2()`, `right_discharge_m3_per_s()` | Independent input snapshots |
 | `work()` | Executed work across every refinement |
 
+A selected flux point comes from two-part arithmetic on the selected trace. Its error scales with the jump between the face states. Faces with bit-equal states get bit-equal points. The accepted bound holds the physical hull and the selected point.
+
 Any face that stays unaccepted rejects the whole call as `PrismaticRiemannError::Rejected`. The error names the unaccepted face with the smallest original row.
 
 | Reason | Cause |

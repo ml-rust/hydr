@@ -5,7 +5,7 @@ use super::{
 };
 use crate::channel::{
     flow::surveyed::{
-        equation_ops::scale,
+        equation_ops::{choose_expansion, scale},
         error::{Arithmetic, HydraulicResult},
     },
     section::{PhysicalEndpoint, PressureEndpoint, SupportedAreaQuery, pressure_endpoint},
@@ -13,13 +13,68 @@ use crate::channel::{
 use numr::{
     dtype::DType,
     ops::{
-        CompareOps, MidpointOps, NextRepresentableOps, ScalarOps, SortingOps, TensorOps, TwoSumOps,
+        BinaryOps, CompareOps, MidpointOps, NextRepresentableOps, ScalarOps, SortingOps, TensorOps,
+        TwoSumOps,
     },
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
 use solvr::common::arithmetic::{CertifiedExpansion, Interval};
 
+/// Gravity times the two-part hydrostatic selection value of the base source.
+///
+/// Bit-equal source areas give bit-equal anchors. The certified bounds never use it.
+fn selection_anchor<R>(
+    a: &mut Arithmetic<'_, R>,
+    point: &CertifiedExpansion<R>,
+    gravity: f64,
+) -> HydraulicResult<CertifiedExpansion<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    let gravity = Tensor::full_scalar(
+        point.high().shape(),
+        a.dtype(),
+        gravity,
+        a.client().device(),
+    )?;
+    let gravity = a.expansion_point(&gravity)?;
+    Ok(a.expansion_mul(point, &gravity)?)
+}
+
+/// Gravity times the two-part model integral at the exact area point of `query`.
+fn trace_point<R>(
+    a: &mut Arithmetic<'_, R>,
+    sources: &PairedSources<'_, R>,
+    parent: &Tensor<R>,
+    query: &SupportedAreaQuery<R>,
+) -> HydraulicResult<CertifiedExpansion<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    let stage = sources.select_rows(parent, query)?;
+    let area = query.retained_endpoint_area(a, &stage.bands, &stage.boundaries)?;
+    let area = center(a, &area)?;
+    let point = sources
+        .geometry
+        .hydrostatic_point_query(a, &stage.bands, query, &area)?;
+    selection_anchor(a, &point, sources.evaluation.config.gravity_m_per_s2)
+}
+
+/// Certified pressure at `query` from the side's source, with the two-part selection anchor.
 fn evaluation<R>(
     a: &mut Arithmetic<'_, R>,
     sources: &PairedSources<'_, R>,
@@ -39,14 +94,15 @@ where
 {
     let selected = sources.select_rows(parent, query)?;
     let gravity = sources.evaluation.config.gravity_m_per_s2;
-    let anchor = scale(a, selected.sources[side].hydrostatic_integral_m3(), gravity)?;
-    let source_anchor = a.expansion_from_interval(&anchor)?;
+    let source = &selected.sources[side];
+    let anchor = scale(a, source.hydrostatic_integral_m3(), gravity)?;
+    let source_anchor = selection_anchor(a, source.hydrostatic_point_m3(), gravity)?;
     let increment = pressure_endpoint(
         a,
         sources.geometry,
         &selected.bands,
         query,
-        &selected.sources[side],
+        source,
         &selected.boundaries,
         gravity,
     )?;
@@ -79,6 +135,13 @@ where
     Ok((source_anchor, increment, evaluation))
 }
 
+/// Selected pressure of one trace from the base source on `side`.
+///
+/// A trace at the source area takes the two-part source anchor. Its secant increment is zero.
+/// Any other trace takes gravity times the two-part model integral at its own area point.
+/// A secant increment from F64 bounds would carry an error on the scale of the whole jump.
+/// Bit-equal trace areas give bit-equal proposals.
+/// The certified evaluation keeps the certified source integral and secant.
 pub(super) fn selected<R>(
     a: &mut Arithmetic<'_, R>,
     sources: &PairedSources<'_, R>,
@@ -99,7 +162,13 @@ where
     let (source_anchor, increment, evaluation) = self::evaluation(a, sources, parent, query, side)?;
     let selected_anchor = center(a, &source_anchor)?;
     let selected_increment = center(a, &increment.retained_increment)?;
-    let proposal_arithmetic = a.expansion_add(&selected_anchor, &selected_increment)?;
+    let anchored = a.expansion_add(&selected_anchor, &selected_increment)?;
+    let direct = trace_point(a, sources, parent, query)?;
+    let c = a.client();
+    let zero = Tensor::zeros(anchored.high().shape(), a.dtype(), c.device())?;
+    let delta = &increment.delta_area;
+    let at_source = c.mul(&c.eq(delta.high(), &zero)?, &c.eq(delta.low(), &zero)?)?;
+    let proposal_arithmetic = choose_expansion(a, &at_source, &anchored, &direct)?;
     let projection = choose(a, &proposal_arithmetic, &evaluation, None)?;
     let proposal = projection.proposal;
     let proposal_contained = projection.contained;
@@ -122,6 +191,7 @@ where
     })
 }
 
+/// Hull of the certified pressure over the lower and upper endpoint queries of `query`.
 pub(super) fn physical<R>(
     a: &mut Arithmetic<'_, R>,
     sources: &PairedSources<'_, R>,
