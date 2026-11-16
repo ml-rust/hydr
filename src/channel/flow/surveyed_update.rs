@@ -91,7 +91,10 @@ pub(super) mod tests {
     use super::super::{
         ChannelBoundary, ChannelConfig, ChannelForcingInterval, ChannelGeometry,
         ChannelInitialState, ChannelReach, ChannelReachDefinition, ChannelSnapshotData,
-        ChannelSurveyedConfig, SurveyedChannelCell, accounting::Impulses, flux::Flux,
+        ChannelSurveyedConfig, SurveyedChannelCell,
+        accounting::Impulses,
+        conserved_update::Parts,
+        flux::{Flux, SurveyedRates},
         surveyed_residuals::ExpandedImpulses,
     };
     use super::*;
@@ -155,6 +158,20 @@ pub(super) mod tests {
         R: Runtime<DType = DType>,
         R::Client: Client<R>,
     {
+        moving_reach(client, volumes, &vec![0.0; volumes.len()], roughness)
+    }
+
+    /// Same survey with one momentum and one Manning roughness per cell.
+    pub(in crate::channel::flow) fn moving_reach<R>(
+        client: R::Client,
+        volumes: &[f64],
+        momenta: &[f64],
+        roughness: &[f64],
+    ) -> TestResult<ChannelReach<R>>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
         Ok(ChannelReach::new(
             client,
             ChannelReachDefinition {
@@ -191,7 +208,7 @@ pub(super) mod tests {
             ChannelInitialState {
                 time_s: 0.0,
                 volume_m3: volumes.to_vec(),
-                longitudinal_momentum_m4_per_s: vec![0.0; volumes.len()],
+                longitudinal_momentum_m4_per_s: momenta.to_vec(),
             },
         )?)
     }
@@ -245,10 +262,20 @@ pub(super) mod tests {
         let impulse = 4791380824461455.0 * 2f64.powi(-104);
         let faces = |values: &[f64]| context.tensor(values);
         let zero = faces(&[0.0, 0.0])?;
+        let rate = |high: &Tensor<R>| Parts {
+            high: high.clone(),
+            low: zero.clone(),
+            bound: zero.clone(),
+        };
+        let water = faces(&[0.0, impulse])?;
         let flux = Flux {
             boundary_traces: None,
+            surveyed: Some(SurveyedRates {
+                water: rate(&water),
+                momentum: rate(&zero),
+            }),
             prescribed_water: None,
-            water: faces(&[0.0, impulse])?,
+            water,
             water_bound: zero.clone(),
             riemann: None,
             momentum: zero.clone(),

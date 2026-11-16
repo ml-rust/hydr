@@ -470,3 +470,7 @@ where
 #[cfg(test)]
 #[path = "stepping_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "stepping_tests_surveyed.rs"]
+mod surveyed_tests;

@@ -135,6 +135,7 @@ where
         }
         Ok(Flux {
             boundary_traces: frame.map(|frame| frame.traces),
+            surveyed: None,
             prescribed_water,
             water,
             momentum,

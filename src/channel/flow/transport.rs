@@ -187,13 +187,18 @@ where
         Ok(())
     }
 
-    /// Integrate surveyed face rates as exact products and keep both parts of each face point.
+    /// Integrate two-part surveyed face rates as exact products and keep both parts of each face point.
     ///
-    /// The product radius joins the detected underflow bound of its face.
+    /// The product radius, which carries the rate radius, joins the detected underflow bound of its face.
     fn surveyed_transport(&self, flux: &Flux<R>, dt: f64) -> Result<Transport<R>, ChannelError> {
         let c = &self.client;
         let count = self.count();
-        let faces = surveyed_faces(c, &flux.water, &flux.momentum, dt, count)?;
+        let rates = flux.surveyed.as_ref().ok_or_else(|| {
+            ChannelError::numerical(
+                "surveyed shared face impulses lack two-part point rates: compute the flux through the surveyed point solver",
+            )
+        })?;
+        let faces = surveyed_faces(c, &rates.water, &rates.momentum, dt, count)?;
         let face_volume = faces.volume.high;
         self.check_prescribed(flux, &face_volume)?;
         let duration = self.constant(&flux.water, dt)?;
@@ -240,5 +245,65 @@ where
             transfer_underflow_bound,
             max_momentum_underflow_bound,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{
+        ChannelTensorBoundary,
+        surveyed_update::tests::{Client, TestResult, cpu, reach_with_roughness},
+    };
+    use super::*;
+    use numr::runtime::cpu::CpuRuntime;
+
+    fn uniform_rest_transfers_nothing<R>(client: R::Client) -> TestResult
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        let reach = reach_with_roughness::<R>(client, &[10.0; 3], &[0.0; 3])?;
+        let context = &reach.context;
+        let wall = ChannelTensorBoundary::Wall;
+        let fields = context.fields(&reach.accepted.volume, &reach.accepted.momentum)?;
+        let mut flux = context.flux(&fields, &wall, &wall)?;
+        let transport = context.integrate_transport(&flux, 0.1)?;
+        for delta in [&transport.water_delta, &transport.momentum_delta] {
+            for value in [&delta.high, &delta.low, &delta.bound] {
+                let bits: Vec<u64> = value
+                    .try_to_vec::<f64>()?
+                    .into_iter()
+                    .map(f64::to_bits)
+                    .collect();
+                assert_eq!(bits, vec![0; 3]);
+            }
+        }
+        flux.surveyed = None;
+        let error = context
+            .integrate_transport(&flux, 0.1)
+            .err()
+            .ok_or("missing rates must reject")?;
+        assert!(
+            matches!(&error, ChannelError::Numerical { context, .. }
+                if context.contains("surveyed shared face impulses")),
+            "{error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_uniform_surveyed_rest_transfers_exactly_nothing() -> TestResult {
+        uniform_rest_transfers_nothing::<CpuRuntime>(cpu())
+    }
+
+    #[cfg(feature = "cuda")]
+    mod cuda {
+        use super::*;
+        use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+
+        #[test]
+        fn cuda_uniform_surveyed_rest_transfers_exactly_nothing() -> TestResult {
+            uniform_rest_transfers_nothing::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+        }
     }
 }

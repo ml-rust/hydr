@@ -1,18 +1,7 @@
-use super::error::riemann_error;
-use crate::channel::flow::{
-    ChannelError,
-    context::Context,
-    surveyed::{
-        PrismaticRiemannWork,
-        error::{checked, into_public},
-    },
-};
+use crate::channel::flow::{ChannelError, conserved_update::expanded, context::Context};
 use numr::{
     dtype::DType,
-    ops::{
-        BinaryOps, CompareOps, MidpointOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps,
-        UnaryOps,
-    },
+    ops::{BinaryOps, CompareOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps, UnaryOps},
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
@@ -23,36 +12,17 @@ where
     R::Client: TensorOps<R>
         + CompareOps<R>
         + NextRepresentableOps<R>
-        + MidpointOps<R>
         + ScalarOps<R>
         + TwoSumOps<R>
         + RuntimeClient<R>,
 {
-    pub(super) fn surveyed_nominal(
-        &self,
-        bounds: &Interval<R>,
-        work: PrismaticRiemannWork,
-    ) -> Result<(Tensor<R>, Tensor<R>), ChannelError> {
-        let c = &self.client;
-        let (value, width) = checked::<R, _>(c, "surveyed reach represented flux", |a| {
-            let value = c.midpoint(bounds.lower(), bounds.upper())?;
-            let _ = a.point(&value)?;
-            let lower = a.point(bounds.lower())?;
-            let upper = a.point(bounds.upper())?;
-            let width = a.sub(&upper, &lower)?.upper().clone();
-            Ok((value, width))
+    /// Upward-rounded width of each accepted joint flux bound.
+    pub(super) fn surveyed_width(&self, bound: &Interval<R>) -> Result<Tensor<R>, ChannelError> {
+        expanded(&self.client, "surveyed reach flux width", |a| {
+            let lower = a.point(bound.lower())?;
+            let upper = a.point(bound.upper())?;
+            Ok(a.sub(&upper, &lower)?.upper().clone())
         })
-        .map_err(|e| riemann_error(into_public(e, work)))?;
-        let inside = c.mul(
-            &c.ge(&value, bounds.lower())?,
-            &c.le(&value, bounds.upper())?,
-        )?;
-        if !self.all(&inside)? {
-            return Err(ChannelError::numerical(
-                "surveyed represented midpoint escapes its flux certificate: inspect native midpoint arithmetic",
-            ));
-        }
-        Ok((value, width))
     }
 
     pub(super) fn surveyed_wave_envelope(

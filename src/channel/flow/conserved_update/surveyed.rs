@@ -1,168 +1,33 @@
-//! Two-part conserved updates through certified expansion arithmetic.
+//! Surveyed face transfers and donor bounds on two-part conserved state.
 
-use super::{
-    ChannelError, conserved_point::ConservedPoint, surveyed_transport::error::arithmetic_error,
-};
+use super::super::{ChannelError, conserved_point::ConservedPoint};
 use numr::dtype::DType;
-use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps,
-    UnaryOps,
-};
+use numr::ops::{CompareOps, ConditionalOps, UnaryOps};
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
-use solvr::common::arithmetic::{
-    ArithmeticResult, CertifiedExpansion, IntervalContext, with_interval_arithmetic,
+use solvr::common::arithmetic::ArithmeticResult;
+
+use super::expansion::{
+    ExpansionClient, Parts, bounded, center, exact, exact_over, expanded, parts, transfer,
 };
-
-/// Client operations that certified expansion arithmetic requires.
-pub(crate) trait ExpansionClient<R: Runtime<DType = DType>>:
-    TensorOps<R> + CompareOps<R> + NextRepresentableOps<R> + ScalarOps<R> + TwoSumOps<R>
-{
-}
-
-impl<R, C> ExpansionClient<R> for C
-where
-    R: Runtime<DType = DType>,
-    C: TensorOps<R> + CompareOps<R> + NextRepresentableOps<R> + ScalarOps<R> + TwoSumOps<R>,
-{
-}
-
-pub(super) type Arithmetic<'a, R> = IntervalContext<'a, R, <R as Runtime>::Client>;
-
-/// Expansion center `(high, low)` and its absolute error radius.
-#[derive(Clone, Debug)]
-pub(super) struct Parts<R: Runtime<DType = DType>> {
-    pub high: Tensor<R>,
-    pub low: Tensor<R>,
-    pub bound: Tensor<R>,
-}
 
 /// Shared face points and the cell transfers formed from them.
 ///
 /// Face `bound` holds the product radius. Transfer `bound` holds the subtraction radius.
-pub(super) struct SurveyedFaces<R: Runtime<DType = DType>> {
+pub(in crate::channel::flow) struct SurveyedFaces<R: Runtime<DType = DType>> {
     pub volume: Parts<R>,
     pub momentum: Parts<R>,
     pub water_delta: Parts<R>,
     pub momentum_delta: Parts<R>,
 }
 
-/// Run one checked expansion block and map its arithmetic error.
-pub(super) fn expanded<R, T>(
+/// Integrate two-part face rates over `dt` and form cell transfers from the selected face points.
+///
+/// Each face `bound` holds the rate radius carried through the product.
+pub(in crate::channel::flow) fn surveyed_faces<R>(
     client: &R::Client,
-    stage: &'static str,
-    build: impl for<'a> FnOnce(&mut Arithmetic<'a, R>) -> ArithmeticResult<T>,
-) -> Result<T, ChannelError>
-where
-    R: Runtime<DType = DType>,
-    R::Client: ExpansionClient<R>,
-{
-    with_interval_arithmetic::<R, _, _, _>(client, DType::F64, stage, build)
-        .map_err(arithmetic_error)
-}
-
-/// Exact expansion of a normalized `(high, low)` pair with zero radius.
-pub(super) fn exact<R>(
-    a: &mut Arithmetic<'_, R>,
-    high: &Tensor<R>,
-    low: &Tensor<R>,
-) -> ArithmeticResult<CertifiedExpansion<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: ExpansionClient<R>,
-{
-    let zero = Tensor::zeros(high.shape(), DType::F64, a.client().device())?;
-    exact_over(a, high, low, &zero)
-}
-
-/// Exact expansion that reuses a caller-owned zero radius of the same shape.
-pub(super) fn exact_over<R>(
-    a: &mut Arithmetic<'_, R>,
-    high: &Tensor<R>,
-    low: &Tensor<R>,
-    zero: &Tensor<R>,
-) -> ArithmeticResult<CertifiedExpansion<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: ExpansionClient<R>,
-{
-    a.expansion_bounds(high, low, zero)
-}
-
-pub(super) fn bounded<R>(
-    a: &mut Arithmetic<'_, R>,
-    value: &Parts<R>,
-) -> ArithmeticResult<CertifiedExpansion<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: ExpansionClient<R>,
-{
-    a.expansion_bounds(&value.high, &value.low, &value.bound)
-}
-
-/// Selected center of an expansion. Its radius is recorded apart.
-pub(super) fn center<R: Runtime<DType = DType>>(
-    value: &CertifiedExpansion<R>,
-) -> ConservedPoint<R> {
-    ConservedPoint {
-        high: value.high().clone(),
-        low: value.low().clone(),
-    }
-}
-
-fn parts<R: Runtime<DType = DType>>(value: &CertifiedExpansion<R>) -> Parts<R> {
-    Parts {
-        high: value.high().clone(),
-        low: value.low().clone(),
-        bound: value.abs_error().clone(),
-    }
-}
-
-/// Upper bound on the magnitude of every value inside the expansion.
-pub(super) fn magnitude<R>(
-    a: &mut Arithmetic<'_, R>,
-    value: &CertifiedExpansion<R>,
-) -> ArithmeticResult<Tensor<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: ExpansionClient<R>,
-{
-    let interval = a.expansion_interval(value)?;
-    let c = a.client();
-    Ok(c.maximum(&c.abs(interval.lower())?, &c.abs(interval.upper())?)?)
-}
-
-/// Difference of the left and right face points of every cell.
-pub(super) fn transfer<R>(
-    a: &mut Arithmetic<'_, R>,
-    face: &CertifiedExpansion<R>,
-    count: usize,
-) -> ArithmeticResult<CertifiedExpansion<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: ExpansionClient<R>,
-{
-    let zero = Tensor::zeros(&[count], DType::F64, a.client().device())?;
-    let incoming = exact_over(
-        a,
-        &face.high().narrow(0, 0, count)?,
-        &face.low().narrow(0, 0, count)?,
-        &zero,
-    )?;
-    let outgoing = exact_over(
-        a,
-        &face.high().narrow(0, 1, count)?,
-        &face.low().narrow(0, 1, count)?,
-        &zero,
-    )?;
-    a.expansion_sub(&incoming, &outgoing)
-}
-
-/// Integrate face rates over `dt` and form cell transfers from the selected face points.
-pub(super) fn surveyed_faces<R>(
-    client: &R::Client,
-    water_rate: &Tensor<R>,
-    momentum_rate: &Tensor<R>,
+    water_rate: &Parts<R>,
+    momentum_rate: &Parts<R>,
     dt: f64,
     count: usize,
 ) -> Result<SurveyedFaces<R>, ChannelError>
@@ -171,10 +36,11 @@ where
     R::Client: ExpansionClient<R>,
 {
     expanded(client, "surveyed shared face impulses", |a| {
-        let duration = Tensor::full_scalar(water_rate.shape(), DType::F64, dt, client.device())?;
+        let duration =
+            Tensor::full_scalar(water_rate.high.shape(), DType::F64, dt, client.device())?;
         let duration = a.expansion_point(&duration)?;
-        let mut product = |rate: &Tensor<R>| -> ArithmeticResult<_> {
-            let rate = a.expansion_point(rate)?;
+        let mut product = |rate: &Parts<R>| -> ArithmeticResult<_> {
+            let rate = bounded(a, rate)?;
             let raw = a.expansion_mul(&rate, &duration)?;
             // The center becomes the shared face point. Its radius is charged separately.
             let point = exact(a, raw.high(), raw.low())?;
@@ -195,7 +61,7 @@ where
 /// Add two expansions and select the center once.
 ///
 /// The returned bound is the radius of this sum. The selected point has radius zero.
-pub(super) fn select_sum<R>(
+pub(in crate::channel::flow) fn select_sum<R>(
     client: &R::Client,
     first: &Parts<R>,
     second: &Parts<R>,
@@ -216,7 +82,7 @@ where
 /// Lower bound of each normalized cell value.
 ///
 /// A negative low part lowers the bound below `high`, so it never adds donor water.
-pub(super) fn lower_bound<R>(
+pub(in crate::channel::flow) fn lower_bound<R>(
     client: &R::Client,
     point: &ConservedPoint<R>,
 ) -> Result<Tensor<R>, ChannelError>
@@ -231,7 +97,7 @@ where
 }
 
 /// Upper bound of the water each cell sends through its two faces.
-pub(super) fn outgoing_upper<R>(
+pub(in crate::channel::flow) fn outgoing_upper<R>(
     client: &R::Client,
     face_high: &Tensor<R>,
     face_low: &Tensor<R>,
@@ -291,6 +157,19 @@ mod tests {
         Ok(value.try_to_vec::<f64>()?)
     }
 
+    /// Rate parts with the given components on every face.
+    fn rate<R>(client: &R::Client, high: &[f64], low: &[f64], bound: &[f64]) -> TestResult<Parts<R>>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: ExpansionClient<R>,
+    {
+        Ok(Parts {
+            high: tensor::<R>(client, high)?,
+            low: tensor::<R>(client, low)?,
+            bound: tensor::<R>(client, bound)?,
+        })
+    }
+
     fn two_sum(a: f64, b: f64) -> (f64, f64) {
         let sum = a + b;
         let virtual_b = sum - a;
@@ -305,10 +184,11 @@ mod tests {
         let tensor = |values: &[f64]| tensor::<R>(&client, values);
         let impulse = -4791380824461455.0 * 2f64.powi(-104);
         // The outgoing right face carries the impulse away from the cell.
+        let zero = [0.0, 0.0];
         let faces = surveyed_faces::<R>(
             &client,
-            &tensor(&[0.0, -impulse])?,
-            &tensor(&[0.0, 0.0])?,
+            &rate::<R>(&client, &[0.0, -impulse], &zero, &zero)?,
+            &rate::<R>(&client, &zero, &zero, &zero)?,
             1.0,
             1,
         )?;
@@ -337,12 +217,12 @@ mod tests {
         R: Runtime<DType = DType>,
         R::Client: ExpansionClient<R>,
     {
-        let tensor = |values: &[f64]| tensor::<R>(&client, values);
         let rate = 1.0 + f64::EPSILON;
+        let zero = [0.0, 0.0];
         let faces = surveyed_faces::<R>(
             &client,
-            &tensor(&[rate, 0.0])?,
-            &tensor(&[0.0, 0.0])?,
+            &self::rate::<R>(&client, &[rate, 0.0], &zero, &zero)?,
+            &self::rate::<R>(&client, &zero, &zero, &zero)?,
             rate,
             1,
         )?;
@@ -353,6 +233,44 @@ mod tests {
         assert_eq!(high, rate * rate);
         assert_eq!(low, rate.mul_add(rate, -(rate * rate)));
         assert!(values(&faces.volume.bound)?[0] >= 0.0);
+        Ok(())
+    }
+
+    fn two_part_rate<R>(client: R::Client) -> TestResult
+    where
+        R: Runtime<DType = DType>,
+        R::Client: ExpansionClient<R>,
+    {
+        let (high, low, radius, dt) = (3.0, 2f64.powi(-60), 2f64.powi(-70), 0.1);
+        let water = rate::<R>(&client, &[high, -high], &[low, -low], &[radius, radius])?;
+        let momentum = rate::<R>(&client, &[-high, 0.0], &[-low, 0.0], &[radius, 0.0])?;
+        let faces = surveyed_faces::<R>(&client, &water, &momentum, dt, 1)?;
+        let direct = expanded(&client, "test direct face products", |a| {
+            let duration =
+                Tensor::full_scalar(water.high.shape(), DType::F64, dt, client.device())?;
+            let duration = a.expansion_point(&duration)?;
+            let water = bounded(a, &water)?;
+            let momentum = bounded(a, &momentum)?;
+            Ok((
+                parts(&a.expansion_mul(&water, &duration)?),
+                parts(&a.expansion_mul(&momentum, &duration)?),
+            ))
+        })?;
+        for (face, direct) in [(&faces.volume, &direct.0), (&faces.momentum, &direct.1)] {
+            for (actual, expected) in [
+                (&face.high, &direct.high),
+                (&face.low, &direct.low),
+                (&face.bound, &direct.bound),
+            ] {
+                let bits = |v: &Tensor<R>| -> TestResult<Vec<u64>> {
+                    Ok(values(v)?.iter().map(|x| x.to_bits()).collect())
+                };
+                assert_eq!(bits(actual)?, bits(expected)?);
+            }
+        }
+        assert_ne!(values(&faces.volume.low)?[0], 0.0);
+        assert!(values(&faces.volume.bound)?[0] >= radius * dt);
+        assert_eq!(values(&faces.momentum.bound)?[1], 0.0);
         Ok(())
     }
 
@@ -418,6 +336,11 @@ mod tests {
         selection_bound::<CpuRuntime>(cpu())
     }
 
+    #[test]
+    fn cpu_two_part_rate_lifts_every_component_into_the_face_product() -> TestResult {
+        two_part_rate::<CpuRuntime>(cpu())
+    }
+
     #[cfg(feature = "cuda")]
     mod cuda {
         use super::*;
@@ -436,6 +359,11 @@ mod tests {
         #[test]
         fn cuda_compress_discards_a_term_into_one_selection_bound() -> TestResult {
             selection_bound::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+        }
+
+        #[test]
+        fn cuda_two_part_rate_lifts_every_component_into_the_face_product() -> TestResult {
+            two_part_rate::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
         }
     }
 }

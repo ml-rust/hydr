@@ -14,10 +14,8 @@ pub(super) struct Fields<R: Runtime<DType = DType>> {
     pub velocity: Tensor<R>,
     pub discharge: Tensor<R>,
     /// Two-part area in m². The low part is `+0.0` outside surveyed geometry.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the point flux reads it"))]
     pub area_point: ConservedPoint<R>,
     /// Two-part discharge in m³/s. The low part is `+0.0` outside surveyed geometry.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the point flux reads it"))]
     pub discharge_point: ConservedPoint<R>,
     /// Radius discarded when the area point is selected, in m². A diagnostic only.
     pub area_selection_bound: Tensor<R>,

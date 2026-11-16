@@ -1,6 +1,10 @@
 use super::error::boundary_error;
 use crate::channel::flow::{
-    ChannelError, ChannelTensorBoundary, admission::Fields, context::Context,
+    ChannelError, ChannelTensorBoundary,
+    admission::Fields,
+    conserved_point::ConservedPoint,
+    conserved_update::{exact_over, expanded},
+    context::Context,
     geometry::SurveyedGeometry,
 };
 use numr::{
@@ -12,13 +16,17 @@ use numr::{
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
-use solvr::{integrate::CertifiedSimpsonAlgorithms, optimize::roots::CertifiedBisectionAlgorithms};
+use solvr::{
+    common::arithmetic::CertifiedExpansion, integrate::CertifiedSimpsonAlgorithms,
+    optimize::roots::CertifiedBisectionAlgorithms,
+};
 
+/// Zero-radius two-part face states in face order.
 pub(super) struct Faces<R: Runtime<DType = DType>> {
-    pub left_area: Tensor<R>,
-    pub left_discharge: Tensor<R>,
-    pub right_area: Tensor<R>,
-    pub right_discharge: Tensor<R>,
+    pub left_area: CertifiedExpansion<R>,
+    pub left_discharge: CertifiedExpansion<R>,
+    pub right_area: CertifiedExpansion<R>,
+    pub right_discharge: CertifiedExpansion<R>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -33,6 +41,7 @@ where
         + CertifiedSimpsonAlgorithms<R>
         + CertifiedBisectionAlgorithms<R>,
 {
+    /// Face states from the cell points. Exterior states are F64 with a `+0.0` low part.
     pub(super) fn surveyed_faces(
         &self,
         geometry: &SurveyedGeometry<R>,
@@ -44,11 +53,24 @@ where
         let (ra, rq) =
             self.surveyed_exterior(geometry, fields, right, self.count() - 1, self.count())?;
         let c = &self.client;
-        Ok(Faces {
-            left_area: c.cat(&[&la, &fields.area], 0)?,
-            left_discharge: c.cat(&[&lq, &fields.discharge], 0)?,
-            right_area: c.cat(&[&fields.area, &ra], 0)?,
-            right_discharge: c.cat(&[&fields.discharge, &rq], 0)?,
+        let join = |first: &ConservedPoint<R>, second: &ConservedPoint<R>| {
+            Ok::<_, ChannelError>(ConservedPoint {
+                high: c.cat(&[&first.high, &second.high], 0)?,
+                low: c.cat(&[&first.low, &second.low], 0)?,
+            })
+        };
+        let left_area = join(&la, &fields.area_point)?;
+        let left_discharge = join(&lq, &fields.discharge_point)?;
+        let right_area = join(&fields.area_point, &ra)?;
+        let right_discharge = join(&fields.discharge_point, &rq)?;
+        expanded(c, "surveyed face points", |a| {
+            let zero = Tensor::zeros(left_area.high.shape(), DType::F64, c.device())?;
+            Ok(Faces {
+                left_area: exact_over(a, &left_area.high, &left_area.low, &zero)?,
+                left_discharge: exact_over(a, &left_discharge.high, &left_discharge.low, &zero)?,
+                right_area: exact_over(a, &right_area.high, &right_area.low, &zero)?,
+                right_discharge: exact_over(a, &right_discharge.high, &right_discharge.low, &zero)?,
+            })
         })
     }
 
@@ -59,12 +81,20 @@ where
         boundary: &ChannelTensorBoundary<R>,
         cell: usize,
         face: usize,
-    ) -> Result<(Tensor<R>, Tensor<R>), ChannelError> {
+    ) -> Result<(ConservedPoint<R>, ConservedPoint<R>), ChannelError> {
         let c = &self.client;
+        let cell_part = |value: &Tensor<R>| value.narrow(0, cell, 1);
         match boundary {
             ChannelTensorBoundary::Wall => Ok((
-                fields.area.narrow(0, cell, 1)?,
-                c.neg(&fields.discharge.narrow(0, cell, 1)?)?,
+                ConservedPoint {
+                    high: cell_part(&fields.area_point.high)?,
+                    low: cell_part(&fields.area_point.low)?,
+                },
+                // Negation is exact on both parts.
+                ConservedPoint {
+                    high: c.neg(&cell_part(&fields.discharge_point.high)?)?,
+                    low: c.neg(&cell_part(&fields.discharge_point.low)?)?,
+                },
             )),
             ChannelTensorBoundary::Exterior {
                 depth_m,
@@ -81,7 +111,10 @@ where
                 )?;
                 self.represented(&required, &discharge, "surveyed exterior discharge")
                     .map_err(|e| boundary_error(e, face))?;
-                Ok((area, discharge))
+                Ok((
+                    ConservedPoint::from_high(&area)?,
+                    ConservedPoint::from_high(&discharge)?,
+                ))
             }
             _ => Err(ChannelError::input(format!(
                 "surveyed boundary face={face} requires Wall or complete Exterior depth and velocity: replace scalar characteristic controls"
@@ -89,3 +122,7 @@ where
         }
     }
 }
+
+#[cfg(test)]
+#[path = "faces_tests.rs"]
+mod tests;

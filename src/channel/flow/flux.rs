@@ -1,6 +1,6 @@
 use super::{
-    ChannelError, ChannelTensorBoundary, admission::Fields, context::Context,
-    geometry::TensorGeometry,
+    ChannelError, ChannelTensorBoundary, admission::Fields, conserved_update::Parts,
+    context::Context, geometry::TensorGeometry,
 };
 use super::{
     boundary::{NativeBoundaryTraces, assembly::numerical_range},
@@ -24,8 +24,22 @@ use solvr::{
 };
 use std::sync::Arc;
 
+/// Two-part surveyed face rates, each from one selected point trace.
+#[derive(Clone, Debug)]
+pub(super) struct SurveyedRates<R: Runtime<DType = DType>> {
+    /// Water flux point and its radius, in m³/s.
+    pub water: Parts<R>,
+    /// Momentum flux point and its radius, in m⁴/s².
+    pub momentum: Parts<R>,
+}
+
+/// Face rates for one interval.
+///
+/// `water` and `momentum` hold the F64 rates. On surveyed geometry they are the point high parts.
 pub(super) struct Flux<R: Runtime<DType = DType>> {
     pub boundary_traces: Option<Arc<NativeBoundaryTraces<R>>>,
+    /// Two-part rates on surveyed geometry. Other geometry holds `None`.
+    pub surveyed: Option<SurveyedRates<R>>,
     pub prescribed_water: Option<Tensor<R>>,
     pub water: Tensor<R>,
     pub water_bound: Tensor<R>,
@@ -197,6 +211,7 @@ where
         }
         Ok(Flux {
             boundary_traces: frame.map(|frame| frame.traces),
+            surveyed: None,
             prescribed_water,
             water_bound,
             riemann: None,

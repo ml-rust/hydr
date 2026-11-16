@@ -1,4 +1,3 @@
-use super::error::riemann_error;
 use crate::channel::flow::{
     ChannelError, ChannelTensorBoundary, admission::Fields, context::Context,
     geometry::SurveyedGeometry, reconstruction::CflSpeeds,
@@ -37,18 +36,7 @@ where
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
     ) -> Result<CflSpeeds<R>, ChannelError> {
-        let faces = self.surveyed_faces(geometry, fields, left, right)?;
-        let result = geometry
-            .section
-            .riemann_flux_tensor(
-                &geometry.face_owners,
-                &faces.left_area,
-                &faces.left_discharge,
-                &faces.right_area,
-                &faces.right_discharge,
-                &geometry.riemann,
-            )
-            .map_err(riemann_error)?;
+        let result = self.surveyed_point_riemann(geometry, fields, left, right)?;
         Ok(CflSpeeds {
             outer: self.surveyed_wave_envelope(result.wave_speed_m_per_s())?,
             internal: None,

@@ -1,7 +1,13 @@
 use super::error::riemann_error;
 use crate::channel::flow::{
-    ChannelError, ChannelTensorBoundary, admission::Fields, context::Context, flux::Flux,
-    geometry::SurveyedGeometry, riemann_diagnostics::RiemannDiagnosticState,
+    ChannelError, ChannelTensorBoundary,
+    admission::Fields,
+    conserved_update::{Parts, parts},
+    context::Context,
+    flux::{Flux, SurveyedRates},
+    geometry::SurveyedGeometry,
+    riemann_diagnostics::RiemannDiagnosticState,
+    surveyed_points::{PrismaticPointRiemannResult, PrismaticPointTraceKind},
 };
 use numr::{
     dtype::DType,
@@ -13,7 +19,6 @@ use numr::{
     tensor::Tensor,
 };
 use solvr::{
-    common::arithmetic::Interval,
     integrate::CertifiedSimpsonAlgorithms,
     optimize::{
         CertifiedMappedBisectionAlgorithms,
@@ -35,17 +40,18 @@ where
         + CertifiedMappedBisectionAlgorithms<R>
         + CertifiedUpperBracketAlgorithms<R>,
 {
-    pub(in crate::channel::flow) fn surveyed_flux(
+    /// Solve every face from the two-part cell points.
+    pub(super) fn surveyed_point_riemann(
         &self,
         geometry: &SurveyedGeometry<R>,
         fields: &Fields<R>,
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
-    ) -> Result<Flux<R>, ChannelError> {
+    ) -> Result<PrismaticPointRiemannResult<R>, ChannelError> {
         let faces = self.surveyed_faces(geometry, fields, left, right)?;
-        let result = geometry
+        geometry
             .section
-            .riemann_flux_tensor(
+            .riemann_flux_points_tensor(
                 &geometry.face_owners,
                 &faces.left_area,
                 &faces.left_discharge,
@@ -53,20 +59,30 @@ where
                 &faces.right_discharge,
                 &geometry.riemann,
             )
-            .map_err(riemann_error)?;
+            .map_err(riemann_error)
+    }
+
+    pub(in crate::channel::flow) fn surveyed_flux(
+        &self,
+        geometry: &SurveyedGeometry<R>,
+        fields: &Fields<R>,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
+    ) -> Result<Flux<R>, ChannelError> {
+        let result = self.surveyed_point_riemann(geometry, fields, left, right)?;
         let work = result.work();
-        let (water, water_flux_width) =
-            self.surveyed_nominal(result.water_flux_m3_per_s(), work)?;
-        let water = self.surveyed_wall_water(water, result.water_flux_m3_per_s(), left, right)?;
-        let (momentum, momentum_flux_width) =
-            self.surveyed_nominal(result.momentum_flux_m4_per_s2(), work)?;
+        let water_flux_width = self.surveyed_width(result.water_flux_bound_m3_per_s())?;
+        let momentum_flux_width = self.surveyed_width(result.momentum_flux_bound_m4_per_s2())?;
+        let water = self.surveyed_wall_water(&result, left, right)?;
+        let momentum = parts(result.momentum_flux_m4_per_s2());
         let speed = self.surveyed_wave_envelope(result.wave_speed_m_per_s())?;
-        let zero = self.constant(&water, 0.0)?;
+        let zero = self.constant(&water.high, 0.0)?;
         Ok(Flux {
             boundary_traces: None,
             prescribed_water: None,
-            water,
-            momentum,
+            water: water.high.clone(),
+            momentum: momentum.high.clone(),
+            surveyed: Some(SurveyedRates { water, momentum }),
             speed,
             internal_speed: None,
             water_bound: zero.clone(),
@@ -88,19 +104,23 @@ where
         })
     }
 
+    /// Selected water point with every wall component set to `+0.0`.
+    ///
+    /// A wall face must enclose zero water flux and select a star or dry trace.
     fn surveyed_wall_water(
         &self,
-        mut water: Tensor<R>,
-        bounds: &Interval<R>,
+        result: &PrismaticPointRiemannResult<R>,
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
-    ) -> Result<Tensor<R>, ChannelError> {
+    ) -> Result<Parts<R>, ChannelError> {
         let c = &self.client;
+        let bounds = result.water_flux_bound_m3_per_s();
+        let mut water = parts(result.water_flux_m3_per_s());
         for (boundary, face) in [(left, 0), (right, self.count())] {
             if !matches!(boundary, ChannelTensorBoundary::Wall) {
                 continue;
             }
-            let zero = self.constant(&water.narrow(0, face, 1)?, 0.0)?;
+            let zero = self.constant(&water.high.narrow(0, face, 1)?, 0.0)?;
             let contains_zero = c.mul(
                 &c.le(&bounds.lower().narrow(0, face, 1)?, &zero)?,
                 &c.ge(&bounds.upper().narrow(0, face, 1)?, &zero)?,
@@ -110,12 +130,46 @@ where
                     "surveyed wall face={face} excludes zero water flux: inspect reflected Riemann arithmetic"
                 )));
             }
-            water = if face == 0 {
-                c.cat(&[&zero, &water.narrow(0, 1, self.count())?], 0)?
-            } else {
-                c.cat(&[&water.narrow(0, 0, self.count())?, &zero], 0)?
+            let code = result.trace_kind().narrow(0, face, 1)?.item::<i64>()?;
+            let kind = PrismaticPointTraceKind::from_code(code);
+            if !matches!(
+                kind,
+                Some(PrismaticPointTraceKind::Star | PrismaticPointTraceKind::Dry)
+            ) {
+                return Err(ChannelError::numerical(format!(
+                    "surveyed wall face={face} selects trace {kind:?} (code {code}), not a star or dry trace: inspect the reflected wall state"
+                )));
+            }
+            water = Parts {
+                high: self.replace_face(&water.high, face, &zero)?,
+                low: self.replace_face(&water.low, face, &zero)?,
+                bound: self.replace_face(&water.bound, face, &zero)?,
             };
         }
         Ok(water)
     }
+
+    /// Copy of `value` with `face` set to the one-element `replacement`.
+    fn replace_face(
+        &self,
+        value: &Tensor<R>,
+        face: usize,
+        replacement: &Tensor<R>,
+    ) -> Result<Tensor<R>, ChannelError> {
+        let faces = self.count() + 1;
+        let mut pieces = Vec::with_capacity(3);
+        if face > 0 {
+            pieces.push(value.narrow(0, 0, face)?);
+        }
+        pieces.push(replacement.clone());
+        if face + 1 < faces {
+            pieces.push(value.narrow(0, face + 1, faces - face - 1)?);
+        }
+        let pieces: Vec<&Tensor<R>> = pieces.iter().collect();
+        Ok(self.client.cat(&pieces, 0)?)
+    }
 }
+
+#[cfg(test)]
+#[path = "flux_tests.rs"]
+mod tests;
