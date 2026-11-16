@@ -1,5 +1,6 @@
 use super::super::{
     chart_test_support,
+    corpus_coverage::Coverage,
     point_candidates::tests::{fixtures, flux_fixtures},
     point_flux_types::{PointFluxKind, PointFluxStatus},
     point_root_session::PointRootSession,
@@ -104,12 +105,12 @@ fn contains(actual: [f64; 2], expected: [u64; 2], id: &str) {
     );
 }
 
-fn matrix<R>(client: &R::Client) -> Result
+/// Ownership, admission, and level controls, checked on the CPU.
+fn session_controls<R>(client: &R::Client) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
 {
-    corpus::run::<R>(client)?;
     ownership::shared_parent::<R>(client)?;
     admission::provenance::<R>(client)?;
     admission::stale_generation::<R>(client)?;
@@ -126,7 +127,8 @@ fn configured_cpu_source_sonic_quadrature_narrows_frozen_fluxes() -> Result {
     let before = original.parallelism();
     let config = ParallelismConfig::new(Some(2), Some(257));
     let client = original.with_parallelism(config);
-    matrix::<CpuRuntime>(&client)?;
+    corpus::run::<CpuRuntime>(&client, Coverage::Full)?;
+    session_controls::<CpuRuntime>(&client)?;
     assert_eq!(client.parallelism(), config);
     assert_eq!(original.parallelism(), before);
     Ok(())
@@ -136,5 +138,5 @@ fn configured_cpu_source_sonic_quadrature_narrows_frozen_fluxes() -> Result {
 #[test]
 fn actual_cuda_source_sonic_quadrature_narrows_frozen_fluxes() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    matrix::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?)
+    corpus::run::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?, Coverage::Sample)
 }

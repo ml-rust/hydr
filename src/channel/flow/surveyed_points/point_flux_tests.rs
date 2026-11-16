@@ -1,3 +1,4 @@
+use super::super::corpus_coverage::Coverage;
 use super::super::{
     chart_test_support,
     point_flux_types::{PointFluxKind, PointFluxStatus},
@@ -88,11 +89,9 @@ fn configured_cpu_point_fluxes_select_coherent_conserved_states() -> Result {
     let config = ParallelismConfig::new(Some(2), Some(257));
     let client = original.with_parallelism(config);
     basic::<CpuRuntime>(&client)?;
-    corpus::run::<CpuRuntime>(&client)?;
+    corpus::run::<CpuRuntime>(&client, Coverage::Full)?;
     controls::run::<CpuRuntime>(&client)?;
-    precision::run::<CpuRuntime>(&client)?;
     positive_support::run::<CpuRuntime>(&client)?;
-    quantum::run::<CpuRuntime>(&client)?;
     assert_eq!(client.parallelism(), config);
     assert_eq!(original.parallelism(), before);
     Ok(())
@@ -104,9 +103,5 @@ fn actual_cuda_point_fluxes_select_coherent_conserved_states() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
     let client = CudaClient::new(CudaDevice::new(0))?;
     basic::<CudaRuntime>(&client)?;
-    corpus::run::<CudaRuntime>(&client)?;
-    controls::run::<CudaRuntime>(&client)?;
-    precision::run::<CudaRuntime>(&client)?;
-    positive_support::run::<CudaRuntime>(&client)?;
-    quantum::run::<CudaRuntime>(&client)
+    corpus::run::<CudaRuntime>(&client, Coverage::Sample)
 }

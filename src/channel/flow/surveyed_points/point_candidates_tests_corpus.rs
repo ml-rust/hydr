@@ -5,16 +5,20 @@ use super::{
     PointRootSession, Result, chart_test_support, fixture_model::Execution, fixtures, frozen,
     hydraulic, support,
 };
-use crate::channel::flow::surveyed::error::{HydraulicError, PrismaticRiemannRejection};
+use crate::channel::flow::{
+    surveyed::error::{HydraulicError, PrismaticRiemannRejection},
+    surveyed_points::corpus_coverage::Coverage,
+};
 use numr::{dtype::DType, runtime::Runtime};
 
-pub(super) fn run<R>(client: &R::Client) -> Result
+pub(super) fn run<R>(client: &R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
 {
-    let all = fixtures::executions();
-    assert_eq!(all.len(), 70);
+    let corpus = fixtures::executions();
+    assert_eq!(corpus.len(), 70);
+    let all = coverage.select(corpus, |row| (row.outcome, row.physical));
     let mut executed = 0;
     let mut summary = super::telemetry::Summary::default();
     for (config_index, declared) in fixtures::CONFIGS.iter().enumerate() {
@@ -23,6 +27,9 @@ where
             .copied()
             .filter(|r| r.config == config_index)
             .collect::<Vec<_>>();
+        if rows.is_empty() {
+            continue;
+        }
         let ids = rows.iter().map(|r| r.id).collect::<Vec<_>>();
         let config = declared.build();
         chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
@@ -99,7 +106,7 @@ where
         })?;
         executed += rows.len();
     }
-    assert_eq!(executed, 70);
+    assert_eq!(executed, all.len());
     let cap_rows = all
         .iter()
         .filter(|r| r.outcome == "CapExceeded" || r.outcome == "physical_cap_rejection")
@@ -110,6 +117,9 @@ where
         .filter(|r| r.outcome != "WorkLimit")
         .map(|r| r.traces.len())
         .sum();
+    if coverage.is_full() {
+        assert_eq!(applicable_labels, 76);
+    }
     summary.finish(
         [all.len() - cap_rows - work_rows, cap_rows, work_rows],
         applicable_labels,

@@ -182,6 +182,9 @@ fn separating_fans_preserve_nonnegative_depth_and_match_vacuum() -> TestResult {
     Ok(())
 }
 
+/// Ritter refinement horizon, before the release front leaves the reach.
+const RITTER_REFINEMENT_TIME_S: f64 = 2.0;
+
 #[test]
 fn ritter_reports_separate_temporal_and_combined_refinement() -> TestResult {
     let mut temporal = Vec::new();
@@ -189,7 +192,7 @@ fn ritter_reports_separate_temporal_and_combined_refinement() -> TestResult {
         temporal.push(channel_error(
             "Ritter temporal",
             400,
-            4.0,
+            RITTER_REFINEMENT_TIME_S,
             max_step,
             ritter,
             vec![],
@@ -210,7 +213,17 @@ fn ritter_reports_separate_temporal_and_combined_refinement() -> TestResult {
     println!("Ritter temporal: successive mean_abs_depth_differences={differences:?}");
     let mut combined = Vec::new();
     for (nx, max_step) in [(100, 0.02), (200, 0.01), (400, 0.005)] {
-        combined.push(channel_error("Ritter combined", nx, 4.0, max_step, ritter, vec![])?.error);
+        combined.push(
+            channel_error(
+                "Ritter combined",
+                nx,
+                RITTER_REFINEMENT_TIME_S,
+                max_step,
+                ritter,
+                vec![],
+            )?
+            .error,
+        );
     }
     assert!(
         temporal.iter().all(|result| result.error < 0.06),

@@ -78,6 +78,9 @@ fn measure(
     Ok(errors)
 }
 
+/// Refinement meshes over the 20 m reach.
+const COUNTS: [usize; 3] = [25, 50, 100];
+
 fn check_refinement(policies: impl Fn(Shape, Geometry, f64) -> Vec<Policy>) -> TestResult {
     for (shape, geometry) in [
         (
@@ -101,33 +104,39 @@ fn check_refinement(policies: impl Fn(Shape, Geometry, f64) -> Vec<Policy>) -> T
             assert!(signal.0.is_finite() && signal.0 > 0.0);
             assert!(signal.1.is_finite() && signal.1 > 0.0);
             for policy in policies(shape, geometry, depth) {
-                for side in [Side::Left, Side::Right] {
-                    let mut errors = Vec::new();
-                    for count in [25, 50, 100] {
-                        errors.push(measure(shape, geometry, depth, policy, side, count)?);
-                    }
+                let mut errors = Vec::new();
+                for count in COUNTS {
+                    errors.push(measure(shape, geometry, depth, policy, Side::Left, count)?);
+                }
+                // The right endpoint is the mirror image, so it must match the left errors.
+                let mirrored = measure(shape, geometry, depth, policy, Side::Right, COUNTS[0])?;
+                for (right, left) in [(mirrored.0, errors[0].0), (mirrored.1, errors[0].1)] {
                     assert!(
-                        errors.windows(2).all(|pair| pair[1].0 < pair[0].0),
-                        "Depth refinement: {errors:?}"
-                    );
-                    assert!(
-                        errors.windows(2).all(|pair| pair[1].1 < pair[0].1),
-                        "Discharge refinement: {errors:?}"
-                    );
-                    let finest = errors.last().ok_or("Missing finest errors")?;
-                    assert!(
-                        finest.0 < 0.25 * signal.0,
-                        "Depth error={}, physical signal={}",
-                        finest.0,
-                        signal.0
-                    );
-                    assert!(
-                        finest.1 < 0.25 * signal.1,
-                        "Discharge error={}, physical signal={}",
-                        finest.1,
-                        signal.1
+                        (right - left).abs() <= 1e-12 * left.abs(),
+                        "Mirrored endpoint errors differ: right={right}, left={left}"
                     );
                 }
+                assert!(
+                    errors.windows(2).all(|pair| pair[1].0 < pair[0].0),
+                    "Depth refinement: {errors:?}"
+                );
+                assert!(
+                    errors.windows(2).all(|pair| pair[1].1 < pair[0].1),
+                    "Discharge refinement: {errors:?}"
+                );
+                let finest = errors.last().ok_or("Missing finest errors")?;
+                assert!(
+                    finest.0 < 0.25 * signal.0,
+                    "Depth error={}, physical signal={}",
+                    finest.0,
+                    signal.0
+                );
+                assert!(
+                    finest.1 < 0.25 * signal.1,
+                    "Discharge error={}, physical signal={}",
+                    finest.1,
+                    signal.1
+                );
             }
         }
     }

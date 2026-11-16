@@ -4,22 +4,26 @@ use super::super::super::{
     point_root_session::PointRootSession,
 };
 use super::{chart_test_support, frozen, hydraulic, support};
-use crate::channel::flow::surveyed::error::{HydraulicError, PrismaticRiemannRejection};
+use crate::channel::flow::{
+    surveyed::error::{HydraulicError, PrismaticRiemannRejection},
+    surveyed_points::corpus_coverage::Coverage,
+};
 use frozen::Result;
 use numr::{dtype::DType, runtime::Runtime};
 use std::collections::BTreeMap;
 
-pub(super) fn run<R>(client: &R::Client) -> Result
+pub(super) fn run<R>(client: &R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
 {
-    let executions = fixtures::executions();
+    let corpus = fixtures::executions();
+    assert_eq!(corpus.len(), 70);
+    let executions = coverage.select(corpus, |row| (row.outcome, row.physical));
     let references = flux_fixtures::REFERENCES
         .iter()
         .map(|r| (r.id, r))
         .collect::<BTreeMap<_, _>>();
-    assert_eq!(executions.len(), 70);
     assert_eq!(references.len(), 70);
     let mut outcomes = [0_usize; 4];
     let mut evaluated = 0;
@@ -30,6 +34,9 @@ where
             .iter()
             .filter(|e| e.config == config_index)
             .collect::<Vec<_>>();
+        if rows.is_empty() {
+            continue;
+        }
         let ids = rows.iter().map(|e| e.id).collect::<Vec<_>>();
         let config = original.build();
         chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
@@ -256,7 +263,10 @@ where
             Ok(())
         })?;
     }
-    assert_eq!([evaluated, caps, work_limits], [66, 3, 1]);
+    assert_eq!(evaluated + caps + work_limits, executions.len());
+    if coverage.is_full() {
+        assert_eq!([evaluated, caps, work_limits], [66, 3, 1]);
+    }
     eprintln!(
         "POINT_FLUX_SUMMARY\tevaluated={evaluated}\tcap={caps}\twork={work_limits}\tstatuses={outcomes:?}"
     );

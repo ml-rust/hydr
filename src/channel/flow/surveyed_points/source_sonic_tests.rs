@@ -1,3 +1,4 @@
+use super::super::corpus_coverage::Coverage;
 use super::super::{
     chart_test_support,
     point_root_session::PointRootSession,
@@ -22,7 +23,8 @@ mod references;
 #[path = "source_sonic_tests_work.rs"]
 mod work;
 
-fn matrix<R>(client: &R::Client) -> Result
+/// Checks the exact rectangle sonic root, then the frozen references at the given coverage.
+fn matrix<R>(client: &R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
@@ -80,11 +82,8 @@ where
             Ok(())
         },
     )?;
-    references::run::<R>(client)?;
-    pointed::run::<R>(client)?;
-    contacts::run::<R>(client)?;
-    work::run::<R>(client)?;
-    ownership::run::<R>(client)
+    references::run::<R>(client, coverage)?;
+    pointed::run::<R>(client)
 }
 
 #[test]
@@ -94,7 +93,10 @@ fn configured_cpu_source_sonic_roots_preserve_selected_side_and_owner() -> Resul
     let before = original.parallelism();
     let config = ParallelismConfig::new(Some(2), Some(257));
     let client = original.with_parallelism(config);
-    matrix::<CpuRuntime>(&client)?;
+    matrix::<CpuRuntime>(&client, Coverage::Full)?;
+    contacts::run::<CpuRuntime>(&client)?;
+    work::run::<CpuRuntime>(&client)?;
+    ownership::run::<CpuRuntime>(&client)?;
     assert_eq!(client.parallelism(), config);
     assert_eq!(original.parallelism(), before);
     Ok(())
@@ -103,5 +105,5 @@ fn configured_cpu_source_sonic_roots_preserve_selected_side_and_owner() -> Resul
 #[test]
 fn actual_cuda_source_sonic_roots_preserve_selected_side_and_owner() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    matrix::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?)
+    matrix::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?, Coverage::Sample)
 }

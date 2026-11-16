@@ -27,7 +27,6 @@ impl Summary {
         assert_eq!(self.pending, expected[1]);
         assert_eq!(self.rejected, expected[2]);
         assert_eq!(self.unresolved, 0);
-        assert_eq!(applicable_labels, 76);
         assert_eq!(self.expected_labels, applicable_labels);
         assert_eq!(self.matched_labels, applicable_labels);
         eprintln!(

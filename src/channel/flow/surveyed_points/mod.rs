@@ -12,6 +12,8 @@ mod chart_root_derivative;
 mod chart_roots;
 #[cfg(test)]
 mod chart_test_support;
+#[cfg(test)]
+mod corpus_coverage;
 mod dry_vacuum;
 mod dry_vacuum_candidates;
 mod dry_vacuum_evidence;

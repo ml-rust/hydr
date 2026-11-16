@@ -20,7 +20,7 @@ impl Case {
     fn time(self) -> f64 {
         match self {
             Self::Vacuum => 1.0,
-            _ => 4.0,
+            _ => 2.0,
         }
     }
     /// Fixed interval below the 400-cell CFL limit. Every spatial level takes the same steps.

@@ -1,6 +1,7 @@
 use super::{
     Result, chart_test_support, frozen, hydraulic, locate_wet_roots, refine_wet_depth, support,
 };
+use crate::channel::flow::surveyed_points::corpus_coverage::Coverage;
 use crate::channel::flow::surveyed_points::{
     wave_curve_types::CurveValue,
     wet_wave_types::{WetWaveDomain, WetWaveStatus},
@@ -17,7 +18,7 @@ enum Edge {
 type EdgeReference = (Edge, [u64; 2]);
 type CaseReference<'a> = (&'a str, &'a [EdgeReference]);
 
-pub(super) fn run<R>(client: &R::Client) -> Result
+pub(super) fn run<R>(client: &R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
@@ -69,7 +70,13 @@ where
     let config = chart_test_support::config();
     let ids = references.iter().map(|r| r.0).collect::<Vec<_>>();
     chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
-        let rows = support::rows::<R>(client, &[3, 0, 4, 2, 1, 0])?;
+        // The device skips the two-shock compression. The knot crossing reaches its shock path.
+        let parents: &[i64] = if coverage.is_full() {
+            &[3, 0, 4, 2, 1, 0]
+        } else {
+            &[0, 4, 2, 1, 0]
+        };
+        let rows = support::rows::<R>(client, parents)?;
         let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
         let mut session = hydraulic(refine_wet_depth(pair, located))?;
         let callbacks = session.callback_points();
@@ -147,7 +154,7 @@ where
                 count += 1;
             }
         }
-        assert_eq!(count, 6);
+        assert_eq!(count, parents.len());
         Ok(())
     })?;
     stationary::<R>(client)?;

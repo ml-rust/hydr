@@ -1,3 +1,4 @@
+use super::super::corpus_coverage::Coverage;
 use super::super::{
     chart_test_support,
     point_candidate_types::{PointCandidate, PointCandidateStatus, PointFanAuthority, PointRegime},
@@ -55,7 +56,8 @@ fn point_flux_reference_fixture_export() -> Result {
     flux_fixture_export::emit()
 }
 
-fn matrix<R>(client: &R::Client) -> Result
+/// Checks one exact mixed control, then the frozen corpus at the given coverage.
+fn matrix<R>(client: &R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
@@ -138,14 +140,7 @@ where
             Ok(())
         },
     )?;
-    corpus::run::<R>(client)?;
-    contacts::run::<R>(client)?;
-    precision::run::<R>(client)?;
-    demand::run::<R>(client)?;
-    membership::run::<R>(client)?;
-    ownership::run::<R>(client)?;
-    work::run::<R>(client)?;
-    shocks::run::<R>(client)
+    corpus::run::<R>(client, coverage)
 }
 #[test]
 fn configured_cpu_point_candidates_preserve_all_regime_alternatives() -> Result {
@@ -154,7 +149,14 @@ fn configured_cpu_point_candidates_preserve_all_regime_alternatives() -> Result 
     let before = original.parallelism();
     let config = ParallelismConfig::new(Some(2), Some(257));
     let client = original.with_parallelism(config);
-    matrix::<CpuRuntime>(&client)?;
+    matrix::<CpuRuntime>(&client, Coverage::Full)?;
+    contacts::run::<CpuRuntime>(&client)?;
+    precision::run::<CpuRuntime>(&client)?;
+    demand::run::<CpuRuntime>(&client)?;
+    membership::run::<CpuRuntime>(&client)?;
+    ownership::run::<CpuRuntime>(&client)?;
+    work::run::<CpuRuntime>(&client)?;
+    shocks::run::<CpuRuntime>(&client)?;
     assert_eq!(client.parallelism(), config);
     assert_eq!(original.parallelism(), before);
     Ok(())
@@ -163,5 +165,5 @@ fn configured_cpu_point_candidates_preserve_all_regime_alternatives() -> Result 
 #[test]
 fn actual_cuda_point_candidates_preserve_all_regime_alternatives() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    matrix::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?)
+    matrix::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?, Coverage::Sample)
 }

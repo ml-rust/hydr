@@ -4,6 +4,15 @@ use hydr::channel::{ChannelBoundary, ChannelConfig, ChannelSurveyedConfig};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 
+/// Doubling meshes for the convergence gates, each dividing the frozen 400-cell reference.
+const MESHES: [usize; 3] = [20, 40, 80];
+/// Time of the frozen exact references.
+const REFERENCE_TIME_S: f64 = 2.0;
+/// Step shared by every spatial mesh.
+const SPATIAL_STEP_S: f64 = 0.1;
+/// Fixed spacing for the temporal gate, which compares successive runs.
+const TEMPORAL_CELLS: usize = 10;
+
 struct Measurement {
     errors: [f64; 2],
     conserved: Vec<[f64; 2]>,
@@ -45,7 +54,7 @@ where
         },
         ChannelSurveyedConfig::default(),
     )?;
-    let next = advance(current, 2.0, boundaries(case))?;
+    let next = advance(current, REFERENCE_TIME_S, boundaries(case))?;
     let conserved: Vec<_> = next
         .state()?
         .iter()
@@ -56,11 +65,7 @@ where
             ]
         })
         .collect();
-    let errors = if let Some(index) = [100, 200, 400].iter().position(|&n| n == count) {
-        errors(case, &conserved, case.grids[index])?
-    } else {
-        [0.0; 2]
-    };
+    let errors = errors(case, &conserved, &restricted_reference(case, count)?)?;
     let last = next
         .last_step()?
         .ok_or("Missing surveyed transport receipt")?;
@@ -85,15 +90,48 @@ where
     Ok(Measurement { errors, conserved })
 }
 
-fn errors(case: Case, actual: &[[f64; 2]], reference: &[[u64; 4]]) -> TestResult<[f64; 2]> {
+/// Encloses exact coarse cell averages as means of whole frozen 400-cell intervals.
+///
+/// Equal-width fine cells partition each coarse cell, so the exact coarse average is the
+/// mean of the exact fine averages. Each endpoint mean widens by a bound on its rounding.
+fn restricted_reference(case: Case, count: usize) -> TestResult<Vec<[f64; 4]>> {
+    let fine = case.grids[2];
+    if count == 0 || !fine.len().is_multiple_of(count) {
+        return Err(format!("{}: mesh {count} does not divide the reference", case.id).into());
+    }
+    let ratio = fine.len() / count;
+    Ok(fine
+        .chunks_exact(ratio)
+        .map(|block| {
+            let mut cell = [0.0; 4];
+            for (endpoint, value) in cell.iter_mut().enumerate() {
+                let bits = block.iter().map(|row| f64::from_bits(row[endpoint]));
+                let sum: f64 = bits.clone().sum();
+                let magnitude: f64 = bits.map(f64::abs).sum();
+                let bound = (ratio + 2) as f64 * f64::EPSILON * magnitude / ratio as f64
+                    + f64::MIN_POSITIVE;
+                let mean = sum / ratio as f64;
+                *value = if endpoint % 2 == 0 {
+                    mean - bound
+                } else {
+                    mean + bound
+                };
+            }
+            cell[0] = cell[0].max(0.0);
+            cell
+        })
+        .collect())
+}
+
+fn errors(case: Case, actual: &[[f64; 2]], reference: &[[f64; 4]]) -> TestResult<[f64; 2]> {
     if actual.len() != reference.len() {
         return Err("Surveyed reference grid length differs".into());
     }
     let mut total = [0.0; 2];
     for (actual, reference) in actual.iter().zip(reference) {
         for component in 0..2 {
-            let lo = f64::from_bits(reference[2 * component]);
-            let hi = f64::from_bits(reference[2 * component + 1]);
+            let lo = reference[2 * component];
+            let hi = reference[2 * component + 1];
             let scale = f64::from_bits(case.scales[component]);
             assert!(scale.is_finite() && scale > 0.0);
             assert!(lo.is_finite() && hi.is_finite() && lo <= hi);
@@ -179,15 +217,14 @@ fn differences(case: Case, coarse: &Measurement, fine: &Measurement) -> [f64; 2]
 fn spatial_convergence(case: Case) -> TestResult {
     assert_eq!(CASES.len(), 7);
     let mut measurements = Vec::new();
-    for count in [400, 200, 100] {
+    for count in MESHES {
         measurements.push(run::<crate::runtime::Runtime>(
             crate::runtime::client(),
             case,
             count,
-            0.002,
+            SPATIAL_STEP_S,
         )?);
     }
-    measurements.reverse();
     for component in 0..2 {
         let values: Vec<_> = measurements
             .iter()
@@ -265,11 +302,11 @@ fn refinement_cases() -> impl Iterator<Item = Case> {
 fn fixed_spacing_temporal_conserved_differences_strictly_decrease() -> TestResult {
     for case in refinement_cases() {
         let mut measurements = Vec::new();
-        for max_step in [0.02, 0.01, 0.005] {
+        for max_step in [0.5, 0.25, 0.125] {
             measurements.push(run::<crate::runtime::Runtime>(
                 crate::runtime::client(),
                 case,
-                50,
+                TEMPORAL_CELLS,
                 max_step,
             )?);
         }
@@ -293,7 +330,7 @@ fn fixed_spacing_temporal_conserved_differences_strictly_decrease() -> TestResul
 fn combined_refinement_reduces_errors_and_restricted_conserved_differences() -> TestResult {
     for case in refinement_cases() {
         let mut measurements = Vec::new();
-        for (count, max_step) in [(100, 0.02), (200, 0.01), (400, 0.005)] {
+        for (count, max_step) in MESHES.into_iter().zip([0.25, 0.125, 0.0625]) {
             measurements.push(run::<crate::runtime::Runtime>(
                 crate::runtime::client(),
                 case,
@@ -360,7 +397,7 @@ where
     R::Client: support::Client<R>,
 {
     let case = *CASES.first().ok_or("Missing surveyed transport case")?;
-    let result = run::<R>(client, case, 20, 0.02)?;
+    let result = run::<R>(client, case, MESHES[0], 0.5)?;
     assert!(result.conserved.iter().all(|state| state[0] > 0.0));
     assert!(result.conserved.iter().any(|state| state[1] != 0.0));
     Ok(())

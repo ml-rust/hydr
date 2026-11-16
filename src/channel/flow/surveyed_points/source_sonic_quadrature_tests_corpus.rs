@@ -1,11 +1,23 @@
 use super::*;
 
-pub(super) fn run<R>(client: &R::Client) -> Result
+pub(super) fn run<R>(client: &R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
 {
-    for ids in [&CASES[..6], &CASES[6..]] {
+    let replayed = coverage.select(CASES, |id| {
+        side(id).ok().map(|side| side == SonicSide::Left)
+    });
+    for group in [&CASES[..6], &CASES[6..]] {
+        let ids = group
+            .iter()
+            .copied()
+            .filter(|id| replayed.contains(id))
+            .collect::<Vec<_>>();
+        if ids.is_empty() {
+            continue;
+        }
+        let ids = ids.as_slice();
         let config = config(ids[0])?;
         let executions = fixtures::executions();
         let original = executions

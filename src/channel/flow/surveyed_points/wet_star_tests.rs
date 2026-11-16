@@ -1,3 +1,4 @@
+use crate::channel::flow::surveyed_points::corpus_coverage::Coverage;
 use crate::channel::flow::surveyed_points::{
     chart_test_support, source_tests::support as frozen, wet_depth::refine_wet_depth,
     wet_roots::locate_wet_roots, wet_star_types::WetStarStatus,
@@ -15,7 +16,7 @@ mod diagnostics;
 mod ranges;
 use diagnostics::check_diagnostics;
 
-fn matrix<R>(client: &R::Client) -> Result
+fn matrix<R>(client: &R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
@@ -23,7 +24,7 @@ where
     exact_rectangular_star::<R>(client)?;
     ranges::full_domain_discharge::<R>(client)?;
     ranges::empty_intersections::<R>(client)?;
-    frozen_star_states::<R>(client)?;
+    frozen_star_states::<R>(client, coverage)?;
     admission::run::<R>(client)
 }
 
@@ -109,7 +110,7 @@ where
     )
 }
 
-fn frozen_star_states<R>(client: &R::Client) -> Result
+fn frozen_star_states<R>(client: &R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
@@ -140,7 +141,13 @@ where
     ];
     let config = chart_test_support::config();
     chart_test_support::with_pair::<R, _>(client, &truths.map(|t| t.0), &config, |pair, work| {
-        let rows = support::rows::<R>(client, &[3, 0, 1, 3, 2])?;
+        // The device replays the knot jump and the film, one star of each kind.
+        let parents: &[i64] = if coverage.is_full() {
+            &[3, 0, 1, 3, 2]
+        } else {
+            &[3, 0]
+        };
+        let rows = support::rows::<R>(client, parents)?;
         let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
         let session = hydraulic(refine_wet_depth(pair, located))?;
         let mut session = hydraulic(session.refine_depth_to(CertifiedRootTolerance {
@@ -185,7 +192,7 @@ where
                 count += 1;
             }
         }
-        assert_eq!(count, 5);
+        assert_eq!(count, parents.len());
         Ok(())
     })
 }
@@ -197,7 +204,7 @@ fn configured_cpu_wet_star_certificates_preserve_root_state_and_anchors() -> Res
     let before = original.parallelism();
     let config = ParallelismConfig::new(Some(2), Some(257));
     let client = original.with_parallelism(config);
-    matrix::<CpuRuntime>(&client)?;
+    matrix::<CpuRuntime>(&client, Coverage::Full)?;
     assert_eq!(client.parallelism(), config);
     assert_eq!(original.parallelism(), before);
     Ok(())
@@ -207,5 +214,5 @@ fn configured_cpu_wet_star_certificates_preserve_root_state_and_anchors() -> Res
 #[test]
 fn actual_cuda_wet_star_certificates_preserve_root_state_and_anchors() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    matrix::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?)
+    matrix::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?, Coverage::Sample)
 }

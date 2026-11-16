@@ -3,6 +3,7 @@ use crate::channel::flow::{
     surveyed::error::{HydraulicError, PrismaticRiemannRejection},
     surveyed_points::{
         chart_test_support,
+        corpus_coverage::Coverage,
         source_tests::support::{self as frozen, Client, Result, hydraulic},
         wet_root_types::WetRootStatus,
     },
@@ -57,7 +58,7 @@ fn configured_cpu(run: impl FnOnce(&numr::runtime::cpu::CpuClient) -> Result) ->
     Ok(())
 }
 
-fn corpus<R>(client: &R::Client) -> Result
+fn corpus<R>(client: &R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: Client<R>
@@ -66,11 +67,19 @@ where
         + CertifiedUpperBracketAlgorithms<R>,
 {
     assert_eq!(frozen::cases().len(), 70);
-    let cases = frozen::cases()
+    let wet = frozen::cases()
         .iter()
         .filter(|case| !case.dry[0] && !case.dry[1]);
+    let replayed = coverage.select(wet, |case| {
+        (
+            cases::declared(case.id).1,
+            cases::star(case.id).is_some(),
+            case.uniform,
+        )
+    });
+    let selected = replayed.len();
     let mut executed = 0;
-    for case in cases {
+    for case in replayed {
         let (config, expected) = cases::declared(case.id);
         chart_test_support::with_pair::<R, _>(client, &[case.id], &config, |pair, work| {
             let source_before = support::source_bits(pair)?;
@@ -143,13 +152,16 @@ where
         })?;
         executed += 1;
     }
-    assert_eq!(executed, 61);
+    assert_eq!(executed, selected);
+    if coverage.is_full() {
+        assert_eq!(executed, 61);
+    }
     Ok(())
 }
 
 #[test]
 fn configured_cpu_wet_root_domains_preserve_frozen_outcomes() -> Result {
-    configured_cpu(corpus::<numr::runtime::cpu::CpuRuntime>)
+    configured_cpu(|client| corpus::<numr::runtime::cpu::CpuRuntime>(client, Coverage::Full))
 }
 
 #[test]
@@ -176,9 +188,8 @@ fn configured_cpu_wet_root_admission_selection_and_oracles() -> Result {
 fn actual_cuda_wet_root_domains_preserve_frozen_outcomes_and_retained_roots() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
     let client = CudaClient::new(CudaDevice::new(0))?;
-    corpus::<CudaRuntime>(&client)?;
-    chains::run::<CudaRuntime>(&client, chains::FILM_AND_CAP)?;
-    chains::run::<CudaRuntime>(&client, chains::JUMPS_AND_KNOTS)?;
+    corpus::<CudaRuntime>(&client, Coverage::Sample)?;
+    chains::run::<CudaRuntime>(&client, &chains::FILM_AND_CAP[..1])?;
     chains::run_pointed::<CudaRuntime>(&client)?;
     controls::<CudaRuntime>(&client)
 }

@@ -259,7 +259,8 @@ fn finite_storage_exchange_reverses_without_a_policy_switch_or_transfer_scaling(
     let mut positive = false;
     let mut negative = false;
     let mut steps = 0;
-    while current.time() < 4.0 {
+    // Stop at the first reversal. Later steps repeat the same exchange.
+    while current.time() < 4.0 && !(positive && negative) {
         let mut held = forcing(&setup, current.time(), 4.0);
         held.reaches[0].left = Some(ChannelBoundary::Wall);
         let start = current.time();

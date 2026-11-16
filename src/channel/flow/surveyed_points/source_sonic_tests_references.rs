@@ -2,6 +2,7 @@ use super::{
     PointRootSession, Result, SonicSide, SourceSonicStatus, chart_test_support, frozen, hydraulic,
     support,
 };
+use crate::channel::flow::surveyed_points::corpus_coverage::Coverage;
 use numr::{dtype::DType, runtime::Runtime};
 use solvr::optimize::CertifiedRootTolerance;
 
@@ -80,13 +81,19 @@ const REFERENCES: &[Reference] = &[
     },
 ];
 
-pub(super) fn run<R>(client: &R::Client) -> Result
+pub(super) fn run<R>(client: &R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
 {
+    let replayed = coverage.select(REFERENCES, |reference| {
+        (
+            reference.side == SonicSide::Left,
+            reference.id.starts_with("scalar_"),
+        )
+    });
     // Only explicitly labelled sonic candidates supply these truths. Legacy velocities use independent rational Q/A bounds.
-    for reference in REFERENCES {
+    for reference in replayed {
         let config = chart_test_support::config();
         chart_test_support::with_pair::<R, _>(client, &[reference.id], &config, |pair, work| {
             let cap = pair.bands.cap_depth.upper().try_to_vec::<f64>()?[0];

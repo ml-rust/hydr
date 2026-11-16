@@ -4,6 +4,8 @@
 mod accuracy;
 #[path = "surveyed_riemann/admission.rs"]
 mod admission;
+#[path = "../src/channel/flow/surveyed_points/corpus_coverage.rs"]
+mod corpus_coverage;
 #[path = "surveyed_riemann/data.rs"]
 mod data;
 #[path = "surveyed_riemann/exact_width.rs"]

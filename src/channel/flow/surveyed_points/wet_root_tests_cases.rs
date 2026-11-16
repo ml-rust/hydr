@@ -1,6 +1,6 @@
 use crate::channel::flow::surveyed::PrismaticRiemannConfig;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Expected {
     Located,
     Vacuum,

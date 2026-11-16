@@ -3,6 +3,9 @@ use crate::analytic::{ritter, stoker};
 
 type Reference = fn(f64, f64, f64) -> (f64, f64);
 
+/// Dam comparison time, before either wave reaches a wall.
+const DAM_TIME_S: f64 = 2.0;
+
 struct DamResult {
     depth_error: f64,
     discharge_error: f64,
@@ -24,23 +27,23 @@ fn dam(
         .map(|&x| 2.0 * exact(x, 0.0, GRAVITY).1)
         .collect();
     let initial = reach(definition(cells, max_step), &depths, &discharges)?;
-    let result = advance(initial, 4.0, walls())?;
+    let result = advance(initial, DAM_TIME_S, walls())?;
     let state = result.state()?;
     // Independent references return point values at cell centres, rather than exact cell averages.
     let depth_error = state
         .iter()
         .zip(&centres)
-        .map(|(cell, &x)| (cell.depth_m - exact(x, 4.0, GRAVITY).0).abs())
+        .map(|(cell, &x)| (cell.depth_m - exact(x, DAM_TIME_S, GRAVITY).0).abs())
         .sum::<f64>()
         / nx as f64;
     let discharge_error = state
         .iter()
         .zip(&centres)
-        .map(|(cell, &x)| (cell.discharge_m3_per_s - 2.0 * exact(x, 4.0, GRAVITY).1).abs())
+        .map(|(cell, &x)| (cell.discharge_m3_per_s - 2.0 * exact(x, DAM_TIME_S, GRAVITY).1).abs())
         .sum::<f64>()
         / nx as f64;
     println!(
-        "channel {label}: nx={nx}, max_step={max_step}, t=4, mean_abs_h={depth_error:.12e}, mean_abs_Q={discharge_error:.12e}"
+        "channel {label}: nx={nx}, max_step={max_step}, t={DAM_TIME_S}, mean_abs_h={depth_error:.12e}, mean_abs_Q={discharge_error:.12e}"
     );
     Ok(DamResult {
         depth_error,

@@ -1,3 +1,4 @@
+use super::corpus_coverage::Coverage;
 use super::potential_absolute::{endpoint_potential, source_potential};
 use super::potential_increment::endpoint_increment;
 use super::potential_range::{PotentialContext, PotentialEvaluation, PotentialValue};
@@ -46,7 +47,16 @@ where
         "frozen potential boundary table",
         |a| geometry.boundary_areas(a),
     ))?;
-    for case in frozen::query_profiles::CASES {
+    // Strided storage changes only the input layout, so one case per profile reaches it.
+    let coverage = if strided {
+        Coverage::Sample
+    } else {
+        Coverage::Full
+    };
+    let cases = coverage.select(frozen::query_profiles::CASES, |case| {
+        frozen::query_profiles::QUERIES[case.query_index].profile_index
+    });
+    for case in cases {
         let case: &frozen::query_profiles::Case = case;
         let chart: &frozen::query_profiles::Chart =
             &frozen::query_profiles::QUERIES[case.query_index];

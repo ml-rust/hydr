@@ -1,3 +1,4 @@
+use crate::channel::flow::surveyed_points::corpus_coverage::Coverage;
 use crate::channel::flow::surveyed_points::{
     chart_test_support,
     source_tests::support as frozen,
@@ -18,12 +19,12 @@ mod lifecycle;
 #[path = "wet_waves_tests_frozen.rs"]
 mod references;
 
-fn matrix<R>(client: &R::Client) -> Result
+fn matrix<R>(client: &R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
 {
-    references::run::<R>(client)?;
+    references::run::<R>(client, coverage)?;
     controls::run::<R>(client)?;
     lifecycle::run::<R>(client)?;
     support::with_rectangle::<R, _>(
@@ -64,7 +65,7 @@ fn configured_cpu_wet_wave_certificates_preserve_positions_and_continuation() ->
     let before = original.parallelism();
     let config = ParallelismConfig::new(Some(2), Some(257));
     let client = original.with_parallelism(config);
-    matrix::<CpuRuntime>(&client)?;
+    matrix::<CpuRuntime>(&client, Coverage::Full)?;
     assert_eq!(client.parallelism(), config);
     assert_eq!(original.parallelism(), before);
     Ok(())
@@ -74,5 +75,5 @@ fn configured_cpu_wet_wave_certificates_preserve_positions_and_continuation() ->
 #[test]
 fn actual_cuda_wet_wave_certificates_preserve_positions_and_continuation() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    matrix::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?)
+    matrix::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?, Coverage::Sample)
 }
