@@ -3,11 +3,9 @@ use super::{
     point_flux_types::{
         PointFluxCertificates, PointFluxKind, PointFluxStatus, ResolvedPointFluxes,
     },
+    point_quadrature_types::{PointQuadratureOutcome as Outcome, PointQuadratureProgress},
     point_root_session::{PointRootSession, invalid},
     point_wave_envelope,
-    source_sonic_quadrature_types::{
-        SourceSonicQuadratureOutcome as Outcome, SourceSonicQuadratureProgress,
-    },
     source_sonic_types::SonicSide,
 };
 use crate::channel::flow::surveyed::error::{Arithmetic, HydraulicResult, checked};
@@ -302,7 +300,7 @@ where
     fn record(
         &mut self,
         a: &mut Arithmetic<'_, R>,
-        progress: &SourceSonicQuadratureProgress<R>,
+        progress: &PointQuadratureProgress<R>,
     ) -> HydraulicResult<usize> {
         let c = a.client();
         let positions =

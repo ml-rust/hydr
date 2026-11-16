@@ -81,7 +81,7 @@ where
                     hydraulic(session.advance_source_sonic_quadrature(&owners, selected_side))?;
                 assert_eq!(progress.invocation_owner.try_to_vec::<i64>()?, demand);
                 assert_eq!(progress.parent_rows.try_to_vec::<i64>()?, demand);
-                assert_eq!(progress.side, selected_side);
+                assert_eq!(progress.side, Some(selected_side));
                 assert_eq!(progress.outcome.try_to_vec::<i64>()?, vec![0; demand.len()]);
                 assert_eq!(
                     progress.old_level.try_to_vec::<i64>()?,

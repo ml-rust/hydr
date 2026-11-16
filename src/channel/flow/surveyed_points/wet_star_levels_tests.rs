@@ -26,7 +26,9 @@ use numr::{
 const LEVEL: usize = 4;
 
 /// A trapezoid has no analytic potential, so its star rows integrate numerically.
-fn trapezoid<R>(client: &R::Client) -> Result<PrismaticSectionBatch<R>>
+pub(in crate::channel::flow::surveyed_points) fn trapezoid<R>(
+    client: &R::Client,
+) -> Result<PrismaticSectionBatch<R>>
 where
     R: Runtime<DType = DType>,
     R::Client: frozen::Client<R>,
@@ -49,7 +51,8 @@ where
 
 /// One moving cell between walls: the left face sees its mirror state.
 /// The double rarefaction has the exact star discharge 0.
-const MIRROR: [[f64; 4]; 1] = [[12.0, -36.0, 12.0, 36.0]];
+pub(in crate::channel::flow::surveyed_points) const MIRROR: [[f64; 4]; 1] =
+    [[12.0, -36.0, 12.0, 36.0]];
 
 fn config() -> PrismaticRiemannConfig {
     PrismaticRiemannConfig::default()

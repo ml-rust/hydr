@@ -1,16 +1,15 @@
 use super::{
     paired_sources::PairedSources,
+    point_quadrature_capacity::{self, NativeRootUse},
+    point_quadrature_progress::{self as progress_rows, Record},
+    point_quadrature_types::{PointQuadratureOutcome as Outcome, PointQuadratureProgress},
     root_invocation::RootInvocation,
     source_sonic_numerical::SourceSonicNumericalEvidence,
-    source_sonic_quadrature_types::{
-        SourceSonicQuadratureOutcome as Outcome, SourceSonicQuadratureProgress,
-    },
     source_sonic_types::{SourceSonicDomain, SourceSonicRequest, SourceSonicStatus},
-    wet_depth_types::WetDepthStatus,
 };
 use crate::channel::flow::surveyed::{
     PrismaticRiemannRejection,
-    error::{Arithmetic, HydraulicError, HydraulicResult, checked},
+    error::{HydraulicError, HydraulicResult, checked},
 };
 use numr::{
     dtype::DType,
@@ -29,7 +28,7 @@ pub(super) fn advance<R>(
     request: &mut SourceSonicRequest<R>,
     demand: &Tensor<R>,
     association: &Tensor<R>,
-    progress: &mut SourceSonicQuadratureProgress<R>,
+    progress: &mut PointQuadratureProgress<R>,
 ) -> HydraulicResult<()>
 where
     R: Runtime<DType = DType>,
@@ -83,16 +82,7 @@ where
                 if rows.numel() == 0 {
                     continue;
                 }
-                let current = sources.panel_level(*index)?;
-                let next = index.checked_add(1).ok_or_else(|| {
-                    super::point_root_session::invalid("sonic panel level overflows usize")
-                })?;
-                let permitted = next <= sources.evaluation.config.max_refinements
-                    && next < usize::BITS as usize
-                    && current.panels().checked_mul(2).is_some_and(|panels| {
-                        panels <= sources.evaluation.config.max_simpson_panels
-                    });
-                if permitted {
+                if point_quadrature_capacity::next_level(sources, *index)? {
                     admitted = c.maximum(&admitted, &mask)?;
                 } else {
                     mark(
@@ -111,7 +101,12 @@ where
             output.push(domain);
             continue;
         }
-        if !super::source_sonic_quadrature_capacity::permits(sources, invocation, &domain, &todo)? {
+        let native = domain.refinement.as_ref().map(|state| NativeRootUse {
+            limits: &state.limits,
+            iterations: domain.iterations,
+            callback_points: domain.callback_points,
+        });
+        if !point_quadrature_capacity::permits(sources, invocation, native, &domain.query, &todo)? {
             mark(
                 sources,
                 &domain,
@@ -195,32 +190,10 @@ where
             let upper = c.index_select(domain.query.query.parameter.upper(), 0, &rows)?;
             let old_lower = c.index_select(&old_lower, 0, &rows)?;
             let old_upper = c.index_select(&old_upper, 0, &rows)?;
-            let nested = c.mul(&c.ge(&lower, &old_lower)?, &c.le(&upper, &old_upper)?)?;
-            let strict = c.maximum(&c.gt(&lower, &old_lower)?, &c.lt(&upper, &old_upper)?)?;
-            let improved = c.mul(&nested, &strict)?;
+            let improved = progress_rows::improved(c, [&old_lower, &old_upper], [&lower, &upper])?;
             let status = c.index_select(&domain.status, 0, &rows)?;
-            let work = Tensor::full_scalar(
-                &[],
-                DType::I64,
-                WetDepthStatus::WorkLimit as i64 as f64,
-                c.device(),
-            )?;
-            let unresolved = Tensor::full_scalar(
-                &[],
-                DType::I64,
-                WetDepthStatus::Unresolved as i64 as f64,
-                c.device(),
-            )?;
-            let outcome = c.where_cond(
-                &c.eq(&status, &work)?,
-                &code::<R>(c, &rows, Outcome::WorkLimit)?,
-                &c.where_cond(
-                    &c.eq(&status, &unresolved)?,
-                    &code::<R>(c, &rows, Outcome::Unresolved)?,
-                    &code::<R>(c, &rows, Outcome::Advanced)?,
-                )?,
-            )?;
-            record(
+            let outcome = progress_rows::committed(c, &rows, &status)?;
+            progress_rows::record(
                 a,
                 association,
                 progress,
@@ -298,44 +271,13 @@ where
     Ok(Some(numerical))
 }
 
-struct Record<'a, R: Runtime<DType = DType>> {
-    owners: &'a Tensor<R>,
-    old: &'a Tensor<R>,
-    new: &'a Tensor<R>,
-    outcome: &'a Tensor<R>,
-    improved: &'a Tensor<R>,
-}
-fn record<R>(
-    a: &Arithmetic<'_, R>,
-    association: &Tensor<R>,
-    progress: &mut SourceSonicQuadratureProgress<R>,
-    value: Record<'_, R>,
-) -> HydraulicResult<()>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    let c = a.client();
-    let positions = super::point_flux_association::positions(a, association, value.owners)?;
-    progress.old_level = c.index_put(&progress.old_level, 0, &positions, value.old)?;
-    progress.new_level = c.index_put(&progress.new_level, 0, &positions, value.new)?;
-    progress.outcome = c.index_put(&progress.outcome, 0, &positions, value.outcome)?;
-    progress.bracket_improved =
-        c.index_put(&progress.bracket_improved, 0, &positions, value.improved)?;
-    Ok(())
-}
 fn mark<R>(
     sources: &PairedSources<'_, R>,
     domain: &SourceSonicDomain<R>,
     rows: &Tensor<R>,
     outcome: Outcome,
     association: &Tensor<R>,
-    progress: &mut SourceSonicQuadratureProgress<R>,
+    progress: &mut PointQuadratureProgress<R>,
 ) -> HydraulicResult<()>
 where
     R: Runtime<DType = DType>,
@@ -347,34 +289,7 @@ where
         + RuntimeClient<R>,
 {
     let c = sources.geometry.client();
-    checked::<R, _>(c, "sonic quadrature unchanged progress", |a| {
-        let owners = c.index_select(&domain.invocation_owner, 0, rows)?;
-        let levels = c.index_select(domain.numerical.levels(), 0, rows)?;
-        let outcome = code::<R>(c, rows, outcome)?;
-        let zero = Tensor::zeros(rows.shape(), a.dtype(), c.device())?;
-        record(
-            a,
-            association,
-            progress,
-            Record {
-                owners: &owners,
-                old: &levels,
-                new: &levels,
-                outcome: &outcome,
-                improved: &zero,
-            },
-        )
-    })
-}
-fn code<R: Runtime<DType = DType>>(
-    c: &R::Client,
-    rows: &Tensor<R>,
-    outcome: Outcome,
-) -> HydraulicResult<Tensor<R>> {
-    Ok(Tensor::full_scalar(
-        rows.shape(),
-        DType::I64,
-        outcome as i64 as f64,
-        c.device(),
-    )?)
+    let owners = c.index_select(&domain.invocation_owner, 0, rows)?;
+    let levels = c.index_select(domain.numerical.levels(), 0, rows)?;
+    progress_rows::mark(c, &owners, &levels, outcome, association, progress)
 }

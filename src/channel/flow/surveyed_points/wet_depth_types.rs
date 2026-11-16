@@ -34,6 +34,7 @@ pub(super) struct InitializedDepthState<R: Runtime<DType = DType>> {
     pub(super) invocation_witness: RootInvocationWitness,
     pub(super) continuation: CertifiedRootContinuation<R>,
     pub(super) chart: SupportedAreaQuery<R>,
+    pub(super) limits: super::point_quadrature_capacity::NativeRootLimits,
 }
 
 /// Physical certificates retain their area expression independently of normalized-depth projection.
@@ -49,7 +50,6 @@ pub(super) struct WetDepthDomain<R: Runtime<DType = DType>> {
     pub(super) levels: WetStarLevels<R>,
     pub(super) iterations: usize,
     pub(super) callback_points: usize,
-    #[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
     pub(super) mapped_points: usize,
     pub(super) refinement: DepthRefinementState<R>,
 }

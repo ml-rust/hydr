@@ -3,6 +3,7 @@ use std::cell::{Cell, RefCell};
 use super::{
     chart_admission, chart_root_callback, chart_root_derivative,
     paired_sources::PairedSources,
+    point_quadrature_capacity::NativeRootLimits,
     root_invocation::RootInvocation,
     wet_depth_mapping,
     wet_depth_types::{
@@ -84,7 +85,7 @@ where
         refinement,
     } = domain;
     let work = sources.evaluation.work;
-    let (chart, progress) = match refinement {
+    let (chart, progress, limits) = match refinement {
         DepthRefinementState::Deferred { original } => {
             let selected = sources.select_rows(&parent_rows, &original.query)?;
             let (chart, derivative) = checked::<R, _>(c, "wet depth native admission", |a| {
@@ -101,6 +102,7 @@ where
             options.atol = tolerance.atol;
             options.rtol = tolerance.rtol;
             options.max_points = remaining;
+            let limits = NativeRootLimits::capture(&options);
             let cause = Cell::new(None);
             work.begin_root()?;
             let borrowed = RefCell::new(&mut *sources);
@@ -123,13 +125,14 @@ where
                 &derivative,
                 &options,
             );
-            (chart, resolve_root(progress, cause.take())?)
+            (chart, resolve_root(progress, cause.take())?, limits)
         }
         DepthRefinementState::Initialized { state } => {
             let InitializedDepthState {
                 invocation_witness: _,
                 continuation,
                 chart,
+                limits,
             } = *state;
             sources.select_rows(&parent_rows, &chart)?;
             let rounds = witness
@@ -165,7 +168,7 @@ where
                 tolerance,
                 &allowance,
             );
-            (chart, resolve_root(progress, cause.take())?)
+            (chart, resolve_root(progress, cause.take())?, limits)
         }
     };
     let mapped_points = progress.mapped_points();
@@ -266,6 +269,7 @@ where
                 invocation_witness,
                 continuation,
                 chart,
+                limits,
             }),
         },
     })

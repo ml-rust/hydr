@@ -3,8 +3,8 @@ use super::super::{
     corpus_coverage::Coverage,
     point_candidates::tests::{fixtures, flux_fixtures},
     point_flux_types::{PointFluxKind, PointFluxStatus},
+    point_quadrature_types::PointQuadratureProgress,
     point_root_session::PointRootSession,
-    source_sonic_quadrature_types::SourceSonicQuadratureProgress,
     source_sonic_types::SonicSide,
     source_tests::support as frozen,
     wet_depth::tests::support,
@@ -67,7 +67,7 @@ fn mapped<R: Runtime<DType = DType>>(session: &PointRootSession<'_, '_, R>) -> u
 }
 
 fn work_delta<R>(
-    progress: &SourceSonicQuadratureProgress<R>,
+    progress: &PointQuadratureProgress<R>,
     before: PrismaticRiemannWork,
     after: PrismaticRiemannWork,
     old_mapped: usize,

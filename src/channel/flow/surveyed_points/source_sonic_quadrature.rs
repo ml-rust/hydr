@@ -1,9 +1,10 @@
 use super::{
+    point_quadrature_progress,
+    point_quadrature_types::PointQuadratureProgress,
     point_root_session::{PointRootSession, invalid},
-    source_sonic_quadrature_types::{SourceSonicQuadratureOutcome, SourceSonicQuadratureProgress},
     source_sonic_types::SonicSide,
 };
-use crate::channel::flow::surveyed::error::{HydraulicResult, checked};
+use crate::channel::flow::surveyed::error::HydraulicResult;
 use numr::{
     dtype::DType,
     ops::{
@@ -36,7 +37,7 @@ where
         &mut self,
         owners: &Tensor<R>,
         side: SonicSide,
-    ) -> HydraulicResult<SourceSonicQuadratureProgress<R>> {
+    ) -> HydraulicResult<PointQuadratureProgress<R>> {
         self.sources
             .check_root_witness(self.invocation.source_witness())?;
         self.check_domains()?;
@@ -46,46 +47,17 @@ where
             ));
         }
         let c = self.sources.geometry.client();
-        let mut progress =
-            checked::<R, _>(c, "sonic quadrature complete request admission", |a| {
-                let (owners, parents) = super::dry_vacuum_evidence::owners(a, self, owners)?;
-                let count = owners.numel();
-                Ok(SourceSonicQuadratureProgress {
-                    invocation_owner: owners,
-                    parent_rows: parents,
-                    side,
-                    outcome: Tensor::full_scalar(
-                        &[count],
-                        DType::I64,
-                        SourceSonicQuadratureOutcome::NotApplicable as i64 as f64,
-                        c.device(),
-                    )?,
-                    old_level: Tensor::full_scalar(&[count], DType::I64, -1., c.device())?,
-                    new_level: Tensor::full_scalar(&[count], DType::I64, -1., c.device())?,
-                    bracket_improved: Tensor::zeros(&[count], a.dtype(), c.device())?,
-                    additional_residual_points: 0,
-                    additional_simpson_value_points: 0,
-                    additional_simpson_derivative_points: 0,
-                    additional_mapped_points: 0,
-                    callback_points: self.callback_points(),
-                    point_limit: self.point_limit(),
-                })
-            })?;
+        let mut progress = point_quadrature_progress::start(
+            self,
+            owners,
+            Some(side),
+            "sonic quadrature complete request admission",
+        )?;
         if progress.invocation_owner.numel() == 0 {
             return Ok(progress);
         }
-        let (demand, association) = checked::<R, _>(c, "sonic quadrature nonempty demand", |a| {
-            let owners = &progress.invocation_owner;
-            let demand = c.index_put(
-                &Tensor::zeros(self.invocation_rows.shape(), a.dtype(), c.device())?,
-                0,
-                owners,
-                &Tensor::ones(owners.shape(), a.dtype(), c.device())?,
-            )?;
-            let association =
-                super::point_flux_association::inverse(a, self.invocation_rows.numel(), owners)?;
-            Ok((demand, association))
-        })?;
+        let (demand, association) =
+            point_quadrature_progress::demand(self, &progress, "sonic quadrature nonempty demand")?;
         let before = self.sources.evaluation.work.snapshot();
         let old_mapped = mapped::<R>(&self.sonic.requests)?;
         let checkpoint = self.checkpoint();
@@ -116,23 +88,15 @@ where
         })();
         self.reconcile(checkpoint, result.is_ok())?;
         result?;
-        let after = self.sources.evaluation.work.snapshot();
-        progress.additional_residual_points = delta(before.residual_points, after.residual_points)?;
-        progress.additional_simpson_value_points =
-            delta(before.simpson_value_points, after.simpson_value_points)?;
-        progress.additional_simpson_derivative_points = delta(
-            before.simpson_derivative_points,
-            after.simpson_derivative_points,
+        point_quadrature_progress::finish(
+            &mut progress,
+            before,
+            self.sources.evaluation.work.snapshot(),
+            [old_mapped, mapped::<R>(&self.sonic.requests)?],
+            self.callback_points(),
         )?;
-        progress.additional_mapped_points = delta(old_mapped, mapped::<R>(&self.sonic.requests)?)?;
-        progress.callback_points = self.callback_points();
         Ok(progress)
     }
-}
-fn delta(before: usize, after: usize) -> HydraulicResult<usize> {
-    after
-        .checked_sub(before)
-        .ok_or_else(|| invalid("sonic quadrature cumulative work decreased"))
 }
 fn mapped<R: Runtime<DType = DType>>(
     requests: &[super::source_sonic_types::SourceSonicRequest<R>],

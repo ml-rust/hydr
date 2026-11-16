@@ -34,7 +34,6 @@ where
         })
     }
 
-    #[cfg(test)]
     pub(super) fn levels(&self) -> &Tensor<R> {
         &self.levels
     }
@@ -62,8 +61,7 @@ where
         super::source_sonic_policy::policy_rows::<R>(c, &self.levels, index)
     }
 
-    /// Tests move local rows to one admitted panel level.
-    #[cfg(test)]
+    /// Moves local rows to one admitted panel level. Policies keep only the levels in use.
     pub(super) fn with_rows_at(
         &self,
         c: &R::Client,
@@ -89,4 +87,4 @@ where
 
 #[cfg(test)]
 #[path = "wet_star_levels_tests.rs"]
-mod tests;
+pub(in crate::channel::flow::surveyed_points) mod tests;

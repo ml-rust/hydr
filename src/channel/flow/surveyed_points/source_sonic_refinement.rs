@@ -2,12 +2,11 @@ use std::cell::{Cell, RefCell};
 
 use super::{
     paired_sources::PairedSources,
+    point_quadrature_capacity::NativeRootLimits,
     point_root_depth as wet_depth_mapping,
     root_invocation::RootInvocation,
     source_sonic_callback, source_sonic_charts,
-    source_sonic_types::{
-        SourceSonicBinding, SourceSonicContinuation, SourceSonicDomain, SourceSonicNativeLimits,
-    },
+    source_sonic_types::{SourceSonicBinding, SourceSonicContinuation, SourceSonicDomain},
     wet_depth_types::WetDepthStatus,
 };
 use crate::channel::flow::surveyed::{
@@ -216,7 +215,7 @@ where
             options.atol = tolerance.atol;
             options.rtol = tolerance.rtol;
             options.max_points = remaining;
-            let limits = SourceSonicNativeLimits::capture(&options);
+            let limits = NativeRootLimits::capture(&options);
             let cause = Cell::new(None);
             work.begin_root()?;
             let borrowed = RefCell::new(&mut *sources);

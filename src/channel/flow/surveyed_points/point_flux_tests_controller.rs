@@ -1,9 +1,9 @@
 use super::super::super::{
     point_candidates::tests::fixtures,
     point_flux_types::{PointFluxKind, PointFluxStatus, ResolvedPointFluxes},
+    point_quadrature_types::PointQuadratureOutcome as Outcome,
     point_root_session::PointRootSession,
     source_sonic_quadrature::tests::CASES,
-    source_sonic_quadrature_types::SourceSonicQuadratureOutcome as Outcome,
 };
 use super::{chart_test_support, diagnostics, frozen, hydraulic, support};
 use crate::channel::flow::surveyed::PrismaticRiemannConfig;

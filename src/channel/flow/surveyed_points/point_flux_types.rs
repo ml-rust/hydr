@@ -129,7 +129,7 @@ pub(super) struct ResolvedPointFluxes<R: Runtime<DType = DType>> {
     pub(super) selection: Tensor<R>,
     /// Every executed selection, in call order.
     pub(super) selections: Vec<PointFluxCertificates<R>>,
-    /// Last `SourceSonicQuadratureOutcome` per face. `NotApplicable` when never advanced.
+    /// Last sonic `PointQuadratureOutcome` per face. `NotApplicable` when never advanced.
     pub(super) sonic_outcome: Tensor<R>,
     /// Sonic panel level per face after its last advance. -1 when never advanced.
     pub(super) sonic_level: Tensor<R>,
