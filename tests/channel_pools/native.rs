@@ -14,6 +14,7 @@ use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::integrate::CertifiedSimpsonAlgorithms;
 use solvr::interpolate::Interp1dAlgorithms;
+use solvr::optimize::CertifiedMappedBisectionAlgorithms;
 use solvr::optimize::roots::{
     AndersonAlgorithms, BatchedBisectionAlgorithms, BatchedNewtonAlgorithms,
     CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
@@ -142,6 +143,7 @@ where
         + NextRepresentableOps<R>
         + CertifiedSimpsonAlgorithms<R>
         + CertifiedBisectionAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>
         + CertifiedUpperBracketAlgorithms<R>
         + Interp1dAlgorithms<R>
         + AndersonAlgorithms<R>

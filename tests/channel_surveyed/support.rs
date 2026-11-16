@@ -9,6 +9,7 @@ use numr::ops::{
 };
 use numr::runtime::Runtime;
 use solvr::integrate::CertifiedSimpsonAlgorithms;
+use solvr::optimize::CertifiedMappedBisectionAlgorithms;
 use solvr::optimize::roots::{
     BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
 };
@@ -27,6 +28,7 @@ pub trait Client<R: Runtime<DType = DType>>:
     + TwoSumOps<R>
     + CertifiedSimpsonAlgorithms<R>
     + CertifiedBisectionAlgorithms<R>
+    + CertifiedMappedBisectionAlgorithms<R>
     + CertifiedUpperBracketAlgorithms<R>
     + BatchedBisectionAlgorithms<R>
 {
@@ -44,6 +46,7 @@ where
         + TwoSumOps<R>
         + CertifiedSimpsonAlgorithms<R>
         + CertifiedBisectionAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>
         + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {

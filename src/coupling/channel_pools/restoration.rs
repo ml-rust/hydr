@@ -99,6 +99,7 @@ where
             + numr::ops::NextRepresentableOps<R>
             + solvr::integrate::CertifiedSimpsonAlgorithms<R>
             + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>
+            + solvr::optimize::CertifiedMappedBisectionAlgorithms<R>
             + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
     {
         require(
@@ -184,6 +185,7 @@ where
             + numr::ops::NextRepresentableOps<R>
             + solvr::integrate::CertifiedSimpsonAlgorithms<R>
             + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>
+            + solvr::optimize::CertifiedMappedBisectionAlgorithms<R>
             + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
     {
         require(

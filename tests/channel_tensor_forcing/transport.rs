@@ -11,6 +11,7 @@ use numr::ops::{
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::integrate::CertifiedSimpsonAlgorithms;
+use solvr::optimize::CertifiedMappedBisectionAlgorithms;
 use solvr::optimize::roots::{
     BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
 };
@@ -246,6 +247,7 @@ where
         + NextRepresentableOps<R>
         + CertifiedSimpsonAlgorithms<R>
         + CertifiedBisectionAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>
         + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {

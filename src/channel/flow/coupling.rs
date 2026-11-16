@@ -308,6 +308,7 @@ where
         + BatchedBisectionAlgorithms<R>
         + solvr::integrate::CertifiedSimpsonAlgorithms<R>
         + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>
+        + solvr::optimize::CertifiedMappedBisectionAlgorithms<R>
         + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
 {
     pub(crate) fn trial_coupled(

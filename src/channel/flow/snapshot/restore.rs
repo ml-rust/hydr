@@ -12,7 +12,10 @@ use numr::runtime::{Device, Runtime, RuntimeClient};
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::{
     integrate::CertifiedSimpsonAlgorithms,
-    optimize::roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+    optimize::{
+        CertifiedMappedBisectionAlgorithms,
+        roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+    },
 };
 use std::sync::Arc;
 
@@ -63,6 +66,7 @@ where
             + NextRepresentableOps<R>
             + CertifiedSimpsonAlgorithms<R>
             + CertifiedBisectionAlgorithms<R>
+            + CertifiedMappedBisectionAlgorithms<R>
             + CertifiedUpperBracketAlgorithms<R>,
     {
         require(

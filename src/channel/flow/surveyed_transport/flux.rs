@@ -15,7 +15,10 @@ use numr::{
 use solvr::{
     common::arithmetic::Interval,
     integrate::CertifiedSimpsonAlgorithms,
-    optimize::roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+    optimize::{
+        CertifiedMappedBisectionAlgorithms,
+        roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+    },
 };
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -29,6 +32,7 @@ where
         + RuntimeClient<R>
         + CertifiedSimpsonAlgorithms<R>
         + CertifiedBisectionAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>
         + CertifiedUpperBracketAlgorithms<R>,
 {
     pub(in crate::channel::flow) fn surveyed_flux(

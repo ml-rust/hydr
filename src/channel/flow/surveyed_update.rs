@@ -99,6 +99,7 @@ pub(super) mod tests {
     use numr::ops::{HypotOps, MidpointOps};
     use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
     use solvr::integrate::CertifiedSimpsonAlgorithms;
+    use solvr::optimize::CertifiedMappedBisectionAlgorithms;
     use solvr::optimize::roots::{
         BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
     };
@@ -111,6 +112,7 @@ pub(super) mod tests {
         + MidpointOps<R>
         + CertifiedSimpsonAlgorithms<R>
         + CertifiedBisectionAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>
         + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>
     {
@@ -124,6 +126,7 @@ pub(super) mod tests {
             + MidpointOps<R>
             + CertifiedSimpsonAlgorithms<R>
             + CertifiedBisectionAlgorithms<R>
+            + CertifiedMappedBisectionAlgorithms<R>
             + CertifiedUpperBracketAlgorithms<R>
             + BatchedBisectionAlgorithms<R>,
     {

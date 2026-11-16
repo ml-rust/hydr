@@ -17,7 +17,10 @@ use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::{
     integrate::CertifiedSimpsonAlgorithms,
-    optimize::roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+    optimize::{
+        CertifiedMappedBisectionAlgorithms,
+        roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+    },
 };
 use std::sync::Arc;
 
@@ -48,6 +51,7 @@ where
         + MidpointOps<R>
         + CertifiedSimpsonAlgorithms<R>
         + CertifiedBisectionAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>
         + CertifiedUpperBracketAlgorithms<R>
         + BinaryOps<R>
         + CompareOps<R>
