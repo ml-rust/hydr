@@ -458,3 +458,48 @@ fn native_flux(
         &ChannelTensorBoundary::from_host(&context.client, right)?,
     )
 }
+
+#[test]
+fn step_that_exceeds_start_cfl_retries_and_reports_it() -> Result<(), Box<dyn std::error::Error>> {
+    let client =
+        CpuClient::new(CpuDevice::new()).with_parallelism(ParallelismConfig::new(Some(1), None));
+    let definition = ChannelReachDefinition {
+        vertical_datum: "synthetic datum".into(),
+        provenance: "retrying one-meter wall-bounded cell fixture".into(),
+        geometry: crate::channel::ChannelGeometry::Rectangular {
+            cells: (0..2)
+                .map(|index| RectangularChannelCell {
+                    id: format!("cell-{index}"),
+                    length_m: 1.0,
+                    width_m: 1.0,
+                    bed_elevation_m: 0.0,
+                    maximum_depth_m: 4.0,
+                    manning_n: 0.0,
+                })
+                .collect(),
+        },
+        lateral_bindings: vec![],
+        config: ChannelConfig::default(),
+    };
+    let reach = ChannelReach::<CpuRuntime>::new(
+        client,
+        definition,
+        ChannelInitialState {
+            time_s: 0.0,
+            volume_m3: vec![1.0, 1.0],
+            longitudinal_momentum_m4_per_s: vec![0.0; 2],
+        },
+    )?;
+    let forcing = ChannelForcingInterval {
+        start_s: 0.0,
+        end_s: 1.0,
+        left: ChannelBoundary::Wall,
+        right: ChannelBoundary::Wall,
+        lateral_inputs: vec![],
+    };
+    let accepted = reach.step(forcing.end_s, &forcing)?.next;
+    let receipt = accepted.last_step()?.ok_or("missing accepted interval")?;
+    assert!(receipt.retries > 0);
+    assert!(receipt.end_s < forcing.end_s);
+    Ok(())
+}

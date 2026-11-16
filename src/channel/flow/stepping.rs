@@ -132,6 +132,10 @@ where
         let mut dt = endpoint - self.time();
         let mut reason = String::new();
         let donor = context.donor_volume(&self.accepted.volume)?;
+        // These depend only on the accepted state and the start forcing.
+        let fields = context.fields(&self.accepted.volume, &self.accepted.momentum)?;
+        let flux = context.flux(&fields, &forcing.left, &forcing.right)?;
+        let start_cfl = context.cfl_limit(&flux.speed, flux.internal_speed.as_ref())?;
         for retries in 0..=config.max_retries {
             let end = if retries == 0 {
                 endpoint
@@ -146,9 +150,6 @@ where
                     reason,
                 });
             }
-            let fields = context.fields(&self.accepted.volume, &self.accepted.momentum)?;
-            let flux = context.flux(&fields, &forcing.left, &forcing.right)?;
-            let start_cfl = context.cfl_limit(&flux.speed, flux.internal_speed.as_ref())?;
             let prepared = context.lateral.prepare(
                 c,
                 &forcing.lateral,
