@@ -30,14 +30,24 @@ pub(super) struct ResidualInputs<'a, R: Runtime<DType = DType>> {
     pub face_volume: &'a Tensor<R>,
     pub face_momentum: &'a Tensor<R>,
     pub expanded: &'a ExpandedImpulses<'a, R>,
-    /// Incoming and withdrawn water and momentum, when lateral exchange is active.
-    pub lateral: Option<[&'a Tensor<R>; 4]>,
+    /// Lateral exchange, when it is active.
+    pub lateral: Option<LateralImpulses<'a, R>>,
+}
+
+/// Lateral water and momentum that enter one surveyed interval.
+pub(super) struct LateralImpulses<'a, R: Runtime<DType = DType>> {
+    pub incoming_volume: &'a Tensor<R>,
+    pub withdrawal_volume: &'a Tensor<R>,
+    pub incoming_momentum: &'a Tensor<R>,
+    /// Two-part momentum the withdrawal removes, as applied to the state.
+    pub withdrawn_momentum: &'a ConservedPoint<R>,
 }
 
 /// Upper bounds on the magnitude of the cell water and momentum residuals.
 ///
 /// Each residual is the state change minus the selected face transfers, friction, and lateral
-/// exchange, evaluated as expansions.
+/// exchange, evaluated as expansions. The momentum withdrawal is the applied two-part value.
+/// Its distance from the receipt momentum is a lateral assembly bound.
 pub(super) fn expanded_residuals<R>(
     client: &R::Client,
     count: usize,
@@ -70,14 +80,14 @@ where
         let change = a.expansion_sub(&change, &transfer_momentum)?;
         let mut momentum = a.expansion_sub(&change, &friction)?;
 
-        if let Some([incoming, withdrawal, incoming_momentum, withdrawal_momentum]) = input.lateral
-        {
-            let incoming = a.expansion_point(incoming)?;
-            let withdrawal = a.expansion_point(withdrawal)?;
-            let lateral = a.expansion_sub(&incoming, &withdrawal)?;
-            water = a.expansion_sub(&water, &lateral)?;
-            let incoming = a.expansion_point(incoming_momentum)?;
-            let withdrawal = a.expansion_point(withdrawal_momentum)?;
+        if let Some(lateral) = &input.lateral {
+            let incoming = a.expansion_point(lateral.incoming_volume)?;
+            let withdrawal = a.expansion_point(lateral.withdrawal_volume)?;
+            let exchange = a.expansion_sub(&incoming, &withdrawal)?;
+            water = a.expansion_sub(&water, &exchange)?;
+            let incoming = a.expansion_point(lateral.incoming_momentum)?;
+            let withdrawn = &lateral.withdrawn_momentum;
+            let withdrawal = exact(a, &withdrawn.high, &withdrawn.low)?;
             let lateral = a.expansion_sub(&incoming, &withdrawal)?;
             momentum = a.expansion_sub(&momentum, &lateral)?;
         }

@@ -100,6 +100,16 @@ where
     a.expansion_bounds(&value.high, &value.low, &value.bound)
 }
 
+/// Selected center of an expansion. Its radius is recorded apart.
+pub(super) fn center<R: Runtime<DType = DType>>(
+    value: &CertifiedExpansion<R>,
+) -> ConservedPoint<R> {
+    ConservedPoint {
+        high: value.high().clone(),
+        low: value.low().clone(),
+    }
+}
+
 fn parts<R: Runtime<DType = DType>>(value: &CertifiedExpansion<R>) -> Parts<R> {
     Parts {
         high: value.high().clone(),
@@ -199,13 +209,7 @@ where
         let first = bounded(a, first)?;
         let second = bounded(a, second)?;
         let sum = a.expansion_add(&first, &second)?;
-        Ok((
-            ConservedPoint {
-                high: sum.high().clone(),
-                low: sum.low().clone(),
-            },
-            sum.abs_error().clone(),
-        ))
+        Ok((center(&sum), sum.abs_error().clone()))
     })
 }
 

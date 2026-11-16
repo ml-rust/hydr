@@ -14,6 +14,12 @@ use numr::ops::{
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
+pub(super) const WITHDRAWAL_EXCEEDS: &str = "lateral withdrawal exceeds original donor water: shorten the interval or recompute integrated inputs";
+pub(super) const WITHDRAWAL_ABSORBED: &str =
+    "positive prescribed withdrawal is absorbed in donor storage: rescale the input or storage";
+pub(super) const OUTFLOW_EXCEEDS: &str =
+    "native face outflow plus lateral withdrawal exceeds original water: shorten the interval";
+pub(super) const INFLOW_ABSORBED: &str = "positive prescribed inflow is absorbed in cell storage: rescale the input or receiving storage";
 
 impl<R: Runtime<DType = DType>> LateralContext<R>
 where
@@ -47,6 +53,7 @@ where
                 water_assembly_bound: zeros(client, self.cells())?,
                 momentum_assembly_bound: zeros(client, self.cells())?,
                 water_assembly_charge_m3: 0.0,
+                withdrawn_momentum: None,
             });
         }
         let zero = zeros(client, 1)?;
@@ -54,7 +61,7 @@ where
         reject(
             client,
             &client.gt(&prepared.withdrawal_volume, original_volume)?,
-            "lateral withdrawal exceeds original donor water: shorten the interval or recompute integrated inputs",
+            WITHDRAWAL_EXCEEDS,
         )?;
         let (retained, withdrawal_low) =
             client.two_sum(original_volume, &client.neg(&prepared.withdrawal_volume)?)?;
@@ -62,7 +69,7 @@ where
         reject(
             client,
             &client.mul(&withdrawal_active, &client.ge(&retained, original_volume)?)?,
-            "positive prescribed withdrawal is absorbed in donor storage: rescale the input or storage",
+            WITHDRAWAL_ABSORBED,
         )?;
         let (transported_volume, transport_low) = client.two_sum(&retained, face_water_delta)?;
         finite(
@@ -73,7 +80,7 @@ where
         reject(
             client,
             &client.lt(&transported_volume, &zero)?,
-            "native face outflow plus lateral withdrawal exceeds original water: shorten the interval",
+            OUTFLOW_EXCEEDS,
         )?;
         let (volume, incoming_low) =
             client.two_sum(&transported_volume, &prepared.incoming_volume)?;
@@ -89,7 +96,7 @@ where
         reject(
             client,
             &client.mul(&both_positive, &absorbed)?,
-            "positive prescribed inflow is absorbed in cell storage: rescale the input or receiving storage",
+            INFLOW_ABSORBED,
         )?;
         let water_assembly_bound = add_bounds(
             client,
@@ -185,6 +192,7 @@ where
             water_assembly_bound,
             momentum_assembly_bound,
             water_assembly_charge_m3,
+            withdrawn_momentum: None,
         })
     }
 }
@@ -233,6 +241,7 @@ where
             water_assembly_bound: zeros(client, self.cells())?,
             momentum_assembly_bound: zeros(client, self.cells())?,
             water_assembly_charge_m3: 0.0,
+            withdrawn_momentum: None,
         })
     }
 }

@@ -150,7 +150,7 @@ where
                 c,
                 &forcing.lateral,
                 &self.accepted.lateral,
-                &self.accepted.volume.high,
+                &donor,
                 &fields.velocity,
                 dt,
             )?;

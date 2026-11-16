@@ -30,10 +30,7 @@ where
         + UnaryOps<R>
         + ExpansionClient<R>,
 {
-    /// Apply surveyed transfers and lateral exchange to both state parts.
-    ///
-    /// Lateral exchange still runs on the high parts. The previous low parts and the transfer
-    /// low parts then join that result in one expansion sum, so no component is dropped.
+    /// Apply surveyed transfers and lateral exchange to both state parts as expansion updates.
     pub fn surveyed_application(
         &self,
         accepted: &Accepted<R>,
@@ -50,50 +47,14 @@ where
                 &transport.momentum_delta,
             );
         }
-        let mut application = self.lateral.apply_lateral_and_transport(
+        self.lateral.apply_lateral_expanded(
             c,
-            &accepted.volume.high,
-            &accepted.momentum.high,
-            &transport.water_delta.high,
-            &transport.momentum_delta.high,
-            prepared,
-        )?;
-        let zero = self.constant(&self.length, 0.0)?;
-        let fold = |high: &Tensor<R>, state_low: &Tensor<R>, delta: &Parts<R>, stage| {
-            select_sum(
-                c,
-                &Parts {
-                    high: high.clone(),
-                    low: zero.clone(),
-                    bound: zero.clone(),
-                },
-                &Parts {
-                    high: state_low.clone(),
-                    low: delta.low.clone(),
-                    bound: delta.bound.clone(),
-                },
-                stage,
-            )
-        };
-        let (volume, water_selection_bound) = fold(
-            &application.volume,
-            &accepted.volume.low,
+            &accepted.volume,
+            &accepted.momentum,
             &transport.water_delta,
-            "surveyed water low parts after lateral exchange",
-        )?;
-        let (momentum, momentum_selection_bound) = fold(
-            &application.momentum,
-            &accepted.momentum.low,
             &transport.momentum_delta,
-            "surveyed momentum low parts after lateral exchange",
-        )?;
-        application.volume = volume.high;
-        application.volume_low = volume.low;
-        application.momentum = momentum.high;
-        application.momentum_low = momentum.low;
-        application.water_selection_bound = water_selection_bound;
-        application.momentum_selection_bound = momentum_selection_bound;
-        Ok(application)
+            prepared,
+        )
     }
 
     /// Rejoin the low momentum part after friction changes the high part.
@@ -121,7 +82,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::super::{
         ChannelBoundary, ChannelConfig, ChannelForcingInterval, ChannelGeometry,
         ChannelInitialState, ChannelReach, ChannelReachDefinition, ChannelSnapshotData,
@@ -137,9 +98,9 @@ mod tests {
         BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
     };
 
-    type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+    pub(in crate::channel::flow) type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
-    trait Client<R: Runtime<DType = DType>>:
+    pub(in crate::channel::flow) trait Client<R: Runtime<DType = DType>>:
         ExpansionClient<R>
         + HypotOps<R>
         + MidpointOps<R>
@@ -163,7 +124,7 @@ mod tests {
     {
     }
 
-    fn cpu() -> CpuClient {
+    pub(in crate::channel::flow) fn cpu() -> CpuClient {
         CpuClient::new(CpuDevice::new()).with_parallelism(ParallelismConfig::new(Some(1), None))
     }
 
@@ -223,7 +184,7 @@ mod tests {
     }
 
     /// Exact host sum of every component, as a nonoverlapping expansion.
-    fn exact_sum(values: impl IntoIterator<Item = f64>) -> Vec<f64> {
+    pub(in crate::channel::flow) fn exact_sum(values: impl IntoIterator<Item = f64>) -> Vec<f64> {
         let mut expansion: Vec<f64> = Vec::new();
         for mut value in values {
             let mut next = Vec::with_capacity(expansion.len() + 1);

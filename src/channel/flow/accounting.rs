@@ -5,7 +5,7 @@ use super::{
     context::Context,
     engine::Accepted,
     sources::{LateralState, PreparedLateral, SourceApplication},
-    surveyed_residuals::{ExpandedImpulses, ResidualInputs, expanded_residuals},
+    surveyed_residuals::{ExpandedImpulses, LateralImpulses, ResidualInputs, expanded_residuals},
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -96,6 +96,25 @@ where
         let count = self.count();
         let lateral = impulses.lateral;
         if let Some(expanded) = &impulses.expanded {
+            let lateral = if lateral.has_nonzero_values {
+                let withdrawn = impulses
+                    .application
+                    .withdrawn_momentum
+                    .as_ref()
+                    .ok_or_else(|| {
+                        ChannelError::numerical(
+                            "surveyed lateral exchange lacks its applied two-part withdrawal momentum: apply sources through the expansion update",
+                        )
+                    })?;
+                Some(LateralImpulses {
+                    incoming_volume: &lateral.incoming_volume,
+                    withdrawal_volume: &lateral.withdrawal_volume,
+                    incoming_momentum: &lateral.incoming_momentum,
+                    withdrawn_momentum: withdrawn,
+                })
+            } else {
+                None
+            };
             let (local, local_momentum) = expanded_residuals(
                 c,
                 count,
@@ -107,12 +126,7 @@ where
                     face_volume: impulses.water,
                     face_momentum: impulses.momentum,
                     expanded,
-                    lateral: lateral.has_nonzero_values.then_some([
-                        &lateral.incoming_volume,
-                        &lateral.withdrawal_volume,
-                        &lateral.incoming_momentum,
-                        &lateral.withdrawal_momentum,
-                    ]),
+                    lateral,
                 },
             )?;
             self.finite(&local, "local water residual")?;

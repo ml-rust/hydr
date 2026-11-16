@@ -3,6 +3,8 @@
 mod application;
 mod arithmetic;
 mod context;
+mod expanded;
+mod expanded_momentum;
 mod preparation;
 mod projection;
 mod state;

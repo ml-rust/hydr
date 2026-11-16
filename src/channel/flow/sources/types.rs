@@ -1,3 +1,4 @@
+use super::super::conserved_point::ConservedPoint;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -64,4 +65,7 @@ pub(in crate::channel::flow) struct SourceApplication<R: Runtime<DType = DType>>
     pub water_assembly_bound: Tensor<R>,
     pub momentum_assembly_bound: Tensor<R>,
     pub water_assembly_charge_m3: f64,
+    /// Two-part momentum the withdrawal removes from each cell. Present only on the surveyed
+    /// lateral expansion update.
+    pub withdrawn_momentum: Option<ConservedPoint<R>>,
 }
