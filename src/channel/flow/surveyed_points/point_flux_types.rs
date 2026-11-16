@@ -14,6 +14,8 @@ pub(super) enum PointFluxStatus {
     WorkLimit = 4,
     /// Only the controller reports this: the refined sonic root stays unresolved.
     RootBracketUnresolved = 5,
+    /// Only the controller reports this: a possible wave branch lacks a certified speed.
+    WaveEnvelopeUnresolved = 6,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -126,6 +128,10 @@ pub(super) struct ResolvedPointFluxes<R: Runtime<DType = DType>> {
     pub(super) sonic_outcome: Tensor<R>,
     /// Sonic panel level per face after its last advance. -1 when never advanced.
     pub(super) sonic_level: Tensor<R>,
+    /// Signal speeds from the owning selection's certificates: lower is left, upper is right.
+    /// Faces with `wave_valid` zero hold [0, 0], which certifies nothing.
+    pub(super) wave_speed_m_per_s: Interval<R>,
+    pub(super) wave_valid: Tensor<R>,
     pub(super) positive_support: Option<PointPositiveSupport<R>>,
     /// Controller rounds in which at least one face advanced.
     pub(super) rounds: usize,

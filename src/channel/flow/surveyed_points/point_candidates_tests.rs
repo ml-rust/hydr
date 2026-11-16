@@ -42,7 +42,7 @@ mod shocks;
 #[path = "point_candidates_tests_telemetry.rs"]
 mod telemetry;
 #[path = "point_candidates_tests_wave_references.rs"]
-mod wave_references;
+pub(in crate::channel::flow::surveyed_points) mod wave_references;
 #[path = "point_candidates_tests_work.rs"]
 mod work;
 

@@ -48,6 +48,7 @@ mod point_flux_types;
 mod point_root_depth;
 mod point_root_session;
 mod point_root_wet;
+mod point_wave_envelope;
 mod pointed_depth_identity;
 mod potential_absolute;
 mod potential_analytic;

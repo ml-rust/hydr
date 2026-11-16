@@ -92,6 +92,9 @@ where
                 ]
                 .contains(&status[i])
             );
+        } else if status[i] == PointFluxStatus::WaveEnvelopeUnresolved as i64 {
+            assert_eq!(original, PointFluxStatus::Accepted as i64);
+            assert_eq!(result.wave_valid.try_to_vec::<f64>()?[i], 0.);
         } else {
             assert_eq!(status[i], original);
         }

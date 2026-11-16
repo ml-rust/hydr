@@ -43,10 +43,7 @@ pub(super) fn check<R: Runtime<DType = DType>>(
             }
         }
     }
-    // Unlabelled authority edges retain their order. Match their physical bounds without inventing branch labels.
-    for (i, edge) in row.edges.iter().enumerate() {
-        assert_eq!(edge.label, format!("edge_{i}"));
-        let expected = edge.bounds.map(f64::from_bits);
+    for (expected, label) in expected(row) {
         let enclosed = available
             .iter()
             .any(|a| a[0] <= expected[0] && expected[1] <= a[1]);
@@ -54,9 +51,24 @@ pub(super) fn check<R: Runtime<DType = DType>>(
             assert!(
                 enclosed,
                 "{} {} {:?} lacks a supporting physical wave certificate {:?}",
-                row.id, edge.label, expected, available
+                row.id, label, expected, available
             );
         }
     }
     Ok(())
+}
+
+/// Frozen physical edge bounds of one row, in their unlabelled authority order.
+/// Matching uses these bounds without inventing branch labels.
+pub(in crate::channel::flow::surveyed_points) fn expected(
+    row: &Execution,
+) -> Vec<([f64; 2], &'static str)> {
+    row.edges
+        .iter()
+        .enumerate()
+        .map(|(i, edge)| {
+            assert_eq!(edge.label, format!("edge_{i}"));
+            (edge.bounds.map(f64::from_bits), edge.label)
+        })
+        .collect()
 }

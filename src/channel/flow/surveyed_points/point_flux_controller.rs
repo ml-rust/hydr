@@ -4,6 +4,7 @@ use super::{
         PointFluxCertificates, PointFluxKind, PointFluxStatus, ResolvedPointFluxes,
     },
     point_root_session::{PointRootSession, invalid},
+    point_wave_envelope,
     source_sonic_quadrature_types::{
         SourceSonicQuadratureOutcome as Outcome, SourceSonicQuadratureProgress,
     },
@@ -44,6 +45,7 @@ where
     /// Selects every face, then refines sonic fans until no face exceeds its flux budget.
     /// Each round advances each fan side once and reselects the demanded faces.
     /// The rounds stop when no face advances, and never exceed `max_refinements`.
+    /// Each face then takes the wave-speed envelope of its owning selection.
     pub(super) fn resolve_point_fluxes(
         &mut self,
         owners: &Tensor<R>,
@@ -108,8 +110,9 @@ where
                 faces.overwrite(a, count, reselected)
             })?;
         }
-        let status = checked::<R, _>(c, "point flux controller final status", |a| {
-            faces.final_status(a)
+        let (envelope, status) = checked::<R, _>(c, "point flux controller final status", |a| {
+            let status = faces.final_status(a)?;
+            point_wave_envelope::resolve(a, count, &faces.owner, &faces.selections, &status)
         })?;
         let executed = work
             .snapshot()
@@ -138,6 +141,8 @@ where
             selections: faces.selections,
             sonic_outcome: faces.outcome,
             sonic_level: faces.level,
+            wave_speed_m_per_s: envelope.wave_speed_m_per_s,
+            wave_valid: envelope.valid,
             positive_support,
             rounds,
             callback_points: self.callback_points(),
@@ -406,7 +411,11 @@ where
 }
 
 /// Numeric zero-one mask of the I64 entries equal to `value`.
-fn equals<R>(a: &Arithmetic<'_, R>, values: &Tensor<R>, value: i64) -> HydraulicResult<Tensor<R>>
+pub(super) fn equals<R>(
+    a: &Arithmetic<'_, R>,
+    values: &Tensor<R>,
+    value: i64,
+) -> HydraulicResult<Tensor<R>>
 where
     R: Runtime<DType = DType>,
     R::Client: TensorOps<R>
@@ -420,7 +429,7 @@ where
 }
 
 /// Converts a comparison result to a numeric zero-one mask.
-fn flag<R>(a: &Arithmetic<'_, R>, condition: &Tensor<R>) -> HydraulicResult<Tensor<R>>
+pub(super) fn flag<R>(a: &Arithmetic<'_, R>, condition: &Tensor<R>) -> HydraulicResult<Tensor<R>>
 where
     R: Runtime<DType = DType>,
     R::Client: TensorOps<R>

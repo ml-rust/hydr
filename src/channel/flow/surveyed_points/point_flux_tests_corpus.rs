@@ -26,7 +26,7 @@ where
         .map(|r| (r.id, r))
         .collect::<BTreeMap<_, _>>();
     assert_eq!(references.len(), 70);
-    let mut outcomes = [0_usize; 6];
+    let mut outcomes = [0_usize; 7];
     let mut baseline = [0_usize; 4];
     let mut baseline_exceeded = BTreeSet::new();
     let mut evaluated = 0;
