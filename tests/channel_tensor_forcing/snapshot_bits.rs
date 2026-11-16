@@ -11,6 +11,19 @@ impl FloatBits for f64 {
     }
 }
 
+impl FloatBits for usize {
+    fn append_bits(&self, bits: &mut Vec<u64>) {
+        bits.extend(self.to_le_bytes().map(u64::from));
+    }
+}
+
+impl FloatBits for String {
+    fn append_bits(&self, bits: &mut Vec<u64>) {
+        self.len().append_bits(bits);
+        bits.extend(self.bytes().map(u64::from));
+    }
+}
+
 impl<T: FloatBits> FloatBits for Vec<T> {
     fn append_bits(&self, bits: &mut Vec<u64>) {
         for value in self {
@@ -155,6 +168,7 @@ fields!(
     ChannelStepDiagnostics,
     boundary_traces,
     riemann,
+    friction_geometry,
     start_s,
     end_s,
     cfl_limit_s,
@@ -213,10 +227,30 @@ fields!(
 
 fields!(
     ChannelRiemannDiagnostics,
+    root_iterations,
+    surveyed_work,
     water_flux_width_m3_per_s,
     momentum_flux_width_m4_per_s2,
     max_water_flux_width_m3_per_s,
     max_momentum_flux_width_m4_per_s2,
+);
+
+fields!(
+    ChannelFrictionGeometryDiagnostics,
+    momentum_abs_bound_m4_per_s,
+    max_momentum_abs_bound_m4_per_s,
+);
+
+fields!(
+    PrismaticRiemannWork,
+    root_solves,
+    root_iterations,
+    maximum_root_iterations,
+    residual_points,
+    simpson_value_points,
+    simpson_derivative_points,
+    refinements,
+    maximum_simpson_panels,
 );
 
 fields!(
@@ -245,9 +279,50 @@ fields!(
 
 fields!(TriangularChannelCell, length_m, maximum_depth_m, manning_n,);
 
+fields!(SurveyedChannelCell, id, length_m, manning_n,);
+fields!(CrossSectionPoint, station_m, elevation_m,);
+fields!(
+    CrossSectionDefinition,
+    id,
+    vertical_datum,
+    points,
+    maximum_stage_m,
+    profile_provenance,
+);
+fields!(PrismaticRecoveryConfig, depth_atol_m, depth_rtol,);
+fields!(
+    solvr::optimize::CertifiedBisectionOptions,
+    atol,
+    rtol,
+    max_iterations,
+    max_points,
+);
+fields!(
+    ChannelSurveyedConfig,
+    recovery,
+    normalized_root,
+    initial_simpson_panels,
+    max_simpson_panels,
+    max_refinements,
+    max_native_query_points,
+    friction_geometry_atol_m4_per_s,
+    friction_geometry_rtol,
+);
+
 impl FloatBits for ChannelGeometry {
     fn append_bits(&self, bits: &mut Vec<u64>) {
         match self {
+            Self::PrismaticSurveyed {
+                profile,
+                cells,
+                numerical,
+            } => {
+                profile.points.len().append_bits(bits);
+                cells.len().append_bits(bits);
+                profile.append_bits(bits);
+                cells.append_bits(bits);
+                numerical.append_bits(bits);
+            }
             Self::Rectangular { cells } => cells.append_bits(bits),
             Self::PrismaticTriangular {
                 left_bank_slope_h_per_v,

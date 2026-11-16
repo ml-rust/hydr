@@ -37,7 +37,9 @@ pub fn rectangular_cells_mut(
 ) -> &mut Vec<RectangularChannelCell> {
     match &mut definition.geometry {
         ChannelGeometry::Rectangular { cells } => cells,
-        ChannelGeometry::PrismaticTriangular { .. } => unreachable!(),
+        ChannelGeometry::PrismaticTriangular { .. } | ChannelGeometry::PrismaticSurveyed { .. } => {
+            unreachable!()
+        }
     }
 }
 

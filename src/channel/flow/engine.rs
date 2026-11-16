@@ -5,8 +5,8 @@ use super::{
 };
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
-    ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps,
+    NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -89,7 +89,7 @@ where
         initial: ChannelInitialState,
     ) -> Result<Self, ChannelError>
     where
-        R::Client: HypotOps<R>,
+        R::Client: HypotOps<R> + TensorOps<R> + NextRepresentableOps<R>,
     {
         let context = Arc::new(Context::new(client, definition, initial)?);
         Self::from_context(Arc::clone(&context), &context.original_initial)
@@ -98,7 +98,10 @@ where
     pub(super) fn from_context(
         context: Arc<Context<R>>,
         initial: &ChannelInitialState,
-    ) -> Result<Self, ChannelError> {
+    ) -> Result<Self, ChannelError>
+    where
+        R::Client: TensorOps<R> + NextRepresentableOps<R>,
+    {
         if !initial.time_s.is_finite()
             || initial.volume_m3.len() != context.count()
             || initial.longitudinal_momentum_m4_per_s.len() != context.count()
@@ -143,7 +146,10 @@ where
     }
 
     /// Copy accepted hydraulic results from the selected device.
-    pub fn state(&self) -> Result<Vec<ChannelCellResult>, ChannelError> {
+    pub fn state(&self) -> Result<Vec<ChannelCellResult>, ChannelError>
+    where
+        R::Client: TensorOps<R> + NextRepresentableOps<R>,
+    {
         let fields = self
             .context
             .fields(&self.accepted.volume, &self.accepted.momentum)?;

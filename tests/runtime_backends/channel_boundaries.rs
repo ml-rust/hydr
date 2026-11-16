@@ -6,12 +6,16 @@ use hydr::channel::{
     ChannelReach, ChannelReachDefinition, RectangularChannelCell, TriangularChannelCell,
 };
 use numr::dtype::DType;
+use numr::ops::NextRepresentableOps;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
     ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
-use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::integrate::CertifiedSimpsonAlgorithms;
+use solvr::optimize::roots::{
+    BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
+};
 
 fn definition(triangle: bool) -> ChannelReachDefinition {
     let geometry = if triangle {
@@ -98,6 +102,10 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>
         + UnaryOps<R>
+        + NextRepresentableOps<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {
     for triangle in [false, true] {

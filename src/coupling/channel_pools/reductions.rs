@@ -43,6 +43,11 @@ where
                     .iter()
                     .map(|cell| cell.id.as_str())
                     .collect::<Vec<_>>(),
+                ChannelGeometry::PrismaticSurveyed { .. } => {
+                    return Err(ChannelPoolError::input(
+                        "surveyed coordinator attachment is unsupported: use standalone reach advancement",
+                    ));
+                }
             };
             for cell in &cells {
                 storage_keys.push(format!("channel/{}/{cell}", reach.id));

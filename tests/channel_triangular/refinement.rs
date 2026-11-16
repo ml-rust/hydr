@@ -23,6 +23,14 @@ impl Case {
             _ => 4.0,
         }
     }
+    /// Fixed interval below the 400-cell CFL limit. Every spatial level takes the same steps.
+    fn spatial_step(self) -> f64 {
+        match self {
+            Self::DryRelease => 0.008,
+            Self::WetShock => 0.006,
+            Self::Vacuum => 0.003,
+        }
+    }
     fn boundaries(self) -> [hydr::channel::ChannelBoundary; 2] {
         match self {
             Self::DryRelease => [exterior(1.0, 0.0), exterior(0.0, 0.0)],
@@ -154,7 +162,7 @@ fn exact_conserved_cell_averages_converge_under_spatial_refinement() -> TestResu
         let mut depth = Vec::new();
         let mut discharge = Vec::new();
         for count in [100, 200, 400] {
-            let result = run(case, count, 0.002)?;
+            let result = run(case, count, case.spatial_step())?;
             depth.push(result.errors.0);
             discharge.push(result.errors.1);
         }
@@ -230,7 +238,7 @@ fn first_order_reference_vacuum_errors_decrease_without_production_ceiling_claim
         let result = measure(
             Case::Vacuum,
             count,
-            0.002,
+            Case::Vacuum.spatial_step(),
             ChannelTriangularReconstruction::FirstOrderReference,
         )?;
         assert!(result.errors.0.is_finite() && result.errors.0 >= 0.0);

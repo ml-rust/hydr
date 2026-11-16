@@ -167,7 +167,15 @@ where
         let wet = c.gt(area, &zero)?;
         let safe_area = c.where_cond(&wet, area, &self.constant(area, 1.0)?)?;
         let velocity = c.div(discharge, &safe_area)?;
-        let depth = self.section_depth(&c.where_cond(&wet, area, &zero)?)?;
+        let super::geometry::TensorGeometry::Triangular(geometry) = &self.geometry else {
+            return Err(ChannelError::input(
+                "triangular endpoint admission requires triangular geometry: select the matching face method",
+            ));
+        };
+        let depth = c.div(
+            &c.sqrt(&c.where_cond(&wet, area, &zero)?)?,
+            &geometry.root_coefficient,
+        )?;
         let mut admitted = c.maximum(
             &c.mul(wet_cell, &wet)?,
             &c.mul(

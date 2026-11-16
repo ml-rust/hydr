@@ -26,8 +26,7 @@ where
                 {
                     assert!(lower <= upper);
                 }
-                for side in 0..2 {
-                    let diagnostic = &endpoint.sides[side];
+                for (side, diagnostic) in endpoint.sides.iter().enumerate() {
                     let source_velocity = if side == 0 {
                         &stage.velocity.left
                     } else {

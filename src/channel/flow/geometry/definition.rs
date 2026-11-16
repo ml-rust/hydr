@@ -1,4 +1,17 @@
 use super::super::{ChannelError, RectangularChannelCell};
+use super::surveyed_config::ChannelSurveyedConfig;
+use crate::channel::section::CrossSectionDefinition;
+
+/// One surveyed-profile cell in increasing longitudinal order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SurveyedChannelCell {
+    /// Unique stable cell identity.
+    pub id: String,
+    /// Longitudinal length in metres.
+    pub length_m: f64,
+    /// Manning roughness in s/m^(1/3), including zero for frictionless flow.
+    pub manning_n: f64,
+}
 
 /// One triangular cell in increasing longitudinal order.
 #[derive(Clone, Debug, PartialEq)]
@@ -16,6 +29,15 @@ pub struct TriangularChannelCell {
 /// Declared section geometry for one connected reach.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ChannelGeometry {
+    /// One horizontal surveyed section shared by every cell.
+    PrismaticSurveyed {
+        /// Original surveyed profile and its declared vertical datum.
+        profile: CrossSectionDefinition,
+        /// Ordered connected cells.
+        cells: Vec<SurveyedChannelCell>,
+        /// Geometry allowances and native work ceilings.
+        numerical: ChannelSurveyedConfig,
+    },
     /// Constant rectangular sections with explicit local beds and widths.
     Rectangular {
         /// Ordered connected cells.
@@ -46,6 +68,7 @@ pub(in crate::channel::flow) struct CellMetadata<'a> {
 impl ChannelGeometry {
     pub(in crate::channel::flow) fn len(&self) -> usize {
         match self {
+            Self::PrismaticSurveyed { cells, .. } => cells.len(),
             Self::Rectangular { cells } => cells.len(),
             Self::PrismaticTriangular { cells, .. } => cells.len(),
         }
@@ -53,6 +76,25 @@ impl ChannelGeometry {
 
     pub(in crate::channel::flow) fn cell(&self, index: usize) -> CellMetadata<'_> {
         match self {
+            Self::PrismaticSurveyed { profile, cells, .. } => {
+                let c = &cells[index];
+                let bed = match profile
+                    .points
+                    .iter()
+                    .map(|p| p.elevation_m)
+                    .reduce(f64::min)
+                {
+                    Some(value) => value,
+                    None => profile.maximum_stage_m,
+                };
+                CellMetadata {
+                    id: &c.id,
+                    length_m: c.length_m,
+                    bed_elevation_m: bed,
+                    maximum_depth_m: profile.maximum_stage_m - bed,
+                    manning_n: c.manning_n,
+                }
+            }
             Self::Rectangular { cells } => {
                 let c = &cells[index];
                 CellMetadata {
@@ -83,12 +125,51 @@ impl ChannelGeometry {
     pub(in crate::channel::flow) fn cells(
         &self,
     ) -> impl ExactSizeIterator<Item = CellMetadata<'_>> {
-        (0..self.len()).map(|index| self.cell(index))
+        let surveyed = match self {
+            Self::PrismaticSurveyed { cells, .. } if !cells.is_empty() => Some(self.cell(0)),
+            _ => None,
+        };
+        (0..self.len()).map(move |index| {
+            if let (Self::PrismaticSurveyed { cells, .. }, Some(common)) = (self, surveyed) {
+                let c = &cells[index];
+                CellMetadata {
+                    id: &c.id,
+                    length_m: c.length_m,
+                    bed_elevation_m: common.bed_elevation_m,
+                    maximum_depth_m: common.maximum_depth_m,
+                    manning_n: c.manning_n,
+                }
+            } else {
+                self.cell(index)
+            }
+        })
     }
 
     pub(in crate::channel::flow) fn same_bits(&self, other: &Self) -> bool {
         let same = |a: f64, b: f64| a.to_bits() == b.to_bits();
         let same_section = match (self, other) {
+            (
+                Self::PrismaticSurveyed {
+                    profile: a,
+                    numerical: an,
+                    ..
+                },
+                Self::PrismaticSurveyed {
+                    profile: b,
+                    numerical: bn,
+                    ..
+                },
+            ) => {
+                a.id == b.id
+                    && a.vertical_datum == b.vertical_datum
+                    && a.profile_provenance == b.profile_provenance
+                    && same(a.maximum_stage_m, b.maximum_stage_m)
+                    && a.points.len() == b.points.len()
+                    && a.points.iter().zip(&b.points).all(|(a, b)| {
+                        same(a.station_m, b.station_m) && same(a.elevation_m, b.elevation_m)
+                    })
+                    && an.same_bits(bn)
+            }
             (Self::Rectangular { cells: a }, Self::Rectangular { cells: b }) => {
                 a.len() == b.len() && a.iter().zip(b).all(|(a, b)| same(a.width_m, b.width_m))
             }
@@ -121,6 +202,7 @@ impl ChannelGeometry {
 
     pub(in crate::channel::flow) fn check(&self) -> Result<(), ChannelError> {
         match self {
+            Self::PrismaticSurveyed { numerical, .. } => numerical.check()?,
             Self::Rectangular { cells } => {
                 for (index, c) in cells.iter().enumerate() {
                     if !c.width_m.is_finite() || c.width_m <= 0.0 {
@@ -159,17 +241,23 @@ impl ChannelGeometry {
         Ok(())
     }
 
-    pub(in crate::channel::flow) fn maximum_volume(&self, index: usize) -> f64 {
+    pub(in crate::channel::flow) fn analytic_maximum_volume(&self, index: usize) -> Option<f64> {
+        if matches!(self, Self::PrismaticSurveyed { .. }) {
+            return None;
+        }
         let c = self.cell(index);
         match self {
-            Self::Rectangular { cells } => (cells[index].width_m * c.length_m) * c.maximum_depth_m,
+            Self::PrismaticSurveyed { .. } => None,
+            Self::Rectangular { cells } => {
+                Some((cells[index].width_m * c.length_m) * c.maximum_depth_m)
+            }
             Self::PrismaticTriangular {
                 left_bank_slope_h_per_v: l,
                 right_bank_slope_h_per_v: r,
                 ..
             } => {
                 let k = l.midpoint(*r);
-                ((k * c.maximum_depth_m) * c.maximum_depth_m) * c.length_m
+                Some(((k * c.maximum_depth_m) * c.maximum_depth_m) * c.length_m)
             }
         }
     }

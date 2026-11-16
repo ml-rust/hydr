@@ -146,6 +146,7 @@ where
                 water_flux_width,
                 momentum_flux_width,
                 root_iterations,
+                surveyed_work: None,
             }),
             left_pressure: zero.clone(),
             right_pressure: zero.clone(),

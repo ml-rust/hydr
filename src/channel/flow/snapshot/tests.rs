@@ -74,6 +74,19 @@ fn restoration_retains_the_destination_configured_client() -> Result<(), Channel
         .ok_or_else(|| ChannelError::input("test interval absent: retain the accepted step"))?;
     interval.diagnostics.boundary_traces[0] = Some(trace());
     assert!(destination.import_snapshot(&forged).is_err());
+    let mut forged_geometry = original_package.clone();
+    forged_geometry
+        .last_interval
+        .as_mut()
+        .ok_or_else(|| ChannelError::input("test interval absent: retain the accepted step"))?
+        .diagnostics
+        .friction_geometry = Some(
+        crate::channel::flow::output::ChannelFrictionGeometryDiagnostics {
+            momentum_abs_bound_m4_per_s: vec![0.0],
+            max_momentum_abs_bound_m4_per_s: 0.0,
+        },
+    );
+    assert!(destination.import_snapshot(&forged_geometry).is_err());
     let context = Arc::clone(&destination.context);
     let trusted = destination.restore(&source.snapshot())?;
     let cold = destination.import_snapshot(&source.snapshot_data()?)?;
@@ -123,9 +136,10 @@ fn cold_restore_uploads_with_a_separately_constructed_cpu_client() -> Result<(),
 }
 
 #[test]
-fn riemann_diagnostics_retain_every_projected_bit() {
+fn riemann_diagnostics_retain_every_projected_bit() -> Result<(), ChannelError> {
     use crate::channel::ChannelRiemannDiagnostics;
     let original = ChannelRiemannDiagnostics {
+        surveyed_work: None,
         water_flux_width_m3_per_s: vec![0.0, 1e-12],
         momentum_flux_width_m4_per_s2: vec![2e-12, 0.0],
         max_water_flux_width_m3_per_s: 1e-12,
@@ -147,6 +161,63 @@ fn riemann_diagnostics_retain_every_projected_bit() {
         }
         assert!(!super::check::riemann(Some(&original), Some(&changed)));
     }
+    let mut surveyed = original.clone();
+    surveyed.surveyed_work = Some(crate::channel::PrismaticRiemannWork::default());
+    assert!(!super::check::riemann(Some(&original), Some(&surveyed)));
+    let work = surveyed.surveyed_work.as_mut().ok_or_else(|| {
+        ChannelError::input("test surveyed work absent: retain the original diagnostics")
+    })?;
+    work.maximum_root_iterations = 7;
+    for index in 0..12 {
+        let mut changed = surveyed.clone();
+        let work = changed.surveyed_work.as_mut().ok_or_else(|| {
+            ChannelError::input("test surveyed work absent: retain the original diagnostics")
+        })?;
+        match index {
+            0 => work.root_solves += 1,
+            1 => work.root_iterations += 1,
+            2 => work.maximum_root_iterations += 1,
+            3 => work.residual_points += 1,
+            4 => work.simpson_value_points += 1,
+            5 => work.simpson_derivative_points += 1,
+            6 => work.refinements += 1,
+            7 => work.maximum_simpson_panels += 1,
+            8 => work.bracket_expansion_rounds += 1,
+            9 => work.maximum_bracket_expansion_rounds += 1,
+            10 => work.bracket_solves += 1,
+            _ => changed.surveyed_work = None,
+        }
+        assert!(!super::check::riemann(Some(&surveyed), Some(&changed)));
+    }
+    Ok(())
+}
+
+#[test]
+fn friction_geometry_diagnostics_retain_every_projected_bit() {
+    use crate::channel::flow::output::ChannelFrictionGeometryDiagnostics;
+    let original = ChannelFrictionGeometryDiagnostics {
+        momentum_abs_bound_m4_per_s: vec![0.0, 1e-12],
+        max_momentum_abs_bound_m4_per_s: 1e-12,
+    };
+    assert!(super::check::friction_geometry(None, None));
+    assert!(!super::check::friction_geometry(Some(&original), None));
+    assert!(!super::check::friction_geometry(None, Some(&original)));
+    assert!(super::check::friction_geometry(
+        Some(&original),
+        Some(&original)
+    ));
+    let mut changed = original.clone();
+    changed.momentum_abs_bound_m4_per_s[0] = -0.0;
+    assert!(!super::check::friction_geometry(
+        Some(&original),
+        Some(&changed)
+    ));
+    let mut changed = original.clone();
+    changed.max_momentum_abs_bound_m4_per_s = 0.0;
+    assert!(!super::check::friction_geometry(
+        Some(&original),
+        Some(&changed)
+    ));
 }
 
 #[test]

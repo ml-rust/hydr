@@ -2,7 +2,7 @@
 
 Use `riemann_flux_tensor` to bound water and momentum fluxes between supplied channel states. First [certify your surveyed sections](prismatic-sections.md).
 
-A Riemann query calculates the waves where two constant states meet. The query samples their solution at the fixed interface. For reach advancement, `ChannelReach` currently admits rectangular and triangular reaches through the [channel-flow API](channels.md).
+A Riemann query calculates the waves where two constant states meet. The query samples their solution at the fixed interface. Use [surveyed reach advancement](channels.md#supply-one-surveyed-profile) to advance conserved water and momentum through connected cells.
 
 ## Supply the states
 

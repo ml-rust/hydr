@@ -66,9 +66,8 @@ where
         let todo = checked::<R, _>(c, "sonic quadrature authorized next levels", |a| {
             let zero = Tensor::zeros(domain.parent_rows.shape(), a.dtype(), c.device())?;
             let mut admitted = zero.clone();
-            let mut selected_mask = zero.clone();
-            selected_mask = c.index_put(
-                &selected_mask,
+            let selected_mask = c.index_put(
+                &zero,
                 0,
                 &selected,
                 &Tensor::ones(selected.shape(), a.dtype(), c.device())?,

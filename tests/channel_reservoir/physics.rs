@@ -257,6 +257,12 @@ fn reservoir_candidates_preserve_postfriction_admission() -> TestResult {
             match &mut layout.geometry {
                 ChannelGeometry::Rectangular { cells } => cells[0].manning_n = 0.03,
                 ChannelGeometry::PrismaticTriangular { cells, .. } => cells[0].manning_n = 0.03,
+                ChannelGeometry::PrismaticSurveyed { .. } => {
+                    return Err(
+                        "Reservoir friction fixture requires rectangular or triangular geometry"
+                            .into(),
+                    );
+                }
             }
             let origin = reach(
                 layout,

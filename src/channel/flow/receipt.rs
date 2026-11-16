@@ -27,6 +27,8 @@ pub(super) struct LastInterval<R: Runtime<DType = DType>> {
     pub requested_end: f64,
     pub scalar: ChannelStepDiagnostics,
     pub riemann: Option<RiemannDiagnosticState<R>>,
+    pub friction_geometry:
+        Option<super::surveyed_transport::source_diagnostics::FrictionGeometryState<R>>,
     pub boundary_traces: Option<std::sync::Arc<super::boundary::types::NativeBoundaryTraces<R>>>,
     pub face_volume: Tensor<R>,
     pub face_momentum: Tensor<R>,
@@ -57,6 +59,11 @@ where
         let mut result = self.scalar.clone();
         result.riemann = self
             .riemann
+            .as_ref()
+            .map(|state| state.project(client))
+            .transpose()?;
+        result.friction_geometry = self
+            .friction_geometry
             .as_ref()
             .map(|state| state.project(client))
             .transpose()?;

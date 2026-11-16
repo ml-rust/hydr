@@ -127,12 +127,11 @@ where
         refresh: Option<&Tensor<R>>,
     ) -> HydraulicResult<()> {
         let c = sources.geometry.client();
-        let expected = if let Some(rows) = refresh {
-            let old = c.index_select(levels, 0, rows)?;
-            c.index_put(levels, 0, rows, &c.add_scalar(&old, 1.0)?)?
-        } else {
-            levels.clone()
+        let Some(rows) = refresh else {
+            return equal::<R>(c, self.levels(), levels);
         };
+        let old = c.index_select(levels, 0, rows)?;
+        let expected = c.index_put(levels, 0, rows, &c.add_scalar(&old, 1.0)?)?;
         equal::<R>(c, self.levels(), &expected)
     }
 

@@ -1,6 +1,7 @@
 #[allow(dead_code)]
 #[path = "../channel_pools/fixture.rs"]
 mod fixture;
+#[allow(dead_code)]
 #[path = "../channel_pools/native.rs"]
 mod native;
 #[path = "../channel_pools/reference.rs"]

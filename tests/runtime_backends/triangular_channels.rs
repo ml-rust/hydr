@@ -6,12 +6,16 @@ use hydr::channel::{
 };
 use hydr::forcing::WaterAmount;
 use numr::dtype::DType;
+use numr::ops::NextRepresentableOps;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
     ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
-use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::integrate::CertifiedSimpsonAlgorithms;
+use solvr::optimize::roots::{
+    BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
+};
 
 fn definition(sources: bool) -> ChannelReachDefinition {
     ChannelReachDefinition {
@@ -100,6 +104,10 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>
         + UnaryOps<R>
+        + NextRepresentableOps<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {
     for velocity in [-1.0, 1.0] {
@@ -178,6 +186,10 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>
         + UnaryOps<R>
+        + NextRepresentableOps<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {
     let mut layout = definition(false);

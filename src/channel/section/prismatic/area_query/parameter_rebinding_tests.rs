@@ -295,12 +295,87 @@ where
             .len(),
         15
     );
+    opaque |= uncertain_endpoints::<R>(&client, &section)?;
     assert!(
         opaque,
         "Retained non-point endpoint uncertainty must survive rebinding"
     );
     admission::<R>(&client, &section)?;
     Ok(())
+}
+
+/// Frozen fixture endpoints resolve exactly in two components.
+/// This chart anchors at the decimal knot and offsets far below its low component.
+/// Each singleton endpoint must keep the same nonzero compression radius after rebinding.
+fn uncertain_endpoints<R>(
+    client: &R::Client,
+    section: &crate::channel::section::PrismaticSectionBatch<R>,
+) -> Result<bool>
+where
+    R: Runtime<DType = DType>,
+    R::Client: Client<R>,
+{
+    let case = fixtures::CASES
+        .iter()
+        .find(|case| case.id == "decimal_knot_signed_offsets")
+        .ok_or("Missing decimal knot chart")?;
+    let mut chart = case.chart;
+    // 2^-130 lies more than one double below the anchor's low component.
+    chart.scale[0] = 0x37d0_0000_0000_0000;
+    let input = support::input::<R>(client, section, &[chart], true, false)?;
+    let geometry = HydraulicGeometry::from_batch(section);
+    let (bands, parent) = hydraulic(error::checked::<R, _>(
+        client,
+        "uncertain endpoint parent",
+        |a| {
+            let bands = geometry.gather(a, &input.owners)?;
+            let parent = support::query(a, &bands, &input)?.prove_support(a, &bands)?;
+            Ok((bands, parent))
+        },
+    ))?;
+    let before = snapshot(&parent)?;
+    for physical in [PhysicalEndpoint::Lower, PhysicalEndpoint::Upper] {
+        let (old, new, widened, old_raw, new_raw) = hydraulic(error::checked::<R, _>(
+            client,
+            "uncertain endpoint rebinding",
+            |a| {
+                let old = parent.endpoint(a, &bands, physical)?;
+                let parameter =
+                    a.bounds(old.query.parameter.lower(), old.query.parameter.upper())?;
+                let new = parent.with_parameter_bounds(a, &bands, &parameter)?;
+                let widened = new.with_parameter_bounds(a, &bands, &parent.query.parameter)?;
+                let witnesses = geometry.boundary_areas(a)?.gather(a, &input.owners)?;
+                let old_raw = old.retained_endpoint_area(a, &bands, &witnesses)?;
+                let new_raw = new.retained_endpoint_area(a, &bands, &witnesses)?;
+                Ok((old, new, widened, old_raw, new_raw))
+            },
+        ))?;
+        assert_eq!(snapshot(&old)?, snapshot(&new)?);
+        assert_eq!(before, snapshot(&widened)?);
+        let bits = |value: &Tensor<R>| -> Result<Vec<u64>> {
+            Ok(value
+                .try_to_vec::<f64>()?
+                .into_iter()
+                .map(f64::to_bits)
+                .collect())
+        };
+        for (old, new) in [
+            (old_raw.high(), new_raw.high()),
+            (old_raw.low(), new_raw.low()),
+            (old_raw.abs_error(), new_raw.abs_error()),
+        ] {
+            assert_eq!(bits(old)?, bits(new)?);
+        }
+        if new_raw
+            .abs_error()
+            .try_to_vec::<f64>()?
+            .into_iter()
+            .any(|value| value <= 0.0)
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn admission<R>(

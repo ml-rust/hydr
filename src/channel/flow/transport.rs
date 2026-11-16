@@ -53,7 +53,10 @@ where
             dt,
             "shared face momentum",
         )?;
-        if matches!(&self.geometry, TensorGeometry::Triangular(_)) {
+        if matches!(
+            &self.geometry,
+            TensorGeometry::Triangular(_) | TensorGeometry::Surveyed(_)
+        ) {
             let left_pressure = self.constant(&face_momentum, 0.0)?;
             let right_pressure = left_pressure.clone();
             let water_delta = c.sub(

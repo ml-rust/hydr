@@ -3,11 +3,15 @@ use super::{ChannelSnapshot, ChannelSnapshotData};
 use crate::channel::flow::{ChannelError, ChannelInitialState, ChannelReach};
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
-    ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
+    ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::{Device, Runtime, RuntimeClient};
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::{
+    integrate::CertifiedSimpsonAlgorithms,
+    optimize::roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+};
 use std::sync::Arc;
 
 impl<R> ChannelReach<R>
@@ -51,7 +55,14 @@ where
     /// Check a complete persisted package and replay its final interval before restoration.
     ///
     /// Historical authenticity requires application-owned hashes or authenticated history.
-    pub fn import_snapshot(&self, data: &ChannelSnapshotData) -> Result<Self, ChannelError> {
+    pub fn import_snapshot(&self, data: &ChannelSnapshotData) -> Result<Self, ChannelError>
+    where
+        R::Client: TensorOps<R>
+            + NextRepresentableOps<R>
+            + CertifiedSimpsonAlgorithms<R>
+            + CertifiedBisectionAlgorithms<R>
+            + CertifiedUpperBracketAlgorithms<R>,
+    {
         require(
             check::definition(self.definition(), &data.definition)
                 && check::initial(&self.context.original_initial, &data.initial),
@@ -214,7 +225,10 @@ where
         Ok(replayed)
     }
 
-    fn checked_start(&self, initial: &ChannelInitialState) -> Result<Self, ChannelError> {
+    fn checked_start(&self, initial: &ChannelInitialState) -> Result<Self, ChannelError>
+    where
+        R::Client: TensorOps<R> + NextRepresentableOps<R>,
+    {
         Self::from_context(Arc::clone(&self.context), initial)
     }
 }

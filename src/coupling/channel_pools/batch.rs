@@ -79,9 +79,20 @@ where
         initial: ChannelPoolInitialState,
     ) -> Result<Self, ChannelPoolError>
     where
-        R::Client: numr::ops::HypotOps<R>,
+        R::Client:
+            numr::ops::HypotOps<R> + numr::ops::TensorOps<R> + numr::ops::NextRepresentableOps<R>,
     {
         setup.config.check()?;
+        if setup.reaches.iter().any(|reach| {
+            matches!(
+                &reach.definition.geometry,
+                crate::channel::ChannelGeometry::PrismaticSurveyed { .. }
+            )
+        }) {
+            return Err(ChannelPoolError::input(
+                "surveyed coordinator attachment is unsupported: use standalone reach advancement",
+            ));
+        }
         if !initial.time_s.is_finite()
             || initial.time_s < 0.0
             || initial.reaches.len() != setup.reaches.len()

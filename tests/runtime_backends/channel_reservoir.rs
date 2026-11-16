@@ -2,6 +2,7 @@ use super::channel_tensor_forcing::{boundary_common, snapshot_bits, transport};
 
 #[path = "../channel_reservoir/fixtures.rs"]
 mod fixtures;
+#[allow(dead_code)]
 #[path = "../channel_reservoir/native.rs"]
 mod native;
 

@@ -224,34 +224,42 @@ where
     Ok(())
 }
 
-pub(super) fn run<R>(client: R::Client) -> Result
+pub(super) fn run<R>(client: R::Client, strided: bool) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: Client<R>,
 {
-    for strided in [false, true] {
-        isolated::<R>(&client, strided)?;
-        mixed_compaction::<R>(&client, strided)?;
-    }
-    Ok(())
+    isolated::<R>(&client, strided)?;
+    mixed_compaction::<R>(&client, strided)
 }
 
-#[test]
-fn configured_cpu_encloses_all_frozen_waves() -> Result {
+fn configured_cpu(strided: bool) -> Result {
     use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
     let original = CpuClient::new(CpuDevice::new());
     let original_config = original.parallelism();
     let client = original.with_parallelism(ParallelismConfig::new(Some(2), Some(257)));
     let before = client.parallelism();
-    run::<CpuRuntime>(client.clone())?;
+    run::<CpuRuntime>(client.clone(), strided)?;
     assert_eq!(client.parallelism(), before);
     assert_eq!(original.parallelism(), original_config);
     Ok(())
+}
+
+#[test]
+fn configured_cpu_encloses_all_frozen_waves() -> Result {
+    configured_cpu(false)
+}
+
+#[test]
+fn configured_cpu_encloses_all_frozen_waves_from_strided_views() -> Result {
+    configured_cpu(true)
 }
 
 #[cfg(feature = "cuda")]
 #[test]
 fn actual_cuda_encloses_all_frozen_waves() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    run::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+    let client = CudaClient::new(CudaDevice::new(0))?;
+    run::<CudaRuntime>(client.clone(), false)?;
+    run::<CudaRuntime>(client, true)
 }

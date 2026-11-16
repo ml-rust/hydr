@@ -9,11 +9,16 @@ use super::{
 use crate::numerics::homogeneous_hll_tensor;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps,
+    ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::{
+    integrate::CertifiedSimpsonAlgorithms,
+    optimize::roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+};
 use std::sync::Arc;
 
 pub(super) struct Flux<R: Runtime<DType = DType>> {
@@ -38,7 +43,13 @@ pub(super) struct Flux<R: Runtime<DType = DType>> {
 
 impl<R: Runtime<DType = DType>> Context<R>
 where
-    R::Client: BinaryOps<R>
+    R::Client: TensorOps<R>
+        + NextRepresentableOps<R>
+        + MidpointOps<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
+        + BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
         + ReduceOps<R>
@@ -58,6 +69,9 @@ where
             TensorGeometry::Rectangular(section) => &section.face_width,
             TensorGeometry::Triangular(geometry) => {
                 return self.triangular_flux(geometry, fields, left_boundary, right_boundary);
+            }
+            TensorGeometry::Surveyed(geometry) => {
+                return self.surveyed_flux(geometry, fields, left_boundary, right_boundary);
             }
         };
         let c = &self.client;

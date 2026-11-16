@@ -205,6 +205,14 @@ impl ChannelReachDefinition {
             ));
         }
         self.geometry.check()?;
+        if let super::ChannelGeometry::PrismaticSurveyed { profile, .. } = &self.geometry
+            && profile.vertical_datum != self.vertical_datum
+        {
+            return Err(ChannelError::input(format!(
+                "profile datum={:?}, reach datum={:?}: supply one shared vertical datum",
+                profile.vertical_datum, self.vertical_datum
+            )));
+        }
         let mut ids = BTreeSet::new();
         let mut length = 0.0;
         for (index, cell) in self.geometry.cells().enumerate() {
@@ -228,20 +236,19 @@ impl ChannelReachDefinition {
                 }
             }
             let maximum_stage = cell.bed_elevation_m + cell.maximum_depth_m;
-            let maximum_volume = self.geometry.maximum_volume(index);
+            let maximum_volume = self.geometry.analytic_maximum_volume(index);
             let next_length = length + cell.length_m;
             if !cell.bed_elevation_m.is_finite()
                 || !maximum_stage.is_finite()
                 || maximum_stage <= cell.bed_elevation_m
-                || !maximum_volume.is_finite()
-                || maximum_volume <= 0.0
+                || maximum_volume.is_some_and(|value| !value.is_finite() || value <= 0.0)
                 || !next_length.is_finite()
                 || next_length <= length
                 || !cell.manning_n.is_finite()
                 || cell.manning_n < 0.0
             {
                 return Err(ChannelError::input(format!(
-                    "id={:?}, bed={}, maximum_stage={maximum_stage}, maximum_volume={maximum_volume}, reach_length={next_length}, manning_n={}: supply representable geometry and finite nonnegative roughness",
+                    "id={:?}, bed={}, maximum_stage={maximum_stage}, maximum_volume={maximum_volume:?}, reach_length={next_length}, manning_n={}: supply representable geometry and finite nonnegative roughness",
                     cell.id, cell.bed_elevation_m, cell.manning_n
                 ))
                 .at(index));

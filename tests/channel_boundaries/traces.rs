@@ -271,6 +271,9 @@ fn stage_elevation_translation_preserves_hydraulics_across_datum_shifts() -> Tes
             for bed in [0.0, 128.0, -128.0] {
                 let mut layout = definition(shape, 1, 128.0, 4.0, 1.0);
                 match &mut layout.geometry {
+                    hydr::channel::ChannelGeometry::PrismaticSurveyed { .. } => return Err(
+                        "Translated scalar-stage fixture requires rectangular or triangular geometry".into(),
+                    ),
                     hydr::channel::ChannelGeometry::Rectangular { cells } => {
                         cells[0].bed_elevation_m = bed;
                     }

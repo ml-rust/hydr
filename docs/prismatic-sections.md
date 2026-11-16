@@ -94,7 +94,9 @@ Positive depth includes contact with a plateau bottom. Horizontal benches at `ma
 
 Depth queries calculate radius from their forward area bounds. Recovery calculates radius from the original conserved area. Hydraulic radius can decrease as depth increases. Do not assume monotonic radius when interpreting bounds.
 
-If bounds cannot establish positive wet perimeter, the query returns `Numerical`. Perimeter certification leaves existing geometry and flux admission unchanged. This geometry prerequisite adds neither Manning resistance nor surveyed reach advancement.
+If bounds cannot establish positive wet perimeter, the query returns `Numerical`. Perimeter certification leaves existing geometry and flux admission unchanged.
+
+These queries calculate geometry only. Use [surveyed reach advancement](channels.md#supply-one-surveyed-profile) to advance water and momentum with optional Manning resistance.
 
 ## Set the recovery tolerance
 

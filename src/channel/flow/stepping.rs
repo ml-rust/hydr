@@ -6,11 +6,15 @@ use super::{
 };
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
-    ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
+    ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::{
+    integrate::CertifiedSimpsonAlgorithms,
+    optimize::roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+};
 use std::sync::Arc;
 
 impl<R: Runtime<DType = DType>> ChannelReach<R>
@@ -25,6 +29,11 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>
         + UnaryOps<R>
+        + TensorOps<R>
+        + NextRepresentableOps<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {
     /// Calculate one accepted interval without modifying the input reach.
@@ -228,15 +237,17 @@ where
             } else {
                 None
             };
-            let momentum = match context.friction(&application.volume, &application.momentum, dt) {
-                Ok(momentum) => momentum,
-                Err(error @ ChannelError::Numerical { .. }) => {
-                    reason = error.to_string();
-                    dt = control.shorten(dt, dt * 0.5, retries, reason.clone())?;
-                    continue;
-                }
-                Err(error) => return Err(error),
-            };
+            let friction_trial =
+                match context.friction_trial(&application.volume, &application.momentum, dt) {
+                    Ok(trial) => trial,
+                    Err(error @ ChannelError::Numerical { .. }) => {
+                        reason = error.to_string();
+                        dt = control.shorten(dt, dt * 0.5, retries, reason.clone())?;
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                };
+            let momentum = friction_trial.momentum;
             let friction = c.sub(&momentum, &application.momentum)?;
             let has_scalar_boundary = is_scalar(&forcing.left) || is_scalar(&forcing.right);
             let final_fields = match context.fields(&application.volume, &momentum) {
@@ -302,6 +313,7 @@ where
             let scalar = ChannelStepDiagnostics {
                 boundary_traces: [None, None],
                 riemann: None,
+                friction_geometry: None,
                 start_s: self.time(),
                 end_s: end,
                 retries,
@@ -343,6 +355,7 @@ where
                 requested_end: requested_end_s,
                 scalar,
                 riemann: flux.riemann,
+                friction_geometry: friction_trial.geometry,
                 boundary_traces: flux.boundary_traces,
                 face_volume: transport.face_volume,
                 face_momentum: transport.face_momentum,

@@ -24,6 +24,9 @@ mod rounding;
 mod snapshot;
 mod sources;
 mod stepping;
+#[cfg(test)]
+mod surveyed_state_tests;
+mod surveyed_transport;
 mod transport;
 mod triangle_reconstruction;
 mod triangular;
@@ -38,9 +41,11 @@ pub use definition::{
 };
 pub use engine::{ChannelReach, ChannelStep};
 pub use error::ChannelError;
+pub use geometry::{ChannelSurveyedConfig, SurveyedChannelCell};
 pub use output::{
-    ChannelCellResult, ChannelLateralLedger, ChannelLateralReceipt, ChannelLateralStateData,
-    ChannelRiemannDiagnostics, ChannelStepDiagnostics, ChannelWaterLedger,
+    ChannelCellResult, ChannelFrictionGeometryDiagnostics, ChannelLateralLedger,
+    ChannelLateralReceipt, ChannelLateralStateData, ChannelRiemannDiagnostics,
+    ChannelStepDiagnostics, ChannelWaterLedger,
 };
 pub use snapshot::{ChannelIntervalSnapshotData, ChannelSnapshot, ChannelSnapshotData};
 

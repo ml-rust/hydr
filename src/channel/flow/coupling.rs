@@ -233,6 +233,14 @@ where
         right: Option<ChannelTensorBoundary<R>>,
         lateral: Vec<ChannelTensorLateralInput<R>>,
     ) -> Result<ChannelCouplingForcing<R>, ChannelError> {
+        if matches!(
+            &self.definition().geometry,
+            super::ChannelGeometry::PrismaticSurveyed { .. }
+        ) {
+            return Err(ChannelError::input(
+                "surveyed coordinator attachment is unsupported: advance the reach with Wall or complete Exterior boundaries",
+            ));
+        }
         super::definition::check_forcing_interval(self.time(), end_s, start_s, end_s)?;
         self.context.lateral.check_endpoints(
             &self.context.client,
@@ -252,7 +260,21 @@ where
                 .bind_lateral_owned(&self.context.client, lateral)?,
         })
     }
+}
 
+impl<R: Runtime<DType = DType>> ChannelReach<R>
+where
+    R::Client: numr::ops::TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + numr::ops::NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + BatchedBisectionAlgorithms<R>
+        + solvr::integrate::CertifiedSimpsonAlgorithms<R>
+        + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>
+        + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
+{
     pub(crate) fn trial_coupled(
         &self,
         requested_end_s: f64,
@@ -305,7 +327,12 @@ where
             Err(error) => Err(error),
         }
     }
+}
 
+impl<R: Runtime<DType = DType>> ChannelReach<R>
+where
+    R::Client: BinaryOps<R> + ShapeOps<R> + ScalarOps<R> + UnaryOps<R>,
+{
     pub(crate) fn coupling_endpoints(&self) -> Result<ChannelCouplingEndpoints<R>, ChannelError> {
         let last = self.accepted.last.as_ref().ok_or_else(|| {
             ChannelError::input("endpoint transfers require an accepted interval: calculate a complete coupled trial")

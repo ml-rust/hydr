@@ -216,6 +216,7 @@ where
                 water_flux_width: water_width,
                 momentum_flux_width: momentum_width,
                 root_iterations: iterations,
+                surveyed_work: None,
             },
         })
     }

@@ -8,13 +8,16 @@ use super::*;
 use crate::forcing::WaterAmount;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
-    ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps,
+    NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
-use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::integrate::CertifiedSimpsonAlgorithms;
+use solvr::optimize::roots::{
+    BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
+};
 use std::sync::Arc;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -82,6 +85,10 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>
         + UnaryOps<R>
+        + NextRepresentableOps<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {
     let source = LateralContext::<R>::new(

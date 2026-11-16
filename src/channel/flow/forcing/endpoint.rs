@@ -76,6 +76,15 @@ where
     ) -> Result<(), ChannelError> {
         let c = client;
         let reject = |message| ChannelError::input(message).at(index);
+        if matches!(
+            &definition.geometry,
+            ChannelGeometry::PrismaticSurveyed { .. }
+        ) && self.is_scalar()
+        {
+            return Err(reject(
+                "surveyed scalar boundary is unsupported: supply Wall or complete Exterior depth and velocity",
+            ));
+        }
         match self {
             Self::Wall => Ok(()),
             Self::Stage { elevation_m } => {
@@ -128,24 +137,35 @@ where
                 check_scalar(c, depth, "exterior depth")?;
                 check_scalar(c, velocity, "exterior velocity")?;
                 let zero = Tensor::zeros(&[1], DType::F64, c.device())?;
-                let cap = Tensor::full_scalar(
-                    &[1],
-                    DType::F64,
-                    definition.geometry.cell(index).maximum_depth_m,
-                    c.device(),
-                )?;
                 if !finite(c, depth)?
                     || !finite(c, velocity)?
                     || !all(c, &c.ge(depth, &zero)?)?
-                    || !all(c, &c.le(depth, &cap)?)?
                     || (all(c, &c.eq(depth, &zero)?)? && !all(c, &c.eq(velocity, &zero)?)?)
                 {
                     return Err(reject(
                         "exterior state: supply supported finite depth and velocity, with zero velocity when dry",
                     ));
                 }
+                if matches!(
+                    &definition.geometry,
+                    ChannelGeometry::PrismaticSurveyed { .. }
+                ) {
+                    return Ok(());
+                }
+                let cap = Tensor::full_scalar(
+                    &[1],
+                    DType::F64,
+                    definition.geometry.cell(index).maximum_depth_m,
+                    c.device(),
+                )?;
+                if !all(c, &c.le(depth, &cap)?)? {
+                    return Err(reject(
+                        "exterior depth exceeds the geometric cap: supply a supported depth",
+                    ));
+                }
                 let nonzero = all(c, &c.gt(depth, &zero)?)? && !all(c, &c.eq(velocity, &zero)?)?;
                 let discharge = match &definition.geometry {
+                    ChannelGeometry::PrismaticSurveyed { .. } => return Ok(()),
                     ChannelGeometry::Rectangular { cells } => {
                         let unit = c.mul(depth, velocity)?;
                         if !finite(c, &unit)? || (nonzero && all(c, &c.eq(&unit, &zero)?)?) {

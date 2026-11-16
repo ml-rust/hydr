@@ -9,6 +9,7 @@ pub(in crate::channel::flow) struct RiemannDiagnosticState<R: Runtime<DType = DT
     pub water_flux_width: Tensor<R>,
     pub momentum_flux_width: Tensor<R>,
     pub root_iterations: usize,
+    pub surveyed_work: Option<super::surveyed::PrismaticRiemannWork>,
 }
 
 impl<R: Runtime<DType = DType>> RiemannDiagnosticState<R>
@@ -26,6 +27,7 @@ where
                 .max(&self.momentum_flux_width, &[0], false)?
                 .item::<f64>()?,
             root_iterations: self.root_iterations,
+            surveyed_work: self.surveyed_work,
         })
     }
 }

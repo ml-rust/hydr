@@ -3,13 +3,17 @@ use super::snapshot_bits::assert_same;
 use hydr::channel::*;
 use hydr::forcing::WaterAmount;
 use numr::dtype::DType;
+use numr::ops::NextRepresentableOps;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
     ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
-use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::integrate::CertifiedSimpsonAlgorithms;
+use solvr::optimize::roots::{
+    BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
+};
 
 pub fn operand<R: Runtime<DType = DType>>(
     client: &R::Client,
@@ -239,6 +243,10 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>
         + UnaryOps<R>
+        + NextRepresentableOps<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {
     assert_ne!(((0.03_f64 / 7.0) * 7.0).to_bits(), 0.03_f64.to_bits());
@@ -323,9 +331,4 @@ where
         }
     }
     Ok(())
-}
-
-#[test]
-fn native_forcing_preserves_host_packages_and_complete_continuation() -> TestResult {
-    execute::<crate::runtime::Runtime>(crate::runtime::client())
 }

@@ -71,9 +71,13 @@ Use [cross-section geometry](cross-sections.md) to evaluate supplied channel pro
 
 Use [certified section bounds](prismatic-sections.md) for native depth queries or recovery from conserved areas.
 
-Use [channel flow](channels.md) to advance an unbranched rectangular or prismatic triangular reach with explicit endpoint conditions.
+Use [channel flow](channels.md) to advance an unbranched rectangular, triangular, or fixed surveyed reach with explicit endpoint conditions.
 
-Use [channel-to-pool connections](channel-pools.md) when finite pool levels respond to channel transfers. `ChannelPoolBatch` accepts both components together and retains their combined restart data.
+For surveyed reaches, supply one profile meeting [prismatic certification requirements](prismatic-sections.md#check-whether-the-profile-qualifies). Supply ordered cell lengths and roughness, initial volumes and momenta, and `ChannelSurveyedConfig`. Choose `Wall` or complete `Exterior` endpoints. Scalar endpoints and finite-pool attachments remain unsupported.
+
+Surveyed advancement supports lateral rates, exact interval volumes, diagnostics, and complete restart through the same channel API. Supply a CPU or CUDA F64 client. Read [surveyed numerical controls and limits](channels.md#set-surveyed-numerical-controls) before selecting tolerances or interpreting accuracy.
+
+Use [channel-to-pool connections](channel-pools.md) for rectangular or triangular reaches when finite pool levels respond to channel transfers. `ChannelPoolBatch` accepts both components together and retains their combined restart data.
 
 Surface state remains separate from these channel/pool calculations.
 

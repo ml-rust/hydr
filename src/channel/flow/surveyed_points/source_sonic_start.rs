@@ -220,7 +220,7 @@ where
             super::point_root_session::invalid("source sonic bracket admission overflows usize")
         })?;
         if admission <= invocation.remaining()? {
-            let seed = source_sonic_charts::seed(sources, &parents, side, &epsilon, &query)?;
+            let seed = source_sonic_charts::seed(sources, &parents, side, epsilon, &query)?;
             let work = sources.evaluation.work;
             work.begin_bracket()?;
             let cause = Cell::new(None);

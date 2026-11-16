@@ -80,7 +80,7 @@ where
                 self.finite(&frequency, "width-aware CFL frequency")?;
                 frequency
             }
-            TensorGeometry::Triangular(_) => {
+            TensorGeometry::Triangular(_) | TensorGeometry::Surveyed(_) => {
                 let frequency = if let Some(internal) = internal_speed {
                     let left = c.add(&speed.narrow(0, 0, count)?, internal)?;
                     let right = c.add(internal, &speed.narrow(0, 1, count)?)?;
@@ -94,7 +94,7 @@ where
                         &self.length,
                     )?
                 };
-                self.finite(&frequency, "triangular CFL frequency")?;
+                self.finite(&frequency, "prismatic CFL frequency")?;
                 frequency
             }
         };

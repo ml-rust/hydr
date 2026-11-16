@@ -93,10 +93,14 @@ where
     /// Replay the complete original final trial before accepting a caller-owned continuation package.
     ///
     /// Applications own authenticated history and content hashes for intervals preceding this bounded proof.
-    pub fn import_snapshot(
-        &self,
-        data: &ChannelPoolSnapshotData,
-    ) -> Result<Self, ChannelPoolError> {
+    pub fn import_snapshot(&self, data: &ChannelPoolSnapshotData) -> Result<Self, ChannelPoolError>
+    where
+        R::Client: numr::ops::TensorOps<R>
+            + numr::ops::NextRepresentableOps<R>
+            + solvr::integrate::CertifiedSimpsonAlgorithms<R>
+            + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>
+            + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
+    {
         require(
             same_setup(&self.context.setup, &data.setup)
                 && same_initial(&self.context.initial, &data.initial),
@@ -174,7 +178,14 @@ where
         reaches: &[ChannelSnapshotData],
         pools: &LevelPoolSnapshotData,
         counters: &ChannelPoolCounterData,
-    ) -> Result<Self, ChannelPoolError> {
+    ) -> Result<Self, ChannelPoolError>
+    where
+        R::Client: numr::ops::TensorOps<R>
+            + numr::ops::NextRepresentableOps<R>
+            + solvr::integrate::CertifiedSimpsonAlgorithms<R>
+            + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>
+            + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
+    {
         require(
             reaches.len() == self.context.setup.reaches.len(),
             "channel package count differs from setup",

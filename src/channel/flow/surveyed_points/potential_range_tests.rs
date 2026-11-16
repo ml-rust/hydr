@@ -297,35 +297,47 @@ where
     Ok(())
 }
 
-fn matrix<R>(client: R::Client) -> Result
+fn matrix<R>(client: R::Client, strided: bool) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: Client<R> + CertifiedSimpsonAlgorithms<R>,
 {
-    for strided in [false, true] {
-        bindings::<R>(&client, strided)?;
+    bindings::<R>(&client, strided)?;
+    if strided {
+        return Ok(());
     }
     lazy_controls::<R>(&client)?;
     film::run::<R>(&client)
 }
 
-#[test]
-fn configured_cpu_potential_ranges_preserve_independent_leaves_and_film_invariants() -> Result {
+fn configured_cpu(strided: bool) -> Result {
     use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
     let original = CpuClient::new(CpuDevice::new());
     let before = original.parallelism();
     let config = ParallelismConfig::new(Some(2), Some(257));
     let client = original.with_parallelism(config);
     let retained = client.clone();
-    matrix::<CpuRuntime>(client)?;
+    matrix::<CpuRuntime>(client, strided)?;
     assert_eq!(retained.parallelism(), config);
     assert_eq!(original.parallelism(), before);
     Ok(())
+}
+
+#[test]
+fn configured_cpu_potential_ranges_preserve_independent_leaves_and_film_invariants() -> Result {
+    configured_cpu(false)
+}
+
+#[test]
+fn configured_cpu_potential_ranges_preserve_independent_leaves_from_strided_views() -> Result {
+    configured_cpu(true)
 }
 
 #[cfg(feature = "cuda")]
 #[test]
 fn cuda_potential_ranges_preserve_independent_leaves_and_film_invariants() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    matrix::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+    let client = CudaClient::new(CudaDevice::new(0))?;
+    matrix::<CudaRuntime>(client.clone(), true)?;
+    matrix::<CudaRuntime>(client, false)
 }

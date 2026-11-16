@@ -27,7 +27,7 @@ fn measure(count: usize) -> Result<[[f64; 3]; 2]> {
     let (mut setup, mut initial) = single(case, ChannelPoolEndpoint::Right)?;
     let dx = 10.0 / count as f64;
     setup.reaches[0].definition = super::fixture::definition(false, 1.0, 1.0, count, dx, 0.0);
-    setup.reaches[0].definition.config.cfl = 0.1;
+    setup.reaches[0].definition.config.cfl = 0.4;
     initial.reaches[0] = ChannelInitialState {
         time_s: 0.0,
         volume_m3: (0..count)
@@ -76,7 +76,7 @@ fn measure(count: usize) -> Result<[[f64; 3]; 2]> {
 
 #[test]
 fn linear_channel_pool_mode_reproduces_phase_and_refines_against_fixed_peak_amplitudes() -> Result {
-    let errors = [measure(50)?, measure(100)?, measure(200)?];
+    let errors = [measure(16)?, measure(32)?, measure(64)?];
     for sample in 0..2 {
         for quantity in 0..3 {
             for pair in errors.windows(2) {

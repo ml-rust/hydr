@@ -1,6 +1,6 @@
 # Channel flow
 
-Use `ChannelReach<R>` to advance an unbranched rectangular or prismatic triangular reach with explicit geometry and endpoint conditions.
+Use `ChannelReach<R>` to advance an unbranched reach with explicit geometry and endpoint conditions.
 
 ## Construct a reach
 
@@ -15,8 +15,19 @@ Import these types from `hydr::channel`.
 | --- | --- | --- |
 | `Rectangular { cells }` | Ordered `RectangularChannelCell` values | Identity, length, width, bed elevation, maximum depth, and Manning roughness |
 | `PrismaticTriangular` | Left/right bank slopes, common bed elevation, and ordered `TriangularChannelCell` values | Identity, length, maximum depth, and Manning roughness |
+| `PrismaticSurveyed` | One `CrossSectionDefinition`, ordered `SurveyedChannelCell` values, and `ChannelSurveyedConfig` as `numerical` | `id`, positive `length_m` in metres, and nonnegative `manning_n` |
 
-The solver uses the declared physical sections. It does not infer dynamic geometry from surveyed profiles.
+The solver uses the declared physical sections. Geometry remains fixed during advancement.
+
+### Supply one surveyed profile
+
+Choose `PrismaticSurveyed { profile, cells, numerical }` for a horizontal reach. Every cell shares the original surveyed cross-section. Cell lengths and Manning roughness can differ.
+
+Supply the [surveyed-profile inputs](cross-sections.md#supply-the-surveyed-profile), including datum, provenance, and `maximum_stage_m`. The profile must meet [prismatic certification requirements](prismatic-sections.md#check-whether-the-profile-qualifies). Its datum must match the reach datum.
+
+Hydr certifies the profile during construction. Positive roughness additionally requires [certified wetted perimeter](prismatic-sections.md#add-wetted-perimeter-and-hydraulic-radius-bounds). Zero roughness avoids that additional certificate.
+
+Supply your configured `R::Client`. Surveyed calculations run on CPU or CUDA F64 with the required certified arithmetic. Unsupported runtimes reject without fallback.
 
 ### Supply triangular bank slopes
 
@@ -28,6 +39,8 @@ For depth `h`, define `k = (left_bank_slope_h_per_v + right_bank_slope_h_per_v) 
 
 A triangular reach requires a runtime that declares correctly rounded F64 square roots. Unsupported arithmetic rejects construction without fallback.
 
+### Supply initial conserved state
+
 Initial arrays contain one value per ordered cell:
 
 | Quantity | Input | From depth and velocity |
@@ -36,6 +49,8 @@ Initial arrays contain one value per ordered cell:
 | Longitudinal momentum divided by water density | `longitudinal_momentum_m4_per_s`, in m⁴/s | Water volume × velocity |
 
 For rectangles, submerged area is width × depth. For triangles, submerged area is `k h²`.
+
+For surveyed cells, obtain area from the shared profile within its supported capacity. Advancement retains `A = volume_m3 / length_m` and `Q = longitudinal_momentum_m4_per_s / length_m` as authoritative area and discharge.
 
 Stored volume and momentum remain authoritative. Depth recovery never replaces stored water with a reconstructed volume.
 
@@ -50,6 +65,8 @@ Supply both endpoints through `ChannelForcingInterval`. Keep the supplied values
 A boundary trace gives the depth and velocity used to calculate flow across an endpoint.
 
 Scalar policies prescribe one hydraulic quantity and solve for the remaining trace state.
+
+Surveyed reaches accept only `Wall` or complete `Exterior` data at both endpoints. `Stage`, `Discharge`, and `QuiescentReservoir` remain unsupported for surveyed geometry. The scalar-policy sections below apply to rectangular and triangular reaches.
 
 | Policy | Required input | Meaning |
 | --- | --- | --- |
@@ -109,7 +126,7 @@ Interior water and the boundary trace must remain wet and strictly subcritical. 
 
 This policy holds the supplied reservoir elevation over its forcing interval. It does not advance finite reservoir storage.
 
-For a pool whose level responds to channel transfers, use [channel-to-pool connections](channel-pools.md).
+For rectangular or triangular channels whose pool levels respond to transfers, use [channel-to-pool connections](channel-pools.md).
 
 Use this approximation only where rapid reservoir mixing is appropriate. Jets, seiches, dry connections, and critical transitions remain unsupported.
 
@@ -213,7 +230,7 @@ Hydr copies tensor inputs into private device storage. Reusing caller buffers af
 
 The host `step()` interface uploads its operands once into this shared path. Explicit checkpoint-data calls copy retained operands to host values.
 
-For coordinated transfers with finite storage, use [channel-to-pool connections](channel-pools.md).
+For rectangular or triangular channels, [channel-to-pool connections](channel-pools.md) coordinate transfers with finite storage. Surveyed pool connections remain unsupported.
 
 The [native-forcing checks](../tests/channel_tensor_forcing.rs) compare complete host and tensor continuation.
 
@@ -271,9 +288,11 @@ Reservoir traces additionally contain `reservoir: Some(ChannelReservoirTrace)`. 
 
 ### Read flux accuracy
 
-Triangular intervals report face-flux uncertainty in `ChannelStepDiagnostics.riemann`. Rectangular intervals return `None`.
+Triangular and surveyed intervals report face-flux uncertainty in `ChannelStepDiagnostics.riemann`. Rectangular intervals return `None`.
 
-Scalar boundary receipts report endpoint flux widths for either shape. All use the same budgets below.
+Surveyed receipts also retain cumulative root and integration work in `surveyed_work`.
+
+Scalar boundary receipts report endpoint flux widths for rectangular and triangular reaches. All use the same budgets below.
 
 | Diagnostic | Meaning |
 | --- | --- |
@@ -325,6 +344,8 @@ Construct the destination with the same definition, config, and original initial
 
 Both restoration paths retain the destination's configured client. Importing saved data recalculates the complete last interval, including lateral inputs, counters, scalar traces, and triangular flux certificates.
 
+Surveyed restart data also retain the original profile, surveyed numerical controls, flux certificates, work, and friction-geometry receipts. Import recalculates the complete surveyed interval. Modified profile or numerical-control bits reject restoration.
+
 Geometry variants and original geometry bits bind both restart paths. Changed triangular slopes or bed bits reject restoration. Equal area laws do not make different bank declarations interchangeable.
 
 Persistence must preserve every floating-point bit. Step bounds can contain positive infinity, which ordinary JSON numbers cannot represent.
@@ -344,9 +365,27 @@ The solver uses finite volumes and forward Euler time integration. It represents
 | Step size | Width-aware wave limit | Reconstructed half-cell CFL for `LimitedLinear`, full-cell CFL for `FirstOrderReference` |
 | Friction | Wetted perimeter includes the bed and both vertical sides | Wetted perimeter uses both declared bank slopes |
 
-Each face supplies one shared flux, including dry fronts. Both geometries use a separate donor limit for outgoing water.
+Each face supplies one shared flux, including dry fronts. Every geometry uses a separate donor limit for outgoing water.
 
 The velocity profile is uniform across each section (`β = 1`). Split Manning resistance holds area fixed during decay.
+
+### Set surveyed numerical controls
+
+Surveyed reaches use piecewise constant states and the [surveyed interface solver](prismatic-fluxes.md) for shared water and momentum fluxes. Complete wave bounds restrict the timestep. `triangular_reconstruction` does not select surveyed reconstruction.
+
+`ChannelConfig` alone supplies gravity and the flux-width budgets listed above. Surveyed advancement retains those defaults, which differ from standalone `PrismaticRiemannConfig` defaults.
+
+Use `ChannelSurveyedConfig` for depth recovery, root solving, integration work limits, and friction-geometry allowances.
+
+See [root controls](prismatic-fluxes.md#choose-bounds-and-work-limits) for search and bisection limits. `normalized_root` supplies the root controls for a reach. Integration panels divide each integration interval. Point ceilings bound native root and integration evaluations.
+
+With positive roughness, split Manning resistance uses the original area and bounded hydraulic radius. `friction_geometry_atol_m4_per_s` and `friction_geometry_rtol` bound momentum uncertainty from radius selection. `ChannelStepDiagnostics.friction_geometry` records that bound.
+
+This bound covers radius selection only. It excludes native power arithmetic and time-splitting errors.
+
+Unresolved geometry, capacity, fluxes, or exhausted work limits return errors without exposing partial face results. Inspect the error before changing inputs or work limits. A shorter interval cannot resolve every geometry or work error.
+
+Surveyed reaches use the same lateral rate, exact-volume, immutable-step, and restart interfaces described above. Functional CPU/CUDA source and restart checks establish no reach convergence or measured-event accuracy. Spatial, temporal, and wet/dry-front acceptance remain incomplete.
 
 ### Select triangular reconstruction
 
@@ -391,10 +430,10 @@ Positive triangular films retain positive water without a dry threshold. Their w
 
 The solver represents hydrostatic, one-dimensional shallow-water flow. It excludes transverse jets and strong channel curvature.
 
-- Geometry: Rectangular width and bed can vary between cells. Triangles require one common bed and bank slopes.
-- Profiles: Trapezoids, mixed shapes, and varying longitudinal triangular profiles remain unsupported. Surveyed profiles support [static queries](cross-sections.md) only.
+- Geometry: Rectangular width and bed can vary between cells. Triangles require one common bed and bank slopes. Surveyed reaches require one horizontal profile.
+- Profiles: Certified surveyed profiles support reach advancement. Mixed sections, longitudinally varying surveyed or triangular profiles, and changing geometry remain unsupported.
 - Boundaries: Scalar policies require resolved wet-subcritical traces. Complete exterior data supports other flow regimes. Use walls only for physical closures. Transmissive policies remain unsupported.
-- Connections: [Channel-to-pool connections](channel-pools.md) coordinate finite pool storage. General junctions, structures, and surface exchange remain unsupported.
+- Connections: [Channel-to-pool connections](channel-pools.md) coordinate rectangular or triangular reaches with finite pool storage. Surveyed attachments, general junctions, structures, and surface exchange remain unsupported.
 - Losses: Separate abrupt contraction and expansion losses remain unsupported.
 - Drainage: This solver supplies no SWMM drainage, surcharge, or pressurized-pipe model.
 - Accuracy: Read [acceptance coverage](acceptance.md) for numerical cases and limits. Numerical agreement establishes no measured-event accuracy.

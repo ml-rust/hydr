@@ -1,8 +1,8 @@
 use super::{ChannelError, ChannelInitialState, ChannelReachDefinition};
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
-    ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps,
+    NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -33,7 +33,9 @@ where
         + ScalarOps<R>
         + ShapeOps<R>
         + TwoSumOps<R>
-        + UnaryOps<R>,
+        + UnaryOps<R>
+        + TensorOps<R>
+        + NextRepresentableOps<R>,
 {
     pub fn new(
         client: R::Client,

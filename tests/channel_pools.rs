@@ -20,3 +20,9 @@ mod reference;
 mod restoration;
 #[path = "support/runtime.rs"]
 mod runtime;
+
+#[test]
+fn native_finite_pool_forcing_preserves_views_aliases_signed_zero_and_destination_restarts()
+-> fixture::Result {
+    native::execute::<runtime::Runtime>(runtime::client(), runtime::client())
+}

@@ -72,7 +72,12 @@ where
         + UnaryOps<R>
         + Interp1dAlgorithms<R>
         + BatchedBisectionAlgorithms<R>
-        + AndersonAlgorithms<R>,
+        + AndersonAlgorithms<R>
+        + numr::ops::TensorOps<R>
+        + numr::ops::NextRepresentableOps<R>
+        + solvr::integrate::CertifiedSimpsonAlgorithms<R>
+        + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>
+        + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
 {
     /// Calculate a common candidate from explicit external endpoint policies and lateral inputs.
     pub fn trial_to(

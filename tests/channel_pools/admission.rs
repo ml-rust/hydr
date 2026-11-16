@@ -1,7 +1,58 @@
 use super::fixture::{Result, batch, forcing, single};
 use super::reference::CASES;
-use hydr::channel::ChannelBoundary;
+use hydr::channel::{
+    ChannelBoundary, ChannelGeometry, ChannelReach, ChannelSurveyedConfig, CrossSectionDefinition,
+    CrossSectionPoint, SurveyedChannelCell,
+};
 use hydr::coupling::{ChannelPoolBatch, ChannelPoolEndpoint, ChannelPoolError};
+
+#[test]
+fn surveyed_reach_attachment_rejects_before_advancement_with_standalone_guidance() -> Result {
+    let (mut setup, initial) = single(CASES[0], ChannelPoolEndpoint::Right)?;
+    setup.reaches[0].definition.geometry = ChannelGeometry::PrismaticSurveyed {
+        profile: CrossSectionDefinition {
+            id: "surveyed-rectangle".into(),
+            vertical_datum: setup.vertical_datum.clone(),
+            points: [(0.0, 4.0), (0.0, 0.0), (3.0, 0.0), (3.0, 4.0)]
+                .into_iter()
+                .map(|(station_m, elevation_m)| CrossSectionPoint {
+                    station_m,
+                    elevation_m,
+                })
+                .collect(),
+            maximum_stage_m: 4.0,
+            profile_provenance: "Explicit analytical rectangular survey".into(),
+        },
+        cells: vec![SurveyedChannelCell {
+            id: "cell-0".into(),
+            length_m: 128.0,
+            manning_n: 0.0,
+        }],
+        numerical: ChannelSurveyedConfig::default(),
+    };
+    let standalone = ChannelReach::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        setup.reaches[0].definition.clone(),
+        initial.reaches[0].clone(),
+    )?;
+    let error = ChannelPoolBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        setup.clone(),
+        initial.clone(),
+    )
+    .err()
+    .ok_or("Surveyed reach attachment enters the finite-pool coordinator")?;
+    match error {
+        ChannelPoolError::Input(message) => {
+            assert!(message.contains("surveyed coordinator attachment is unsupported"));
+            assert!(message.contains("use standalone reach advancement"));
+        }
+        other => return Err(format!("Unexpected surveyed attachment rejection: {other}").into()),
+    }
+    assert_eq!(standalone.definition(), &setup.reaches[0].definition);
+    assert_eq!(standalone.time(), initial.reaches[0].time_s);
+    Ok(())
+}
 
 #[test]
 fn topology_time_gravity_datum_and_endpoint_ownership_require_consistent_declarations() -> Result {

@@ -26,6 +26,11 @@ where
         + TwoSumOps<R>
         + TypeConversionOps<R>
         + UnaryOps<R>
+        + numr::ops::TensorOps<R>
+        + numr::ops::NextRepresentableOps<R>
+        + solvr::integrate::CertifiedSimpsonAlgorithms<R>
+        + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>
+        + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>
         + Interp1dAlgorithms<R>
         + BatchedBisectionAlgorithms<R>
         + AndersonAlgorithms<R>,

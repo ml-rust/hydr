@@ -1,6 +1,9 @@
 use super::{ChannelError, context::Context, geometry::TensorGeometry};
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps,
+    TensorOps, TwoSumOps, UnaryOps,
+};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
@@ -11,7 +14,11 @@ where
         + ConditionalOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
-        + UnaryOps<R>,
+        + UnaryOps<R>
+        + TensorOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + TwoSumOps<R>,
 {
     pub fn friction(
         &self,
@@ -19,6 +26,9 @@ where
         momentum: &Tensor<R>,
         dt: f64,
     ) -> Result<Tensor<R>, ChannelError> {
+        if matches!(&self.geometry, TensorGeometry::Surveyed(_)) {
+            return Ok(self.surveyed_friction(volume, momentum, dt)?.momentum);
+        }
         let fields = self.fields(volume, momentum)?;
         let c = &self.client;
         let zero = self.constant(volume, 0.0)?;
@@ -31,7 +41,7 @@ where
         self.finite(&perimeter, "wetted perimeter")?;
         let radius = match &self.geometry {
             TensorGeometry::Rectangular(_) => c.div(&fields.area, &perimeter)?,
-            TensorGeometry::Triangular(_) => {
+            TensorGeometry::Triangular(_) | TensorGeometry::Surveyed(_) => {
                 let wet = c.gt(&fields.area, &zero)?;
                 let safe_perimeter = c.where_cond(&wet, &perimeter, &one)?;
                 c.div(&fields.area, &safe_perimeter)?

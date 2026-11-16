@@ -32,7 +32,7 @@ mod selection;
 #[path = "wet_root_tests_support.rs"]
 mod support;
 
-fn matrix<R>(client: &R::Client) -> Result
+fn controls<R>(client: &R::Client) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: Client<R>
@@ -40,11 +40,21 @@ where
         + CertifiedBisectionAlgorithms<R>
         + CertifiedUpperBracketAlgorithms<R>,
 {
-    corpus::<R>(client)?;
-    chains::run::<R>(client)?;
     admission::run::<R>(client)?;
     selection::run::<R>(client)?;
     oracles::run::<R>(client)
+}
+
+fn configured_cpu(run: impl FnOnce(&numr::runtime::cpu::CpuClient) -> Result) -> Result {
+    use numr::runtime::cpu::{CpuClient, CpuDevice, ParallelismConfig};
+    let original = CpuClient::new(CpuDevice::new());
+    let before = original.parallelism();
+    let config = ParallelismConfig::new(Some(2), Some(257));
+    let client = original.with_parallelism(config);
+    run(&client)?;
+    assert_eq!(client.parallelism(), config);
+    assert_eq!(original.parallelism(), before);
+    Ok(())
 }
 
 fn corpus<R>(client: &R::Client) -> Result
@@ -138,34 +148,42 @@ where
 }
 
 #[test]
-fn configured_cpu_wet_root_domains_preserve_frozen_outcomes_and_retained_roots() -> Result {
-    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
-    let original = CpuClient::new(CpuDevice::new());
-    let before = original.parallelism();
-    let config = ParallelismConfig::new(Some(2), Some(257));
-    let client = original.with_parallelism(config);
-    matrix::<CpuRuntime>(&client)?;
-    assert_eq!(client.parallelism(), config);
-    assert_eq!(original.parallelism(), before);
-    Ok(())
+fn configured_cpu_wet_root_domains_preserve_frozen_outcomes() -> Result {
+    configured_cpu(corpus::<numr::runtime::cpu::CpuRuntime>)
+}
+
+#[test]
+fn configured_cpu_wet_root_film_and_cap_chains_preserve_retained_roots() -> Result {
+    configured_cpu(|client| {
+        chains::run::<numr::runtime::cpu::CpuRuntime>(client, chains::FILM_AND_CAP)
+    })
+}
+
+#[test]
+fn configured_cpu_wet_root_jump_and_knot_chains_preserve_retained_roots() -> Result {
+    configured_cpu(|client| {
+        chains::run::<numr::runtime::cpu::CpuRuntime>(client, chains::JUMPS_AND_KNOTS)
+    })
+}
+
+#[test]
+fn configured_cpu_wet_root_admission_selection_and_oracles() -> Result {
+    configured_cpu(controls::<numr::runtime::cpu::CpuRuntime>)
 }
 
 #[cfg(feature = "cuda")]
 #[test]
 fn actual_cuda_wet_root_domains_preserve_frozen_outcomes_and_retained_roots() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    matrix::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?)
+    let client = CudaClient::new(CudaDevice::new(0))?;
+    corpus::<CudaRuntime>(&client)?;
+    chains::run::<CudaRuntime>(&client, chains::FILM_AND_CAP)?;
+    chains::run::<CudaRuntime>(&client, chains::JUMPS_AND_KNOTS)?;
+    chains::run_pointed::<CudaRuntime>(&client)?;
+    controls::<CudaRuntime>(&client)
 }
 
 #[test]
 fn configured_cpu_pointed_film_locator_preserves_independent_root() -> Result {
-    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
-    let original = CpuClient::new(CpuDevice::new());
-    let before = original.parallelism();
-    let config = ParallelismConfig::new(Some(2), Some(257));
-    let client = original.with_parallelism(config);
-    chains::run_pointed::<CpuRuntime>(&client)?;
-    assert_eq!(client.parallelism(), config);
-    assert_eq!(original.parallelism(), before);
-    Ok(())
+    configured_cpu(chains::run_pointed::<numr::runtime::cpu::CpuRuntime>)
 }

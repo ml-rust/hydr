@@ -1,13 +1,14 @@
 use super::super::{ChannelError, ChannelGeometry, ChannelReachDefinition, context::Context};
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, HypotOps, MidpointOps, ReduceOps, ScalarOps, ShapeOps,
-    UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, HypotOps, MidpointOps, NextRepresentableOps, ReduceOps,
+    ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient, SquareRootContract};
 use numr::tensor::Tensor;
 
 pub(in crate::channel::flow) enum TensorGeometry<R: Runtime<DType = DType>> {
+    Surveyed(Box<super::surveyed::SurveyedGeometry<R>>),
     Rectangular(Box<RectangularGeometry<R>>),
     Triangular(Box<TriangleGeometry<R>>),
 }
@@ -42,7 +43,10 @@ where
         + ReduceOps<R>
         + ScalarOps<R>
         + ShapeOps<R>
-        + UnaryOps<R>,
+        + UnaryOps<R>
+        + TensorOps<R>
+        + NextRepresentableOps<R>
+        + TwoSumOps<R>,
 {
     pub fn new(
         client: &R::Client,
@@ -51,6 +55,13 @@ where
         length: &Tensor<R>,
     ) -> Result<Self, ChannelError> {
         match &definition.geometry {
+            ChannelGeometry::PrismaticSurveyed {
+                profile, numerical, ..
+            } => Ok(Self::Surveyed(Box::new(
+                super::surveyed::SurveyedGeometry::new(
+                    client, definition, profile, numerical, length,
+                )?,
+            ))),
             ChannelGeometry::Rectangular { cells } => {
                 let values: Vec<_> = cells.iter().map(|c| c.width_m).collect();
                 let count = values.len();
@@ -183,10 +194,18 @@ fn require_positive<R: Runtime<DType = DType>>(
 
 impl<R: Runtime<DType = DType>> Context<R>
 where
-    R::Client: BinaryOps<R> + UnaryOps<R>,
+    R::Client: BinaryOps<R>
+        + UnaryOps<R>
+        + TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>,
 {
     pub fn section_depth(&self, area: &Tensor<R>) -> Result<Tensor<R>, ChannelError> {
         Ok(match &self.geometry {
+            TensorGeometry::Surveyed(section) => section.recover_depth(area)?,
             TensorGeometry::Rectangular(section) => self.client.div(area, &section.width)?,
             TensorGeometry::Triangular(section) => self
                 .client
@@ -201,6 +220,11 @@ where
 {
     pub fn section_perimeter(&self, depth: &Tensor<R>) -> Result<Tensor<R>, ChannelError> {
         Ok(match &self.geometry {
+            TensorGeometry::Surveyed(_) => {
+                return Err(ChannelError::numerical(
+                    "surveyed perimeter requires original conserved area: use certified original-area recovery",
+                ));
+            }
             TensorGeometry::Rectangular(section) => self
                 .client
                 .add(&section.width, &self.client.mul_scalar(depth, 2.0)?)?,

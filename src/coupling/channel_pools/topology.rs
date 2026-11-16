@@ -280,6 +280,9 @@ fn endpoint_bed(geometry: &ChannelGeometry, endpoint: usize) -> Result<f64, Chan
         ChannelGeometry::PrismaticTriangular {
             bed_elevation_m, ..
         } => Ok(*bed_elevation_m),
+        ChannelGeometry::PrismaticSurveyed { .. } => Err(ChannelPoolError::input(
+            "surveyed coordinator attachment is unsupported: use standalone reach advancement",
+        )),
     }
 }
 fn indices<R: Runtime<DType = DType>>(

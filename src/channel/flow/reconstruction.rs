@@ -11,11 +11,16 @@ use super::{
 use crate::numerics::{TensorFaceState, homogeneous_wave_speed_tensor};
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps,
+    ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::{
+    integrate::CertifiedSimpsonAlgorithms,
+    optimize::roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+};
 
 pub(super) struct CflSpeeds<R: Runtime<DType = DType>> {
     pub outer: Tensor<R>,
@@ -199,6 +204,12 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>
         + UnaryOps<R>
+        + TensorOps<R>
+        + NextRepresentableOps<R>
+        + MidpointOps<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {
     pub fn candidate_speed(
@@ -209,6 +220,9 @@ where
     ) -> Result<CflSpeeds<R>, ChannelError> {
         if let TensorGeometry::Triangular(geometry) = &self.geometry {
             return self.triangular_speed(geometry, fields, left, right);
+        }
+        if let TensorGeometry::Surveyed(geometry) = &self.geometry {
+            return self.surveyed_speed(geometry, fields, left, right);
         }
         let reconstructed = self.reconstruct(fields, left, right)?;
         if !is_scalar(left) && !is_scalar(right) {

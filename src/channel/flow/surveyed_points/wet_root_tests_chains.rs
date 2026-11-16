@@ -22,7 +22,20 @@ use solvr::{
     },
 };
 
-pub(super) fn run<R>(client: &R::Client) -> Result
+pub(super) const FILM_AND_CAP: &[&str] = &[
+    "retained_vacuum_inside_film",
+    "uniform_cap_retained_deficit_dyadic_velocity",
+    "scalar_rectangle_stationary_shock",
+];
+
+pub(super) const JUMPS_AND_KNOTS: &[&str] = &[
+    "tiny_rectangle_compression",
+    "scalar_rectangle_weak_depth_jump",
+    "retained_knot_2_crossing",
+    "retained_knot_7_crossing",
+];
+
+pub(super) fn run<R>(client: &R::Client, ids: &[&str]) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: Client<R>
@@ -30,15 +43,7 @@ where
         + CertifiedBisectionAlgorithms<R>
         + CertifiedUpperBracketAlgorithms<R>,
 {
-    for id in [
-        "retained_vacuum_inside_film",
-        "uniform_cap_retained_deficit_dyadic_velocity",
-        "scalar_rectangle_stationary_shock",
-        "tiny_rectangle_compression",
-        "scalar_rectangle_weak_depth_jump",
-        "retained_knot_2_crossing",
-        "retained_knot_7_crossing",
-    ] {
+    for &id in ids {
         let (config, _) = cases::declared(id);
         chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
             chain(pair, &config, id, cases::star(id))?;
@@ -46,7 +51,7 @@ where
             Ok(())
         })?;
     }
-    run_pointed::<R>(client)
+    Ok(())
 }
 
 pub(super) fn run_pointed<R>(client: &R::Client) -> Result

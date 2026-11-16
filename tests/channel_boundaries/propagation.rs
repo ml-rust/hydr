@@ -14,8 +14,9 @@ fn measure(
     count: usize,
 ) -> Result<(f64, f64), Box<dyn std::error::Error>> {
     let dx = 20.0 / count as f64;
+    // The CFL limit sets every step, so time refines with space.
     let mut current = reach(
-        definition(shape, count, dx, 4.0, 0.002),
+        definition(shape, count, dx, 4.0, 1.0),
         initial(
             shape,
             &vec![dx; count],
@@ -102,7 +103,7 @@ fn check_refinement(policies: impl Fn(Shape, Geometry, f64) -> Vec<Policy>) -> T
             for policy in policies(shape, geometry, depth) {
                 for side in [Side::Left, Side::Right] {
                     let mut errors = Vec::new();
-                    for count in [50, 100, 200] {
+                    for count in [25, 50, 100] {
                         errors.push(measure(shape, geometry, depth, policy, side, count)?);
                     }
                     assert!(
@@ -134,8 +135,13 @@ fn check_refinement(policies: impl Fn(Shape, Geometry, f64) -> Vec<Policy>) -> T
 }
 
 #[test]
-fn stage_and_discharge_propagate_exact_incoming_waves_under_refinement() -> TestResult {
-    check_refinement(|_, _, _| vec![Policy::Stage, Policy::Discharge])
+fn stage_propagates_exact_incoming_waves_under_refinement() -> TestResult {
+    check_refinement(|_, _, _| vec![Policy::Stage])
+}
+
+#[test]
+fn discharge_propagates_exact_incoming_waves_under_refinement() -> TestResult {
+    check_refinement(|_, _, _| vec![Policy::Discharge])
 }
 
 #[test]

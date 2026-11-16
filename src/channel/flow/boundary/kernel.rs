@@ -204,6 +204,11 @@ where
         self.finite(&ui, "scalar boundary interior velocity")?;
 
         let coefficient = match &self.geometry {
+            TensorGeometry::Surveyed(_) => {
+                return Err(ChannelError::input(
+                    "surveyed scalar boundary is unsupported: supply Wall or complete Exterior depth and velocity",
+                ));
+            }
             TensorGeometry::Rectangular(g) => g.width.narrow(0, index, 1)?,
             TensorGeometry::Triangular(g) => g.coefficient.clone(),
         };

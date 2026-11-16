@@ -82,6 +82,9 @@ where
         hi: &Tensor<R>,
     ) -> Result<Tensor<R>, ChannelError> {
         match &self.geometry {
+            TensorGeometry::Surveyed(_) => Err(ChannelError::input(
+                "surveyed scalar boundary curve is unsupported: supply Wall or complete Exterior depth and velocity",
+            )),
             TensorGeometry::Triangular(g) => self.triangular_curve_nominal(g, h, hi),
             TensorGeometry::Rectangular(_) => Ok(crate::numerics::curve(
                 &self.client,

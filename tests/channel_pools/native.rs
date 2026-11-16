@@ -7,13 +7,16 @@ use hydr::storage::{LevelPoolCurve, LevelPoolKnot};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, HypotOps, IndexingOps, MidpointOps,
-    ReduceOps, ScalarOps, ShapeOps, SortingOps, TwoSumOps, TypeConversionOps, UnaryOps,
+    NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, SortingOps, TwoSumOps, TypeConversionOps,
+    UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
+use solvr::integrate::CertifiedSimpsonAlgorithms;
 use solvr::interpolate::Interp1dAlgorithms;
 use solvr::optimize::roots::{
     AndersonAlgorithms, BatchedBisectionAlgorithms, BatchedNewtonAlgorithms,
+    CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
 };
 
 fn operand<R: Runtime<DType = DType>>(
@@ -136,6 +139,10 @@ where
         + TwoSumOps<R>
         + TypeConversionOps<R>
         + UnaryOps<R>
+        + NextRepresentableOps<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
         + Interp1dAlgorithms<R>
         + AndersonAlgorithms<R>
         + BatchedNewtonAlgorithms<R>
@@ -356,10 +363,4 @@ where
         assert_eq!(origin.snapshot_data()?, before);
     }
     Ok(())
-}
-
-#[test]
-fn native_finite_pool_forcing_preserves_views_aliases_signed_zero_and_destination_restarts()
--> Result {
-    execute::<crate::runtime::Runtime>(crate::runtime::client(), crate::runtime::client())
 }

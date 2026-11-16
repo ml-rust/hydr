@@ -1,6 +1,9 @@
 use super::{ChannelError, context::Context};
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, UnaryOps};
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
+    ReduceOps, ScalarOps, TensorOps, TwoSumOps, UnaryOps,
+};
 use numr::runtime::{Device, Runtime};
 use numr::tensor::Tensor;
 
@@ -75,7 +78,17 @@ where
         }
         Ok(total)
     }
+}
 
+impl<R: Runtime<DType = DType>> Context<R>
+where
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>,
+{
     pub fn fields(
         &self,
         volume: &Tensor<R>,
@@ -100,6 +113,23 @@ where
         let one = self.constant(volume, 1.0)?;
         let wet = c.gt(volume, &zero)?;
         let area = c.div(volume, &self.length)?;
+        if matches!(&self.geometry, super::geometry::TensorGeometry::Surveyed(_)) {
+            let nonnegative_volume = c.ge(volume, &zero)?;
+            let nonnegative_area = c.ge(&area, &zero)?;
+            let finite_area = c.le(&c.abs(&area)?, &self.constant(&area, f64::MAX)?)?;
+            let admitted = c.mul(
+                &nonnegative_volume,
+                &c.mul(&nonnegative_area, &finite_area)?,
+            )?;
+            if !self.all(&admitted)? {
+                let index = self.first_rejected(&admitted)?;
+                let read = |value: &Tensor<R>| value.narrow(0, index, 1)?.item::<f64>();
+                return Err(ChannelError::numerical(format!(
+                    "cell={index}, volume_m3={}, length_m={}, area_m2={}: require nonnegative water and finite nonnegative represented area before surveyed recovery; reduce the interval or rescale inputs",
+                    read(volume)?, read(&self.length)?, read(&area)?
+                )).at(index));
+            }
+        }
         let depth = self.section_depth(&area)?;
         let safe_volume = c.where_cond(&wet, volume, &one)?;
         let velocity = c.div(momentum, &safe_volume)?;
@@ -118,7 +148,9 @@ where
                 &c.maximum(&c.eq(volume, &zero)?, &c.gt(value, &zero)?)?,
             )?;
         }
-        admitted = c.mul(&admitted, &c.le(&depth, &self.cap)?)?;
+        if !matches!(&self.geometry, super::geometry::TensorGeometry::Surveyed(_)) {
+            admitted = c.mul(&admitted, &c.le(&depth, &self.cap)?)?;
+        }
         if !self.all(&admitted)? {
             let index = self.first_rejected(&admitted)?;
             let read = |value: &Tensor<R>| value.narrow(0, index, 1)?.item::<f64>();

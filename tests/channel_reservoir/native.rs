@@ -4,12 +4,16 @@ use super::snapshot_bits::assert_same;
 use super::transport::{native, overwrite_aliases};
 use hydr::channel::*;
 use numr::dtype::DType;
+use numr::ops::NextRepresentableOps;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
     ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
-use solvr::optimize::roots::BatchedBisectionAlgorithms;
+use solvr::integrate::CertifiedSimpsonAlgorithms;
+use solvr::optimize::roots::{
+    BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
+};
 
 pub fn execute<R>(client: R::Client) -> TestResult
 where
@@ -25,6 +29,10 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>
         + UnaryOps<R>
+        + NextRepresentableOps<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {
     for fixture in FIXTURES {
@@ -156,13 +164,8 @@ where
     Ok(())
 }
 
-#[test]
-fn native_reservoir_operands_preserve_bits_alias_isolation_and_complete_restart() -> TestResult {
-    execute::<crate::runtime::Runtime>(crate::runtime::client())
-}
-
-#[test]
-fn forged_reservoir_inputs_config_and_every_certificate_field_reject() -> TestResult {
+/// Forged snapshot fields must reject without changing the origin reach.
+pub fn forged_snapshots_reject() -> TestResult {
     for fixture in [FIXTURES[3], FIXTURES[5]] {
         let origin = ChannelReach::<crate::runtime::Runtime>::new(
             crate::runtime::client(),

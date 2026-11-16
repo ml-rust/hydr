@@ -159,6 +159,7 @@ pub(super) fn diagnostics(a: &ChannelStepDiagnostics, b: &ChannelStepDiagnostics
             .zip(&b.boundary_traces)
             .all(|(a, b)| boundary_trace(a.as_ref(), b.as_ref()))
         && riemann(a.riemann.as_ref(), b.riemann.as_ref())
+        && friction_geometry(a.friction_geometry.as_ref(), b.friction_geometry.as_ref())
         && optional(a.candidate_cfl_limit_s, b.candidate_cfl_limit_s)
         && values(
             &[
@@ -301,6 +302,7 @@ pub(super) fn riemann(
         (None, None) => true,
         (Some(a), Some(b)) => {
             a.root_iterations == b.root_iterations
+                && a.surveyed_work == b.surveyed_work
                 && values(&a.water_flux_width_m3_per_s, &b.water_flux_width_m3_per_s)
                 && values(
                     &a.momentum_flux_width_m4_per_s2,
@@ -316,6 +318,23 @@ pub(super) fn riemann(
                         b.max_momentum_flux_width_m4_per_s2,
                     ],
                 )
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn friction_geometry(
+    a: Option<&super::super::output::ChannelFrictionGeometryDiagnostics>,
+    b: Option<&super::super::output::ChannelFrictionGeometryDiagnostics>,
+) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => {
+            values(
+                &a.momentum_abs_bound_m4_per_s,
+                &b.momentum_abs_bound_m4_per_s,
+            ) && a.max_momentum_abs_bound_m4_per_s.to_bits()
+                == b.max_momentum_abs_bound_m4_per_s.to_bits()
         }
         _ => false,
     }

@@ -50,8 +50,10 @@ pub struct ChannelWaterLedger {
 pub struct ChannelStepDiagnostics {
     /// Scalar endpoint traces in left/right order. Wall and Exterior entries remain absent.
     pub boundary_traces: [Option<super::ChannelBoundaryTrace>; 2],
-    /// Final triangular Riemann flux brackets, absent for rectangular HLL intervals.
+    /// Final Riemann flux brackets, absent for rectangular HLL intervals.
     pub riemann: Option<ChannelRiemannDiagnostics>,
+    /// Radius-selection momentum bounds, absent for analytic geometry.
+    pub friction_geometry: Option<ChannelFrictionGeometryDiagnostics>,
     /// Accepted interval start in seconds.
     pub start_s: f64,
     /// Accepted interval end in seconds.
@@ -173,6 +175,17 @@ pub struct ChannelRiemannDiagnostics {
     pub max_water_flux_width_m3_per_s: f64,
     /// Largest momentum-flux bracket width in m⁴/s².
     pub max_momentum_flux_width_m4_per_s2: f64,
-    /// Maximum root iterations across faces, zero for analytical fluxes.
+    /// Maximum root iterations per solve batch, zero for analytical fluxes.
     pub root_iterations: usize,
+    /// Complete surveyed solver work, absent for analytic geometry.
+    pub surveyed_work: Option<super::surveyed::PrismaticRiemannWork>,
+}
+
+/// Exact-source sensitivity bounds from surveyed hydraulic-radius selection.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChannelFrictionGeometryDiagnostics {
+    /// Momentum bounds in m⁴/s, ordered by cell.
+    pub momentum_abs_bound_m4_per_s: Vec<f64>,
+    /// Largest cell momentum bound in m⁴/s.
+    pub max_momentum_abs_bound_m4_per_s: f64,
 }

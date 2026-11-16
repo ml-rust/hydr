@@ -6,6 +6,7 @@ use super::Result;
 pub(super) mod boundary_common;
 #[path = "../channel_tensor_forcing/snapshot_bits.rs"]
 pub(super) mod snapshot_bits;
+#[allow(dead_code)]
 #[path = "../channel_tensor_forcing/transport.rs"]
 pub(super) mod transport;
 
