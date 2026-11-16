@@ -9,7 +9,7 @@ use crate::channel::flow::surveyed::equation_ops::choose_expansion;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, NextRepresentableOps, ReduceOps, ScalarOps,
-    TensorOps, TwoSumOps, TypeConversionOps, UnaryOps,
+    TensorOps, TwoSumOps, TypeConversionOps, UnaryOps, UtilityOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -53,13 +53,12 @@ where
     let ones = Tensor::ones(&[count], DType::F64, device)?;
 
     // Rank candidate columns by index. Columns without a candidate rank after every band.
-    let ranks: Vec<f64> = std::iter::successors(Some(0.0_f64), |rank| Some(rank + 1.0))
-        .take(bands)
-        .collect();
-    let last_rank = ranks.last().copied().unwrap_or(0.0);
+    let last_rank = bands.saturating_sub(1) as f64;
     let last = Tensor::full_scalar(&[], DType::F64, last_rank, device)?;
     let absent = Tensor::full_scalar(&[], DType::F64, last_rank + 1.0, device)?;
-    let ranks = Tensor::from_slice(&ranks, &[1, bands], device)?;
+    let ranks = c
+        .arange(0.0, bands as f64, 1.0, DType::F64)?
+        .reshape(&[1, bands])?;
     let lowest = c.min(
         &c.where_cond(&coordinates.candidate, &ranks, &absent)?,
         &[1],
@@ -304,6 +303,32 @@ mod tests {
         Ok(())
     }
 
+    fn films<R>(client: &R::Client) -> Result
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        // Flat-bottom rectangle of width 2: A = 2^-100 gives I1 = A²/4 = 2^-202.
+        // Pointed triangle with width 3h: A = 1.5·2^-100 gives h = 2^-50 and I1 = h³/2 = 2^-151.
+        let tiny = 2.0_f64.powi(-100);
+        let recovery = recover::<R>(
+            client,
+            &[RECTANGLE, TRIANGLE],
+            &[(tiny, 0.0), (1.5 * tiny, 0.0)],
+        )?;
+        let values = rows(&recovery)?;
+        assert_eq!(values.len(), 2);
+        for (row, reference) in values.iter().zip([2.0_f64.powi(-202), 2.0_f64.powi(-151)]) {
+            let relative = gap(row, (reference, 0.0)).abs() / reference;
+            assert!(
+                relative <= 1e-28,
+                "reference={reference:e}, row={row:?}, relative={relative:e}"
+            );
+            assert!(row[2] <= reference * 1e-24, "radius={:e}", row[2]);
+        }
+        Ok(())
+    }
+
     fn run<R>(client: &R::Client) -> Result
     where
         R: Runtime<DType = DType>,
@@ -311,7 +336,8 @@ mod tests {
     {
         wet_fan::<R>(client)?;
         repeated::<R>(client)?;
-        closed_forms::<R>(client)
+        closed_forms::<R>(client)?;
+        films::<R>(client)
     }
 
     #[test]

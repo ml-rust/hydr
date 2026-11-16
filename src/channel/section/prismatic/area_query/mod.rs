@@ -14,6 +14,7 @@ pub(crate) mod conditional_band;
 mod domain_coverage_tests;
 mod endpoints;
 pub(super) mod evaluation;
+pub(super) mod hydrostatic_point;
 mod pressure;
 pub(crate) use pressure::{PressureEndpoint, pressure_endpoint};
 mod range;

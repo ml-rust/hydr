@@ -40,6 +40,34 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>,
 {
+    #[cfg_attr(
+        not(test),
+        expect(unused_variables, reason = "tests read the coordinates")
+    )]
+    let (state, coordinates) = recover_parts(a, context, bands, supported)?;
+    Ok(AreaQueryGeometry {
+        state,
+        #[cfg(test)]
+        coordinates,
+    })
+}
+
+/// Certified geometry and the retained band coordinates of a supported query.
+pub(super) fn recover_parts<R>(
+    a: &mut Arithmetic<'_, R>,
+    context: &Arc<Context<R>>,
+    bands: &GatheredBands<R>,
+    supported: &SupportedAreaQuery<R>,
+) -> HydraulicResult<(Constitutive<R>, PrismaticAreaPointBandCoordinates<R>)>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
     admission::matching_model(Arc::ptr_eq(context, &bands.model))?;
     admission::matching_model(Arc::ptr_eq(context, &supported.query.model))?;
     admission::matching_owners(a, bands, &supported.query.owners)?;
@@ -50,10 +78,9 @@ where
     a.sqrt_nonnegative(&qualification)?;
     let zero_rows = Tensor::zeros(&[n], DType::F64, c.device())?;
     if n == 0 {
-        #[cfg(test)]
         let matrix = Tensor::zeros(&[0, bands.band_count], DType::F64, c.device())?;
-        return Ok(AreaQueryGeometry {
-            state: Constitutive {
+        return Ok((
+            Constitutive {
                 depth: a.point(&zero_rows)?,
                 forward_area: a.point(&zero_rows)?,
                 area: a.point(&zero_rows)?,
@@ -63,15 +90,14 @@ where
                 wet_possible: zero_rows.clone(),
                 dry_possible: zero_rows,
             },
-            #[cfg(test)]
-            coordinates: PrismaticAreaPointBandCoordinates {
+            PrismaticAreaPointBandCoordinates {
                 candidate: matrix.clone(),
                 area_above_start: a.point(&matrix)?,
                 area_below_end: a.point(&matrix)?,
                 depth_above_start: a.point(&matrix)?,
                 depth_below_end: a.point(&matrix)?,
             },
-        });
+        ));
     }
     let rows = bands.rows(a)?;
     let recovered = recover_endpoints(a, context, &rows, supported)?;
@@ -155,8 +181,8 @@ where
         &c.maximum(hydraulic_depth.lower(), zero)?,
         &c.minimum(hydraulic_depth.upper(), depth.upper())?,
     )?;
-    Ok(AreaQueryGeometry {
-        state: Constitutive {
+    Ok((
+        Constitutive {
             depth,
             forward_area,
             area: a.bounds(supported.area.lower(), supported.area.upper())?,
@@ -166,9 +192,8 @@ where
             wet_possible: c.gt(supported.area.upper(), zero)?,
             dry_possible: c.le(supported.area.lower(), zero)?,
         },
-        #[cfg(test)]
         coordinates,
-    })
+    ))
 }
 
 fn recover_endpoints<R>(

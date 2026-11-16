@@ -18,7 +18,7 @@ use numr::{
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
-use solvr::common::arithmetic::Interval;
+use solvr::common::arithmetic::{CertifiedExpansion, Interval};
 use std::sync::Arc;
 
 pub(crate) struct HydraulicGeometry<R: Runtime<DType = DType>> {
@@ -168,6 +168,24 @@ where
         query: &super::area_query::SupportedAreaQuery<R>,
     ) -> HydraulicResult<super::area_query::AreaQueryGeometry<R>> {
         super::area_query::evaluation::recover(a, &self.context, bands, query)
+    }
+
+    /// Two-part hydrostatic selection value at the exact area point `area` of `query`.
+    /// It is never a certificate. Use `recover_query` for certified bounds.
+    pub(crate) fn hydrostatic_point_query(
+        &self,
+        a: &mut Arithmetic<'_, R>,
+        bands: &GatheredBands<R>,
+        query: &super::area_query::SupportedAreaQuery<R>,
+        area: &CertifiedExpansion<R>,
+    ) -> HydraulicResult<CertifiedExpansion<R>> {
+        super::area_query::hydrostatic_point::hydrostatic_point(
+            a,
+            &self.context,
+            bands,
+            query,
+            area,
+        )
     }
 
     pub(crate) fn gather(
