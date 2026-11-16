@@ -1,4 +1,5 @@
 use super::super::{CrossSectionError, context::Context as SectionContext};
+use super::band_model::BandModel;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -25,6 +26,7 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub cap_area: Interval<R>,
     pub cap_width: Interval<R>,
     pub cap_integral: Interval<R>,
+    pub band_model: BandModel<R>,
 }
 
 pub(super) fn arithmetic_error(error: ArithmeticError) -> CrossSectionError {

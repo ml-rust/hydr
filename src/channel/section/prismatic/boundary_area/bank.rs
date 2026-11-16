@@ -1,5 +1,5 @@
 use super::super::inputs::{BankInputs, column};
-use crate::channel::flow::surveyed::error::{Arithmetic, HydraulicResult};
+use crate::channel::flow::surveyed::error::Arithmetic;
 use numr::{
     dtype::DType,
     ops::{
@@ -9,7 +9,7 @@ use numr::{
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
-use solvr::common::arithmetic::CertifiedExpansion;
+use solvr::common::arithmetic::{ArithmeticResult, CertifiedExpansion};
 
 pub(super) fn station<R>(
     a: &mut Arithmetic<'_, R>,
@@ -18,7 +18,7 @@ pub(super) fn station<R>(
     band: usize,
     stage: &Tensor<R>,
     valid: &Tensor<R>,
-) -> HydraulicResult<CertifiedExpansion<R>>
+) -> ArithmeticResult<CertifiedExpansion<R>>
 where
     R: Runtime<DType = DType>,
     R::Client: TensorOps<R>
@@ -83,5 +83,5 @@ where
     )?;
     let low = c.where_cond(&interpolate, interpolated.low(), &zero)?;
     let radius = c.where_cond(&interpolate, interpolated.abs_error(), &zero)?;
-    Ok(a.expansion_bounds(&high, &low, &radius)?)
+    a.expansion_bounds(&high, &low, &radius)
 }

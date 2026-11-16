@@ -1,5 +1,6 @@
 mod bank;
 mod build;
+pub(in crate::channel::section::prismatic) mod knot;
 mod rows;
 mod types;
 

@@ -1,6 +1,7 @@
 //! Certified surveyed geometry on represented depths and conserved areas.
 
 mod area_point_fields;
+mod area_point_hydrostatic;
 mod area_point_input;
 mod area_point_inverse;
 mod area_point_projection;
@@ -11,6 +12,8 @@ mod area_point_selection;
 mod area_point_selection_tests;
 mod area_query;
 mod band_geometry;
+mod band_model;
+mod band_terms;
 mod batch;
 mod boundary_area;
 mod compilation;

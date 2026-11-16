@@ -1,4 +1,5 @@
 use super::super::{CrossSectionError, context::Context as SectionContext};
+use super::band_model::{BandModel, CapScale};
 use super::compilation_bounds::{bank_slope, nonnegative, select, stack};
 use super::context::{Context, arithmetic_error};
 use super::inputs::{Inputs, column};
@@ -224,6 +225,17 @@ where
         columns.pointed.push(client.mul(&pointed, &valid)?);
     }
     unresolved = client.maximum(&unresolved, &client.le(area.lower(), &zero_tensor)?)?;
+    let band_model = BandModel::compile(
+        arithmetic,
+        &inputs,
+        topology.maximum_bands,
+        &CapScale {
+            area: area.upper(),
+            width: width.upper(),
+            depth: cap_depth.upper(),
+            integral: integral.upper(),
+        },
+    )?;
     let pointed_columns: Vec<_> = columns.pointed.iter().collect();
     Ok((
         Context {
@@ -244,6 +256,7 @@ where
             cap_area: area,
             cap_width: width,
             cap_integral: integral,
+            band_model,
             raw_inputs: inputs,
         },
         invalid,

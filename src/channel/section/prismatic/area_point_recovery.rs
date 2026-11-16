@@ -1,6 +1,6 @@
 use super::super::CrossSectionError;
 use super::{
-    area_point_fields, area_point_input, area_point_inverse,
+    area_point_fields, area_point_hydrostatic, area_point_input, area_point_inverse,
     area_point_query::{PrismaticAreaPointBandCoordinates, PrismaticAreaPointRecovery},
     band_geometry::{BandRows, empty_fields},
     batch::PrismaticSectionBatch,
@@ -47,7 +47,7 @@ where
             let inputs = area_point_input::capture(a, context, owners, areas_m2)?;
             let c = a.client();
             let zero = &context.source.zero;
-            let (fields, coordinates) = if count == 0 {
+            let (fields, coordinates, hydrostatic_point) = if count == 0 {
                 let value = Tensor::zeros(&[0], DType::F64, c.device())?;
                 let bands = Tensor::zeros(&[0, context.maximum_bands], DType::F64, c.device())?;
                 (
@@ -59,6 +59,7 @@ where
                         depth_above_start: a.point(&bands)?,
                         depth_below_end: a.point(&bands)?,
                     },
+                    a.expansion_point(&value)?,
                 )
             } else {
                 let rows = BandRows::gather(a, context, &inputs.owners)?;
@@ -127,7 +128,14 @@ where
                     true,
                     "recovered forward area excludes the requested area point. Keep the original point and inspect geometry",
                 )?;
-                (fields, coordinates)
+                let hydrostatic_point = area_point_hydrostatic::point(
+                    a,
+                    context,
+                    &inputs,
+                    &coordinates,
+                    &fields.integral,
+                )?;
+                (fields, coordinates, hydrostatic_point)
             };
             Ok(PrismaticAreaPointRecovery {
                 context: Arc::clone(context),
@@ -135,6 +143,7 @@ where
                 requested_areas: inputs.areas,
                 dry: inputs.dry,
                 fields,
+                hydrostatic_point,
                 coordinates,
             })
         })

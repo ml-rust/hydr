@@ -49,6 +49,7 @@ where
                     rows,
                 )?,
             },
+            hydrostatic_point: area_query::select_expansion(a, &self.hydrostatic_point, rows)?,
             coordinates: area_query::select_coordinates(a, &self.coordinates, Some(rows))?,
         })
     }

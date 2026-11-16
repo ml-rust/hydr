@@ -99,6 +99,7 @@ pub struct PrismaticAreaPointRecovery<R: Runtime<DType = DType>> {
     pub(super) requested_areas: CertifiedExpansion<R>,
     pub(super) dry: Tensor<R>,
     pub(super) fields: Fields<R>,
+    pub(super) hydrostatic_point: CertifiedExpansion<R>,
     pub(super) coordinates: PrismaticAreaPointBandCoordinates<R>,
 }
 
@@ -143,6 +144,17 @@ impl<R: Runtime<DType = DType>> PrismaticAreaPointRecovery<R> {
     /// Hydrostatic integral bounds, in cubic metres. Keep endpoints immutable.
     pub fn hydrostatic_integral_m3(&self) -> &Interval<R> {
         &self.fields.integral
+    }
+
+    /// Two-part selection value of the hydrostatic integral, in cubic metres.
+    ///
+    /// The value comes from the compiled band model at the lowest candidate band.
+    /// Its radius covers model arithmetic only. Never use it as a certificate.
+    /// Use `hydrostatic_integral_m3` for certified bounds.
+    /// Rows outside the model lift the certified interval. Dry rows hold exact zero.
+    /// Equal input bits give equal output bits.
+    pub fn hydrostatic_point_m3(&self) -> &CertifiedExpansion<R> {
+        &self.hydrostatic_point
     }
 
     /// Original area point divided by wet width, in metres. Dry rows contain zero placeholders.
