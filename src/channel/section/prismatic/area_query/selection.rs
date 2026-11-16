@@ -28,7 +28,9 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>,
 {
+    #[cfg(test)]
     let c = a.client();
+    #[cfg(test)]
     let copy = |value: &Tensor<R>| -> HydraulicResult<Tensor<R>> {
         let owned = Tensor::empty(value.shape(), value.dtype(), c.device())?;
         c.copy_into(&owned, value)?;
@@ -37,7 +39,9 @@ where
     Ok(match anchor {
         AreaAnchor::Zero => AreaAnchor::Zero,
         AreaAnchor::Cap => AreaAnchor::Cap,
+        #[cfg(test)]
         AreaAnchor::BandStart(index) => AreaAnchor::BandStart(copy(index)?),
+        #[cfg(test)]
         AreaAnchor::BandEnd(index) => AreaAnchor::BandEnd(copy(index)?),
         AreaAnchor::Source {
             area,
@@ -153,7 +157,9 @@ where
         let anchor = match &self.anchor {
             AreaAnchor::Zero => AreaAnchor::Zero,
             AreaAnchor::Cap => AreaAnchor::Cap,
+            #[cfg(test)]
             AreaAnchor::BandStart(index) => AreaAnchor::BandStart(c.index_select(index, 0, rows)?),
+            #[cfg(test)]
             AreaAnchor::BandEnd(index) => AreaAnchor::BandEnd(c.index_select(index, 0, rows)?),
             AreaAnchor::Source {
                 area,

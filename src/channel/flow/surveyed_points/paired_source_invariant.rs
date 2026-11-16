@@ -13,6 +13,7 @@ use numr::{
 };
 use solvr::integrate::CertifiedSimpsonAlgorithms;
 
+#[cfg(test)]
 pub(super) fn evaluate<R>(parent: &mut PairedSources<'_, R>) -> HydraulicResult<SourceInvariant<R>>
 where
     R: Runtime<DType = DType>,
@@ -120,7 +121,9 @@ where
             )?,
         )?,
     )?;
+    #[cfg(test)]
     let known = c.maximum(&touching, &c.maximum(&vacuum, &wet_candidate)?)?;
+    #[cfg(test)]
     let unresolved = c.mul(&value.available, &c.eq(&known, &zero)?)?;
     let both_dry = c.mul(left_dry, right_dry)?;
     Ok(SourceInvariant {
@@ -128,6 +131,7 @@ where
         vacuum,
         touching,
         wet_candidate,
+        #[cfg(test)]
         unresolved,
         both_dry,
     })

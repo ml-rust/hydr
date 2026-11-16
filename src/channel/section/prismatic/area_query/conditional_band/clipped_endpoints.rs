@@ -1,11 +1,14 @@
+#[cfg(test)]
+use super::super::super::context::Context;
 use super::super::super::{
     area_point_inverse, area_point_query::PrismaticAreaPointBandCoordinates, band_geometry::masked,
-    context::Context, hydraulic_geometry::query_error,
+    hydraulic_geometry::query_error,
 };
 use super::super::{evaluation, fields, inverse};
+#[cfg(test)]
+use super::selection::capture;
 use super::{
-    ConditionalBandSegments, endpoint_authority::StoredEndpointArea, selection::capture,
-    types::LocalEndpoint,
+    ConditionalBandSegments, endpoint_authority::StoredEndpointArea, types::LocalEndpoint,
 };
 use crate::channel::flow::surveyed::{
     analytic_bottom::kinds,
@@ -21,8 +24,16 @@ use numr::{
     tensor::Tensor,
 };
 use solvr::common::arithmetic::{CertifiedExpansion, Interval};
+#[cfg(test)]
 use std::sync::Arc;
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "tests read the depth, integral, hydraulic depth and masks; production runs their fallible geometry"
+    )
+)]
 pub(crate) struct ClippedEndpointGeometry<R: Runtime<DType = DType>> {
     retained_area: CertifiedExpansion<R>,
     raw_available: Tensor<R>,
@@ -38,10 +49,15 @@ pub(crate) struct ClippedEndpointGeometry<R: Runtime<DType = DType>> {
 }
 
 pub(crate) struct ClippedBandEndpoints<R: Runtime<DType = DType>> {
+    #[cfg(test)]
     model: Arc<Context<R>>,
+    #[cfg(test)]
     owners: Tensor<R>,
+    #[cfg(test)]
     original_rows: Tensor<R>,
+    #[cfg(test)]
     band_indices: Tensor<R>,
+    #[cfg(test)]
     valid: Tensor<R>,
     bottom_width: Interval<R>,
     rectangular: Tensor<R>,
@@ -57,15 +73,19 @@ impl<R: Runtime<DType = DType>> ClippedBandEndpoints<R> {
     pub(crate) fn target(&self) -> &ClippedEndpointGeometry<R> {
         &self.target
     }
+    #[cfg(test)]
     pub(crate) fn owners(&self) -> &Tensor<R> {
         &self.owners
     }
+    #[cfg(test)]
     pub(crate) fn original_rows(&self) -> &Tensor<R> {
         &self.original_rows
     }
+    #[cfg(test)]
     pub(crate) fn band_indices(&self) -> &Tensor<R> {
         &self.band_indices
     }
+    #[cfg(test)]
     pub(crate) fn valid_mask(&self) -> &Tensor<R> {
         &self.valid
     }
@@ -78,6 +98,7 @@ impl<R: Runtime<DType = DType>> ClippedBandEndpoints<R> {
     pub(crate) fn pointed_band0_mask(&self) -> &Tensor<R> {
         &self.pointed
     }
+    #[cfg(test)]
     pub(crate) fn same_model(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.model, &other.model)
     }
@@ -94,27 +115,33 @@ impl<R: Runtime<DType = DType>> ClippedEndpointGeometry<R> {
     pub(crate) fn physical_area(&self) -> &Interval<R> {
         &self.physical_area
     }
+    #[cfg(test)]
     pub(crate) fn depth(&self) -> &Interval<R> {
         &self.depth
     }
     pub(crate) fn top_width(&self) -> &Interval<R> {
         &self.width
     }
+    #[cfg(test)]
     pub(crate) fn integral(&self) -> &Interval<R> {
         &self.integral
     }
+    #[cfg(test)]
     pub(crate) fn hydraulic_depth(&self) -> &Interval<R> {
         &self.hydraulic_depth
     }
     pub(crate) fn coordinates(&self) -> &PrismaticAreaPointBandCoordinates<R> {
         &self.coordinates
     }
+    #[cfg(test)]
     pub(crate) fn at_start_mask(&self) -> &Tensor<R> {
         &self.at_start
     }
+    #[cfg(test)]
     pub(crate) fn at_end_mask(&self) -> &Tensor<R> {
         &self.at_end
     }
+    #[cfg(test)]
     pub(crate) fn exact_dry_mask(&self) -> &Tensor<R> {
         &self.exact_dry
     }
@@ -177,10 +204,15 @@ where
         let source = selected.clipped_endpoint(a, &selected.start, &selected.start_area, &band0)?;
         let target = selected.clipped_endpoint(a, &selected.end, &selected.end_area, &band0)?;
         Ok(ClippedBandEndpoints {
+            #[cfg(test)]
             model: Arc::clone(&selected.rows.model),
+            #[cfg(test)]
             owners: capture(a, selected.owners())?,
+            #[cfg(test)]
             original_rows: capture(a, selected.original_rows())?,
+            #[cfg(test)]
             band_indices: capture(a, selected.band_indices())?,
+            #[cfg(test)]
             valid: capture(a, &valid)?,
             bottom_width,
             rectangular,

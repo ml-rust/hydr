@@ -58,7 +58,14 @@ where
     ) -> HydraulicResult<Self> {
         admission::matching_model(Arc::ptr_eq(&self.query.model, &bands.model))?;
         admission::matching_owners(a, bands, &self.query.owners)?;
-        admission::chart(a, bands, &self.query.anchor, &self.query.scale, parameter)?;
+        admission::chart(
+            a,
+            bands,
+            #[cfg(test)]
+            &self.query.anchor,
+            &self.query.scale,
+            parameter,
+        )?;
         admission::metadata(
             a,
             &self.query.original_rows,

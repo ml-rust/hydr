@@ -202,17 +202,26 @@ pub(super) enum SonicFanMembership {
     NotChecked,
 }
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "tests read the certified sonic operands, which production moves in from the same computation"
+    )
+)]
 pub(super) struct SourceSonicCertificate<R: Runtime<DType = DType>> {
     pub(super) invocation_owner: Tensor<R>,
     pub(super) parent_rows: Tensor<R>,
     pub(super) side: SonicSide,
     pub(super) numerical: SourceSonicNumericalEvidence<R>,
     pub(super) query: SupportedAreaQuery<R>,
+    #[cfg(test)]
     pub(super) depth: Interval<R>,
     pub(super) normalized_depth: Interval<R>,
     pub(super) sound: Interval<R>,
     pub(super) velocity: Interval<R>,
     pub(super) discharge: Interval<R>,
+    #[cfg(test)]
     pub(super) source_discharge: CertifiedExpansion<R>,
     pub(super) area_difference: CertifiedExpansion<R>,
     pub(super) velocity_change: CertifiedExpansion<R>,
@@ -228,6 +237,7 @@ pub(super) struct SourceSonicCertificate<R: Runtime<DType = DType>> {
     pub(super) fan_membership: SonicFanMembership,
 }
 
+#[cfg(test)]
 pub(super) struct SourceSonicEvidence<R: Runtime<DType = DType>> {
     pub(super) invocation_owner: Tensor<R>,
     pub(super) parent_rows: Tensor<R>,
@@ -240,6 +250,7 @@ pub(super) struct SourceSonicEvidence<R: Runtime<DType = DType>> {
     pub(super) bracket_expansions: usize,
 }
 
+#[cfg(test)]
 pub(super) struct SourceSonicCertificates<R: Runtime<DType = DType>> {
     pub(super) invocation_rows: Tensor<R>,
     pub(super) status: [Tensor<R>; 2],

@@ -145,8 +145,10 @@ where
         )?;
         // Captured uniform identity and strict wet residual uniqueness prove the unchanged root state.
         let uniform = c.mul(&stage.velocity.uniform, &certified)?;
+        #[cfg(test)]
         let source_velocity = a.expansion_interval(&stage.velocity.left)?;
         let source_discharge = a.expansion_interval(&stage.velocity.input().left_discharge)?;
+        #[cfg(test)]
         let velocity = a.bounds(
             &c.where_cond(
                 &certified,
@@ -179,6 +181,7 @@ where
             side_operands: [left_operands, right_operands],
             side_velocity,
             side_discharge: [left_discharge, right_discharge],
+            #[cfg(test)]
             velocity,
             discharge,
             status,

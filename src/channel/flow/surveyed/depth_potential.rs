@@ -10,10 +10,8 @@ use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::Interval;
 
-#[cfg(test)]
 #[path = "depth_potential_wet.rs"]
 mod wet;
-#[cfg(test)]
 pub(crate) use wet::WetDepthPotential;
 
 pub(super) struct DepthPotential<'input, R: Runtime<DType = DType>> {

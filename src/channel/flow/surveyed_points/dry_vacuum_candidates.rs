@@ -123,6 +123,7 @@ where
                         invocation_owner: c.index_select(owners, 0, &rows)?,
                         parent_rows: c.index_select(parent, 0, &rows)?,
                         side,
+                        #[cfg(test)]
                         source_status: c.index_select(&status, 0, &rows)?,
                     },
                 )));
@@ -152,6 +153,7 @@ where
                 query,
                 area,
                 discharge: a.expansion_point(&z)?,
+                #[cfg(test)]
                 depth: a.point(&z)?,
             })));
         }

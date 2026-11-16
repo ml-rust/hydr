@@ -28,7 +28,9 @@ pub(super) enum DryVacuumStatus {
 pub(super) struct DryVacuumEdges<R: Runtime<DType = DType>> {
     pub(super) head: CurveValue<R>,
     pub(super) front: CurveValue<R>,
+    #[cfg(test)]
     pub(super) head_exact_zero: Tensor<R>,
+    #[cfg(test)]
     pub(super) front_exact_zero: Tensor<R>,
 }
 pub(super) struct DryVacuumPossibilities<R: Runtime<DType = DType>> {
@@ -42,6 +44,7 @@ pub(super) struct DryVacuumPendingFan<R: Runtime<DType = DType>> {
     pub(super) invocation_owner: Tensor<R>,
     pub(super) parent_rows: Tensor<R>,
     pub(super) side: SonicSide,
+    #[cfg(test)]
     pub(super) source_status: Tensor<R>,
 }
 /// Sonic payloads gain fan authority only inside this admitted candidate set.
@@ -51,6 +54,13 @@ pub(super) enum DryVacuumCandidate<R: Runtime<DType = DType>> {
     Fan(Box<SourceSonicCertificate<R>>),
     PendingFan(Box<DryVacuumPendingFan<R>>),
 }
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "tests read the invocation witness, owners, parent rows and counters, which are moves and scalars production already holds"
+    )
+)]
 pub(super) struct DryVacuumCertificates<R: Runtime<DType = DType>> {
     pub(super) invocation_witness: super::root_invocation::RootInvocationWitness,
     pub(super) invocation_owner: Tensor<R>,
@@ -61,6 +71,7 @@ pub(super) struct DryVacuumCertificates<R: Runtime<DType = DType>> {
     pub(super) edges: [DryVacuumEdges<R>; 2],
     pub(super) possibilities: DryVacuumPossibilities<R>,
     pub(super) candidates: Vec<DryVacuumCandidate<R>>,
+    #[cfg(test)]
     pub(super) sonic_status: [Tensor<R>; 2],
     pub(super) callback_points: usize,
     pub(super) point_limit: usize,

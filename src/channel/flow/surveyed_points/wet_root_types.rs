@@ -1,7 +1,8 @@
-use super::{
-    root_invocation::{RootInvocation, RootInvocationWitness},
-    wave_curve_types::CurveValue,
-};
+#[cfg(test)]
+use super::root_invocation::RootInvocation;
+use super::root_invocation::RootInvocationWitness;
+#[cfg(test)]
+use super::wave_curve_types::CurveValue;
 use crate::channel::section::SupportedAreaQuery;
 use numr::{dtype::DType, runtime::Runtime, tensor::Tensor};
 use solvr::common::arithmetic::{CertifiedExpansion, Interval};
@@ -18,6 +19,7 @@ pub(super) enum WetRootStatus {
     NotRequested = 6,
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum WetRootEvidenceKind {
     Uniform,
@@ -25,6 +27,7 @@ pub(super) enum WetRootEvidenceKind {
     Cap,
 }
 
+#[cfg(test)]
 pub(super) struct WetRootEvidence<R: Runtime<DType = DType>> {
     pub(super) invocation_owner: Tensor<R>,
     pub(super) parent_rows: Tensor<R>,
@@ -50,9 +53,11 @@ pub(super) struct WetRootResults<R: Runtime<DType = DType>> {
     pub(super) invocation_rows: Tensor<R>,
     pub(super) status: Tensor<R>,
     pub(super) domains: Vec<WetRootDomain<R>>,
+    #[cfg(test)]
     pub(super) evidence: Vec<WetRootEvidence<R>>,
 }
 
+#[cfg(test)]
 pub(super) struct WetRootDomains<R: Runtime<DType = DType>> {
     pub(super) invocation: RootInvocation,
     pub(super) invocation_rows: Tensor<R>,
@@ -61,6 +66,7 @@ pub(super) struct WetRootDomains<R: Runtime<DType = DType>> {
     pub(super) evidence: Vec<WetRootEvidence<R>>,
 }
 
+#[cfg(test)]
 impl<R: Runtime<DType = DType>> WetRootDomains<R> {
     pub(super) fn callback_points(&self) -> usize {
         self.invocation.callback_points()

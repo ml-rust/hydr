@@ -66,6 +66,7 @@ impl<R: Runtime<DType = DType>> ConditionalBandSegments<R> {
     pub(crate) fn original_rows(&self) -> &Tensor<R> {
         &self.original_rows
     }
+    #[cfg(test)]
     pub(crate) fn band_indices(&self) -> &Tensor<R> {
         &self.band_index
     }

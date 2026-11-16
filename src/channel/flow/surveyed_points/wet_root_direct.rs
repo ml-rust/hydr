@@ -1,8 +1,10 @@
+#[cfg(test)]
+use super::wet_root_types::{WetRootEvidence, WetRootEvidenceKind};
 use super::{
     paired_sources::{PairedSources, SelectedRows},
     wet_root_charts,
     wet_root_state::{Locator, direct_domain, exact_zero, selected_value},
-    wet_root_types::{WetRootEvidence, WetRootEvidenceKind, WetRootStatus},
+    wet_root_types::WetRootStatus,
 };
 use crate::channel::{
     flow::surveyed::{
@@ -106,6 +108,7 @@ where
     }
     locator.set_status(c, &hit_owner, WetRootStatus::Located)?;
     locator.set_status(c, &exceeded, WetRootStatus::CapExceeded)?;
+    #[cfg(test)]
     locator.output.evidence.push(WetRootEvidence {
         invocation_owner: owner,
         parent_rows,
@@ -156,6 +159,7 @@ where
     checked::<R, _>(c, "wet root dry-limit retention", |a| {
         locator.retain_f0(a, &owner, &invariant.value)
     })?;
+    #[cfg(test)]
     locator.output.evidence.push(WetRootEvidence {
         invocation_owner: owner,
         parent_rows,

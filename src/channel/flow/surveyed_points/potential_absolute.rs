@@ -23,6 +23,7 @@ use solvr::{
     integrate::{CertifiedSimpsonAlgorithms, CertifiedSimpsonOptions},
 };
 
+#[cfg(test)]
 pub(super) fn source_potential<R>(
     context: &PotentialContext<'_, R>,
 ) -> HydraulicResult<PotentialValue<R>>

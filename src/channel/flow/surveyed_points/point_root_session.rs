@@ -2,9 +2,11 @@ use super::{
     paired_sources::PairedSources,
     root_invocation::{RootInvocation, RootInvocationWitness},
     source_sonic_types::SourceSonicState,
-    wet_depth_types::{WetDepthDomain, WetDepthState},
-    wet_root_types::{WetRootEvidence, WetRootStatus},
+    wet_depth_types::WetDepthState,
+    wet_root_types::WetRootStatus,
 };
+#[cfg(test)]
+use super::{wet_depth_types::WetDepthDomain, wet_root_types::WetRootEvidence};
 use crate::channel::flow::surveyed::error::{HydraulicError, HydraulicResult, checked};
 use numr::{
     dtype::DType,
@@ -37,12 +39,15 @@ impl<'s, 'a, R: Runtime<DType = DType>> PointRootSession<'s, 'a, R> {
     pub(super) fn invocation_rows(&self) -> &Tensor<R> {
         &self.invocation_rows
     }
+    #[cfg(test)]
     pub(super) fn locator_status(&self) -> &Tensor<R> {
         &self.wet.locator_status
     }
+    #[cfg(test)]
     pub(super) fn evidence(&self) -> &[WetRootEvidence<R>] {
         &self.wet.evidence
     }
+    #[cfg(test)]
     pub(super) fn domains(&self) -> &[WetDepthDomain<R>] {
         &self.wet.domains
     }
@@ -52,6 +57,7 @@ impl<'s, 'a, R: Runtime<DType = DType>> PointRootSession<'s, 'a, R> {
     pub(super) fn callback_points(&self) -> usize {
         self.invocation.callback_points()
     }
+    #[cfg(test)]
     pub(super) fn tolerance(&self) -> &CertifiedRootTolerance {
         &self.wet.tolerance
     }
@@ -131,6 +137,7 @@ where
                 WetRootStatus::NotRequested as i64 as f64,
                 c.device(),
             )?,
+            #[cfg(test)]
             evidence: Vec::new(),
             domains: Vec::new(),
             tolerance,

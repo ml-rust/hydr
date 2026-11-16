@@ -34,7 +34,9 @@ where
             DType::F64,
             a.client().device(),
         )?)?,
+        #[cfg(test)]
         AreaAnchor::BandStart(indices) => boundaries.boundary(a, indices)?,
+        #[cfg(test)]
         AreaAnchor::BandEnd(indices) => {
             let end = a.client().add_scalar(indices, 1.0)?;
             boundaries.boundary(a, &end)?

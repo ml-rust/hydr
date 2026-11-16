@@ -1,15 +1,13 @@
 use crate::channel::flow::surveyed_points::{
     paired_sources::PairedSources,
-    potential_range::PotentialEvaluation,
+    point_sources::PointSourceParts,
     source_tests::support::{self, Client, Result, components, endpoints, expansion, hydraulic},
-    source_velocity,
 };
 use crate::channel::{
     flow::surveyed::{PrismaticRiemannConfig, error, work::WorkLedger},
     section::{
         AreaAnchor, AreaDirection, AreaQuery, CrossSectionBatch, CrossSectionDefinition,
-        CrossSectionPoint, HydraulicGeometry, PhysicalEndpoint, PrismaticSectionBatch,
-        SupportedAreaQuery,
+        CrossSectionPoint, PhysicalEndpoint, PrismaticSectionBatch, SupportedAreaQuery,
     },
 };
 use numr::{
@@ -142,24 +140,11 @@ where
     R: Runtime<DType = DType>,
     R::Client: Client<R> + CertifiedSimpsonAlgorithms<R> + CertifiedBisectionAlgorithms<R>,
 {
-    let geometry = HydraulicGeometry::from_batch(section);
-    let captured = hydraulic(
-        section.capture_riemann_points(&owners, &inputs[0], &inputs[1], &inputs[2], &inputs[3]),
-    )?;
-    let velocity = hydraulic(source_velocity::prepare::<R>(client, &captured))?;
-    let left =
-        section.recover_area_points_tensor(&owners, &captured.left_area, &config.recovery)?;
-    let right =
-        section.recover_area_points_tensor(&owners, &captured.right_area, &config.recovery)?;
-    let (bands, boundaries) = hydraulic(error::checked::<R, _>(
-        client,
-        "chart root source geometry",
-        |a| {
-            Ok((
-                geometry.gather(a, &owners)?,
-                geometry.boundary_areas(a)?.gather(a, &owners)?,
-            ))
-        },
+    let parts = hydraulic(PointSourceParts::capture(
+        section,
+        &owners,
+        [&inputs[0], &inputs[1], &inputs[2], &inputs[3]],
+        config,
     ))?;
     let originals = Tensor::from_slice(
         &(0..owners.numel())
@@ -169,19 +154,7 @@ where
         client.device(),
     )?;
     let work = WorkLedger::new(config);
-    let mut pair = hydraulic(PairedSources::new(
-        &geometry,
-        &bands,
-        [&left, &right],
-        &velocity,
-        &boundaries,
-        PotentialEvaluation {
-            config,
-            panels: config.initial_simpson_panels,
-            work: &work,
-        },
-        &originals,
-    ))?;
+    let mut pair = hydraulic(parts.pair(config, &work, &originals))?;
     operation(&mut pair, replacement, &work)
 }
 

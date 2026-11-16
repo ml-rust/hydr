@@ -244,7 +244,6 @@ where
             cap_area: area,
             cap_width: width,
             cap_integral: integral,
-            #[cfg(test)]
             raw_inputs: inputs,
         },
         invalid,

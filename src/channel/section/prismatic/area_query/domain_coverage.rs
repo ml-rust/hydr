@@ -24,6 +24,7 @@ mod order_tests;
 /// Coverage decisions in invocation order. These decisions do not establish root existence.
 pub(crate) struct DomainCoverage<R: Runtime<DType = DType>> {
     /// Mask in input order: one for proved coverage, zero otherwise.
+    #[cfg(test)]
     pub(crate) proved: Tensor<R>,
     /// Zero-based `I64` invocation indices, not section owners or diagnostic row IDs.
     pub(crate) owner: Tensor<R>,
@@ -36,10 +37,13 @@ pub(crate) struct CoveredDomain<R: Runtime<DType = DType>> {
     pub(crate) lower: SupportedAreaQuery<R>,
     pub(crate) cap: SupportedAreaQuery<R>,
     /// Capacity minus the lower chart's maximum area, proved nonnegative.
+    #[cfg(test)]
     pub(crate) cap_minus_lower: CertifiedExpansion<R>,
     /// Capacity minus the cap chart's maximum deficit, proved nonnegative.
+    #[cfg(test)]
     pub(crate) cap_minus_deficit: CertifiedExpansion<R>,
     /// Cap chart's minimum area minus lower chart's maximum area, proved nonpositive.
+    #[cfg(test)]
     pub(crate) overlap_gap: CertifiedExpansion<R>,
 }
 
@@ -49,8 +53,11 @@ pub(super) struct ProofCandidates<R: Runtime<DType = DType>> {
     pub(super) span: CertifiedExpansion<R>,
     /// Mask of proved inequalities in `owner` order, before chart support checks.
     pub(super) proved: Tensor<R>,
+    #[cfg(test)]
     pub(super) cap_minus_lower: CertifiedExpansion<R>,
+    #[cfg(test)]
     pub(super) cap_minus_deficit: CertifiedExpansion<R>,
+    #[cfg(test)]
     pub(super) overlap_gap: CertifiedExpansion<R>,
 }
 
@@ -73,12 +80,15 @@ where
 {
     let diagnostics = admit(a, bands, boundaries, original_rows)?;
     let c = a.client();
+    #[cfg(test)]
     let count = bands.section_owner.numel();
+    #[cfg(test)]
     let zero = Tensor::zeros(&[count], a.dtype(), c.device())?;
     let capacity = boundaries.boundary(a, boundaries.cap_indices())?;
     let candidates = proof_candidates(a, &capacity)?;
     if candidates.owner.numel() == 0 {
         return Ok(DomainCoverage {
+            #[cfg(test)]
             proved: zero,
             owner: candidates.owner,
             pair: None,
@@ -111,6 +121,7 @@ where
     let owner = c.index_select(&candidates.owner, 0, &common_owner)?;
     if common_owner.numel() == 0 {
         return Ok(DomainCoverage {
+            #[cfg(test)]
             proved: zero,
             owner,
             pair: None,
@@ -119,9 +130,13 @@ where
 
     let lower = align(a, lower, &common, &common_owner, "lower")?;
     let cap = align(a, cap, &common, &common_owner, "cap")?;
+    #[cfg(test)]
     let cap_minus_lower = selection::expansion(a, &candidates.cap_minus_lower, &common_owner)?;
+    #[cfg(test)]
     let cap_minus_deficit = selection::expansion(a, &candidates.cap_minus_deficit, &common_owner)?;
+    #[cfg(test)]
     let overlap_gap = selection::expansion(a, &candidates.overlap_gap, &common_owner)?;
+    #[cfg(test)]
     let proved = c.index_put(
         &zero,
         0,
@@ -129,13 +144,17 @@ where
         &Tensor::ones(owner.shape(), a.dtype(), c.device())?,
     )?;
     Ok(DomainCoverage {
+        #[cfg(test)]
         proved,
         owner,
         pair: Some(CoveredDomain {
             lower,
             cap,
+            #[cfg(test)]
             cap_minus_lower,
+            #[cfg(test)]
             cap_minus_deficit,
+            #[cfg(test)]
             overlap_gap,
         }),
     })
@@ -214,8 +233,11 @@ where
         owner,
         span,
         proved,
+        #[cfg(test)]
         cap_minus_lower,
+        #[cfg(test)]
         cap_minus_deficit,
+        #[cfg(test)]
         overlap_gap,
     })
 }

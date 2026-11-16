@@ -1,12 +1,10 @@
-use super::super::{
-    SupportedAreaQuery, admission, endpoints::PhysicalEndpoint,
-    source_difference::source_difference,
-};
+#[cfg(test)]
+use super::super::endpoints::PhysicalEndpoint;
+use super::super::{SupportedAreaQuery, admission, source_difference::source_difference};
 
-use super::{
-    secant,
-    types::{PressureEndpoint, PressureRange},
-};
+#[cfg(test)]
+use super::types::PressureRange;
+use super::{secant, types::PressureEndpoint};
 use crate::channel::section::prismatic::boundary_area::BoundaryAreas;
 use crate::channel::{
     flow::surveyed::error::{Arithmetic, HydraulicResult},
@@ -55,6 +53,7 @@ where
     let k = secant::secant(a, geometry, bands, source, &target, &delta.lower, gravity)?;
     finish(a, delta.lower, k)
 }
+#[cfg(test)]
 pub(crate) fn pressure_range<R>(
     a: &mut Arithmetic<'_, R>,
     geometry: &HydraulicGeometry<R>,

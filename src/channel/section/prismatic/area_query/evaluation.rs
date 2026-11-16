@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 pub(crate) struct AreaQueryGeometry<R: Runtime<DType = DType>> {
     pub(crate) state: Constitutive<R>,
+    #[cfg(test)]
     pub(crate) coordinates: PrismaticAreaPointBandCoordinates<R>,
 }
 
@@ -49,6 +50,7 @@ where
     a.sqrt_nonnegative(&qualification)?;
     let zero_rows = Tensor::zeros(&[n], DType::F64, c.device())?;
     if n == 0 {
+        #[cfg(test)]
         let matrix = Tensor::zeros(&[0, bands.band_count], DType::F64, c.device())?;
         return Ok(AreaQueryGeometry {
             state: Constitutive {
@@ -61,6 +63,7 @@ where
                 wet_possible: zero_rows.clone(),
                 dry_possible: zero_rows,
             },
+            #[cfg(test)]
             coordinates: PrismaticAreaPointBandCoordinates {
                 candidate: matrix.clone(),
                 area_above_start: a.point(&matrix)?,
@@ -163,6 +166,7 @@ where
             wet_possible: c.gt(supported.area.upper(), zero)?,
             dry_possible: c.le(supported.area.lower(), zero)?,
         },
+        #[cfg(test)]
         coordinates,
     })
 }

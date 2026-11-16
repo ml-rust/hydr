@@ -40,6 +40,15 @@ where
     let owner = c
         .index_select(&query.query.owners, 0, &first)?
         .item::<i64>()?;
+    Err(unresolved_positive(original, owner, quantity)?)
+}
+
+/// Rejection for a selected quantity that lacks strict positivity at one original row.
+pub(super) fn unresolved_positive(
+    original: i64,
+    owner: i64,
+    quantity: &str,
+) -> HydraulicResult<HydraulicError> {
     let original = usize::try_from(original).map_err(|_| {
         super::point_root_session::invalid(
             "selected point original row is negative. Preserve the bound query",
@@ -50,7 +59,7 @@ where
             "selected point section owner is negative. Preserve the bound query",
         )
     })?;
-    Err(HydraulicError::Rejected {
+    Ok(HydraulicError::Rejected {
         reason: PrismaticRiemannRejection::GeometryUnresolved,
         query: Some(original),
         section_owner: Some(owner),

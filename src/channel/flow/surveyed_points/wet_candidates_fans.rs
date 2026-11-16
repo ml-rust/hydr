@@ -1,8 +1,7 @@
+#[cfg(test)]
+use super::point_candidate_types::{PointFanAuthority, PointFanEvidence};
 use super::{
-    point_candidate_types::{
-        PointCandidate, PointFan, PointFanAuthority, PointFanEvidence, PointPendingReason,
-        PointRegion,
-    },
+    point_candidate_types::{PointCandidate, PointFan, PointPendingReason, PointRegion},
     point_root_session::PointRootSession,
     source_sonic_types::{SonicSide, SourceSonicStatus},
     wet_wave_types::WetWaveDomain,
@@ -32,7 +31,7 @@ pub(super) fn evaluate<R>(
     wave: &WetWaveDomain<R>,
     side: SonicSide,
     candidates: &mut Vec<PointCandidate<R>>,
-    evidence: &mut Vec<PointFanEvidence<R>>,
+    #[cfg(test)] evidence: &mut Vec<PointFanEvidence<R>>,
 ) -> HydraulicResult<FanResolution<R>>
 where
     R: Runtime<DType = DType>,
@@ -149,6 +148,7 @@ where
                     )?,
                 )));
             }
+            #[cfg(test)]
             evidence.push(PointFanEvidence {
                 invocation_owner: sourceowners,
                 parent_rows: sourceparent,
@@ -189,7 +189,9 @@ where
             let accepted = c.maximum(&proof.excluded, &active)?;
             resolved = c.index_put(&resolved, 0, &rows, &accepted)?;
             coverage = c.index_put(&coverage, 0, &rows, &active)?;
+            #[cfg(test)]
             let proof_index = evidence.len();
+            #[cfg(test)]
             evidence.push(PointFanEvidence {
                 invocation_owner: certificate.invocation_owner.clone(),
                 parent_rows: certificate.parent_rows.clone(),
@@ -201,6 +203,7 @@ where
                 candidates.push(PointCandidate::Fan(Box::new(PointFan {
                     certificate,
                     active,
+                    #[cfg(test)]
                     authority: PointFanAuthority::Wet(proof_index),
                 })));
             }

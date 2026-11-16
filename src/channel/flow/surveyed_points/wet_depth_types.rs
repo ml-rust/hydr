@@ -1,6 +1,8 @@
+#[cfg(test)]
+use super::wet_root_types::WetRootEvidence;
 use super::{
     root_invocation::{RootInvocation, RootInvocationWitness},
-    wet_root_types::{WetRootDomain, WetRootEvidence},
+    wet_root_types::WetRootDomain,
 };
 use crate::channel::section::SupportedAreaQuery;
 use numr::{dtype::DType, runtime::Runtime, tensor::Tensor};
@@ -44,6 +46,7 @@ pub(super) struct WetDepthDomain<R: Runtime<DType = DType>> {
     pub(super) status: Tensor<R>,
     pub(super) iterations: usize,
     pub(super) callback_points: usize,
+    #[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
     pub(super) mapped_points: usize,
     pub(super) refinement: DepthRefinementState<R>,
 }
@@ -71,6 +74,7 @@ impl<R: Runtime<DType = DType>> WetDepthDomain<R> {
 
 pub(super) struct WetDepthState<R: Runtime<DType = DType>> {
     pub(super) locator_status: Tensor<R>,
+    #[cfg(test)]
     pub(super) evidence: Vec<WetRootEvidence<R>>,
     pub(super) domains: Vec<WetDepthDomain<R>>,
     pub(super) tolerance: CertifiedRootTolerance,

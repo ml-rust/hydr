@@ -29,6 +29,7 @@ where
         + CertifiedSimpsonAlgorithms<R>,
 {
     /// Retain possible wet-wave positions without selecting a trace or accepting a stationary discontinuity.
+    #[cfg(test)]
     pub(super) fn certify_wet_waves(&mut self) -> HydraulicResult<Vec<WetWaveDomain<R>>> {
         self.sources
             .check_root_witness(self.invocation.source_witness())?;

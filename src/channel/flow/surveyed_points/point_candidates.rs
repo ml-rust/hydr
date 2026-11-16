@@ -1,8 +1,10 @@
+#[cfg(test)]
+use super::point_candidate_types::PointFanAuthority;
 use super::{
     dry_vacuum_types::{DryVacuumCandidate, DryVacuumRegime, DryVacuumStatus},
     point_candidate_types::{
         PointCandidate, PointCandidateCertificates, PointCandidateStatus, PointDryEvidence,
-        PointFan, PointFanAuthority, PointPendingReason, PointRegion,
+        PointFan, PointPendingReason, PointRegion,
     },
     point_root_session::{PointRootSession, invalid},
     wet_root_types::WetRootStatus,
@@ -144,6 +146,7 @@ where
                         candidates.push(PointCandidate::Fan(Box::new(PointFan {
                             certificate: *certificate,
                             active,
+                            #[cfg(test)]
                             authority: PointFanAuthority::DryVacuum,
                         })));
                     }
@@ -186,6 +189,7 @@ where
             Ok(())
         })?;
         candidates.extend(wet_result.candidates);
+        #[cfg(test)]
         let (depth, evidence) = super::point_candidates_evidence::snapshot(self, &demand)?;
         let status = checked::<R, _>(c, "point candidate complete physical alternatives", |a| {
             let code = |v: PointCandidateStatus| {
@@ -232,7 +236,9 @@ where
         Ok(PointCandidateCertificates {
             invocation_witness: self.invocation.witness(),
             wet_status: c.index_select(&self.wet.locator_status, 0, &owners)?,
+            #[cfg(test)]
             depth_status: c.index_select(&depth, 0, &owners)?,
+            #[cfg(test)]
             sonic_status: [
                 c.index_select(&self.sonic.status[0], 0, &owners)?,
                 c.index_select(&self.sonic.status[1], 0, &owners)?,
@@ -248,9 +254,11 @@ where
                 edges: dry.edges,
                 possibilities: dry.possibilities,
             },
+            #[cfg(test)]
             wet_evidence: evidence,
             waves,
             candidates,
+            #[cfg(test)]
             fan_evidence: wet_result.evidence,
             callback_points: self.callback_points(),
             point_limit: self.point_limit(),

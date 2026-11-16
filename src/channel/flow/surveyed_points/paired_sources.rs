@@ -10,11 +10,13 @@ use crate::channel::{
         PrismaticAreaPointRecovery, SupportedAreaQuery, source_difference,
     },
 };
+#[cfg(test)]
+use numr::ops::UtilityOps;
 use numr::{
     dtype::DType,
     ops::{
         BinaryOps, CompareOps, IndexingOps, MidpointOps, NextRepresentableOps, ScalarOps,
-        SortingOps, TensorOps, TwoSumOps, UtilityOps,
+        SortingOps, TensorOps, TwoSumOps,
     },
     runtime::{Device, Runtime, RuntimeClient},
     tensor::Tensor,
@@ -37,6 +39,7 @@ pub(super) struct PairedSources<'a, R: Runtime<DType = DType>> {
     construction_witness: RootSourceWitness,
 }
 
+#[cfg(test)]
 pub(super) struct PairedRange<R: Runtime<DType = DType>> {
     pub(super) lower: CurveValue<R>,
     pub(super) upper: CurveValue<R>,
@@ -48,6 +51,7 @@ pub(super) struct SourceInvariant<R: Runtime<DType = DType>> {
     pub(super) vacuum: Tensor<R>,
     pub(super) touching: Tensor<R>,
     pub(super) wet_candidate: Tensor<R>,
+    #[cfg(test)]
     pub(super) unresolved: Tensor<R>,
     /// Exact captured dry-state identity, not an available wet velocity residual.
     pub(super) both_dry: Tensor<R>,
@@ -280,6 +284,7 @@ where
         + RuntimeClient<R>
         + CertifiedSimpsonAlgorithms<R>,
 {
+    #[cfg(test)]
     pub(super) fn endpoint(
         &mut self,
         query: &SupportedAreaQuery<R>,
@@ -301,6 +306,7 @@ where
     ) -> HydraulicResult<CurveValue<R>> {
         super::paired_residual::endpoint(self, rows, query, endpoint)
     }
+    #[cfg(test)]
     pub(super) fn range(
         &mut self,
         query: &SupportedAreaQuery<R>,
@@ -313,6 +319,7 @@ where
         )?;
         self.range_on_rows(&rows, query)
     }
+    #[cfg(test)]
     pub(super) fn range_on_rows(
         &mut self,
         rows: &Tensor<R>,
@@ -338,6 +345,7 @@ where
             curve,
         })
     }
+    #[cfg(test)]
     pub(super) fn source_invariant(&mut self) -> HydraulicResult<SourceInvariant<R>> {
         super::paired_source_invariant::evaluate(self)
     }

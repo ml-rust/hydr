@@ -1,3 +1,4 @@
+#[cfg(test)]
 use super::super::super::context::Context;
 use super::{ConditionalBandSegments, selection::capture};
 use crate::channel::flow::surveyed::error::{
@@ -12,10 +13,14 @@ use numr::{
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
-use solvr::common::arithmetic::{CertifiedExpansion, Interval};
+#[cfg(test)]
+use solvr::common::arithmetic::CertifiedExpansion;
+use solvr::common::arithmetic::Interval;
+#[cfg(test)]
 use std::sync::Arc;
 
 pub(crate) struct WetDepthGeometry<R: Runtime<DType = DType>> {
+    #[cfg(test)]
     model: Arc<Context<R>>,
     owners: Tensor<R>,
     original_rows: Tensor<R>,
@@ -23,6 +28,7 @@ pub(crate) struct WetDepthGeometry<R: Runtime<DType = DType>> {
     area: Interval<R>,
     width: Interval<R>,
     slope: Interval<R>,
+    #[cfg(test)]
     depth_gap: CertifiedExpansion<R>,
     physical_depth_gap: Interval<R>,
     area_hull: Interval<R>,
@@ -48,6 +54,7 @@ impl<R: Runtime<DType = DType>> WetDepthGeometry<R> {
     pub(crate) fn slope(&self) -> &Interval<R> {
         &self.slope
     }
+    #[cfg(test)]
     pub(crate) fn retained_depth_gap(&self) -> &CertifiedExpansion<R> {
         &self.depth_gap
     }
@@ -60,6 +67,7 @@ impl<R: Runtime<DType = DType>> WetDepthGeometry<R> {
     pub(crate) fn width_hull(&self) -> &Interval<R> {
         &self.width_hull
     }
+    #[cfg(test)]
     pub(crate) fn same_model(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.model, &other.model)
     }
@@ -177,6 +185,7 @@ where
             &selected.rows.slope.upper().reshape(&[n])?,
         )?;
         Ok(WetDepthGeometry {
+            #[cfg(test)]
             model: Arc::clone(&selected.rows.model),
             owners: capture(a, selected.owners())?,
             original_rows: capture(a, selected.original_rows())?,
@@ -184,6 +193,7 @@ where
             area: safe(a, &first.area, &one)?,
             width: first_width,
             slope: safe(a, &slope, &zero)?,
+            #[cfg(test)]
             depth_gap,
             physical_depth_gap,
             area_hull: safe(a, &area_hull, &one)?,

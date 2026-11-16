@@ -1,6 +1,8 @@
+#[cfg(test)]
+use super::point_candidate_types::PointFanEvidence;
 use super::{
     point_candidate_types::{
-        PointCandidate, PointFanEvidence, PointPending, PointPendingReason, PointRegion, PointStar,
+        PointCandidate, PointPending, PointPendingReason, PointRegion, PointStar,
     },
     point_root_session::PointRootSession,
     wet_wave_types::WetWaveDomain,
@@ -22,6 +24,7 @@ use solvr::{
 
 pub(super) struct WetCandidates<R: Runtime<DType = DType>> {
     pub(super) candidates: Vec<PointCandidate<R>>,
+    #[cfg(test)]
     pub(super) evidence: Vec<PointFanEvidence<R>>,
     pub(super) complete: Tensor<R>,
     pub(super) covered: Tensor<R>,
@@ -54,6 +57,7 @@ where
         })?;
     let mut located = covered.clone();
     let mut candidates = Vec::new();
+    #[cfg(test)]
     let mut evidence = Vec::new();
     for (index, wave) in waves.iter().enumerate() {
         let (mut valid, mut coverage) =
@@ -136,6 +140,7 @@ where
                 wave,
                 side,
                 &mut candidates,
+                #[cfg(test)]
                 &mut evidence,
             )?;
             valid = c.mul(&valid, &resolved.resolved)?;
@@ -170,6 +175,7 @@ where
     }
     Ok(WetCandidates {
         candidates,
+        #[cfg(test)]
         evidence,
         complete,
         covered,

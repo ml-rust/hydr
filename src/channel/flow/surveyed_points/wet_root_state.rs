@@ -49,6 +49,7 @@ where
                         client.device(),
                     )?,
                     domains: Vec::new(),
+                    #[cfg(test)]
                     evidence: Vec::new(),
                 },
                 pending: Tensor::ones(&[n], a.dtype(), client.device())?,

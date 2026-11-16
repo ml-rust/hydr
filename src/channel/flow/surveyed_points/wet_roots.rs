@@ -1,12 +1,13 @@
+#[cfg(test)]
 pub(super) use super::wet_root_types::WetRootDomains;
 use super::{
     chart_admission, paired_sources::PairedSources, wet_root_direct, wet_root_search,
     wet_root_state::Locator,
 };
 use super::{root_invocation::RootInvocation, wet_root_types::WetRootResults};
-use crate::channel::flow::surveyed::error::{
-    HydraulicError, HydraulicResult, PrismaticRiemannRejection, checked,
-};
+#[cfg(test)]
+use crate::channel::flow::surveyed::error::{HydraulicError, PrismaticRiemannRejection};
+use crate::channel::flow::surveyed::error::{HydraulicResult, checked};
 use numr::{
     dtype::DType,
     ops::{
@@ -19,6 +20,7 @@ use numr::{
 use solvr::{integrate::CertifiedSimpsonAlgorithms, optimize::CertifiedUpperBracketAlgorithms};
 
 /// Locate complete wet/wet root domains without selecting centers or accepting hydraulic fluxes.
+#[cfg(test)]
 pub(super) fn locate_wet_roots<R>(
     sources: &mut PairedSources<'_, R>,
     parent_rows: &Tensor<R>,

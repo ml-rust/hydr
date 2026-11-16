@@ -23,6 +23,7 @@ where
         + RuntimeClient<R>
         + CertifiedSimpsonAlgorithms<R>,
 {
+    #[cfg(test)]
     pub(super) fn certify_wet_star(&mut self) -> HydraulicResult<Vec<WetStarDomain<R>>> {
         self.wet_star_demand(None)
     }

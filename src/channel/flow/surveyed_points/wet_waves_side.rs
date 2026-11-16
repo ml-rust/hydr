@@ -164,10 +164,12 @@ where
     let upper_bounds = a.expansion_interval(&upper_offset)?;
     let offset_ordered = c.le(lower_bounds.lower(), upper_bounds.upper())?;
     let shock_available = c.mul(&shock_possible, &c.mul(&upper_available, &offset_ordered)?)?;
+    #[cfg(test)]
     let physical = a.bounds(
         &c.where_cond(&shock_available, lower_bounds.lower(), &zero)?,
         &c.where_cond(&shock_available, upper_bounds.upper(), &zero)?,
     )?;
+    #[cfg(test)]
     let shock_offset = CurveValue {
         retained: a.expansion_from_interval(&physical)?,
         physical,
@@ -189,6 +191,7 @@ where
         &c.where_cond(&speed_available, speed_lower, &zero)?,
         &c.where_cond(&speed_available, speed_upper, &zero)?,
     )?;
+    #[cfg(test)]
     let shock_stationary = c.mul(
         &speed_available,
         &c.mul(&exact_zero(a, &first_speed)?, &exact_zero(a, &last_speed)?)?,
@@ -198,6 +201,7 @@ where
         physical,
         available: speed_available,
     };
+    #[cfg(test)]
     let equality_stationary = c.mul(&equality_possible, &exact_zero(a, &head.retained)?)?;
     let mut evidence_available = one;
     for endpoint in &star.endpoints {
@@ -228,11 +232,14 @@ where
         shock_actual,
         shock_conditional,
         source_sound,
+        #[cfg(test)]
         shock_offset,
         shock_speed,
         head,
         tail,
+        #[cfg(test)]
         shock_stationary,
+        #[cfg(test)]
         equality_stationary,
         valid,
     })

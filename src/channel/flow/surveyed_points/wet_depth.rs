@@ -1,11 +1,10 @@
 use super::{
     paired_sources::PairedSources,
     wet_depth_mapping, wet_depth_refinement, wet_depth_selection,
-    wet_depth_types::{
-        DepthRefinementState, WetDepthDomain, WetDepthSession, WetDepthState, WetDepthStatus,
-    },
-    wet_root_types::WetRootDomains,
+    wet_depth_types::{DepthRefinementState, WetDepthDomain, WetDepthSession, WetDepthStatus},
 };
+#[cfg(test)]
+use super::{wet_depth_types::WetDepthState, wet_root_types::WetRootDomains};
 use crate::channel::flow::surveyed::error::{HydraulicError, HydraulicResult, checked};
 use numr::{
     dtype::DType,
@@ -22,6 +21,7 @@ use solvr::{
 };
 
 /// Check physical depth while preserving root evidence for later, stricter stopping phases.
+#[cfg(test)]
 pub(super) fn refine_wet_depth<'s, 'a, R>(
     sources: &'s mut PairedSources<'a, R>,
     located: WetRootDomains<R>,
@@ -142,6 +142,7 @@ where
         + CertifiedMappedBisectionAlgorithms<R>,
 {
     /// Request no looser precision than the original configured normalized-depth allowances.
+    #[cfg(test)]
     pub(super) fn refine_depth_to(
         mut self,
         tolerance: CertifiedRootTolerance,

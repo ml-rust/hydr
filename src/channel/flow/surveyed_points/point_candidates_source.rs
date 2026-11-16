@@ -44,6 +44,7 @@ where
     } else {
         &input.right_discharge
     };
+    #[cfg(test)]
     let velocity = if side == SonicSide::Left {
         &selected.velocity.left
     } else {
@@ -51,8 +52,11 @@ where
     };
     let area = a.expansion_bounds(area.high(), area.low(), area.abs_error())?;
     let discharge = a.expansion_bounds(discharge.high(), discharge.low(), discharge.abs_error())?;
+    #[cfg(test)]
     let velocity = a.expansion_bounds(velocity.high(), velocity.low(), velocity.abs_error())?;
+    #[cfg(test)]
     let [left, right] = selected.sources;
+    #[cfg(test)]
     let recovery = if side == SonicSide::Left { left } else { right };
     Ok(ExteriorPoint {
         invocation_owner: copy(a, owners)?,
@@ -61,7 +65,9 @@ where
         query,
         area,
         discharge,
+        #[cfg(test)]
         velocity,
+        #[cfg(test)]
         recovery,
     })
 }

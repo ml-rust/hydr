@@ -5,7 +5,9 @@ mod types;
 pub(crate) use types::PressureEndpoint;
 mod weights;
 
-pub(crate) use range::{pressure_endpoint, pressure_range};
+pub(crate) use range::pressure_endpoint;
+#[cfg(test)]
+pub(crate) use range::pressure_range;
 
 #[cfg(test)]
 pub(super) mod tests;

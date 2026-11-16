@@ -1,6 +1,7 @@
+#[cfg(test)]
+use super::wave_curve_types::CurveValue;
 use super::{
-    paired_sources::PairedSources, source_sonic_types::SonicSide, wave_curve_types::CurveValue,
-    wet_wave_types::WetWaveDomain,
+    paired_sources::PairedSources, source_sonic_types::SonicSide, wet_wave_types::WetWaveDomain,
 };
 use crate::channel::{
     flow::surveyed::error::{Arithmetic, HydraulicResult},
@@ -19,10 +20,15 @@ use numr::{
 pub(super) struct WetFanMembership<R: Runtime<DType = DType>> {
     pub(super) proved: Tensor<R>,
     pub(super) excluded: Tensor<R>,
+    #[cfg(test)]
     pub(super) pending: Tensor<R>,
+    #[cfg(test)]
     pub(super) coincidence: Tensor<R>,
+    #[cfg(test)]
     pub(super) separation: CurveValue<R>,
+    #[cfg(test)]
     pub(super) lower_difference: solvr::common::arithmetic::CertifiedExpansion<R>,
+    #[cfg(test)]
     pub(super) upper_difference: solvr::common::arithmetic::CertifiedExpansion<R>,
 }
 
@@ -109,7 +115,9 @@ where
     let consistent = c.sub(&one, &conflict)?;
     let proved = c.mul(&proved, &consistent)?;
     let excluded = c.mul(&excluded, &consistent)?;
+    #[cfg(test)]
     let pending = c.sub(&one, &c.maximum(&proved, &excluded)?)?;
+    #[cfg(test)]
     let coincidence = c.mul(
         &ordered,
         &c.mul(
@@ -117,14 +125,20 @@ where
             &super::wet_star_endpoint::exact_zero(a, &upper)?,
         )?,
     )?;
+    #[cfg(test)]
     let retained = a.expansion_from_interval(&physical)?;
     Ok(WetFanMembership {
         proved,
         excluded,
+        #[cfg(test)]
         pending,
+        #[cfg(test)]
         coincidence,
+        #[cfg(test)]
         lower_difference: lower,
+        #[cfg(test)]
         upper_difference: upper,
+        #[cfg(test)]
         separation: CurveValue {
             retained,
             physical,

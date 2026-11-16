@@ -111,7 +111,9 @@ where
     let boundary = match &query.anchor {
         AreaAnchor::Zero => Some(Tensor::zeros(&[n], DType::I64, c.device())?),
         AreaAnchor::Cap => Some(counts(a, bands)?),
+        #[cfg(test)]
         AreaAnchor::BandStart(index) => Some(index.clone()),
+        #[cfg(test)]
         AreaAnchor::BandEnd(index) => {
             Some(c.add(index, &Tensor::from_slice(&[1_i64], &[], c.device())?)?)
         }

@@ -62,9 +62,9 @@ pub use forcing::{
 pub(crate) use coupling::{ChannelCouplingForcing, ChannelCouplingTrial, ChannelReservoirOperands};
 
 pub(crate) mod surveyed;
-#[cfg(test)]
 pub(crate) mod surveyed_points;
 pub use surveyed::{
     PrismaticRiemannConfig, PrismaticRiemannError, PrismaticRiemannRejection,
     PrismaticRiemannResult, PrismaticRiemannWork,
 };
+pub use surveyed_points::{PrismaticPointRiemannResult, PrismaticPointTraceKind};

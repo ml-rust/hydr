@@ -9,7 +9,6 @@ use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::Interval;
 
-#[cfg(test)]
 pub(crate) use super::depth_potential::WetDepthPotential;
 
 #[cfg(test)]

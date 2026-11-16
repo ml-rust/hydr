@@ -1,4 +1,5 @@
 use super::super::{config, hydraulic_geometry::GatheredBands};
+#[cfg(test)]
 use super::chart::AreaAnchor;
 use crate::channel::{
     flow::surveyed::error::{
@@ -176,7 +177,7 @@ where
 pub(super) fn chart<R>(
     a: &mut Arithmetic<'_, R>,
     bands: &GatheredBands<R>,
-    anchor: &AreaAnchor<R>,
+    #[cfg(test)] anchor: &AreaAnchor<R>,
     scale: &CertifiedExpansion<R>,
     parameter: &Interval<R>,
 ) -> HydraulicResult<()>
@@ -226,6 +227,7 @@ where
         &c.gt(parameter.lower(), parameter.upper())?,
         "area query parameter endpoints are unordered. Supply an ordered interval",
     )?;
+    #[cfg(test)]
     if let AreaAnchor::BandStart(index) | AreaAnchor::BandEnd(index) = anchor {
         metadata(a, index, shape, DType::I64)?;
         let zero_index = Tensor::from_slice(&[0_i64], &[], c.device())?;

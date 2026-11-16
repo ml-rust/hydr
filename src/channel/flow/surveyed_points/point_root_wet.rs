@@ -81,6 +81,7 @@ where
             for domain in &mut located.domains {
                 domain.invocation_owner = c.index_select(&owners, 0, &domain.invocation_owner)?;
             }
+            #[cfg(test)]
             for evidence in &mut located.evidence {
                 evidence.invocation_owner =
                     c.index_select(&owners, 0, &evidence.invocation_owner)?;
@@ -89,6 +90,7 @@ where
                 super::wet_depth::capture_domains(self.sources, &self.invocation, located.domains)?;
             self.wet.locator_status =
                 c.index_put(&self.wet.locator_status, 0, &owners, &located.status)?;
+            #[cfg(test)]
             self.wet.evidence.extend(located.evidence);
             self.wet.domains.extend(domains);
             self.refine_wet_depth_in_place(self.wet.tolerance)

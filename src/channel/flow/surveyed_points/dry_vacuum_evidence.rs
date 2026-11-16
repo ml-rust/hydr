@@ -117,10 +117,12 @@ where
         head.physical = a.sub(&z, &head.physical)?;
         front.physical = a.sub(&z, &front.physical)?;
     }
+    #[cfg(test)]
     let head_exact_zero = c.mul(
         &head.available,
         &super::wet_star_endpoint::exact_zero(a, &head.retained)?,
     )?;
+    #[cfg(test)]
     let front_exact_zero = c.mul(
         &front.available,
         &super::wet_star_endpoint::exact_zero(a, &front.retained)?,
@@ -128,7 +130,9 @@ where
     Ok(DryVacuumEdges {
         head,
         front,
+        #[cfg(test)]
         head_exact_zero,
+        #[cfg(test)]
         front_exact_zero,
     })
 }

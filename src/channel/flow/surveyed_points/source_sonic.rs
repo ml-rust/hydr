@@ -1,10 +1,9 @@
+#[cfg(test)]
+use super::source_sonic_types::SourceSonicCertificates;
 use super::{
     point_root_session::PointRootSession,
     source_sonic_binding,
-    source_sonic_types::{
-        SonicSide, SourceSonicBinding, SourceSonicCertificates, SourceSonicRequest,
-        SourceSonicStatus,
-    },
+    source_sonic_types::{SonicSide, SourceSonicBinding, SourceSonicRequest, SourceSonicStatus},
     wet_depth_types::WetDepthStatus,
 };
 use crate::channel::flow::surveyed::error::{HydraulicResult, checked};
@@ -119,6 +118,7 @@ where
         result
     }
 
+    #[cfg(test)]
     pub(super) fn refine_source_sonic(
         &mut self,
         tolerance: CertifiedRootTolerance,
@@ -151,6 +151,7 @@ where
         result
     }
 
+    #[cfg(test)]
     pub(super) fn certify_source_sonic(&mut self) -> HydraulicResult<SourceSonicCertificates<R>> {
         self.sources
             .check_root_witness(self.invocation.source_witness())?;

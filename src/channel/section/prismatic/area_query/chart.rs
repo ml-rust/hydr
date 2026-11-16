@@ -22,7 +22,9 @@ pub(crate) enum AreaAnchor<R: Runtime<DType = DType>> {
         coordinates: Box<PrismaticAreaPointBandCoordinates<R>>,
     },
     Zero,
+    #[cfg(test)]
     BandStart(Tensor<R>),
+    #[cfg(test)]
     BandEnd(Tensor<R>),
     Cap,
 }
@@ -93,7 +95,14 @@ where
             area: Box::new(area),
             coordinates: Box::new(coordinates),
         };
-        admission::chart(a, bands, &anchor, scale, parameter)?;
+        admission::chart(
+            a,
+            bands,
+            #[cfg(test)]
+            &anchor,
+            scale,
+            parameter,
+        )?;
         Self::finish(a, bands, anchor, direction, scale, parameter)
     }
 
@@ -110,7 +119,14 @@ where
                 "band_affine received a Source anchor. Use source_affine with a recovery from the same compiled model",
             ).into());
         }
-        admission::chart(a, bands, &anchor, scale, parameter)?;
+        admission::chart(
+            a,
+            bands,
+            #[cfg(test)]
+            &anchor,
+            scale,
+            parameter,
+        )?;
         let anchor = super::selection::capture_anchor(a, &anchor)?;
         Self::finish(a, bands, anchor, direction, scale, parameter)
     }

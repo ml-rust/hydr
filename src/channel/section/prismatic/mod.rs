@@ -6,14 +6,12 @@ mod area_point_inverse;
 mod area_point_projection;
 mod area_point_query;
 mod area_point_recovery;
-#[cfg(test)]
 mod area_point_selection;
 #[cfg(test)]
 mod area_point_selection_tests;
 mod area_query;
 mod band_geometry;
 mod batch;
-#[cfg(test)]
 mod boundary_area;
 mod compilation;
 mod compilation_bounds;
@@ -46,23 +44,19 @@ pub use query::{PrismaticSectionQuery, PrismaticSectionRecovery};
 
 mod hydraulic_evaluation;
 mod hydraulic_geometry;
-#[cfg(test)]
+mod point_riemann;
 mod point_riemann_input;
 mod riemann;
 pub(crate) use hydraulic_geometry::{Constitutive, GatheredBands, HydraulicGeometry};
 
-#[cfg(test)]
 pub(crate) use area_query::PressureEndpoint;
-#[cfg(test)]
 pub(crate) use area_query::conditional_band::{
     ClippedBandEndpoints, ConditionalBandSegments, PreparedAreaPrefix, WetDepthGeometry,
 };
-#[cfg(test)]
 pub(crate) use area_query::{
     AreaAnchor, AreaDirection, AreaQuery, PhysicalEndpoint, SupportedAreaQuery, cover_domain,
     pressure_endpoint, source_difference,
 };
-#[cfg(test)]
 pub(crate) use boundary_area::BoundaryAreas;
 
 #[cfg(test)]

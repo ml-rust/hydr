@@ -26,7 +26,6 @@ pub(crate) struct HydraulicGeometry<R: Runtime<DType = DType>> {
 }
 
 pub(crate) struct GatheredBands<R: Runtime<DType = DType>> {
-    #[cfg(test)]
     pub(super) model: Arc<Context<R>>,
     pub(crate) section_owner: Tensor<R>,
     pub(crate) band_count: usize,
@@ -59,7 +58,6 @@ pub(crate) struct Constitutive<R: Runtime<DType = DType>> {
 }
 
 impl<R: Runtime<DType = DType>> HydraulicGeometry<R> {
-    #[cfg(test)]
     pub(crate) fn same_model(&self, bands: &GatheredBands<R>) -> bool {
         Arc::ptr_eq(&self.context, &bands.model)
     }
@@ -98,7 +96,6 @@ where
                 )?)
             };
         Ok(Self {
-            #[cfg(test)]
             model: Arc::clone(&self.model),
             section_owner: c.index_select(&self.section_owner, 0, row)?,
             band_count: self.band_count,
@@ -157,7 +154,6 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>,
 {
-    #[cfg(test)]
     pub(crate) fn boundary_areas(
         &self,
         a: &mut Arithmetic<'_, R>,
@@ -165,7 +161,6 @@ where
         super::boundary_area::BoundaryAreaTable::build(a, &self.context)
     }
 
-    #[cfg(test)]
     pub(crate) fn recover_query(
         &self,
         a: &mut Arithmetic<'_, R>,
@@ -184,7 +179,6 @@ where
         let captured = Tensor::empty(owners.shape(), DType::I64, self.client().device())?;
         self.client().copy_into(&captured, owners)?;
         Ok(GatheredBands {
-            #[cfg(test)]
             model: Arc::clone(&self.context),
             section_owner: captured,
             band_count: self.context.maximum_bands,

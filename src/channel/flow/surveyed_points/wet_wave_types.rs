@@ -10,6 +10,13 @@ pub(super) enum WetWaveStatus {
 }
 
 /// Branch masks mean the complete root domain cannot exclude that branch.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "tests read the actual and conditional shock masks and the source sound, which are moves from the wave evaluation"
+    )
+)]
 pub(super) struct WetWaveSide<R: Runtime<DType = DType>> {
     pub(super) shock_possible: Tensor<R>,
     pub(super) rarefaction_possible: Tensor<R>,
@@ -17,11 +24,14 @@ pub(super) struct WetWaveSide<R: Runtime<DType = DType>> {
     pub(super) shock_actual: Tensor<R>,
     pub(super) shock_conditional: Tensor<R>,
     pub(super) source_sound: CurveValue<R>,
+    #[cfg(test)]
     pub(super) shock_offset: CurveValue<R>,
     pub(super) shock_speed: CurveValue<R>,
     pub(super) head: CurveValue<R>,
     pub(super) tail: CurveValue<R>,
+    #[cfg(test)]
     pub(super) shock_stationary: Tensor<R>,
+    #[cfg(test)]
     pub(super) equality_stationary: Tensor<R>,
     pub(super) valid: Tensor<R>,
 }
@@ -37,6 +47,7 @@ pub(super) struct WetWaveRegions<R: Runtime<DType = DType>> {
 
 pub(super) struct WetWaveDomain<R: Runtime<DType = DType>> {
     pub(super) star: WetStarDomain<R>,
+    #[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
     pub(super) endpoint_sound: [CurveValue<R>; 2],
     pub(super) sides: [WetWaveSide<R>; 2],
     pub(super) regions: WetWaveRegions<R>,

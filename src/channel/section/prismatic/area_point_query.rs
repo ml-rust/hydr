@@ -103,7 +103,6 @@ pub struct PrismaticAreaPointRecovery<R: Runtime<DType = DType>> {
 }
 
 impl<R: Runtime<DType = DType>> PrismaticAreaPointRecovery<R> {
-    #[cfg(test)]
     pub(in crate::channel::section::prismatic) fn same_context(
         &self,
         context: &Arc<Context<R>>,

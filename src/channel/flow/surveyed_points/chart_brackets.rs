@@ -27,6 +27,7 @@ use solvr::{
 
 /// Full chart outcomes and compact domains with certified root existence.
 pub(super) struct ChartBrackets<R: Runtime<DType = DType>> {
+    #[cfg(test)]
     pub(super) invocation_rows: Tensor<R>,
     pub(super) bracket_owner: Tensor<R>,
     pub(super) bracket_rows: Tensor<R>,
@@ -98,6 +99,7 @@ where
             Ok((bracket_owner, bracket_rows, query))
         })?;
     Ok(ChartBrackets {
+        #[cfg(test)]
         invocation_rows,
         bracket_owner,
         bracket_rows,

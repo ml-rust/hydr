@@ -11,6 +11,7 @@ pub(super) enum SourceSonicQuadratureOutcome {
     Unresolved = 4,
 }
 
+#[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
 pub(super) struct SourceSonicQuadratureProgress<R: Runtime<DType = DType>> {
     pub(super) invocation_owner: Tensor<R>,
     pub(super) parent_rows: Tensor<R>,

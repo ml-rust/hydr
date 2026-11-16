@@ -20,7 +20,9 @@ use numr::{
 pub(super) struct PointPotentialLanes<R: Runtime<DType = DType>> {
     pub(super) lanes: IntegrationLanes<R>,
     pub(super) pointed: Tensor<R>,
+    #[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
     pub(super) original_rows: Tensor<R>,
+    #[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
     pub(super) section_owner: Tensor<R>,
 }
 

@@ -26,6 +26,7 @@ pub(super) enum PointFluxKind {
     Dry,
 }
 
+#[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
 pub(super) struct PointPressure<R: Runtime<DType = DType>> {
     pub(super) source_anchor: CertifiedExpansion<R>,
     pub(super) increment: PressureEndpoint<R>,
@@ -41,6 +42,7 @@ pub(super) struct PointPressure<R: Runtime<DType = DType>> {
 }
 
 /// Every field belongs to one candidate and one selected conserved state.
+#[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
 pub(super) struct SelectedPointFlux<R: Runtime<DType = DType>> {
     pub(super) candidate: usize,
     pub(super) kind: PointFluxKind,
@@ -70,6 +72,7 @@ pub(super) struct SelectedPointFlux<R: Runtime<DType = DType>> {
     pub(super) momentum_projection: Interval<R>,
 }
 
+#[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
 pub(super) struct PointFluxCertificates<R: Runtime<DType = DType>> {
     pub(super) candidates: PointCandidateCertificates<R>,
     pub(super) status: Tensor<R>,
@@ -98,6 +101,7 @@ pub(super) enum PointPositiveStatus {
 }
 
 /// One explicit advance shares the original invocation and never retries internally.
+#[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
 pub(super) struct PointPositiveSupport<R: Runtime<DType = DType>> {
     pub(super) candidates: PointCandidateCertificates<R>,
     pub(super) status: Tensor<R>,
@@ -110,6 +114,7 @@ pub(super) struct PointPositiveSupport<R: Runtime<DType = DType>> {
 
 /// Face-order fluxes after the sonic-fan continuation.
 /// Each face keeps the values of its last selection, taken from one coherent trace.
+#[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]
 pub(super) struct ResolvedPointFluxes<R: Runtime<DType = DType>> {
     pub(super) invocation_owner: Tensor<R>,
     /// `PointFluxStatus` codes, including the controller-only codes.

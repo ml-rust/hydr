@@ -9,6 +9,7 @@ mod chart_admission;
 mod chart_brackets;
 mod chart_root_callback;
 mod chart_root_derivative;
+#[cfg(test)]
 mod chart_roots;
 #[cfg(test)]
 mod chart_test_support;
@@ -29,6 +30,7 @@ mod point_candidate_types;
 mod point_candidates;
 mod point_candidates_admission;
 mod point_candidates_demand;
+#[cfg(test)]
 mod point_candidates_evidence;
 mod point_candidates_source;
 mod point_flux;
@@ -45,9 +47,13 @@ mod point_flux_selection;
 mod point_flux_support;
 mod point_flux_support_metrics;
 mod point_flux_types;
+mod point_output;
+pub(crate) mod point_riemann_entry;
+mod point_riemann_rejection;
 mod point_root_depth;
 mod point_root_session;
 mod point_root_wet;
+mod point_sources;
 mod point_wave_envelope;
 mod pointed_depth_identity;
 mod potential_absolute;
@@ -56,7 +62,6 @@ mod potential_analytic;
 mod potential_band_retention_tests;
 pub(crate) mod potential_callbacks;
 mod potential_increment;
-#[cfg(test)]
 mod potential_lanes;
 mod potential_numerical;
 mod potential_range;
@@ -118,6 +123,8 @@ mod wet_waves;
 mod wet_waves_endpoint;
 mod wet_waves_regions;
 mod wet_waves_side;
+
+pub use point_output::{PrismaticPointRiemannResult, PrismaticPointTraceKind};
 
 #[cfg(test)]
 #[path = "source_tests.rs"]

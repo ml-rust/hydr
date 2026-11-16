@@ -144,6 +144,7 @@ where
         })?;
         Ok(DryVacuumCertificates {
             invocation_witness: self.invocation.witness(),
+            #[cfg(test)]
             sonic_status: [
                 c.index_select(&self.sonic.status[0], 0, &owners)?,
                 c.index_select(&self.sonic.status[1], 0, &owners)?,

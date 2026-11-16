@@ -19,6 +19,7 @@ pub(super) struct CurveClassification<R: Runtime<DType = DType>> {
     pub(super) rarefaction: Tensor<R>,
     pub(super) equality: Tensor<R>,
     pub(super) uncertain: Tensor<R>,
+    #[cfg(test)]
     pub(super) dry_source: Tensor<R>,
 }
 
@@ -44,6 +45,7 @@ pub(super) struct EndpointCurve<R: Runtime<DType = DType>> {
     pub(super) equality_limit: CurveValue<R>,
 }
 
+#[cfg(test)]
 pub(super) struct CurveRange<R: Runtime<DType = DType>> {
     pub(super) lower: EndpointCurve<R>,
     pub(super) upper: EndpointCurve<R>,

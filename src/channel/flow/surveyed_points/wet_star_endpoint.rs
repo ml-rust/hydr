@@ -62,6 +62,7 @@ where
             } else {
                 &input.right_discharge
             };
+            #[cfg(test)]
             let source_area = if side == 0 {
                 &input.left_area
             } else {
@@ -116,6 +117,7 @@ where
                 )?,
             )?;
             sides.push(WetStarSideEndpoint {
+                #[cfg(test)]
                 source_area: a.expansion_bounds(
                     source_area.high(),
                     source_area.low(),

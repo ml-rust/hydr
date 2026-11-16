@@ -1,9 +1,11 @@
 use super::potential_increment::endpoint_increment;
 use super::potential_range::{PotentialContext, PotentialEvaluation, select_expansion};
 use super::shock_points;
+#[cfg(test)]
+use super::wave_curve_types::CurveRange;
 use super::wave_curve_types::{
-    CurveClassification, CurveRange, CurveValue, EndpointCurve, empty_offset, scatter_offset,
-    scatter_value, unavailable,
+    CurveClassification, CurveValue, EndpointCurve, empty_offset, scatter_offset, scatter_value,
+    unavailable,
 };
 use crate::channel::{
     flow::surveyed::{
@@ -215,6 +217,7 @@ where
     Ok(result)
 }
 
+#[cfg(test)]
 pub(super) fn range<R>(context: &PotentialContext<'_, R>) -> HydraulicResult<CurveRange<R>>
 where
     R: Runtime<DType = DType>,
@@ -285,6 +288,7 @@ where
         rarefaction,
         equality,
         uncertain,
+        #[cfg(test)]
         dry_source: dry.clone(),
     })
 }

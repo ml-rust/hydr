@@ -75,7 +75,9 @@ where
     let end = boundary(a, 1)?;
     let identity = match &endpoint.query.anchor {
         AreaAnchor::Zero => Some(Tensor::zeros(&[n], DType::I64, c.device())?),
+        #[cfg(test)]
         AreaAnchor::BandStart(index) => Some(index.clone()),
+        #[cfg(test)]
         AreaAnchor::BandEnd(index) => Some(c.add_scalar(index, 1.0)?),
         AreaAnchor::Cap => Some(boundaries.cap_indices().clone()),
         AreaAnchor::Source { .. } => None,

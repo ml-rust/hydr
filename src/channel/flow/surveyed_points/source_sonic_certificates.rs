@@ -1,16 +1,19 @@
+#[cfg(test)]
+use super::source_sonic_types::{SourceSonicCertificates, SourceSonicEvidence};
 use super::{
     paired_sources::PairedSources,
     point_root_session::PointRootSession,
     source_sonic_types::{
-        SonicFanMembership, SonicSide, SourceSonicCertificate, SourceSonicCertificates,
-        SourceSonicDomain, SourceSonicEvidence, SourceSonicStatus,
+        SonicFanMembership, SonicSide, SourceSonicCertificate, SourceSonicDomain, SourceSonicStatus,
     },
     wet_star::intersection as intersect,
 };
+#[cfg(test)]
+use crate::channel::flow::surveyed::error::Arithmetic;
 use crate::channel::{
     flow::surveyed::{
         equation_ops::{gravity_depth_root, scalar},
-        error::{Arithmetic, HydraulicResult, checked},
+        error::{HydraulicResult, checked},
     },
     section::{PhysicalEndpoint, source_difference},
 };
@@ -25,6 +28,7 @@ use numr::{
 };
 use solvr::integrate::CertifiedSimpsonAlgorithms;
 
+#[cfg(test)]
 pub(super) fn evaluate<R>(
     session: &mut PointRootSession<'_, '_, R>,
 ) -> HydraulicResult<SourceSonicCertificates<R>>
@@ -91,6 +95,7 @@ struct Operands<'a, R: Runtime<DType = DType>> {
     query: &'a crate::channel::section::SupportedAreaQuery<R>,
     numerical: &'a super::source_sonic_numerical::SourceSonicNumericalEvidence<R>,
     classification: SourceSonicStatus,
+    #[cfg(test)]
     depth: &'a solvr::common::arithmetic::Interval<R>,
     normalized_depth: &'a solvr::common::arithmetic::Interval<R>,
     status: &'a Tensor<R>,
@@ -107,6 +112,7 @@ impl<'a, R: Runtime<DType = DType>> From<&'a SourceSonicDomain<R>> for Operands<
             query: &d.query,
             numerical: &d.numerical,
             classification: d.classification,
+            #[cfg(test)]
             depth: &d.depth,
             normalized_depth: &d.normalized_depth,
             status: &d.status,
@@ -161,18 +167,21 @@ where
             if rows.numel() == 0 {
                 continue;
             }
-            let (owners, parent, query, numerical, depth, normalized, status) =
+            #[cfg(test)]
+            let depth = checked::<R, _>(c, "source sonic demanded certificate depth", |a| {
+                crate::channel::flow::surveyed::equation_ops::select_interval(
+                    a,
+                    &domain.depth,
+                    &rows,
+                )
+            })?;
+            let (owners, parent, query, numerical, normalized, status) =
                 checked::<R, _>(c, "source sonic demanded certificate operands", |a| {
                     Ok((
                         c.index_select(&domain.invocation_owner, 0, &rows)?,
                         c.index_select(&domain.parent_rows, 0, &rows)?,
                         domain.query.select(a, &rows)?,
                         domain.numerical.selected(a, &rows)?,
-                        crate::channel::flow::surveyed::equation_ops::select_interval(
-                            a,
-                            &domain.depth,
-                            &rows,
-                        )?,
                         crate::channel::flow::surveyed::equation_ops::select_interval(
                             a,
                             &domain.normalized_depth,
@@ -190,6 +199,7 @@ where
                     query: &query,
                     numerical: &numerical,
                     classification: domain.classification,
+                    #[cfg(test)]
                     depth: &depth,
                     normalized_depth: &normalized,
                     status: &status,
@@ -377,6 +387,7 @@ where
             side: domain.side,
             numerical: domain.numerical.owned(a)?,
             query,
+            #[cfg(test)]
             depth: a.bounds(&copy(domain.depth.lower())?, &copy(domain.depth.upper())?)?,
             normalized_depth: a.bounds(
                 &copy(domain.normalized_depth.lower())?,
@@ -385,6 +396,7 @@ where
             sound,
             velocity,
             discharge,
+            #[cfg(test)]
             source_discharge: a.expansion_bounds(
                 source_discharge.high(),
                 source_discharge.low(),
@@ -406,6 +418,7 @@ where
     })
 }
 
+#[cfg(test)]
 fn owned_curve<R>(
     a: &mut Arithmetic<'_, R>,
     value: &super::wave_curve_types::CurveValue<R>,

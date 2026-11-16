@@ -9,7 +9,6 @@ use std::sync::Arc;
 pub(super) struct Context<R: Runtime<DType = DType>> {
     pub source: Arc<SectionContext<R>>,
     pub maximum_bands: usize,
-    #[cfg(test)]
     pub raw_inputs: super::inputs::Inputs<R>,
     pub valid: Tensor<R>,
     pub pointed: Tensor<R>,

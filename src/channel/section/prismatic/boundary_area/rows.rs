@@ -81,6 +81,7 @@ impl<R: Runtime<DType = DType>> BoundaryAreas<R> {
     pub(crate) fn cap_indices(&self) -> &Tensor<R> {
         &self.cap_indices
     }
+    #[cfg(test)]
     pub(crate) fn same_model(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.model, &other.model)
     }
@@ -128,6 +129,7 @@ where
         )?)
     }
 
+    #[cfg(test)]
     pub(crate) fn exact_boundary_mask(
         &self,
         a: &mut Arithmetic<'_, R>,

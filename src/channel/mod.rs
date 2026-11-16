@@ -31,6 +31,6 @@ pub use section::{
 pub(crate) use flow::{ChannelCouplingForcing, ChannelCouplingTrial, ChannelReservoirOperands};
 
 pub use flow::{
-    PrismaticRiemannConfig, PrismaticRiemannError, PrismaticRiemannRejection,
-    PrismaticRiemannResult, PrismaticRiemannWork,
+    PrismaticPointRiemannResult, PrismaticPointTraceKind, PrismaticRiemannConfig,
+    PrismaticRiemannError, PrismaticRiemannRejection, PrismaticRiemannResult, PrismaticRiemannWork,
 };
