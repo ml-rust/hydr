@@ -292,6 +292,8 @@ Triangular and surveyed intervals report face-flux uncertainty in `ChannelStepDi
 
 Surveyed receipts also retain cumulative root and integration work in `surveyed_work`.
 
+To calculate interface fluxes outside a reach, call `riemann_flux_points_tensor` on a certified section batch. See [exact conserved points](prismatic-fluxes.md#calculate-fluxes-from-exact-conserved-points). Reach advancement does not call it.
+
 Scalar boundary receipts report endpoint flux widths for rectangular and triangular reaches. All use the same budgets below.
 
 | Diagnostic | Meaning |

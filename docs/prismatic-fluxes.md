@@ -44,6 +44,54 @@ let result = batch.riemann_flux_tensor(
 
 Replace the example areas with states inside your profile's supported capacity. The query also checks support throughout the wave solution.
 
+## Calculate fluxes from exact conserved points
+
+Use `riemann_flux_points_tensor` when each state is an exact conserved area and discharge. It computes the same Godunov interface fluxes, with a selected point flux for each face.
+
+```rust
+let result = batch.riemann_flux_points_tensor(
+    &owners, &left_area, &left_discharge,
+    &right_area, &right_discharge, &config,
+)?;
+```
+
+Inputs:
+
+| Input | Type | Meaning |
+| --- | --- | --- |
+| `owners` | `I64` rank-one tensor | Zero-based section-row indices |
+| `left_area_m2`, `right_area_m2` | `CertifiedExpansion<R>` | Exact zero-radius areas, in m² |
+| `left_discharge_m3_per_s`, `right_discharge_m3_per_s` | `CertifiedExpansion<R>` | Exact zero-radius discharges, in m³/s |
+| `config` | `PrismaticRiemannConfig` | The same config and work limits as `riemann_flux_tensor` |
+
+Each expansion keeps its rank-one shape matching `owners`. A nonzero radius is an input error. An exactly dry state requires `A = 0` and `Q = 0`.
+
+The call returns `PrismaticPointRiemannResult<R>`, in original query order:
+
+| Accessor | Meaning |
+| --- | --- |
+| `water_flux_m3_per_s()`, `momentum_flux_m4_per_s2()` | Selected flux points |
+| `trace_area_m2()`, `trace_discharge_m3_per_s()` | Selected trace point beside the interface |
+| `trace_kind()` | I64 codes. `PrismaticPointTraceKind::from_code` returns `LeftState`, `LeftFan`, `Star`, `RightFan`, `RightState` or `Dry` |
+| `physical_water_flux_m3_per_s()`, `physical_momentum_flux_m4_per_s2()` | Flux hulls over every possible trace |
+| `water_flux_bound_m3_per_s()`, `momentum_flux_bound_m4_per_s2()` | Accepted flux bounds, including the arithmetic bounds of the selected point |
+| `wave_speed_m_per_s()` | Certified signal speeds. Lower is the left wave, upper is the right wave |
+| `owners()`, `left_area_m2()`, `left_discharge_m3_per_s()`, `right_area_m2()`, `right_discharge_m3_per_s()` | Independent input snapshots |
+| `work()` | Executed work across every refinement |
+
+Any face that stays unaccepted rejects the whole call as `PrismaticRiemannError::Rejected`. The error names the unaccepted face with the smallest original row.
+
+| Reason | Cause |
+| --- | --- |
+| `CapExceeded` | The star state needs more water than the section holds |
+| `SamplingUnresolved` | A wave branch or trace stays unresolved, or lacks a certified signal speed |
+| `FluxBudgetExceeded` | Flux bounds stay wider than the allowances |
+| `RootBracketUnresolved` | The sonic root stays unresolved |
+| `WorkLimit` | The sonic fan refinement reaches its point ceiling |
+| `GeometryUnresolved` | A selected trace area or discharge lacks strict positivity |
+
+The next actions match [Act on rejection](#act-on-rejection).
+
 ## Read fluxes and interface traces
 
 Results retain original query order and independent input snapshots. Native bounds use Solvr `Interval<R>` with `lower()` and `upper()` tensors.
