@@ -178,11 +178,21 @@ where
                 reference.momentum.ok_or("Flux momentum truth absent")?,
             ]
             .map(|bits| bits.map(f64::from_bits));
-            for k in 0..2 {
-                contains(physical[k][i], truth[k], id);
-                contains(bound[k][i], truth[k], id);
-                contains(bound[k][i], selected[k][i], id);
+            let mirror = frozen::exact_mirror(id)?;
+            for water in [physical[0][i], bound[0][i]] {
+                frozen::water_enclosed(water, truth[0], mirror, id);
             }
+            if mirror {
+                assert_eq!(
+                    selected[0][i].map(f64::to_bits),
+                    [0, 0],
+                    "{id} selected water"
+                );
+            }
+            contains(bound[0][i], selected[0][i], id);
+            contains(physical[1][i], truth[1], id);
+            contains(bound[1][i], truth[1], id);
+            contains(bound[1][i], selected[1][i], id);
             assert_eq!(
                 discharge[i], selected[0][i],
                 "{id} water flux differs from its trace"

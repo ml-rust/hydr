@@ -176,11 +176,25 @@ where
                     "{} loses positive water proof",
                     row.id
                 );
-                contains(
+                let mirror = frozen::exact_mirror(row.id)?;
+                frozen::water_enclosed(
                     water[i],
-                    reference.water.ok_or("Flux water truth absent")?,
+                    reference
+                        .water
+                        .ok_or("Flux water truth absent")?
+                        .map(f64::from_bits),
+                    mirror,
                     row.id,
                 );
+                let owner = i64::try_from(i)?;
+                for point in &owning.selected {
+                    let owners = point.invocation_owner.try_to_vec::<i64>()?;
+                    let reflected = point.reflected.try_to_vec::<f64>()?;
+                    if let Some(position) = owners.iter().position(|value| *value == owner) {
+                        let expected = if mirror { 1. } else { 0. };
+                        assert_eq!(reflected[position], expected, "{} reflection", row.id);
+                    }
+                }
                 contains(
                     momentum[i],
                     reference.momentum.ok_or("Flux momentum truth absent")?,

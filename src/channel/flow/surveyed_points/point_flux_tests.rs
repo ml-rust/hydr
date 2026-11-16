@@ -25,6 +25,8 @@ mod precision;
 mod pressure;
 #[path = "point_flux_tests_quantum.rs"]
 mod quantum;
+#[path = "point_flux_tests_reflection.rs"]
+mod reflection;
 
 fn basic<R>(client: &R::Client) -> Result
 where
@@ -108,4 +110,17 @@ fn actual_cuda_point_fluxes_select_coherent_conserved_states() -> Result {
     basic::<CudaRuntime>(&client)?;
     corpus::run::<CudaRuntime>(&client, Coverage::Sample)?;
     controller::run::<CudaRuntime>(&client)
+}
+
+#[test]
+fn configured_cpu_point_fluxes_reflect_exact_mirror_faces() -> Result {
+    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime};
+    reflection::run::<CpuRuntime>(&CpuClient::new(CpuDevice::new()), Coverage::Full)
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn actual_cuda_point_fluxes_reflect_exact_mirror_faces() -> Result {
+    use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+    reflection::run::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?, Coverage::Sample)
 }

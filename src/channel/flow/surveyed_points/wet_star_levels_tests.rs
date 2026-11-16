@@ -33,10 +33,41 @@ where
     R: Runtime<DType = DType>,
     R::Client: frozen::Client<R>,
 {
+    section::<R>(
+        client,
+        "level_trapezoid",
+        [(0.0, 4.0), (4.0, 0.0), (8.0, 0.0), (12.0, 4.0)],
+    )
+}
+
+/// The integer trapezoid of the surveyed reach tests: a 2 m bed with 1:1 banks.
+pub(in crate::channel::flow::surveyed_points) fn integer_trapezoid<R>(
+    client: &R::Client,
+) -> Result<PrismaticSectionBatch<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: frozen::Client<R>,
+{
+    section::<R>(
+        client,
+        "integer_trapezoid",
+        [(-5.0, 4.0), (-1.0, 0.0), (1.0, 0.0), (5.0, 4.0)],
+    )
+}
+
+fn section<R>(
+    client: &R::Client,
+    id: &str,
+    points: [(f64, f64); 4],
+) -> Result<PrismaticSectionBatch<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: frozen::Client<R>,
+{
     let definition = CrossSectionDefinition {
-        id: "level_trapezoid".into(),
+        id: id.into(),
         vertical_datum: "Exact trapezoid datum".into(),
-        points: [(0.0, 4.0), (4.0, 0.0), (8.0, 0.0), (12.0, 4.0)]
+        points: points
             .into_iter()
             .map(|(station_m, elevation_m)| CrossSectionPoint {
                 station_m,
@@ -53,6 +84,16 @@ where
 /// The double rarefaction has the exact star discharge 0.
 pub(in crate::channel::flow::surveyed_points) const MIRROR: [[f64; 4]; 1] =
     [[12.0, -36.0, 12.0, 36.0]];
+
+/// Exact mirror faces a wall builds on `integer_trapezoid` with 4 m cells.
+/// Area is V/4 and discharge is M/4, both exact.
+/// One moving cell (V=12, M=36) between walls has a rarefying left face and a colliding
+/// right face. A fast shallow cell (V=2, M=40) meets the right wall.
+pub(in crate::channel::flow::surveyed_points) const WALLS: [(&str, [f64; 4]); 3] = [
+    ("single cell left wall", [3.0, -9.0, 3.0, 9.0]),
+    ("single cell right wall", [3.0, 9.0, 3.0, -9.0]),
+    ("sources right wall", [0.5, 10.0, 0.5, -10.0]),
+];
 
 fn config() -> PrismaticRiemannConfig {
     PrismaticRiemannConfig::default()

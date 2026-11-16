@@ -250,6 +250,7 @@ where
             momentum_arithmetic,
             momentum_evaluation,
             momentum_projection,
+            reflected: Tensor::zeros(operand.owners.shape(), a.dtype(), c.device())?,
         })
     })
 }
@@ -364,6 +365,7 @@ where
             momentum_arithmetic: expansion!(),
             momentum_evaluation: interval!(),
             momentum_projection: interval!(),
+            reflected: zero.clone(),
         })
     })
 }

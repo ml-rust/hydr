@@ -14,7 +14,8 @@ pub(super) enum PointFluxStatus {
     WorkLimit = 4,
     /// Only the controller reports this: a refined star or sonic root stays unresolved.
     RootBracketUnresolved = 5,
-    /// Only the controller reports this: a possible wave branch lacks a certified speed.
+    /// A possible wave branch lacks a certified speed, or the reflection identity cannot
+    /// certify an exact mirror face.
     WaveEnvelopeUnresolved = 6,
 }
 
@@ -70,6 +71,9 @@ pub(super) struct SelectedPointFlux<R: Runtime<DType = DType>> {
     pub(super) momentum_arithmetic: CertifiedExpansion<R>,
     pub(super) momentum_evaluation: Interval<R>,
     pub(super) momentum_projection: Interval<R>,
+    /// One where the reflection identity replaced the discharge, velocity and momentum.
+    /// The evaluation fields above keep their evaluated values.
+    pub(super) reflected: Tensor<R>,
 }
 
 #[cfg_attr(not(test), expect(dead_code, reason = "tests read it"))]

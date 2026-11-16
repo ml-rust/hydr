@@ -1,15 +1,13 @@
 use super::super::super::{
     corpus_coverage::Coverage,
-    point_flux_types::PointFluxStatus,
     point_output::{PrismaticPointRiemannResult, PrismaticPointTraceKind},
-    point_quadrature_types::PointQuadratureOutcome as QuadratureOutcome,
-    point_root_session::PointRootSession,
     source_tests::support::{self as frozen, Result, hydraulic},
     wet_depth::tests::support,
-    wet_star_levels::tests::{MIRROR, trapezoid},
+    wet_star_levels::tests::{MIRROR, WALLS, integer_trapezoid, trapezoid},
 };
-use crate::channel::flow::surveyed::{
-    PrismaticRiemannConfig, PrismaticRiemannError, PrismaticRiemannRejection,
+use crate::channel::{
+    flow::surveyed::{PrismaticRiemannConfig, PrismaticRiemannError, error::checked},
+    section::PrismaticSectionBatch,
 };
 use numr::{dtype::DType, runtime::Runtime};
 
@@ -33,13 +31,16 @@ fn config() -> PrismaticRiemannConfig {
     }
 }
 
-/// One public call on the exact trapezoid, with every face on section 0.
-fn call<R>(client: &R::Client, states: &[[f64; 4]]) -> Result<Outcome<R>>
+/// One public call with every face on section 0.
+fn call<R>(
+    client: &R::Client,
+    section: &PrismaticSectionBatch<R>,
+    states: &[[f64; 4]],
+) -> Result<Outcome<R>>
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
 {
-    let section = trapezoid::<R>(client)?;
     let owners = support::rows::<R>(client, &vec![0; states.len()])?;
     let inputs = (0..4)
         .map(|field| {
@@ -70,6 +71,7 @@ fn within(value: [f64; 2]) -> bool {
 /// Accepted faces carry the expected trace kinds and flux bounds within the allowances.
 fn accepted<R>(
     client: &R::Client,
+    section: &PrismaticSectionBatch<R>,
     label: &str,
     states: &[[f64; 4]],
     kinds: &[PrismaticPointTraceKind],
@@ -78,7 +80,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
 {
-    let result = call::<R>(client, states)?
+    let result = call::<R>(client, section, states)?
         .map_err(|error| format!("{label} rejects at the public entry: {error:?}"))?;
     let codes = result.trace_kind().try_to_vec::<i64>()?;
     let actual = codes
@@ -117,7 +119,14 @@ where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
 {
-    let result = accepted::<R>(client, "gate", &[GATE], &[PrismaticPointTraceKind::Star])?;
+    let section = trapezoid::<R>(client)?;
+    let result = accepted::<R>(
+        client,
+        &section,
+        "gate",
+        &[GATE],
+        &[PrismaticPointTraceKind::Star],
+    )?;
     assert!(result.work().refinements >= 1);
     Ok(())
 }
@@ -129,10 +138,24 @@ where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
 {
-    let star = accepted::<R>(client, "gate", &[GATE], &[PrismaticPointTraceKind::Star])?;
-    let fan = accepted::<R>(client, "fan", &[FAN], &[PrismaticPointTraceKind::LeftFan])?;
+    let section = trapezoid::<R>(client)?;
+    let star = accepted::<R>(
+        client,
+        &section,
+        "gate",
+        &[GATE],
+        &[PrismaticPointTraceKind::Star],
+    )?;
+    let fan = accepted::<R>(
+        client,
+        &section,
+        "fan",
+        &[FAN],
+        &[PrismaticPointTraceKind::LeftFan],
+    )?;
     let both = accepted::<R>(
         client,
+        &section,
         "gate and fan",
         &[GATE, FAN],
         &[
@@ -146,43 +169,54 @@ where
     Ok(())
 }
 
-/// The exact mirror stops at its residual floor: its star continuation ends over budget.
+/// Exact mirror faces take the reflection identity at the public entry: zero water in every
+/// component, and a selected momentum inside its bound.
 fn mirror<R>(client: &R::Client) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: support::DepthClient<R>,
 {
-    let config = config();
-    let section = trapezoid::<R>(client)?;
-    support::with_section::<R, _>(client, &section, &MIRROR, &config, |pair, work| {
-        let owners = support::rows::<R>(client, &[0])?;
-        let mut session = hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
-        let result = hydraulic(session.resolve_point_fluxes(&owners))?;
-        let outcome = result.star_outcome.try_to_vec::<i64>()?;
-        let level = result.star_level.try_to_vec::<i64>()?;
-        eprintln!(
-            "POINT_RIEMANN_STAR\tmirror\trounds={}\tstar_outcome={outcome:?}\tstar_level={level:?}",
-            result.rounds
-        );
-        assert_eq!(
-            result.status.try_to_vec::<i64>()?,
-            [PointFluxStatus::FluxBudgetExceeded as i64]
-        );
-        // The star stops at the last admissible level and names the level ceiling.
-        assert_eq!(outcome, [QuadratureOutcome::LevelLimit as i64]);
-        assert_eq!(level, [i64::try_from(config.max_refinements)?]);
-        assert_eq!(result.sonic_level.try_to_vec::<i64>()?, [-1]);
-        assert_eq!(session.callback_points(), work.snapshot().residual_points);
-        Ok(())
-    })?;
-    match call::<R>(client, &MIRROR)? {
-        Err(PrismaticRiemannError::Rejected { reason, query, .. }) => {
-            assert_eq!(reason, PrismaticRiemannRejection::FluxBudgetExceeded);
-            assert_eq!(query, Some(0));
-            Ok(())
+    let level = trapezoid::<R>(client)?;
+    let integer = integer_trapezoid::<R>(client)?;
+    let faces = std::iter::once((&level, "mirror", MIRROR[0])).chain(
+        WALLS
+            .into_iter()
+            .map(|(label, state)| (&integer, label, state)),
+    );
+    for (section, label, state) in faces {
+        let result = accepted::<R>(
+            client,
+            section,
+            label,
+            &[state],
+            &[PrismaticPointTraceKind::Star],
+        )?;
+        for value in [
+            result.water_flux_m3_per_s(),
+            result.trace_discharge_m3_per_s(),
+        ] {
+            assert_eq!(frozen::components(value)?, [[0; 3]], "{label}");
         }
-        other => Err(format!("mirror returns {:?}", other.err()).into()),
+        for water in [
+            result.water_flux_bound_m3_per_s(),
+            result.physical_water_flux_m3_per_s(),
+        ] {
+            for value in [water.lower(), water.upper()] {
+                let bits = value.try_to_vec::<f64>()?.into_iter().map(f64::to_bits);
+                assert_eq!(bits.collect::<Vec<_>>(), [0], "{label}");
+            }
+        }
+        let bound = frozen::endpoints(result.momentum_flux_bound_m4_per_s2())?[0];
+        let selected = hydraulic(checked::<R, _>(client, "mirror momentum point", |a| {
+            Ok(a.expansion_interval(result.momentum_flux_m4_per_s2())?)
+        }))?;
+        let selected = frozen::endpoints(&selected)?[0];
+        assert!(
+            bound[0] <= selected[0] && selected[1] <= bound[1],
+            "{label} momentum {selected:?} outside {bound:?}"
+        );
     }
+    Ok(())
 }
 
 pub(super) fn run<R>(client: &R::Client, coverage: Coverage) -> Result

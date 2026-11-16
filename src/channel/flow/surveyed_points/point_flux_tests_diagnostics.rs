@@ -121,6 +121,11 @@ where
         let j_pure = frozen::endpoints(&j_pure)?;
         let j_eval = frozen::endpoints(&point.momentum_evaluation)?;
         let depth = frozen::endpoints(&point.depth)?;
+        let reflected = point.reflected.try_to_vec::<f64>()?;
+        let chosen_pressure = match &point.pressure {
+            Some(pressure) => Some(frozen::components(&pressure.chosen)?),
+            None => None,
+        };
         for value in [
             &point.area_discrepancy,
             &point.area_projection,
@@ -144,6 +149,22 @@ where
             assert_eq!(&area[row][..2], &area_evaluation[row][..2]);
             assert_eq!(&q_proposal[row][..2], &q_evaluation[row][..2]);
             assert_eq!(q_proposal[row][2], 0);
+            if reflected[row] == 1. {
+                // The reflection identity holds zero water and pressure-only momentum.
+                assert_eq!(discharge[row], [0; 3]);
+                assert_eq!(velocity[row], [0; 3]);
+                assert_eq!(joint_q[output], [0., 0.]);
+                assert_eq!(physical_q[output], [0., 0.]);
+                assert!(q_physical[row][0] <= 0. && 0. <= q_physical[row][1]);
+                match &chosen_pressure {
+                    Some(chosen) => assert_eq!(momentum[row], chosen[row]),
+                    None => assert_eq!(momentum[row], [0; 3]),
+                }
+                encloses(joint_j[output], j_bounds[row]);
+                encloses(joint_j[output], j_eval[row]);
+                continue;
+            }
+            assert_eq!(reflected[row], 0.);
             if q_contained[row] == 1. {
                 assert_eq!(discharge[row], q_proposal[row]);
             } else {

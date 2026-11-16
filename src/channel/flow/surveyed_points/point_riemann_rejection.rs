@@ -124,7 +124,7 @@ where
     } else if status == PointFluxStatus::WaveEnvelopeUnresolved as i64 {
         rejected(
             PrismaticRiemannRejection::SamplingUnresolved,
-            "a possible wave branch lacks a certified signal speed. Inspect the wave certificates"
+            "a possible wave branch lacks a certified signal speed, or an exact mirror face has water bounds that exclude 0, a trace that is neither star nor dry, or a pressure enclosure outside its momentum bound. Inspect the wave certificates and the selected trace"
                 .into(),
         )?
     } else {

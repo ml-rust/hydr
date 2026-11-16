@@ -200,3 +200,41 @@ pub(in crate::channel::flow::surveyed_points) fn zero(point: [u64; 3], label: &s
         "{label}: {point:x?}"
     );
 }
+
+/// True when a case's captured states are exact mirrors: both sides wet, equal areas in every
+/// component, and discharges that are exact negatives with equal radii.
+pub(in crate::channel::flow::surveyed_points) fn exact_mirror(id: &str) -> Result<bool> {
+    let case = cases()
+        .iter()
+        .find(|case| case.id == id)
+        .ok_or("Missing frozen point source")?;
+    let [left_area, left_q, right_area, right_q] =
+        case.inputs.map(|point| point.map(f64::from_bits));
+    Ok(left_area[0] > 0.0
+        && left_area == right_area
+        && left_q[0] == -right_q[0]
+        && left_q[1] == -right_q[1]
+        && left_q[2] == right_q[2])
+}
+
+/// A mirror face holds the exact water value +0.0, which the independent truth must enclose.
+/// Every other face's water bound encloses the truth.
+pub(in crate::channel::flow::surveyed_points) fn water_enclosed(
+    actual: [f64; 2],
+    truth: [f64; 2],
+    mirror: bool,
+    label: &str,
+) {
+    if mirror {
+        assert_eq!(actual.map(f64::to_bits), [0, 0], "{label}: {actual:?}");
+        assert!(
+            truth[0] <= 0.0 && 0.0 <= truth[1],
+            "{label}: {truth:?} excludes the mirror value 0"
+        );
+    } else {
+        assert!(
+            actual[0] <= truth[0] && truth[1] <= actual[1],
+            "{label}: {actual:?} excludes {truth:?}"
+        );
+    }
+}

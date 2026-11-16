@@ -47,6 +47,7 @@ mod point_flux_operands;
 mod point_flux_pressure;
 mod point_flux_projection;
 mod point_flux_quantum;
+mod point_flux_reflection;
 mod point_flux_selection;
 mod point_flux_support;
 mod point_flux_support_metrics;

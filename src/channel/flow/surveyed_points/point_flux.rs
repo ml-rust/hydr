@@ -228,21 +228,35 @@ where
         }
         checked::<R, _>(c, "point flux unchanged full-width acceptance", |a| {
             let owners = &candidates.invocation_owner;
-            let physical_water = physical.water;
+            let mut physical_water = physical.water;
             let physical_momentum = physical.momentum;
-            let joint_water = joint.water;
+            let mut joint_water = joint.water;
             let joint_momentum = joint.momentum;
+            let zero = Tensor::zeros(owners.shape(), a.dtype(), c.device())?;
+            let physical_valid =
+                c.mul(&complete, &c.mul(&physical.seen, &c.eq(&pending, &zero)?)?)?;
+            let joint_valid = c.mul(&chosen, &physical_valid)?;
+            let ready = &joint_valid;
+            let unreflected = super::point_flux_reflection::apply(
+                a,
+                self.sources.velocity.input(),
+                &self.invocation_rows,
+                super::point_flux_reflection::ReflectedFaces {
+                    owners,
+                    association: &association,
+                    ready,
+                    physical_water: &mut physical_water,
+                    joint_water: &mut joint_water,
+                    joint_momentum: &joint_momentum,
+                },
+                &mut selected,
+            )?;
             let accepted = crate::channel::flow::surveyed::acceptance::flux_acceptance_mask(
                 a,
                 &joint_water,
                 &joint_momentum,
                 self.sources.evaluation.config,
             )?;
-            let zero = Tensor::zeros(owners.shape(), a.dtype(), c.device())?;
-            let physical_valid =
-                c.mul(&complete, &c.mul(&physical.seen, &c.eq(&pending, &zero)?)?)?;
-            let joint_valid = c.mul(&chosen, &physical_valid)?;
-            let ready = &joint_valid;
             let status = Tensor::full_scalar(
                 owners.shape(),
                 DType::I64,
@@ -278,6 +292,17 @@ where
                         )?,
                         &status,
                     )?,
+                )?,
+                &status,
+            )?;
+            // A mirror face the reflection identity cannot certify has an unresolved trace.
+            let status = c.where_cond(
+                &c.gt(&unreflected, &zero)?,
+                &Tensor::full_scalar(
+                    owners.shape(),
+                    DType::I64,
+                    PointFluxStatus::WaveEnvelopeUnresolved as i64 as f64,
+                    c.device(),
                 )?,
                 &status,
             )?;
