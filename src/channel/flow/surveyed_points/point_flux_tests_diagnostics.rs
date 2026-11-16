@@ -23,6 +23,24 @@ where
             .check(&result.candidates.invocation_witness),
     )?;
     assert_eq!(result.callback_points, session.callback_points());
+    selection(session, result)
+}
+
+/// Checks one selection, which can be older than the latest session call.
+pub(super) fn selection<R>(
+    session: &PointRootSession<'_, '_, R>,
+    result: &PointFluxCertificates<R>,
+) -> Result
+where
+    R: Runtime<DType = DType>,
+    R::Client: support::DepthClient<R>,
+{
+    hydraulic(
+        session
+            .invocation
+            .check(&result.candidates.invocation_witness),
+    )?;
+    assert!(result.callback_points <= session.callback_points());
     assert_eq!(result.point_limit, session.point_limit());
     let requested = result.candidates.invocation_owner.try_to_vec::<i64>()?;
     let parents = result.candidates.parent_rows.try_to_vec::<i64>()?;

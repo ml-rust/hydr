@@ -24,7 +24,7 @@ mod ownership;
 #[path = "source_sonic_quadrature_tests_support.rs"]
 mod snapshots;
 
-const CASES: [&str; 7] = [
+pub(in crate::channel::flow::surveyed_points) const CASES: [&str; 7] = [
     "scalar_trapezoid_depth_jump",
     "scalar_three_bands_depth_jump",
     "scalar_three_bands_both_knots_dry_fan",

@@ -23,7 +23,8 @@ pub struct PrismaticRiemannWork {
     pub simpson_value_points: usize,
     /// Actual Simpson derivative-bound callback points across all integration calls.
     pub simpson_derivative_points: usize,
-    /// Executed global panel-doubling rounds after the initial solve.
+    /// Executed refinement rounds after the initial solve.
+    /// A round is one global panel doubling, or one point-flux controller round that advanced a sonic fan.
     pub refinements: usize,
     /// Largest panel count executed for one active band contribution.
     pub maximum_simpson_panels: usize,

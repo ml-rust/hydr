@@ -2,15 +2,16 @@ use super::super::super::{
     point_candidates::tests::{fixtures, flux_fixtures},
     point_flux_types::PointFluxStatus,
     point_root_session::PointRootSession,
+    source_sonic_quadrature::tests::CASES,
 };
-use super::{chart_test_support, frozen, hydraulic, support};
+use super::{chart_test_support, controller, frozen, hydraulic, support};
 use crate::channel::flow::{
     surveyed::error::{HydraulicError, PrismaticRiemannRejection},
     surveyed_points::corpus_coverage::Coverage,
 };
 use frozen::Result;
 use numr::{dtype::DType, runtime::Runtime};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn run<R>(client: &R::Client, coverage: Coverage) -> Result
 where
@@ -25,7 +26,9 @@ where
         .map(|r| (r.id, r))
         .collect::<BTreeMap<_, _>>();
     assert_eq!(references.len(), 70);
-    let mut outcomes = [0_usize; 4];
+    let mut outcomes = [0_usize; 6];
+    let mut baseline = [0_usize; 4];
+    let mut baseline_exceeded = BTreeSet::new();
     let mut evaluated = 0;
     let mut caps = 0;
     let mut work_limits = 0;
@@ -49,7 +52,7 @@ where
                 &parents,
                 config.root.max_points,
             ))?;
-            let result = session.select_point_fluxes(&parents);
+            let result = session.resolve_point_fluxes(&parents);
             if rows.iter().all(|row| row.outcome == "WorkLimit") {
                 assert!(matches!(
                     result,
@@ -62,36 +65,29 @@ where
                 assert_eq!(work.snapshot().residual_points, 0);
                 return Ok(());
             }
-            let mut result = hydraulic(result)?;
-            let initial_status = result.status.try_to_vec::<i64>()?;
-            let initial_owners = result.candidates.invocation_owner.try_to_vec::<i64>()?;
-            let blocked = initial_owners
-                .iter()
-                .zip(&initial_status)
-                .filter_map(|(owner, status)| {
-                    (*status == PointFluxStatus::PendingPositiveArea as i64).then_some(*owner)
-                })
-                .collect::<Vec<_>>();
-            if !blocked.is_empty() {
-                let requested = support::rows::<R>(client, &blocked)?;
-                let support = hydraulic(session.advance_point_flux_positive_support(&requested))?;
-                hydraulic(
-                    session
-                        .invocation
-                        .check(&support.candidates.invocation_witness),
-                )?;
+            let result = hydraulic(result)?;
+            if let Some(support) = &result.positive_support {
                 eprintln!(
-                    "POINT_FLUX_POSITIVE_SUPPORT\towners={blocked:?}\toutcomes={:?}\tprogress={:?}\tattempts={:?}\tadditional_points={}",
+                    "POINT_FLUX_POSITIVE_SUPPORT\towners={:?}\toutcomes={:?}\tprogress={:?}\tattempts={:?}\tadditional_points={}",
+                    support.candidates.invocation_owner.try_to_vec::<i64>()?,
                     support.status.try_to_vec::<i64>()?,
                     support.progressed.try_to_vec::<f64>()?,
                     support.attempts.try_to_vec::<i64>()?,
                     support.additional_points
                 );
-                assert_eq!(support.callback_points, session.callback_points());
+                assert!(support.callback_points <= session.callback_points());
                 assert_eq!(support.point_limit, config.root.max_points);
-                result = hydraulic(session.select_point_fluxes(&parents))?;
             }
-            super::diagnostics::check(&session, &result)?;
+            controller::coherent(&session, &result)?;
+            assert_eq!(
+                result.invocation_owner.try_to_vec::<i64>()?,
+                parents.try_to_vec::<i64>()?
+            );
+            assert!(result.rounds <= config.max_refinements);
+            assert_eq!(work.snapshot().refinements, result.rounds);
+            let initial = controller::baseline(&result)?;
+            let levels = result.sonic_level.try_to_vec::<i64>()?;
+            let selection = result.selection.try_to_vec::<i64>()?;
             let status = result.status.try_to_vec::<i64>()?;
             let water = frozen::endpoints(&result.physical_water)?;
             let momentum = frozen::endpoints(&result.physical_momentum)?;
@@ -107,9 +103,11 @@ where
                 assert_eq!(row.group, reference.physical_group);
                 assert_eq!(row.outcome, reference.outcome);
                 eprintln!(
-                    "POINT_FLUX_ROW\t{}\tstatus={}\tphysical_q={:?}\tphysical_j={:?}\tjoint_q={:?}\tjoint_j={:?}\tpoints={}",
+                    "POINT_FLUX_ROW\t{}\tstatus={}\tinitial={}\tlevel={}\tphysical_q={:?}\tphysical_j={:?}\tjoint_q={:?}\tjoint_j={:?}\tpoints={}",
                     row.id,
                     status[i],
+                    initial[i],
+                    levels[i],
                     water[i],
                     momentum[i],
                     joint_q[i],
@@ -124,6 +122,10 @@ where
                     caps += 1;
                     continue;
                 }
+                let owning = result
+                    .selections
+                    .get(usize::try_from(selection[i])?)
+                    .ok_or("Face names an absent selection")?;
                 assert_ne!(
                     status[i],
                     PointFluxStatus::PendingCandidates as i64,
@@ -132,7 +134,7 @@ where
                 );
                 if status[i] == PointFluxStatus::PendingPositiveArea as i64 {
                     let owner = i64::try_from(i)?;
-                    for candidate in &result.candidates.candidates {
+                    for candidate in &owning.candidates.candidates {
                         if let super::super::super::point_candidate_types::PointCandidate::Fan(
                             fan,
                         ) = candidate
@@ -187,7 +189,7 @@ where
                 if reference.positive_water_required {
                     let owner = i64::try_from(i)?;
                     let mut positive = false;
-                    for point in &result.selected {
+                    for point in &owning.selected {
                         let owners = point.invocation_owner.try_to_vec::<i64>()?;
                         let bounds =
                             hydraulic(crate::channel::flow::surveyed::error::checked::<R, _>(
@@ -222,7 +224,7 @@ where
                     } else if declaration.quantity == "sampled_pressure" {
                         let mut pressure_bounds = None;
                         let owner = i64::try_from(i)?;
-                        for point in &result.selected {
+                        for point in &owning.selected {
                             let owners = point.invocation_owner.try_to_vec::<i64>()?;
                             if let Some(position) = owners.iter().position(|value| *value == owner)
                             {
@@ -247,14 +249,20 @@ where
                         declaration.quantity
                     );
                 }
-                if status[i] == PointFluxStatus::FluxBudgetExceeded as i64 {
-                    eprintln!(
-                        "POINT_FLUX_NEEDS_CONTINUATION\t{}\tjoint_q_width={:e}\tjoint_j_width={:e}",
+                if CASES.contains(&row.id) {
+                    assert!(
+                        levels[i] >= 1 && usize::try_from(levels[i])? <= config.max_refinements,
+                        "{} ends at sonic level {}",
                         row.id,
-                        joint_q[i][1] - joint_q[i][0],
-                        joint_j[i][1] - joint_j[i][0]
+                        levels[i]
                     );
+                } else {
+                    assert_eq!(levels[i], -1, "{} advances outside the sonic cases", row.id);
                 }
+                if initial[i] == PointFluxStatus::FluxBudgetExceeded as i64 {
+                    baseline_exceeded.insert(row.id);
+                }
+                baseline[usize::try_from(initial[i])?] += 1;
                 outcomes[usize::try_from(status[i])?] += 1;
                 evaluated += 1;
             }
@@ -264,11 +272,22 @@ where
         })?;
     }
     assert_eq!(evaluated + caps + work_limits, executions.len());
+    assert_eq!(
+        outcomes[PointFluxStatus::Accepted as usize],
+        evaluated,
+        "Evaluated rows stay unaccepted: {outcomes:?}"
+    );
+    assert!(baseline_exceeded.iter().all(|id| CASES.contains(id)));
     if coverage.is_full() {
         assert_eq!([evaluated, caps, work_limits], [66, 3, 1]);
+        assert_eq!(baseline, [59, 0, 0, 7]);
+        assert_eq!(
+            baseline_exceeded,
+            CASES.into_iter().collect::<BTreeSet<_>>()
+        );
     }
     eprintln!(
-        "POINT_FLUX_SUMMARY\tevaluated={evaluated}\tcap={caps}\twork={work_limits}\tstatuses={outcomes:?}"
+        "POINT_FLUX_SUMMARY\tevaluated={evaluated}\tcap={caps}\twork={work_limits}\tbaseline={baseline:?}\tstatuses={outcomes:?}"
     );
     Ok(())
 }

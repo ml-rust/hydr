@@ -10,6 +10,10 @@ pub(super) enum PointFluxStatus {
     PendingCandidates = 1,
     PendingPositiveArea = 2,
     FluxBudgetExceeded = 3,
+    /// Only the controller reports this: the sonic continuation reached its work ceiling.
+    WorkLimit = 4,
+    /// Only the controller reports this: the refined sonic root stays unresolved.
+    RootBracketUnresolved = 5,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,5 +103,32 @@ pub(super) struct PointPositiveSupport<R: Runtime<DType = DType>> {
     pub(super) attempts: Tensor<R>,
     pub(super) callback_points: usize,
     pub(super) additional_points: usize,
+    pub(super) point_limit: usize,
+}
+
+/// Face-order fluxes after the sonic-fan continuation.
+/// Each face keeps the values of its last selection, taken from one coherent trace.
+pub(super) struct ResolvedPointFluxes<R: Runtime<DType = DType>> {
+    pub(super) invocation_owner: Tensor<R>,
+    /// `PointFluxStatus` codes, including the controller-only codes.
+    pub(super) status: Tensor<R>,
+    pub(super) physical_valid: Tensor<R>,
+    pub(super) joint_valid: Tensor<R>,
+    pub(super) physical_water: Interval<R>,
+    pub(super) physical_momentum: Interval<R>,
+    pub(super) joint_water: Interval<R>,
+    pub(super) joint_momentum: Interval<R>,
+    /// I64 index into `selections` of the selection that owns each face.
+    pub(super) selection: Tensor<R>,
+    /// Every executed selection, in call order.
+    pub(super) selections: Vec<PointFluxCertificates<R>>,
+    /// Last `SourceSonicQuadratureOutcome` per face. `NotApplicable` when never advanced.
+    pub(super) sonic_outcome: Tensor<R>,
+    /// Sonic panel level per face after its last advance. -1 when never advanced.
+    pub(super) sonic_level: Tensor<R>,
+    pub(super) positive_support: Option<PointPositiveSupport<R>>,
+    /// Controller rounds in which at least one face advanced.
+    pub(super) rounds: usize,
+    pub(super) callback_points: usize,
     pub(super) point_limit: usize,
 }

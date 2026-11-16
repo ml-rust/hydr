@@ -148,4 +148,4 @@ fn mapped<R: Runtime<DType = DType>>(
 
 #[cfg(test)]
 #[path = "source_sonic_quadrature_tests.rs"]
-mod tests;
+pub(in crate::channel::flow::surveyed_points) mod tests;

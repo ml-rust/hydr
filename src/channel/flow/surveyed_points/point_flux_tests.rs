@@ -9,6 +9,8 @@ use super::super::{
 use frozen::{Result, hydraulic};
 use numr::{dtype::DType, runtime::Runtime};
 
+#[path = "point_flux_tests_controller.rs"]
+mod controller;
 #[path = "point_flux_tests_controls.rs"]
 mod controls;
 #[path = "point_flux_tests_corpus.rs"]
@@ -91,6 +93,7 @@ fn configured_cpu_point_fluxes_select_coherent_conserved_states() -> Result {
     basic::<CpuRuntime>(&client)?;
     corpus::run::<CpuRuntime>(&client, Coverage::Full)?;
     controls::run::<CpuRuntime>(&client)?;
+    controller::run::<CpuRuntime>(&client)?;
     positive_support::run::<CpuRuntime>(&client)?;
     assert_eq!(client.parallelism(), config);
     assert_eq!(original.parallelism(), before);
@@ -103,5 +106,6 @@ fn actual_cuda_point_fluxes_select_coherent_conserved_states() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
     let client = CudaClient::new(CudaDevice::new(0))?;
     basic::<CudaRuntime>(&client)?;
-    corpus::run::<CudaRuntime>(&client, Coverage::Sample)
+    corpus::run::<CudaRuntime>(&client, Coverage::Sample)?;
+    controller::run::<CudaRuntime>(&client)
 }

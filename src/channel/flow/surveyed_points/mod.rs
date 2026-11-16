@@ -36,6 +36,7 @@ mod point_flux_admission;
 mod point_flux_arithmetic;
 mod point_flux_assembly;
 mod point_flux_association;
+mod point_flux_controller;
 mod point_flux_operands;
 mod point_flux_pressure;
 mod point_flux_projection;
