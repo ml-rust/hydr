@@ -1,5 +1,8 @@
 //! Device-resident link counters and the receipt of the last accepted common interval.
 
+use super::SurfaceChannelForcingInterval;
+use crate::channel::ChannelReach;
+use crate::solver::Solver;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -27,8 +30,21 @@ pub(super) struct StepTotals {
     pub mass_bound_m3: f64,
 }
 
+/// Accepted children and counters at the start of the last interval.
+///
+/// The children carry no coordinator receipt, so the frame never nests.
+pub(super) struct PreviousFrame<R: Runtime<DType = DType>> {
+    pub surface: Solver<R>,
+    /// Reaches in setup order.
+    pub reaches: Vec<ChannelReach<R>>,
+    pub counters: LinkCounters<R>,
+}
+
 /// Receipt of the last accepted interval. Link tensors are `[L]` in identity order.
 pub(super) struct StoredStep<R: Runtime<DType = DType>> {
+    pub previous: PreviousFrame<R>,
+    /// Caller channel forcing exactly as the trial received it.
+    pub forcing: SurfaceChannelForcingInterval,
     pub start_s: f64,
     pub end_s: f64,
     pub requested_end_s: f64,

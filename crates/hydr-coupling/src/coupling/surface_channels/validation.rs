@@ -5,6 +5,7 @@ use super::{
     SURFACE_CHANNEL_TANGENT_TOLERANCE, SurfaceChannelError, SurfaceChannelLink, SurfaceChannelSetup,
 };
 use crate::channel::ChannelReachDefinition;
+use crate::solver::ForcingSchedule;
 use crate::structures::SuppressedRectangularWeirParameters;
 use hydr_channel::internal::SURFACE_EXCHANGE_BINDING_PREFIX;
 use std::collections::{BTreeMap, BTreeSet};
@@ -143,6 +144,15 @@ impl SurfaceChannelDefinition {
     /// Immutable caller setup.
     pub fn setup(&self) -> &SurfaceChannelSetup {
         &self.setup
+    }
+
+    /// This definition with `forcing` as the surface forcing schedule.
+    ///
+    /// Forcing enters no coordinator check, so the checked links and reaches carry over.
+    pub(super) fn with_surface_forcing(&self, forcing: ForcingSchedule) -> Self {
+        let mut definition = self.clone();
+        definition.setup.surface.forcing = forcing;
+        definition
     }
 
     /// Coordinator definition of the named reach, with synthesized bindings appended.

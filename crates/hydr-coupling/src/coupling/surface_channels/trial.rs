@@ -5,7 +5,7 @@ use super::batch::SurfaceChannelBatch;
 use super::evaluate::advanced;
 use super::forcing::BoundForcing;
 use super::start::Start;
-use super::state::StoredStep;
+use super::state::{PreviousFrame, StoredStep};
 use super::{SurfaceChannelError, SurfaceChannelForcingInterval, SurfaceChannelStepDiagnostics};
 use crate::channel::{ChannelError, ChannelReach};
 use hydr_solver::internal::CouplingPreparation;
@@ -103,7 +103,7 @@ where
         let start = self.time_s;
         let requested = requested_end_s;
         let bound = BoundForcing::bind(&self.context, &reach_ids, start, requested, forcing)?;
-        let intervals = setup.surface.forcing.intervals();
+        let intervals = self.surface.coupling_forcing().intervals();
         let surface_end = intervals
             .get(intervals.partition_point(|interval| interval.end <= start))
             .map(|interval| interval.end)
@@ -140,7 +140,8 @@ where
                     reason: "common duration falls below minimum_step_s".into(),
                 });
             }
-            let error = match self.attempt(end, requested, retries, &operands, &reach_ids) {
+            let error = match self.attempt(end, requested, retries, &operands, &reach_ids, forcing)
+            {
                 Ok(next) => return Ok(SurfaceChannelTrial { next }),
                 Err(error) => error,
             };
@@ -197,6 +198,7 @@ where
         retries: usize,
         operands: &Start<R>,
         reach_ids: &[&str],
+        forcing: &SurfaceChannelForcingInterval,
     ) -> Result<Self, SurfaceChannelError> {
         let context = &self.context;
         let config = &self.definition.setup().config;
@@ -295,6 +297,12 @@ where
         }
         let c = &context.client;
         let step = StoredStep {
+            previous: PreviousFrame {
+                surface: self.surface.coupling_clone(),
+                reaches: self.reaches.clone(),
+                counters: self.counters.clone(),
+            },
+            forcing: forcing.clone(),
             start_s: start,
             end_s: end,
             requested_end_s: requested,
@@ -313,6 +321,7 @@ where
         Ok(Self {
             definition: Arc::clone(&self.definition),
             context: Arc::clone(&self.context),
+            initial: Arc::clone(&self.initial),
             time_s: end,
             surface,
             reaches,

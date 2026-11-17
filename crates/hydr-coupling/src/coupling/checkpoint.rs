@@ -4,6 +4,7 @@ use crate::channel::{CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelS
 use crate::runoff::{
     SUBCATCHMENT_CONTRACT_VERSION, SUBCATCHMENT_SNAPSHOT_SCHEMA, SubcatchmentSnapshotData,
 };
+use crate::solver::{CONTRACT_VERSION, SNAPSHOT_SCHEMA, SnapshotData};
 use crate::storage::{
     LEVEL_POOL_CONTRACT_VERSION, LEVEL_POOL_SNAPSHOT_SCHEMA, LevelPoolSnapshotData,
 };
@@ -29,6 +30,18 @@ pub(crate) fn channel(path: &str, data: &ChannelSnapshotData) -> Result<(), Stri
         CHANNEL_SNAPSHOT_SCHEMA,
         &data.contract,
         CHANNEL_CONTRACT_VERSION,
+    )
+    .map_err(|message| format!("{path}: {message}"))
+}
+
+/// Check a nested surface solver package. The error message starts with `path`.
+pub(crate) fn surface(path: &str, data: &SnapshotData) -> Result<(), String> {
+    package_identity(
+        "surface solver",
+        &data.schema,
+        SNAPSHOT_SCHEMA,
+        &data.contract,
+        CONTRACT_VERSION,
     )
     .map_err(|message| format!("{path}: {message}"))
 }

@@ -15,19 +15,28 @@
 //!
 //! Surface water entering a reach carries the surface velocity along the reach tangent.
 //! Channel water entering the surface carries the channel start velocity along the tangent.
+//!
+//! [`SurfaceChannelBatch::snapshot_data`] projects a [`SurfaceChannelSnapshotData`] package.
+//! [`SurfaceChannelBatch::import_snapshot`] and [`SurfaceChannelBatch::resume`] recalculate its
+//! last interval and compare every bit. The nested surface package restores only through them.
 
 mod accounting;
 mod batch;
 mod bindings;
+mod capture;
 mod context;
 mod definition;
 mod error;
 mod evaluate;
 mod exchange;
 mod forcing;
+mod frames;
+mod identity;
 mod iteration;
 mod output;
 mod projection;
+mod restoration;
+mod snapshot;
 mod start;
 mod state;
 mod trial;
@@ -43,6 +52,11 @@ pub use forcing::{SurfaceChannelForcingInterval, SurfaceChannelReachForcing};
 pub use output::{
     SurfaceChannelLinkLedger, SurfaceChannelLinkTransfer, SurfaceChannelStepDiagnostics,
     SurfaceChannelWaterBalance, SurfaceChannelWeirRegime,
+};
+pub use snapshot::{
+    SURFACE_CHANNEL_CONTRACT_VERSION, SURFACE_CHANNEL_SNAPSHOT_SCHEMA, SurfaceChannelCounterData,
+    SurfaceChannelIntervalSnapshotData, SurfaceChannelPreviousData, SurfaceChannelSetupData,
+    SurfaceChannelSnapshot, SurfaceChannelSnapshotData,
 };
 pub use trial::SurfaceChannelTrial;
 pub use validation::SurfaceChannelDefinition;

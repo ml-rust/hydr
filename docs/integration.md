@@ -244,7 +244,7 @@ Compatibility checks cover geometry, parameters, forcing, boundaries, controls, 
 
 Every snapshot package carries a `schema` and a `contract` identity. The schema names the package layout. The contract names the numerical contract.
 
-Each row names a component that also declares [capabilities](#read-component-capabilities).
+Each row except surface/channel names a component that also declares [capabilities](#read-component-capabilities).
 
 | Component | Package type | Schema constant (value) | Contract constant (value) | Import call | Nested packages |
 | --- | --- | --- | --- | --- | --- |
@@ -260,6 +260,7 @@ Each row names a component that also declares [capabilities](#read-component-cap
 | [Coupled level pool](coupled-level-pools.md) | `CoupledLevelPoolSnapshotData` | `COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-coupled-level-pool-checkpoint-1`) | `COUPLED_LEVEL_POOL_CONTRACT_VERSION` (`hydr-coupled-level-pool-numr-cpu-1`) | `CoupledLevelPoolBatch::restore_data` | Level pool |
 | [Channel pool](channel-pools.md) | `ChannelPoolSnapshotData` | `CHANNEL_POOL_SNAPSHOT_SCHEMA` (`hydr-channel-pool-checkpoint-1`) | `CHANNEL_POOL_CONTRACT_VERSION` (`hydr-channel-pool-numr-cpu-1`) | `ChannelPoolBatch::import_snapshot` | Channel (per reach), level pool |
 | [Runoff pool](runoff-pools.md) | `RunoffPoolSnapshotData` | `RUNOFF_POOL_SNAPSHOT_SCHEMA` (`hydr-runoff-pool-checkpoint-1`) | `RUNOFF_POOL_CONTRACT_VERSION` (`hydr-runoff-pool-numr-cpu-1`) | `RunoffPoolBatch::restore_data` | Subcatchment, coupled level pool |
+| Surface/channel | `SurfaceChannelSnapshotData` | `SURFACE_CHANNEL_SNAPSHOT_SCHEMA` (`hydr-surface-channel-checkpoint-1`) | `SURFACE_CHANNEL_CONTRACT_VERSION` (`hydr-surface-channel-numr-cpu-1`) | `SurfaceChannelBatch::import_snapshot`, `SurfaceChannelBatch::resume` | Surface solver, channel (per reach) |
 
 Import follows these rules:
 
@@ -274,6 +275,7 @@ Import follows these rules:
 | Component | Restart responsibility |
 | --- | --- |
 | Surface solver | Its checkpoint excludes network and operating-control state. Coordinated restoration with those components remains unsupported. Surface exchange with a channel is coordinator-only: `restore_data`, `restore`, and `resume` reject a package that carries exchange water. |
+| Surface/channel | The nested surface package restores only through `SurfaceChannelBatch`. Import recalculates the last interval and names the first differing field. `continue_surface_forcing` splices a forecast under the surface splice rule. |
 | [Sampled controls](operating-controls.md) and [gate actuators](gate-actuators.md) | Each exposes a separate complete snapshot. |
 | [Operating-source bindings](operating-sources.md) | Reconstruct immutable bindings from original definitions. Restore each actuator before supplying fresh point-query frames. |
 

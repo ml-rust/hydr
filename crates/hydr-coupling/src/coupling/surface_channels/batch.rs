@@ -22,6 +22,8 @@ use std::sync::Arc;
 pub struct SurfaceChannelBatch<R: Runtime<DType = DType>> {
     pub(super) definition: Arc<SurfaceChannelDefinition>,
     pub(super) context: Arc<Context<R>>,
+    /// Original common epoch and child states. Checkpoints carry it unchanged.
+    pub(super) initial: Arc<SurfaceChannelInitialState>,
     pub(super) time_s: f64,
     pub(super) surface: Solver<R>,
     /// Reaches in setup order.
@@ -48,7 +50,9 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
         &self.definition
     }
 
-    /// Immutable caller setup.
+    /// Caller setup. `surface.forcing` holds the forcing window the surface engine steps with.
+    ///
+    /// Construction keeps the supplied schedule. Continuation and resume hold the engine window.
     pub fn setup(&self) -> &SurfaceChannelSetup {
         self.definition.setup()
     }
@@ -117,6 +121,7 @@ where
         initial: SurfaceChannelInitialState,
     ) -> Result<Self, SurfaceChannelError> {
         let definition = SurfaceChannelDefinition::new(setup)?;
+        let original = Arc::new(initial.clone());
         let SurfaceChannelInitialState {
             time_s,
             surface,
@@ -155,6 +160,7 @@ where
         Ok(Self {
             definition: Arc::new(definition),
             context: Arc::new(context),
+            initial: original,
             time_s,
             surface,
             reaches,
@@ -166,7 +172,7 @@ where
 }
 
 /// Returns one reach state per setup reach, in setup order.
-fn order_reach_states(
+pub(super) fn order_reach_states(
     setup: &SurfaceChannelSetup,
     states: Vec<(String, ChannelInitialState)>,
     time_s: f64,
