@@ -1,7 +1,8 @@
 //! Private common state and bounded native continuation receipts.
 
-use crate::channel::{ChannelCouplingForcing, ChannelReach, ChannelSnapshot};
+use crate::channel::{ChannelReach, ChannelSnapshot};
 use crate::storage::{LevelPoolBatch, LevelPoolSnapshot};
+use hydr_channel::internal::ChannelCouplingForcing;
 use numr::{dtype::DType, runtime::Runtime, tensor::Tensor};
 use std::sync::Arc;
 

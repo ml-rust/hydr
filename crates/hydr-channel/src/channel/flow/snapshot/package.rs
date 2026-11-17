@@ -65,7 +65,8 @@ pub struct ChannelIntervalSnapshotData {
 }
 
 impl ChannelSnapshotData {
-    pub(crate) fn same_bits(&self, other: &Self) -> bool {
+    #[doc(hidden)]
+    pub fn same_bits(&self, other: &Self) -> bool {
         let interval = match (&self.last_interval, &other.last_interval) {
             (None, None) => true,
             (Some(a), Some(b)) => {

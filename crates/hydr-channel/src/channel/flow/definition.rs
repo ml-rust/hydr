@@ -139,7 +139,8 @@ pub struct ChannelForcingInterval {
 }
 
 impl ChannelReachDefinition {
-    pub(crate) fn same_bits(&self, other: &Self) -> bool {
+    #[doc(hidden)]
+    pub fn same_bits(&self, other: &Self) -> bool {
         let same_values = |left: &[f64], right: &[f64]| {
             left.len() == right.len()
                 && left
@@ -311,7 +312,8 @@ impl ChannelLateralInput {
         }
     }
 
-    pub(crate) fn same_bits(&self, other: &Self) -> bool {
+    #[doc(hidden)]
+    pub fn same_bits(&self, other: &Self) -> bool {
         self.boundary_id() == other.boundary_id()
             && self.amount().same_bits(&other.amount())
             && match (self, other) {

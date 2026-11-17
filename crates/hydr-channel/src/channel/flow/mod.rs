@@ -12,7 +12,7 @@ mod config;
 mod conserved_point;
 mod conserved_update;
 mod context;
-mod coupling;
+pub(crate) mod coupling;
 mod definition;
 mod engine;
 mod error;
@@ -62,8 +62,6 @@ pub use forcing::{
     ChannelTensorBoundary, ChannelTensorForcingInterval, ChannelTensorLateralInput,
     ChannelTensorWaterAmount,
 };
-
-pub(crate) use coupling::{ChannelCouplingForcing, ChannelCouplingTrial, ChannelReservoirOperands};
 
 pub(crate) mod surveyed;
 pub(crate) mod surveyed_points;

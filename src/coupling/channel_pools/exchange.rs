@@ -1,7 +1,7 @@
 use super::state::{Accepted, BoundForcing, NativeEvaluation, NativeInterval};
 use super::{ChannelPoolError, context_types::Context};
-use crate::channel::{ChannelCouplingTrial, ChannelReservoirOperands};
 use crate::numerics::water_transfers::{AggregationKind, finite};
+use hydr_channel::internal::{ChannelCouplingTrial, ChannelReservoirOperands};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,

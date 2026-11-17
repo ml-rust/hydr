@@ -1,6 +1,6 @@
 //! Declared channel geometry and reach flow for hydraulic applications.
 
-mod flow;
+pub(crate) mod flow;
 mod section;
 
 pub use flow::{
@@ -27,8 +27,6 @@ pub use section::{
     PrismaticRecoveredProperties, PrismaticRecoveryConfig, PrismaticSectionBatch,
     PrismaticSectionProperties, PrismaticSectionQuery, PrismaticSectionRecovery,
 };
-
-pub(crate) use flow::{ChannelCouplingForcing, ChannelCouplingTrial, ChannelReservoirOperands};
 
 pub use flow::{
     PrismaticPointRiemannResult, PrismaticPointTraceKind, PrismaticRiemannConfig,

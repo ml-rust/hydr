@@ -18,7 +18,8 @@ use std::sync::Arc;
 
 /// External policies and lateral operands copied once from caller storage.
 #[derive(Debug)]
-pub(crate) struct ChannelCouplingForcing<R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub struct ChannelCouplingForcing<R: Runtime<DType = DType>> {
     start_s: f64,
     end_s: f64,
     left: Option<ChannelTensorBoundary<R>>,
@@ -27,12 +28,14 @@ pub(crate) struct ChannelCouplingForcing<R: Runtime<DType = DType>> {
 }
 
 /// Actual coordinator-owned midpoint reservoir operands. Neither operand is projected.
-pub(crate) struct ChannelReservoirOperands<'a, R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub struct ChannelReservoirOperands<'a, R: Runtime<DType = DType>> {
     pub elevation_m: &'a Tensor<R>,
     pub entrance_loss_coefficient: &'a Tensor<R>,
 }
 
-pub(crate) enum ChannelCouplingTrial<R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub enum ChannelCouplingTrial<R: Runtime<DType = DType>> {
     Accepted(Box<ChannelReach<R>>),
     Shorter {
         suggested_end_s: f64,
@@ -41,7 +44,8 @@ pub(crate) enum ChannelCouplingTrial<R: Runtime<DType = DType>> {
 }
 
 /// Checkpoint projection retains absent coordinator-owned endpoints.
-pub(crate) struct ChannelCouplingExternalData {
+#[doc(hidden)]
+pub struct ChannelCouplingExternalData {
     pub start_s: f64,
     pub end_s: f64,
     pub left: Option<ChannelBoundary>,
@@ -50,7 +54,8 @@ pub(crate) struct ChannelCouplingExternalData {
 }
 
 /// Owned native endpoint operands in `[left, right]` order.
-pub(crate) struct ChannelCouplingEndpoints<R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub struct ChannelCouplingEndpoints<R: Runtime<DType = DType>> {
     /// Positive channel-to-reservoir volume, from stored shared face volumes.
     pub outward_volume_m3: Tensor<R>,
     /// Actual contribution to longitudinal channel momentum: left positive, right negative.
@@ -59,7 +64,8 @@ pub(crate) struct ChannelCouplingEndpoints<R: Runtime<DType = DType>> {
 }
 
 /// Borrowed native accounting operands for the parent's cached reductions.
-pub(crate) struct ChannelCouplingAccounting<'a, R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub struct ChannelCouplingAccounting<'a, R: Runtime<DType = DType>> {
     pub cell_volume_m3: &'a Tensor<R>,
     /// Low parts of the cell volumes. The storage inventory requires them to be zero.
     pub cell_volume_low_m3: &'a Tensor<R>,
@@ -71,7 +77,8 @@ pub(crate) struct ChannelCouplingAccounting<'a, R: Runtime<DType = DType>> {
 }
 
 impl<R: Runtime<DType = DType>> ChannelReach<R> {
-    pub(crate) fn coupling_accounting(&self) -> ChannelCouplingAccounting<'_, R> {
+    #[doc(hidden)]
+    pub fn coupling_accounting(&self) -> ChannelCouplingAccounting<'_, R> {
         ChannelCouplingAccounting {
             cell_volume_m3: &self.accepted.volume.high,
             cell_volume_low_m3: &self.accepted.volume.low,
@@ -106,9 +113,8 @@ where
         + numr::ops::NextRepresentableOps<R>,
 {
     /// Bound on the water the stored interval update differs from its exact expansion update.
-    pub(crate) fn coupling_water_assembly_bound_m3(
-        &self,
-    ) -> Result<Option<Tensor<R>>, ChannelError> {
+    #[doc(hidden)]
+    pub fn coupling_water_assembly_bound_m3(&self) -> Result<Option<Tensor<R>>, ChannelError> {
         self.accepted
             .last
             .as_ref()
@@ -174,12 +180,14 @@ where
 }
 
 impl<R: Runtime<DType = DType>> ChannelCouplingForcing<R> {
-    pub(crate) fn has_interval_volumes(&self) -> bool {
+    #[doc(hidden)]
+    pub fn has_interval_volumes(&self) -> bool {
         self.lateral.has_interval_volumes
     }
 
     /// Project only when recording explicit checkpoint data.
-    pub(crate) fn project_external(
+    #[doc(hidden)]
+    pub fn project_external(
         &self,
         client: &R::Client,
     ) -> Result<ChannelCouplingExternalData, ChannelError> {
@@ -215,7 +223,8 @@ where
         + UnaryOps<R>
         + BatchedBisectionAlgorithms<R>,
 {
-    pub(crate) fn bind_coupling_host(
+    #[doc(hidden)]
+    pub fn bind_coupling_host(
         &self,
         start_s: f64,
         end_s: f64,
@@ -236,7 +245,8 @@ where
         )
     }
 
-    pub(crate) fn bind_coupling_tensor(
+    #[doc(hidden)]
+    pub fn bind_coupling_tensor(
         &self,
         start_s: f64,
         end_s: f64,
@@ -311,7 +321,8 @@ where
         + solvr::optimize::CertifiedMappedBisectionAlgorithms<R>
         + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
 {
-    pub(crate) fn trial_coupled(
+    #[doc(hidden)]
+    pub fn trial_coupled(
         &self,
         requested_end_s: f64,
         forcing: &ChannelCouplingForcing<R>,
@@ -369,7 +380,8 @@ impl<R: Runtime<DType = DType>> ChannelReach<R>
 where
     R::Client: BinaryOps<R> + ShapeOps<R> + ScalarOps<R> + UnaryOps<R>,
 {
-    pub(crate) fn coupling_endpoints(&self) -> Result<ChannelCouplingEndpoints<R>, ChannelError> {
+    #[doc(hidden)]
+    pub fn coupling_endpoints(&self) -> Result<ChannelCouplingEndpoints<R>, ChannelError> {
         let last = self.accepted.last.as_ref().ok_or_else(|| {
             ChannelError::input("endpoint transfers require an accepted interval: calculate a complete coupled trial")
         })?;

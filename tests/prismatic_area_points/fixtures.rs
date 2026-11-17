@@ -40,7 +40,7 @@ pub const GEOMETRY_ORDER: [&str; 5] = [
 pub const LOCAL_ORDER: [&str; 4] = ["lowerarea", "upperarea", "lowerdepth", "upperdepth"];
 #[path = "case_index.rs"]
 mod case_index;
-#[path = "formula_data.rs"]
+#[path = "../../crates/hydr-channel/tests/prismatic_area_points/formula_data.rs"]
 mod formula_data;
 #[path = "profile_data.rs"]
 mod profile_data;

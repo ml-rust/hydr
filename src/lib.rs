@@ -17,7 +17,8 @@ pub use hydr_core::{error, forcing, grid, model};
 
 use hydr_core::{contract, numerics, tensor};
 
-pub mod channel;
+#[doc(inline)]
+pub use hydr_channel::channel;
 pub mod coupling;
 pub mod runoff;
 #[doc(inline)]
