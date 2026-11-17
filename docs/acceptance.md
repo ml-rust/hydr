@@ -65,6 +65,12 @@ The Ritter time-refinement case keeps 400 cells. Smaller timesteps do not remove
 | Error against the analytical solution | Increases slightly as smaller timesteps increase first-order spatial diffusion at fixed spacing |
 | Combined space/time refinement | Depth error decreases through `0.00651800`, `0.00458525`, and `0.00310221 m` |
 
+### Restart and forecast continuation
+
+| Check | Enforced result |
+| --- | --- |
+| Surface continuation | Extending forcing with `continue_with_forcing` or `Solver::resume` matches one run over the spliced schedule bit for bit, with the same intermediate targets. Rewritten frozen forcing, an altered folded prefix, and uncovered or incompatible schedules reject without changing accepted state. See [continuation cases](../tests/engine_contract/continuation.rs). |
+
 ## Flow across two dimensions
 
 ### Contracting circular lake

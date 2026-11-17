@@ -1,7 +1,7 @@
 //! Immutable numerical definition with its folded forcing history.
 
 use super::forcing_history::{self, ForcingPrefix};
-use super::{BoundaryConditions, EngineError, ForcingSchedule, SolverConfig};
+use super::{BoundaryConditions, EngineError, ForcingInterval, ForcingSchedule, SolverConfig};
 use crate::model::Domain;
 use crate::soil::LandModel;
 
@@ -68,10 +68,63 @@ impl Definition {
     /// The window starts at the interval containing the last step start.
     /// Without a last step it starts at the interval containing `time`, or the final interval.
     pub(super) fn retained_from(&self, time: f64, last_start: Option<f64>) -> usize {
-        let intervals = self.forcing.intervals();
-        let at = last_start.unwrap_or(time);
-        intervals
-            .partition_point(|interval| interval.end <= at)
-            .min(intervals.len().saturating_sub(1))
+        retained_index(self.forcing.intervals(), time, last_start)
     }
+
+    /// Builds the definition for a spliced schedule that follows this definition's prefix.
+    ///
+    /// `combined[..shared]` equals this window bit for bit, so its cached chain values carry over.
+    /// The new window starts at local `retained` and folds `combined[..retained]` onto the prefix.
+    ///
+    /// # Errors
+    /// Rejects `retained` or `shared` outside the bit-identical part of this window.
+    pub(super) fn continued(
+        &self,
+        combined: ForcingSchedule,
+        retained: usize,
+        shared: usize,
+    ) -> Result<Self, EngineError> {
+        let combined_len = combined.intervals().len();
+        let outside = || {
+            EngineError::rejected(
+                "continuation window",
+                format!(
+                    "retained={retained}, shared={shared}, window intervals={}, combined intervals={}: splice forcing that keeps every frozen interval",
+                    self.forcing.intervals().len(),
+                    combined_len
+                ),
+            )
+        };
+        let prefix = self.folded(retained).ok_or_else(outside)?;
+        let forcing = combined.into_window(retained).ok_or_else(outside)?;
+        let reused = self.chain.get(retained..shared).ok_or_else(outside)?;
+        let fresh = forcing
+            .intervals()
+            .get(reused.len()..)
+            .ok_or_else(outside)?;
+        let base = reused.last().copied().unwrap_or(prefix.digest);
+        let mut chain = reused.to_vec();
+        chain.extend(forcing_history::chain(&base, fresh));
+        Ok(Self {
+            domain: self.domain.clone(),
+            land: self.land.clone(),
+            boundaries: self.boundaries.clone(),
+            forcing,
+            config: self.config.clone(),
+            prefix,
+            chain,
+        })
+    }
+}
+
+/// Returns the local index of the first interval a checkpoint retains under rule W.
+pub(super) fn retained_index(
+    intervals: &[ForcingInterval],
+    time: f64,
+    last_start: Option<f64>,
+) -> usize {
+    let at = last_start.unwrap_or(time);
+    intervals
+        .partition_point(|interval| interval.end <= at)
+        .min(intervals.len().saturating_sub(1))
 }

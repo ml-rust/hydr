@@ -82,7 +82,7 @@ impl Definition {
             && left
                 .iter()
                 .zip(right)
-                .all(|(left, right)| left == right && interval_bits(left, right)))
+                .all(|(left, right)| same_interval(left, right)))
     }
 
     fn same_static(&self, other: &Candidate<'_>) -> bool {
@@ -135,6 +135,11 @@ impl Definition {
     }
 }
 
+/// Compares one forcing interval bit for bit, including faces, variants, provenance, and signed zero.
+pub(super) fn same_interval(left: &ForcingInterval, right: &ForcingInterval) -> bool {
+    left == right && interval_bits(left, right)
+}
+
 fn interval_bits(left: &ForcingInterval, right: &ForcingInterval) -> bool {
     same_bits(&[left.start, left.end], &[right.start, right.end])
         && same_bits(&left.rain, &right.rain)
@@ -148,7 +153,7 @@ fn interval_bits(left: &ForcingInterval, right: &ForcingInterval) -> bool {
             .all(|(left, right)| boundary_bits(left, right))
 }
 
-fn same_bits(left: &[f64], right: &[f64]) -> bool {
+pub(super) fn same_bits(left: &[f64], right: &[f64]) -> bool {
     left.len() == right.len()
         && left
             .iter()

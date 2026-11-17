@@ -7,6 +7,12 @@ mod runtime;
 #[path = "support/impervious.rs"]
 mod impervious;
 
+#[path = "engine_contract/continuation.rs"]
+mod continuation;
+
+#[path = "engine_contract/continuation_rejection.rs"]
+mod continuation_rejection;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{

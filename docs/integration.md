@@ -36,6 +36,8 @@ An accepted step is a completed update that passes Hydr's numerical checks.
 | `Solver::<R>::new(client, setup, initial)` | Supply physical inputs and a configured client. Hydr checks them and allocates `Tensor<R>` state. |
 | `advance_to` | Request a target time, then read the accepted time and completion status. |
 | `advance_controlled` | Check cancellation between steps and receive accepted fields through an observer. |
+| `continue_with_forcing(forcing)` | Splice new forcing after the accepted history. Accepted state, ledgers, budget, step count, and last step remain. See [Continue a forecast under new forcing](#continue-a-forecast-under-new-forcing). |
+| `Solver::<R>::resume(client, &data, forcing)` | Build an engine from an owned package, then continue it under `forcing`. Pass `data.setup.forcing.clone()` for a plain restart. |
 
 Always read `AdvanceStatus` before treating the requested horizon as complete.
 
@@ -193,7 +195,7 @@ The application defines threshold crossings and episode semantics from accepted 
 
 1. Save the complete package, including `setup: SolverSetup`, `forcing_prefix`, and `accepted: InitialState`.
 2. Preserve every package field and floating-point value exactly.
-3. Restore into an engine built from the same definition and the same forcing schedule.
+3. Restore into an engine built from the same definition and the same forcing schedule, or call `Solver::resume`.
 4. Handle import errors before using the restored state.
 
 The package holds a bounded forcing window, not the complete forcing schedule:
@@ -255,6 +257,42 @@ Import recalculates this limit from the recorded largest face wave speed along e
 | Forcing history | The engine folds its own earlier intervals to the package prefix. Count, start, end, and digest must match. Window intervals must match bit for bit. |
 | Window coverage | The window must contain the last step's interval. The engine forcing must start at or before the window start. |
 
+### Continue a forecast under new forcing
+
+A forecast cycle extends or replaces future forcing without a new run. Call `continue_with_forcing` on a running engine, or `Solver::resume` on a saved package.
+
+Accepted history stays fixed. With `t` as the accepted time:
+
+| Interval | Rule |
+| --- | --- |
+| Starts before `t` | Frozen in full, including its end. New forcing that covers it repeats it bit for bit. |
+| Contains `t` strictly inside | Frozen to its end. New forcing cannot start at `t` or split the interval there. |
+| Ends exactly at `t` | Frozen. The next interval is free to change. |
+| Starts at or after `t` | Free to change. |
+
+Align interval boundaries with forecast cycle times. Otherwise the current interval stays frozen to its end.
+
+The new schedule starts at or before `t`. Supply one of these splice forms:
+
+| Form | Requirement |
+| --- | --- |
+| Tail | Starts at a retained interval start, or at `t` when `t` is an interval boundary. |
+| Full schedule | Starts at the first folded interval. The intervals before the retained window fold to the engine's forcing prefix exactly. One interval ends exactly at the window start. |
+
+Frozen comparison covers start, end, every rate, face, boundary variant, and port provenance. Provenance is part of forcing identity. `-0.0` differs from `0.0`.
+
+The spliced schedule passes the `ForcingSchedule::new` checks for the engine's domain and boundaries. It covers `t`. Domain, land, boundaries, and config never change. Every check runs before any change, so an error leaves the engine as it was.
+
+After the splice, the engine keeps only the window a checkpoint retains. Host forcing and device sources stay bounded.
+
+To start a new epoch from an accepted state, build a fresh engine:
+
+```rust
+Solver::new(client, SolverSetup { forcing: new_schedule, ..data.setup }, data.accepted)
+```
+
+A new epoch drops the forcing prefix and all history. It starts with a fresh ledger, a fresh adjustment budget, zero steps, and no last step. `new_schedule` must start at or before `t` and end after `t`.
+
 ### Reproduce a run
 
 1. Use the same build and dependency sources.
@@ -264,6 +302,8 @@ Import recalculates this limit from the recorded largest face wave speed along e
 5. Preserve the same requested intermediate times when comparing runs.
 
 The accepted timestep sequence is the step partition. Changing intermediate targets can change that sequence and the numerical result.
+
+A continuation equals a single run over the spliced schedule with the same intermediate targets, bit for bit. Stop the single run at each continuation time to compare.
 
 Cross-platform bitwise equality remains unsupported.
 

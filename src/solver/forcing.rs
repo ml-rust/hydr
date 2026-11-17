@@ -124,6 +124,23 @@ impl ForcingSchedule {
         })
     }
 
+    /// Returns the contiguous tail from interval `from` by value, or `None` when it is empty.
+    ///
+    /// The tail of a checked schedule is checked: contiguity and per-interval checks hold
+    /// for any contiguous run of the intervals that passed them.
+    pub(super) fn into_window(mut self, from: usize) -> Option<Self> {
+        if from >= self.intervals.len() {
+            return None;
+        }
+        self.intervals.drain(..from);
+        Some(self)
+    }
+
+    /// Returns the intervals by value.
+    pub(super) fn into_intervals(self) -> Vec<ForcingInterval> {
+        self.intervals
+    }
+
     pub(super) fn at(&self, time: f64) -> Option<&ForcingInterval> {
         self.intervals
             .iter()

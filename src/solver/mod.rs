@@ -7,6 +7,7 @@ mod boundary;
 mod capabilities;
 mod compatibility;
 mod config;
+mod continuation;
 mod definition;
 mod engine;
 mod error;

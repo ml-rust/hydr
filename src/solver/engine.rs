@@ -66,6 +66,7 @@ where
     /// Constructs an engine whose forcing window follows `prefix`.
     ///
     /// Device sources cover only the retained window. `None` starts an empty prefix at the first interval.
+    /// With a prefix, `initial.time` can equal the window end, as a checkpoint at the forcing end does.
     pub(super) fn with_prefix(
         client: R::Client,
         setup: SolverSetup,
@@ -95,7 +96,19 @@ where
         let boundaries =
             BoundaryConditions::with_open_faces(&domain, boundaries.open_faces().to_vec())?;
         let forcing = ForcingSchedule::new(&domain, &boundaries, forcing.intervals().to_vec())?;
-        if !initial_time.is_finite() || forcing.at(initial_time).is_none() {
+        let covered = match &prefix {
+            None => forcing.at(initial_time).is_some(),
+            Some(_) => {
+                let intervals = forcing.intervals();
+                intervals
+                    .first()
+                    .is_some_and(|first| first.start <= initial_time)
+                    && intervals
+                        .last()
+                        .is_some_and(|last| initial_time <= last.end)
+            }
+        };
+        if !initial_time.is_finite() || !covered {
             return Err(EngineError::rejected(
                 "initial time",
                 format!("time={initial_time}: supply a finite time inside forcing coverage"),
