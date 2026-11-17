@@ -161,7 +161,7 @@ Water is present, and flow across the boundary is slower than local gravity wave
 | Waves at the boundary | Calculated traces match constructed shocks (abrupt changes) and rarefactions (spreading waves) |
 | Unsupported requests | Dry, critical, supercritical, missing-inflow-data, and out-of-branch requests reject without changing accepted state |
 
-Test details: [wave and flux calculations](../src/numerics/boundary/tests.rs) and [physical boundaries](../tests/physical_boundaries.rs).
+Test details: [wave and flux calculations](../crates/hydr-solver/src/solver/tensor/boundary_trace/tests.rs) and [physical boundaries](../tests/physical_boundaries.rs).
 
 The physical cases also cover four-face orientation, reversal, forcing edges, retries, and restart.
 

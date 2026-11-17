@@ -37,6 +37,23 @@ Actual backend tests require a working CUDA device and driver, plus a Vulkan ada
 cargo test --all-features --test runtime_backends
 ```
 
+## Workspace layout
+
+The root package `hydr` is a facade. Its `src/lib.rs` holds only `pub use` items. Users depend on `hydr` alone.
+
+Member crates live under `crates/`. Each crate depends only on the crates in this table.
+
+| Crate | Depends on |
+| --- | --- |
+| `hydr-core` | none |
+| `hydr-soil`, `hydr-storage`, `hydr-structures`, `hydr-channel` | `hydr-core` |
+| `hydr-runoff`, `hydr-solver` | `hydr-core`, `hydr-soil` |
+| `hydr-coupling` | `hydr-core`, `hydr-storage`, `hydr-structures`, `hydr-runoff`, `hydr-channel` |
+
+- Cross-crate internals: Put them in a `#[doc(hidden)] internal` module or on `#[doc(hidden)]` methods. They stay out of the public API.
+- Layering test: `tests/layering.rs` enforces the module order inside each crate and the crate order in the table.
+- New crate: Add a row to the crate table in `tests/layering.rs`. The test fails until the row exists.
+
 ## Documentation
 
 Write guides that help library users complete a task or understand a constraint.

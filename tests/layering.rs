@@ -5,6 +5,9 @@
 //! `crate::<module>` and `$crate::<module>` paths. Raw strings and nested block
 //! comments are handled. Newlines survive stripping, so reported lines are exact.
 
+#[path = "layering/crates.rs"]
+mod crates;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -47,12 +50,7 @@ const TABLE: &[(&str, &[&str])] = &[
             "error", "grid", "model", "forcing", "contract", "tensor", "numerics", "soil",
         ],
     ),
-    (
-        "channel",
-        &[
-            "error", "grid", "model", "forcing", "contract", "tensor", "numerics",
-        ],
-    ),
+    ("channel", &["forcing", "contract", "tensor", "numerics"]),
     (
         "solver",
         &[
@@ -62,14 +60,8 @@ const TABLE: &[(&str, &[&str])] = &[
     (
         "coupling",
         &[
-            "error",
-            "grid",
-            "model",
             "forcing",
-            "contract",
-            "tensor",
             "numerics",
-            "soil",
             "storage",
             "structures",
             "runoff",
