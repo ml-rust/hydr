@@ -1,4 +1,5 @@
-//! One fixed-point map: midpoint heads, weir volumes, donor limits, and both child completions.
+//! One fixed-point map: midpoint heads, weir volumes, levelling caps, donor limits, and both
+//! child completions.
 //!
 //! Every evaluation starts from the accepted children, so no trial state carries over.
 //! Momentum closure: surface-to-channel water enters the reach with the surface donor's
@@ -9,6 +10,7 @@
 use super::SurfaceChannelError;
 use super::context::{Context, Ops, transfer_error};
 use super::exchange::Exchange;
+use super::levelling::Levelling;
 use super::start::Start;
 use crate::channel::ChannelReach;
 use crate::numerics::water_transfers::AggregationKind;
@@ -109,6 +111,9 @@ where
     }
 
     /// Evaluates the map at iterate `x` from the accepted `surface` and `reaches`.
+    ///
+    /// Weir volumes pass the levelling cap of `levelling`, then the donor limit.
+    #[allow(clippy::too_many_arguments)]
     pub fn evaluate(
         &self,
         surface: &Solver<R>,
@@ -116,6 +121,7 @@ where
         reach_ids: &[&str],
         start: &Start<R>,
         attempt: &Attempt<R>,
+        levelling: &Levelling<R>,
         x: &Tensor<R>,
     ) -> Result<Evaluation<R>, SurfaceChannelError> {
         let c = &self.client;
@@ -136,7 +142,34 @@ where
             .structures
             .held_volumes(&law, attempt.dt)
             .map_err(|error| SurfaceChannelError::Numerical(format!("link volumes: {error}")))?;
-        let exchange = self.exchange(proposed, &attempt.available)?;
+        let level = self.level(&proposed, levelling)?;
+        let exchange = self.exchange(proposed, level, &attempt.available)?;
+        let (next_surface, linked) =
+            self.complete(surface, reaches, reach_ids, start, attempt, &exchange)?;
+        let borrowed: Vec<&ChannelReach<R>> = linked.iter().collect();
+        let (end_stage, end_wet) = self.stages(&next_surface, &borrowed, reach_ids)?;
+        let packet = c.cat(&[&end_stage, &exchange.signed, &end_wet, &law.regime], 0)?;
+        Ok(Evaluation {
+            surface: next_surface,
+            linked,
+            exchange,
+            regime: law.regime,
+            midpoint,
+            packet,
+        })
+    }
+
+    /// Completes the surface and every linked reach with the limited volumes of `exchange`.
+    pub fn complete(
+        &self,
+        surface: &Solver<R>,
+        reaches: &[ChannelReach<R>],
+        reach_ids: &[&str],
+        start: &Start<R>,
+        attempt: &Attempt<R>,
+        exchange: &Exchange<R>,
+    ) -> Result<(Solver<R>, Vec<ChannelReach<R>>), SurfaceChannelError> {
+        let c = &self.client;
         let zero = self.scalar(0.0)?;
         let to_channel = c.where_cond(&c.gt(&exchange.signed, &zero)?, &exchange.signed, &zero)?;
         let to_surface = c.where_cond(
@@ -144,8 +177,7 @@ where
             &c.neg(&exchange.signed)?,
             &zero,
         )?;
-        let next_surface =
-            self.complete_surface(surface, start, attempt, &exchange, &to_surface)?;
+        let next_surface = self.complete_surface(surface, start, attempt, exchange, &to_surface)?;
         let mut linked = Vec::with_capacity(self.linked.len());
         for (index, entry) in self.linked.iter().enumerate() {
             let reach = &reaches[entry.reach];
@@ -171,17 +203,7 @@ where
                 reach_ids[entry.reach],
             )?);
         }
-        let borrowed: Vec<&ChannelReach<R>> = linked.iter().collect();
-        let (end_stage, end_wet) = self.stages(&next_surface, &borrowed, reach_ids)?;
-        let packet = c.cat(&[&end_stage, &exchange.signed, &end_wet, &law.regime], 0)?;
-        Ok(Evaluation {
-            surface: next_surface,
-            linked,
-            exchange,
-            regime: law.regime,
-            midpoint,
-            packet,
-        })
+        Ok((next_surface, linked))
     }
 
     /// Completes the surface interval with the lane totals of the limited link volumes.

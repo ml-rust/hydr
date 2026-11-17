@@ -296,6 +296,7 @@ fn diagnostics(
         for (name, x, y) in [
             ("signed_volume_m3", a.signed_volume_m3, b.signed_volume_m3),
             ("weir_volume_m3", a.weir_volume_m3, b.weir_volume_m3),
+            ("level_factor", a.level_factor, b.level_factor),
             ("donor_factor", a.donor_factor, b.donor_factor),
             (
                 "midpoint_surface_stage_m",

@@ -8,7 +8,15 @@ use crate::solver::Solver;
 use hydr_channel::internal::ChannelCouplingReservation;
 use hydr_structures::internal::TensorStructureResult;
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, IndexingOps, ShapeOps};
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps, ShapeOps, UnaryOps,
+};
+
+/// Structures regime code of submerged weir flow.
+const SUBMERGED_CODE: f64 = 3.0;
+
+/// Structures regime code of equal heads above the crest.
+const EQUAL_HEADS_CODE: f64 = 5.0;
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 
@@ -177,6 +185,9 @@ where
     }
 
     /// Weir law of every link at group `stage` with support `wet`, both `[S + C]`.
+    ///
+    /// Submerged heads that differ by at most the head allowance count as equal heads and carry
+    /// no water. The allowance is `head_absolute_m + head_relative * max(|H_a|, |H_b|)`.
     pub fn weir(
         &self,
         stage: &Tensor<R>,
@@ -185,15 +196,30 @@ where
         let c = &self.client;
         let supported = c.mul(wet, &c.gt(stage, &self.bed)?)?;
         let gather = |values: &Tensor<R>, index: &Tensor<R>| c.index_select(values, 0, index);
-        self.structures
+        let surface = gather(stage, &self.link_a)?;
+        let channel = gather(stage, &self.link_b)?;
+        let mut law = self
+            .structures
             .evaluate_heads(
-                &gather(stage, &self.link_a)?,
-                &gather(stage, &self.link_b)?,
+                &surface,
+                &channel,
                 &self.bed_a,
                 &self.bed_b,
                 &gather(&supported, &self.link_a)?,
                 &gather(&supported, &self.link_b)?,
             )
-            .map_err(|error| SurfaceChannelError::Numerical(format!("link weir: {error}")))
+            .map_err(|error| SurfaceChannelError::Numerical(format!("link weir: {error}")))?;
+        let magnitude = c.maximum(&c.abs(&surface)?, &c.abs(&channel)?)?;
+        let allowance = c.add_scalar(
+            &c.mul_scalar(&magnitude, self.head_relative)?,
+            self.head_absolute_m,
+        )?;
+        let level = c.mul(
+            &c.eq(&law.regime, &self.scalar(SUBMERGED_CODE)?)?,
+            &c.le(&c.abs(&c.sub(&surface, &channel)?)?, &allowance)?,
+        )?;
+        law.regime = c.where_cond(&level, &self.scalar(EQUAL_HEADS_CODE)?, &law.regime)?;
+        law.discharge = c.where_cond(&level, &self.scalar(0.0)?, &law.discharge)?;
+        Ok(law)
     }
 }

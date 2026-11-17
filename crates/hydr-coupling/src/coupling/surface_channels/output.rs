@@ -22,7 +22,12 @@ pub struct SurfaceChannelLinkTransfer {
     pub signed_volume_m3: f64,
     /// Weir discharge at the midpoint heads times the interval, in cubic metres.
     pub weir_volume_m3: f64,
-    /// Donor allocation factor in `[0, 1]` applied to the weir volume.
+    /// Levelling factor in `[0, 1]` applied to the weir volume.
+    ///
+    /// It is exactly `1.0` unless the levelling cap binds. A smaller factor stops the exchange
+    /// where the donor and receiver end heads level, or where the receiver reaches the crest.
+    pub level_factor: f64,
+    /// Donor allocation factor in `[0, 1]` applied to the levelled weir volume.
     pub donor_factor: f64,
     /// Weir regime at the midpoint heads.
     pub regime: SurfaceChannelWeirRegime,

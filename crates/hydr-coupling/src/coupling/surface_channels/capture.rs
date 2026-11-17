@@ -122,6 +122,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
             totals: self.totals,
             signed_m3: self.signed_m3.clone(),
             weir_m3: self.weir_m3.clone(),
+            level: self.level.clone(),
             factor: self.factor.clone(),
             regime: self.regime.clone(),
             midpoint_surface_m: self.midpoint_surface_m.clone(),

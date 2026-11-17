@@ -55,6 +55,7 @@ pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub totals: StepTotals,
     pub signed_m3: Tensor<R>,
     pub weir_m3: Tensor<R>,
+    pub level: Tensor<R>,
     pub factor: Tensor<R>,
     pub regime: Tensor<R>,
     pub midpoint_surface_m: Tensor<R>,

@@ -243,6 +243,11 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
             doc: SURFACE_CHANNELS_DOC,
         },
         Limit {
+            id: "levelling-cap",
+            summary: "Exchange stops at level heads: a levelling cap, not the weir law, ends each link's flow.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
             id: "first-order-time",
             summary: "Time integration remains first order, without an energy guarantee for the complete calculation.",
             doc: SURFACE_CHANNELS_DOC,
@@ -250,7 +255,7 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
     ],
     summary: Summary {
         equations: "2D shallow-water surface and 1D channel reaches exchanging water through suppressed rectangular bank weirs with Villemonte submergence",
-        method: "fixed-point iteration of end stages and signed link volumes over one common interval, midpoint-head weir volumes, one shared factor per donor, and nested child admission",
+        method: "fixed-point iteration of end stages and signed link volumes over one common interval, midpoint-head weir volumes, a levelling cap per link, one shared factor per donor, and nested child admission",
         assessment: "selected spill, reversal, donor-limit, retry and restart cases; field accuracy remains unestablished",
     },
 };

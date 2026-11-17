@@ -13,7 +13,7 @@ use hydr::solver::{
 
 pub type Batch = SurfaceChannelBatch<crate::runtime::Runtime>;
 
-/// Surface cell edge length, in metres. Every cell holds 4 m² of area.
+/// Default surface cell edge length, in metres. A default cell holds 4 m² of area.
 pub const DX: f64 = 2.0;
 /// Channel cell length, in metres. Every channel cell is 1 m wide.
 pub const CELL_LENGTH: f64 = 2.0;
@@ -59,6 +59,8 @@ impl ReachSpec {
 pub struct Spec {
     pub nx: usize,
     pub ny: usize,
+    /// Edge length of every square surface cell, in metres.
+    pub dx: f64,
     pub bed: f64,
     /// Initial depth of every surface cell in row-major order, in metres.
     pub depth: Vec<f64>,
@@ -72,11 +74,12 @@ pub struct Spec {
 }
 
 impl Spec {
-    /// A `nx` x `ny` grid on `bed` with uniform `depth`.
+    /// A `nx` x `ny` grid of `DX` cells on `bed` with uniform `depth`.
     pub fn new(nx: usize, ny: usize, bed: f64, depth: f64) -> Self {
         Self {
             nx,
             ny,
+            dx: DX,
             bed,
             depth: vec![depth; nx * ny],
             withdrawal: vec![0.0; nx * ny],
@@ -98,7 +101,7 @@ impl Spec {
     }
 
     pub fn parts(&self) -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
-        let grid = CartesianGrid::new(self.nx, self.ny, DX, DX)?;
+        let grid = CartesianGrid::new(self.nx, self.ny, self.dx, self.dx)?;
         let count = grid.cell_count();
         let domain = Domain::new(
             grid,

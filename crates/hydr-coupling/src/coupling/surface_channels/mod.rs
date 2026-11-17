@@ -9,6 +9,7 @@
 //! - Midpoint heads give each weir's discharge over the interval.
 //! - Surface donors offer their post-transport water. Channel donors offer their start water
 //!   minus native face outflow and caller withdrawals.
+//! - A levelling cap stops each link where its donor and receiver end heads level.
 //! - One factor per donor scales every link it feeds, so no donor gives more than it holds.
 //! - The surface applies the summed volumes of each cell. Each reach applies each link's volume
 //!   on its synthesized bindings.
@@ -36,6 +37,7 @@ mod forcing;
 mod frames;
 mod identity;
 mod iteration;
+mod levelling;
 mod output;
 mod projection;
 mod restoration;

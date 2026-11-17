@@ -10,10 +10,16 @@ mod fixture;
 mod frozen;
 #[path = "surface_channels/identity.rs"]
 mod identity;
+#[path = "surface_channels/levelling.rs"]
+mod levelling;
 #[path = "surface_channels/lifecycle.rs"]
 mod lifecycle;
 #[path = "surface_channels/physics.rs"]
 mod physics;
+#[path = "surface_channels/reference.rs"]
+mod reference;
+#[path = "surface_channels/refinement.rs"]
+mod refinement;
 #[path = "surface_channels/restoration.rs"]
 mod restoration;
 #[path = "support/runtime.rs"]

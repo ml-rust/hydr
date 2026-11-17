@@ -116,6 +116,7 @@ where
 
     /// Solves the attempt by Anderson iteration with no history.
     ///
+    /// The levelling operands come from one zero-exchange completion before the first update.
     /// The root's own evaluation is the candidate. An iterate that repeats the one two
     /// updates earlier rejects at once with the update-limit rejection it would reach.
     pub fn solve(
@@ -127,6 +128,7 @@ where
         start: &Start<R>,
         attempt: &Attempt<R>,
     ) -> Result<Solved<R>, SurfaceChannelError> {
+        let levelling = self.levelling(surface, reaches, reach_ids, start, attempt)?;
         let error = RefCell::new(None);
         let record = |e: SurfaceChannelError| -> numr::error::Error {
             if let Ok(mut slot) = error.try_borrow_mut()
@@ -145,7 +147,7 @@ where
         let checked: RefCell<Option<Residuals>> = RefCell::new(None);
         let map = |x: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
             let evaluation = self
-                .evaluate(surface, reaches, reach_ids, start, attempt, x)
+                .evaluate(surface, reaches, reach_ids, start, attempt, &levelling, x)
                 .map_err(record)?;
             let packet = evaluation.packet.clone();
             *latest.borrow_mut() = Some((x.clone(), evaluation));
@@ -193,8 +195,9 @@ where
                 (evaluation, residuals)
             }
             _ => {
-                let evaluation =
-                    self.evaluate(surface, reaches, reach_ids, start, attempt, &root.x)?;
+                let evaluation = self.evaluate(
+                    surface, reaches, reach_ids, start, attempt, &levelling, &root.x,
+                )?;
                 let residuals = self.residuals(config, &root.x, &evaluation.packet)?;
                 (evaluation, residuals)
             }

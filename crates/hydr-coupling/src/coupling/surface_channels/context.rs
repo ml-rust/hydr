@@ -1,6 +1,7 @@
 //! Static coordinator topology: weir laws, donor trees, surface lanes, and channel slots.
 
 use super::bindings::channel_cells;
+use super::levelling::SlotPlan;
 use super::state::LinkCounters;
 use super::{SurfaceChannelDefinition, SurfaceChannelError};
 use crate::channel::ChannelLateralDirection;
@@ -141,6 +142,20 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub link_ids: Vec<String>,
     /// Synthesized `(inflow, withdrawal)` channel binding identities per link.
     pub link_bindings: Vec<(String, String)>,
+    /// Plan area of every surface lane, in m².
+    pub lane_area_m2: Vec<f64>,
+    /// Plan geometry of every slot.
+    pub slot_plans: Vec<SlotPlan>,
+    /// Surface lane of every link.
+    pub link_lane: Vec<usize>,
+    /// Slot of every link.
+    pub link_slot: Vec<usize>,
+    /// Weir crest of every link, in metres.
+    pub crest_m: Vec<f64>,
+    /// Absolute head allowance, in metres.
+    pub head_absolute_m: f64,
+    /// Relative head allowance.
+    pub head_relative: f64,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -192,6 +207,7 @@ where
         let mut unlinked = Vec::new();
         let mut slot_of = vec![0usize; definition.links.len()];
         let mut slot_beds = Vec::new();
+        let mut slot_plans = Vec::new();
         let mut slot_withdrawals = Vec::new();
         let mut caller_slots = vec![BTreeMap::new(); setup.reaches.len()];
         let mut grouped = Vec::with_capacity(definition.links.len());
@@ -213,6 +229,7 @@ where
                 })?;
                 let slot = first_slot + offset;
                 slot_beds.push(bed);
+                slot_plans.push(SlotPlan::new(caller, cell)?);
                 let mut withdrawals = positions.len();
                 for binding in &caller.lateral_bindings {
                     if binding.cell_id == cell_id
@@ -312,7 +329,15 @@ where
         };
         let mut beds = surface_beds;
         beds.extend_from_slice(&slot_beds);
+        let cell_area = setup.surface.domain.grid().cell_area();
         Ok(Self {
+            lane_area_m2: vec![cell_area; surface_count],
+            slot_plans,
+            link_lane: lane.clone(),
+            link_slot: slot_of,
+            crest_m: crest.clone(),
+            head_absolute_m: setup.config.head_absolute_m,
+            head_relative: setup.config.head_relative,
             link_a: indices(&lane)?,
             link_b: indices(&slot_group)?,
             bed: floats(&beds)?,

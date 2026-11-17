@@ -606,9 +606,20 @@ Use the [surface/channel guide](surface-channels.md) to declare bank links and t
 | Rest | A lake level with the crest stays still |
 | Donors | Competing links share one donor factor. Limited channel withdrawals pass combined depletion. |
 | Order | Link and reach declaration order change no bit |
-| Recalculation | Nonconvergence halves the interval. Regime flips and head crossings shorten it. Integrated inputs request recomputation. |
+| Recalculation | Nonconvergence halves the interval. A weir volume that would cross heads levels them within one interval. Integrated inputs request recomputation. |
 | Continuation | Snapshot, restore, import, resume, and forecast continuation match the uninterrupted run bit for bit. Forged packages reject. A standalone surface restore of a coupled package rejects. |
 | Surveyed reaches | Flood then recession through one link pairs and balances each interval. Restart matches the uninterrupted run bit for bit. Non-`Wall`/`Exterior` endpoints and a crest below the section minimum reject. CPU only. |
+
+### Reference and refinement
+
+| Case | Enforced criterion |
+| --- | --- |
+| [Free-weir drain](../tests/surface_channels/reference.rs) | One `4 m²` cell drains through a free weir into a reach below the crest. Each run matches an independent implicit-midpoint recurrence within `1e-12 m`. Errors against the closed form at `4 s` stay frozen within `1e-12 m`, under a first-order envelope of `3e-4 × Δt`. Intervals halve from `0.25` through `0.015625 s`. Successive error ratios stay from `3.9` to `4.1`. |
+| [Split bank](../tests/surface_channels/refinement.rs) | One `2 m` bank becomes 1, 2, 4, 8, and 16 links on refined floodplain cells. Exchanged volumes over `2 s` stay frozen within `1e-9 m³`. Successive level differences shrink by at least `1.4`, then `1.9`, per refinement. The 8-link and 16-link totals agree within `1.1e-2 m³`. |
+| [Closed levelling](../tests/surface_channels/levelling.rs) | A floodplain and a reach cell behind a submerged bank reach the exact level within the head allowance, then carry no water. Rectangular, surveyed, and two-links-into-one-cell variants pass. Heads never cross. Storage balances each interval. Each run takes at most 20 accepted intervals to `3 s`. |
+| Levelled restart | A package whose last interval binds the cap restores bit for bit. A forged `level_factor` rejects. |
+
+The drain converges at second order because an isolated drain makes each interval one implicit-midpoint step. The coordinator still declares first-order time integration.
 
 These cases establish no weir-coefficient accuracy, bank-mapping proof, or measured-event accuracy.
 

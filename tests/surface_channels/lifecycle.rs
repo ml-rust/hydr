@@ -157,23 +157,31 @@ fn surface_interval_end_clips_common_step() -> Result {
 }
 
 #[test]
-fn regime_flip_or_head_crossing_shortens() -> Result {
+fn head_crossing_levels_without_shortening() -> Result {
     // A long, efficient bank between a high floodplain and a channel just above the crest.
-    let mut spec = Spec::new(1, 1, 1.0, 0.5)
+    // The weir volume would lift the channel above the floodplain. The cap levels both instead.
+    let spec = Spec::new(1, 1, 1.0, 0.5)
         .reach(ReachSpec::new("river", 0.0, &[1.25, 1.25]))
         .link(weir("bank", 0, "river", 0, 1.2, 400.0));
-    spec.config.retry_limit = 16;
     let batch = step(&spec.build()?, 0.2)?;
     let diagnostics = last(&batch)?;
-    assert!(diagnostics.retries > 0, "{diagnostics:?}");
-    assert!(diagnostics.end_s < 0.2);
+    assert_eq!((diagnostics.retries, diagnostics.end_s), (0, 0.2));
+    let link = &diagnostics.links[0];
+    assert!(
+        link.level_factor < 1.0 && link.signed_volume_m3 > 0.0,
+        "{link:?}"
+    );
+    assert!(link.signed_volume_m3 < link.weir_volume_m3, "{link:?}");
     let surface = 1.0 + depths(&batch)?[0];
     let channel = volumes(&batch, "river")?[0] / 2.0;
-    let budget = spec.config.head_absolute_m + spec.config.head_relative * channel;
+    // Storage 6 m³ over 4 + 2 m² of plan area levels at 17/12 m.
+    let level = 17.0 / 12.0;
+    let budget = spec.config.head_absolute_m + spec.config.head_relative * level;
     assert!(
         surface + budget >= channel,
         "surface={surface}, channel={channel}"
     );
-    assert!(diagnostics.links[0].signed_volume_m3 > 0.0);
+    assert!((surface - level).abs() <= 1e-12, "surface={surface}");
+    assert!((channel - level).abs() <= 1e-12, "channel={channel}");
     Ok(())
 }

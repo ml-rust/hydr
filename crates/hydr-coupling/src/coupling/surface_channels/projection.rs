@@ -49,6 +49,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
         let step = self;
         let signed = step.signed_m3.try_to_vec::<f64>()?;
         let weir = step.weir_m3.try_to_vec::<f64>()?;
+        let level = step.level.try_to_vec::<f64>()?;
         let factor = step.factor.try_to_vec::<f64>()?;
         let regime = step.regime.try_to_vec::<f64>()?;
         let surface = step.midpoint_surface_m.try_to_vec::<f64>()?;
@@ -59,6 +60,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
                 link_id: id.clone(),
                 signed_volume_m3: signed[index],
                 weir_volume_m3: weir[index],
+                level_factor: level[index],
                 donor_factor: factor[index],
                 regime: weir_regime(regime[index])?,
                 midpoint_surface_stage_m: surface[index],

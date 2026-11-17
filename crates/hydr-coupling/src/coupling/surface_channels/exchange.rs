@@ -15,6 +15,8 @@ use numr::tensor::Tensor;
 pub(super) struct Exchange<R: Runtime<DType = DType>> {
     /// Weir volume per link, positive surface-to-channel, `[L]`.
     pub proposed: Tensor<R>,
+    /// Levelling factor applied to each weir volume before the donor limit, `[L]`.
+    pub level: Tensor<R>,
     /// Accepted volume per link, positive surface-to-channel, `[L]`.
     pub signed: Tensor<R>,
     /// Donor factor applied to each link, `[L]`.
@@ -28,29 +30,32 @@ pub(super) struct Exchange<R: Runtime<DType = DType>> {
 }
 
 /// Donor-group sums and their absolute rounding bounds.
-struct Sums<R: Runtime<DType = DType>> {
-    value: Tensor<R>,
-    bound: Tensor<R>,
+pub(super) struct Sums<R: Runtime<DType = DType>> {
+    pub value: Tensor<R>,
+    pub bound: Tensor<R>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
 where
     R::Client: Ops<R>,
 {
-    /// Limits `proposed` so no donor gives more than `available`.
+    /// Limits the levelled `weir` volumes so no donor gives more than `available`.
     ///
+    /// `level` scales each weir volume first. A factor of exactly one keeps every bit.
     /// Each donor's factor is `(available - margin) / (demand + bound)` when demand exceeds it,
     /// rounded down once more. The margin grows with the donor's link count.
     pub fn exchange(
         &self,
-        proposed: Tensor<R>,
+        weir: Tensor<R>,
+        level: Tensor<R>,
         available: &Tensor<R>,
     ) -> Result<Exchange<R>, SurfaceChannelError> {
         let c = &self.client;
         let zero = self.scalar(0.0)?;
         let one = self.scalar(1.0)?;
         let tiny = f64::from_bits(1);
-        water_transfers::finite(c, &proposed, "weir link volume").map_err(transfer_error)?;
+        water_transfers::finite(c, &weir, "weir link volume").map_err(transfer_error)?;
+        let proposed = c.mul(&weir, &level)?;
         let (positive, negative) = split(c, &proposed, &zero)?;
         let demands = self.aggregate(&c.cat(&[&positive, &negative], 0)?)?;
         let upper = water_transfers::upward_add(c, &demands.value, &demands.bound)
@@ -107,7 +112,8 @@ where
                 .map_err(|error| SurfaceChannelError::Numerical(error.to_string()))?
         };
         Ok(Exchange {
-            proposed,
+            proposed: weir,
+            level,
             signed,
             factor,
             incoming: incoming.value,
@@ -117,7 +123,7 @@ where
     }
 
     /// Per-donor sums of `values` with their rounding bounds.
-    fn aggregate(&self, values: &Tensor<R>) -> Result<Sums<R>, SurfaceChannelError> {
+    pub(super) fn aggregate(&self, values: &Tensor<R>) -> Result<Sums<R>, SurfaceChannelError> {
         let aggregate = self
             .donors
             .aggregate(&self.client, values, AggregationKind::Water)
@@ -135,7 +141,7 @@ where
 }
 
 /// Positive parts and negated negative parts of `signed`.
-fn split<R: Runtime<DType = DType>>(
+pub(super) fn split<R: Runtime<DType = DType>>(
     c: &R::Client,
     signed: &Tensor<R>,
     zero: &Tensor<R>,

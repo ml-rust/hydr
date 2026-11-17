@@ -95,9 +95,41 @@ The weir uses midpoint heads: the mean of start and end stage on each side. Its 
 | `BelowCrest` | No supported side above the crest | Zero |
 | `Free` | One side above the crest | Free weir discharge |
 | `Submerged` | Both sides above the crest at different heads | Villemonte-reduced discharge |
-| `EqualHeads` | Both sides above the crest at equal heads | Zero |
+| `EqualHeads` | Both sides above the crest, heads within the head allowance | Zero |
+
+The head allowance is `head_absolute_m + head_relative * max(|H_s|, |H_c|)`, at the midpoint heads.
 
 The capability declaration names these `below-crest`, `free-weir-flow`, and `submerged-weir-flow`. `EqualHeads` counts as submerged flow.
+
+### Stop at level heads
+
+Near level heads, the Villemonte discharge changes without bound. A full weir volume then carries the receiver above the donor within one interval. The levelling cap ends the exchange there instead of the weir law. Capability limit `levelling-cap` records this.
+
+Each attempt first completes the surface and every reach with zero exchange. The end stages `H` of that completion hold every other interval term. Each side then changes stage through a plan area that bounds the change from above:
+
+| Side | Plan area |
+| --- | --- |
+| Surface cell | Cell area |
+| Channel cell | Cell length times water-surface width at the lowest stage the bound covers |
+
+For a link from donor `d` to receiver `r`:
+
+- `O_d` is the donor's summed outgoing weir volume.
+- `I_r` is the receiver's summed incoming weir volume.
+- `B = max(H_r, z_c)`, with `z_c` the crest.
+
+The link keeps the fraction `θ = min(1, max(θ_below, θ_level, 0))` of its weir volume:
+
+| Term | Formula | Holds |
+| --- | --- | --- |
+| `θ_below` | `(z_c - H_r) A_r(H_r) / I_r` | The receiver ends at or below the crest |
+| `θ_level` | `(H_d - B) / (O_d / A_d(B) + I_r / A_r(B))` | The donor ends at or above the receiver |
+
+A `θ` below one shrinks by 16 units in the last place. Each link then takes the smallest `θ` among the links that share its donor or its receiver. Several links into one cell therefore never cross level together.
+
+The donor limit applies after the cap. `level_factor` reports the applied `θ`. It is exactly `1.0` when the cap does not bind, and the weir volume then keeps every bit.
+
+On the next interval the heads sit within the head allowance, so the link reports `EqualHeads` and carries no water.
 
 ### Limit each donor to its water
 
@@ -137,14 +169,15 @@ The common end is the smallest of the requested end, the start plus `maximum_ste
 
 1. Bind caller forcing and reserve channel donor water from the accepted start. Each reach calculates its accepted-start face fluxes once here. Every evaluation reuses them.
 2. Prepare the surface transport. Reject a duration above the surface or channel step limit.
-3. Iterate end stages and signed link volumes from the accepted state. Each evaluation:
+3. Complete every child once with zero exchange. Read the levelling stages and plan areas.
+4. Iterate end stages and signed link volumes from the accepted state. Each evaluation:
    - Calculates midpoint heads and weir volumes.
-   - Applies the donor limit.
+   - Applies the levelling cap, then the donor limit.
    - Completes the surface with the summed volume of each linked cell.
    - Advances each linked reach with each link's volume on its synthesized bindings.
-4. Accept the iterate when both budgets pass and the support and regime flags repeat exactly. The evaluation of the accepted iterate is the candidate.
-5. Reject heads that cross beyond the head budget over the interval.
-6. Check pairing and the composite water balance.
+5. Accept the iterate when both budgets pass and the support and regime flags repeat exactly. The evaluation of the accepted iterate is the candidate.
+6. Reject heads that cross beyond the head budget over the interval. The cap keeps this check from binding unless a child's stage departs from its plan-area bound.
+7. Check pairing and the composite water balance.
 
 The iteration is a plain fixed-point (Picard) update without history. Stiff links can stall it. An iterate that repeats the iterate two updates earlier, bit for bit, starts a cycle that never converges. The attempt then rejects at once with the iteration-exhaustion rejection.
 
@@ -177,7 +210,7 @@ Never slice or scale old integrated inputs.
 | `ledger()?` | `SurfaceChannelWaterBalance` of the surface and every reach as one system |
 | `surface()`, `reach(id)` | Read-only children |
 
-Each `SurfaceChannelLinkTransfer` holds the signed volume, weir volume, donor factor, regime, and both midpoint stages.
+Each `SurfaceChannelLinkTransfer` holds the signed volume, weir volume, levelling factor, donor factor, regime, and both midpoint stages.
 
 Each accepted interval passes three checks:
 
@@ -221,4 +254,4 @@ Time integration remains first order. The weir law establishes no energy guarant
 
 Numerical agreement establishes no measured-event accuracy. CUDA runs execute without a GPU accuracy qualification.
 
-Read [surface/channel checks](acceptance.md#surfacechannel-checks) for the checked cases and runtime support.
+Read [surface/channel checks](acceptance.md#surfacechannel-checks) for the checked cases and runtime support. Read [reference and refinement](acceptance.md#reference-and-refinement) for the closed-form drain and the split-bank refinement.

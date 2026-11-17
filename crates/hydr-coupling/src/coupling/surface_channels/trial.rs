@@ -309,6 +309,7 @@ where
             midpoint_channel_m: c.index_select(&evaluation.midpoint, 0, &context.link_b)?,
             signed_m3: exchange.signed,
             weir_m3: exchange.proposed,
+            level: exchange.level,
             factor: exchange.factor,
             regime: evaluation.regime,
         };
