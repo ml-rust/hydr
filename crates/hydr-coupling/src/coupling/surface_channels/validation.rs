@@ -61,7 +61,7 @@ impl SurfaceChannelDefinition {
     /// - an unknown reach identity or a channel cell out of range
     /// - a linked reach with surveyed geometry
     /// - a nonfinite or nonpositive crest length or weir coefficient, or a nonfinite crest
-    /// - incomplete weir applicability evidence
+    /// - incomplete weir applicability evidence, or a coefficient without symmetric reversal
     /// - a reach tangent that is nonfinite or not unit length
     /// - a crest below the surface bed or the channel bed
     /// - gravity or vertical datum differing between the surface and a reach
@@ -363,9 +363,17 @@ fn check_links<'a>(
 }
 
 /// Weir law of a link, checked by the structures crate.
+///
+/// Links carry water both ways, so the coefficient must hold under reversed flow.
 fn weir(
     link: &SurfaceChannelLink,
 ) -> Result<SuppressedRectangularWeirParameters, SurfaceChannelError> {
+    if !link.applicability.symmetric_reversal {
+        return Err(SurfaceChannelError::input(format!(
+            "link={:?} symmetric_reversal=false: links exchange water in both directions; supply a coefficient that holds under reversed flow",
+            link.id
+        )));
+    }
     SuppressedRectangularWeirParameters::new(
         link.crest_length_m,
         link.crest_elevation_m,

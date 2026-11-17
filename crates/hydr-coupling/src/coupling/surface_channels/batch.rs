@@ -1,9 +1,10 @@
+use super::context::Context;
+use super::state::{LinkCounters, StoredStep};
 use super::{
     SurfaceChannelDefinition, SurfaceChannelError, SurfaceChannelInitialState, SurfaceChannelSetup,
 };
 use crate::channel::{ChannelInitialState, ChannelReach};
 use crate::solver::Solver;
-use hydr_solver::internal::SurfaceLinks;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, HypotOps, IndexingOps, MidpointOps,
@@ -20,12 +21,14 @@ use std::sync::Arc;
 /// coordinator definitions with synthesized surface-exchange bindings.
 pub struct SurfaceChannelBatch<R: Runtime<DType = DType>> {
     pub(super) definition: Arc<SurfaceChannelDefinition>,
+    pub(super) context: Arc<Context<R>>,
     pub(super) time_s: f64,
     pub(super) surface: Solver<R>,
     /// Reaches in setup order.
     pub(super) reaches: Vec<ChannelReach<R>>,
-    /// Surface exchange lanes over `definition.surface_cells`.
-    pub(super) surface_links: SurfaceLinks<R>,
+    pub(super) accepted_steps: usize,
+    pub(super) counters: LinkCounters<R>,
+    pub(super) last: Option<Arc<StoredStep<R>>>,
 }
 
 impl<R: Runtime<DType = DType>> std::fmt::Debug for SurfaceChannelBatch<R> {
@@ -33,7 +36,8 @@ impl<R: Runtime<DType = DType>> std::fmt::Debug for SurfaceChannelBatch<R> {
         f.debug_struct("SurfaceChannelBatch")
             .field("setup", self.definition.setup())
             .field("time_s", &self.time_s)
-            .field("surface_cells", &self.surface_links.cells())
+            .field("accepted_steps", &self.accepted_steps)
+            .field("surface_cells", &self.context.links.cells())
             .finish()
     }
 }
@@ -52,6 +56,11 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
     /// Common accepted time, in seconds.
     pub fn time(&self) -> f64 {
         self.time_s
+    }
+
+    /// Number of accepted common intervals.
+    pub fn accepted_steps(&self) -> usize {
+        self.accepted_steps
     }
 
     /// Read-only surface engine.
@@ -98,6 +107,7 @@ where
     /// - a nonfinite common time
     /// - a surface or reach time that differs from `time_s` bit for bit
     /// - a reach state that is missing, repeated, or names no setup reach
+    /// - a link weir law the structures crate rejects on `client`
     ///
     /// Returns [`SurfaceChannelError::Surface`] or [`SurfaceChannelError::Channel`] when a
     /// child rejects its definition or state.
@@ -140,13 +150,17 @@ where
                     })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let surface_links = surface.coupling_links(definition.surface_cells())?;
+        let context = Context::new(client, &definition, &surface)?;
+        let counters = context.zero_counters()?;
         Ok(Self {
             definition: Arc::new(definition),
+            context: Arc::new(context),
             time_s,
             surface,
             reaches,
-            surface_links,
+            accepted_steps: 0,
+            counters,
+            last: None,
         })
     }
 }

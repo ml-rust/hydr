@@ -146,6 +146,15 @@ fn rejects_incomplete_weir_applicability() -> Result {
 }
 
 #[test]
+fn rejects_weir_without_symmetric_reversal() -> Result {
+    let message = reject(|s| s.links[0].applicability.symmetric_reversal = false)?;
+    contains(
+        &message,
+        &["link=\"link-b\" symmetric_reversal=false", "reversed flow"],
+    )
+}
+
+#[test]
 fn rejects_invalid_tolerance() -> Result {
     let message = reject(|s| {
         s.config.head_absolute_m = 0.0;

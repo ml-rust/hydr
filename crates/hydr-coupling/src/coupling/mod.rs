@@ -45,6 +45,9 @@ pub mod surface_channels;
 #[doc(no_inline)]
 pub use surface_channels::{
     SURFACE_CHANNEL_TANGENT_TOLERANCE, SurfaceChannelBatch, SurfaceChannelConfig,
-    SurfaceChannelDefinition, SurfaceChannelError, SurfaceChannelInitialState, SurfaceChannelLink,
-    SurfaceChannelReach, SurfaceChannelSetup,
+    SurfaceChannelDefinition, SurfaceChannelError, SurfaceChannelForcingInterval,
+    SurfaceChannelInitialState, SurfaceChannelLink, SurfaceChannelLinkLedger,
+    SurfaceChannelLinkTransfer, SurfaceChannelReach, SurfaceChannelReachForcing,
+    SurfaceChannelSetup, SurfaceChannelStepDiagnostics, SurfaceChannelTrial,
+    SurfaceChannelWaterBalance, SurfaceChannelWeirRegime,
 };
