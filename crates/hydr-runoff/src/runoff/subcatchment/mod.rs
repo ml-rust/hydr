@@ -29,6 +29,9 @@ pub use receipts::{
     SubareaReceipt, SubcatchmentBridgeReceipt, SubcatchmentDrainageReceipt,
     SubcatchmentPartitionReceipt, SubcatchmentReceipt, SubcatchmentTransfer,
 };
-pub use snapshot::{SubcatchmentSnapshot, SubcatchmentSnapshotData};
+pub use snapshot::{
+    SUBCATCHMENT_CONTRACT_VERSION, SUBCATCHMENT_SNAPSHOT_SCHEMA, SubcatchmentSnapshot,
+    SubcatchmentSnapshotData,
+};
 pub use state::{SubcatchmentDefinition, SubcatchmentInput, SubcatchmentState};
 pub use subarea::Subarea;

@@ -176,6 +176,8 @@ Positive storage and transfers require finite represented volumes. Bounds and co
 
 Owned import checks accepted depths, final diagnostics, cumulative counters, and independent budgets. It checks complete source algebra and numerical receipts without replaying soil history or root-finding iterations.
 
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `SUBCATCHMENT_SNAPSHOT_SCHEMA` and `SUBCATCHMENT_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with an input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+
 Exact restart requires the same build/runtime, ordered batch layout, and accepted interval partition. Receipt consistency establishes numerical admission. It does not authenticate history.
 
 ## Understand differences from native SWMM

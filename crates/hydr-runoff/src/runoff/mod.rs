@@ -14,16 +14,18 @@ pub use support::{
 };
 
 pub use reservoir::{
-    ReservoirBatch, ReservoirConfig, ReservoirElement, ReservoirError, ReservoirInput,
-    ReservoirLedger, ReservoirOutput, ReservoirParameters, ReservoirReceipt, ReservoirSnapshot,
-    ReservoirSnapshotData, ReservoirState, ReservoirStepDiagnostics, ReservoirTrial,
+    RESERVOIR_CONTRACT_VERSION, RESERVOIR_SNAPSHOT_SCHEMA, ReservoirBatch, ReservoirConfig,
+    ReservoirElement, ReservoirError, ReservoirInput, ReservoirLedger, ReservoirOutput,
+    ReservoirParameters, ReservoirReceipt, ReservoirSnapshot, ReservoirSnapshotData,
+    ReservoirState, ReservoirStepDiagnostics, ReservoirTrial,
 };
 
 pub use subcatchment::{
-    Subarea, SubareaOutput, SubareaReceipt, SubcatchmentBatch, SubcatchmentBridgeReceipt,
-    SubcatchmentConfig, SubcatchmentDefinition, SubcatchmentDrainageReceipt, SubcatchmentError,
-    SubcatchmentGeometry, SubcatchmentInput, SubcatchmentLedger, SubcatchmentOutput,
-    SubcatchmentParameters, SubcatchmentPartitionReceipt, SubcatchmentPhaseDiagnostics,
-    SubcatchmentReceipt, SubcatchmentRouting, SubcatchmentSnapshot, SubcatchmentSnapshotData,
-    SubcatchmentState, SubcatchmentStepDiagnostics, SubcatchmentTransfer, SubcatchmentTrial,
+    SUBCATCHMENT_CONTRACT_VERSION, SUBCATCHMENT_SNAPSHOT_SCHEMA, Subarea, SubareaOutput,
+    SubareaReceipt, SubcatchmentBatch, SubcatchmentBridgeReceipt, SubcatchmentConfig,
+    SubcatchmentDefinition, SubcatchmentDrainageReceipt, SubcatchmentError, SubcatchmentGeometry,
+    SubcatchmentInput, SubcatchmentLedger, SubcatchmentOutput, SubcatchmentParameters,
+    SubcatchmentPartitionReceipt, SubcatchmentPhaseDiagnostics, SubcatchmentReceipt,
+    SubcatchmentRouting, SubcatchmentSnapshot, SubcatchmentSnapshotData, SubcatchmentState,
+    SubcatchmentStepDiagnostics, SubcatchmentTransfer, SubcatchmentTrial,
 };

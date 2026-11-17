@@ -97,6 +97,8 @@ Repeated trials borrow the same immutable state. Discarding a trial preserves ev
 
 Reconstruction requires the same checked parameters and every field below. Do not reconstruct state from cumulative infiltration alone.
 
+Soil memory persists only inside surface-solver and subcatchment packages, under their schema and contract identities.
+
 | Field | Meaning and admitted range |
 | --- | --- |
 | `imd` | Dimensionless initial moisture deficit, from zero through its exact recovery ceiling |

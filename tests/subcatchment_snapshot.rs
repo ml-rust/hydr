@@ -8,10 +8,11 @@ mod runtime;
 mod fixture;
 
 use fixture::{Result, geometry, parameters, single};
+use hydr::channel::CHANNEL_SNAPSHOT_SCHEMA;
 use hydr::runoff::{
-    SubcatchmentBatch, SubcatchmentConfig, SubcatchmentError, SubcatchmentInput,
-    SubcatchmentLedger, SubcatchmentParameters, SubcatchmentRouting, SubcatchmentSnapshotData,
-    SubcatchmentState,
+    SUBCATCHMENT_CONTRACT_VERSION, SUBCATCHMENT_SNAPSHOT_SCHEMA, SubcatchmentBatch,
+    SubcatchmentConfig, SubcatchmentError, SubcatchmentInput, SubcatchmentLedger,
+    SubcatchmentParameters, SubcatchmentRouting, SubcatchmentSnapshotData, SubcatchmentState,
 };
 use hydr::soil::{ModifiedGreenAmptParameters, NativeSoilState};
 
@@ -232,6 +233,99 @@ fn exact_definition_identity_includes_supplied_signed_zero_geometry() -> Result 
     let before = destination.snapshot_data()?;
     assert!(destination.restore_data(&package).is_err());
     assert_eq!(destination.snapshot_data()?, before);
+    Ok(())
+}
+
+fn identity_package() -> Result<SubcatchmentSnapshotData> {
+    Ok(create()?
+        .trial_to(64.0, &[input(0.3048 / 1024.0)])?
+        .into_next()
+        .snapshot_data()?)
+}
+
+fn reject_identity(changed: &SubcatchmentSnapshotData) -> Result<String> {
+    let mut destination = create()?;
+    let before = destination.snapshot_data()?;
+    let Err(error) = destination.restore_data(changed) else {
+        return Err("foreign identity was accepted".into());
+    };
+    assert!(
+        matches!(error, SubcatchmentError::InvalidInput { .. }),
+        "unexpected kind: {error}"
+    );
+    assert_eq!(destination.snapshot_data()?, before);
+    Ok(error.to_string())
+}
+
+#[test]
+fn subcatchment_package_carries_identity() -> Result {
+    assert_eq!(
+        SUBCATCHMENT_SNAPSHOT_SCHEMA,
+        "hydr-subcatchment-checkpoint-1"
+    );
+    assert_eq!(
+        SUBCATCHMENT_CONTRACT_VERSION,
+        "hydr-subcatchment-numr-cpu-1"
+    );
+    let package = identity_package()?;
+    assert_eq!(package.schema, SUBCATCHMENT_SNAPSHOT_SCHEMA);
+    assert_eq!(package.contract, SUBCATCHMENT_CONTRACT_VERSION);
+    Ok(())
+}
+
+#[test]
+fn subcatchment_import_rejects_foreign_schema() -> Result {
+    let package = identity_package()?;
+    for found in ["hydr-subcatchment-checkpoint-0", ""] {
+        let mut changed = package.clone();
+        changed.schema = found.into();
+        let message = reject_identity(&changed)?;
+        assert!(
+            message.contains(&format!("found \"{found}\"")),
+            "missing found value: {message}"
+        );
+        assert!(
+            message.contains(SUBCATCHMENT_SNAPSHOT_SCHEMA),
+            "missing expected schema: {message}"
+        );
+        assert!(
+            message.contains("capture a new package"),
+            "missing action: {message}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn subcatchment_import_rejects_foreign_contract() -> Result {
+    let mut changed = identity_package()?;
+    changed.contract = "hydr-subcatchment-numr-gpu-1".into();
+    let message = reject_identity(&changed)?;
+    assert!(message.contains("contract"), "missing contract: {message}");
+    assert!(
+        message.contains("hydr-subcatchment-numr-gpu-1"),
+        "missing found value: {message}"
+    );
+    assert!(
+        message.contains(SUBCATCHMENT_CONTRACT_VERSION),
+        "missing expected contract: {message}"
+    );
+    Ok(())
+}
+
+#[test]
+fn subcatchment_import_rejects_channel_schema() -> Result {
+    let mut changed = identity_package()?;
+    changed.schema = CHANNEL_SNAPSHOT_SCHEMA.into();
+    let message = reject_identity(&changed)?;
+    assert!(
+        message.contains(CHANNEL_SNAPSHOT_SCHEMA),
+        "missing found value: {message}"
+    );
+    assert!(
+        message.contains(SUBCATCHMENT_SNAPSHOT_SCHEMA),
+        "missing expected schema: {message}"
+    );
     Ok(())
 }
 

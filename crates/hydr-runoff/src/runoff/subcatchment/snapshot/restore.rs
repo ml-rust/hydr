@@ -3,10 +3,14 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::super::batch::StoredStep;
-use super::{SubcatchmentSnapshot, SubcatchmentSnapshotData};
+use super::{
+    SUBCATCHMENT_CONTRACT_VERSION, SUBCATCHMENT_SNAPSHOT_SCHEMA, SubcatchmentSnapshot,
+    SubcatchmentSnapshotData,
+};
 use crate::runoff::{
     Subarea, SubcatchmentBatch, SubcatchmentConfig, SubcatchmentDefinition, SubcatchmentError,
 };
+use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
@@ -57,6 +61,14 @@ where
         &mut self,
         data: &SubcatchmentSnapshotData,
     ) -> Result<(), SubcatchmentError> {
+        package_identity(
+            "subcatchment",
+            &data.schema,
+            SUBCATCHMENT_SNAPSHOT_SCHEMA,
+            &data.contract,
+            SUBCATCHMENT_CONTRACT_VERSION,
+        )
+        .map_err(SubcatchmentError::input)?;
         self.check_snapshot_definition(&data.definitions, &data.config)?;
         let mut candidate = Self::new(
             self.context.client.clone(),

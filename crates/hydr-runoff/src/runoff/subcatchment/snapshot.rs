@@ -6,4 +6,7 @@ mod receipts;
 mod restore;
 mod source;
 
-pub use package::{SubcatchmentSnapshot, SubcatchmentSnapshotData};
+pub use package::{
+    SUBCATCHMENT_CONTRACT_VERSION, SUBCATCHMENT_SNAPSHOT_SCHEMA, SubcatchmentSnapshot,
+    SubcatchmentSnapshotData,
+};
