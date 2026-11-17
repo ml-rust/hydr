@@ -7,8 +7,9 @@ use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
+#[doc(hidden)]
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct SubcatchmentIntervalSummary {
+pub struct SubcatchmentIntervalSummary {
     pub start_s: f64,
     pub end_s: f64,
     pub totals: StepTotals,
@@ -18,7 +19,8 @@ pub(crate) struct SubcatchmentIntervalSummary {
 
 impl<R: Runtime<DType = DType>> SubcatchmentBatch<R> {
     /// Borrow original flattened `[catchment, subarea]` exports without numerical projection.
-    pub(crate) fn original_outlet(&self) -> Result<&Tensor<R>, SubcatchmentError> {
+    #[doc(hidden)]
+    pub fn original_outlet(&self) -> Result<&Tensor<R>, SubcatchmentError> {
         Ok(&self
             .last
             .as_ref()
@@ -32,9 +34,8 @@ impl<R: Runtime<DType = DType>> SubcatchmentBatch<R> {
             .outlet)
     }
     /// Reuse the exact scalars retained when the native interval first passes admission.
-    pub(crate) fn interval_summary(
-        &self,
-    ) -> Result<SubcatchmentIntervalSummary, SubcatchmentError> {
+    #[doc(hidden)]
+    pub fn interval_summary(&self) -> Result<SubcatchmentIntervalSummary, SubcatchmentError> {
         let stored = self.last.as_ref().ok_or_else(|| {
             SubcatchmentError::numerical(
                 "native runoff summary requires a retained accepted interval",
@@ -53,14 +54,14 @@ impl<R: Runtime<DType = DType>> SubcatchmentBatch<R> {
             )?,
         })
     }
-    pub(crate) fn accounting_bounds(
-        &self,
-    ) -> Result<SubcatchmentAccountingBounds, SubcatchmentError> {
+    #[doc(hidden)]
+    pub fn accounting_bounds(&self) -> Result<SubcatchmentAccountingBounds, SubcatchmentError> {
         accounting_bounds::lifetime_bounds(&self.context, &self.ledger, self.steps)
     }
 }
 impl<R: Runtime<DType = DType>> SubcatchmentTrial<R> {
-    pub(crate) fn original_outlet(&self) -> Result<&Tensor<R>, SubcatchmentError> {
+    #[doc(hidden)]
+    pub fn original_outlet(&self) -> Result<&Tensor<R>, SubcatchmentError> {
         self.next.original_outlet()
     }
 }

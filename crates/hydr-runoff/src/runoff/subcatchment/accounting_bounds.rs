@@ -200,8 +200,9 @@ where
 /// Symmetric errors for sums of original represented volume operands.
 ///
 /// Upstream depth-area products and parent scalar arithmetic remain outside these reduction/counter bounds.
+#[doc(hidden)]
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct SubcatchmentAccountingBounds {
+pub struct SubcatchmentAccountingBounds {
     pub storage_before_error_m3: f64,
     pub storage_after_error_m3: f64,
     pub rain_error_m3: f64,

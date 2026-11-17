@@ -32,7 +32,8 @@ impl SubcatchmentConfig {
         }
         Ok(())
     }
-    pub(crate) fn same_bits(&self, other: &Self) -> bool {
+    #[doc(hidden)]
+    pub fn same_bits(&self, other: &Self) -> bool {
         self.reservoir.same_bits(&other.reservoir)
             && self.max_cumulative_water_adjustment_m3.to_bits()
                 == other.max_cumulative_water_adjustment_m3.to_bits()

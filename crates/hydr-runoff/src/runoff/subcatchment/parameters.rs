@@ -204,7 +204,8 @@ impl SubcatchmentParameters {
             _ => None,
         }
     }
-    pub(crate) fn donor_fraction(&self, subarea: Subarea) -> f64 {
+    #[doc(hidden)]
+    pub fn donor_fraction(&self, subarea: Subarea) -> f64 {
         match self.routing {
             SubcatchmentRouting::ImperviousToPervious { fraction }
                 if subarea != Subarea::Pervious =>
@@ -219,7 +220,8 @@ impl SubcatchmentParameters {
             _ => 0.0,
         }
     }
-    pub(crate) fn same_bits(&self, other: &Self) -> bool {
+    #[doc(hidden)]
+    pub fn same_bits(&self, other: &Self) -> bool {
         let a = self.geometry;
         let b = other.geometry;
         let geometry = |g: SubcatchmentGeometry| {
