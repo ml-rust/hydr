@@ -50,6 +50,11 @@ pub struct SurfaceChannelStepDiagnostics {
     pub retries: usize,
     /// Fixed-point iterations of the accepted attempt.
     pub iterations: usize,
+    /// Fixed-point contraction per update over the last two updates, `sqrt(r_k / r_{k-2})`.
+    ///
+    /// `r` is the largest change over its allowance. Zero below two updates or after a zero
+    /// change.
+    pub contraction: f64,
     /// Largest end-stage change of the last fixed-point update, in metres.
     pub head_residual_m: f64,
     /// Largest signed-volume change of the last fixed-point update, in cubic metres.

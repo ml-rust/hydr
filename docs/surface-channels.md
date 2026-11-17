@@ -75,6 +75,7 @@ The coordinator appends two bindings per link to each linked reach: `surface-exc
 | `mass_absolute_m3`, `mass_relative` | Limit composite water residuals |
 | `minimum_step_s`, `maximum_step_s` | Bound the common interval |
 | `iteration_limit`, `retry_limit` | Bound iterations and complete recalculations |
+| `contraction_target` | Target fixed-point contraction per update, in `(0, 1)`. Sets the shorter retry of a stalled attempt |
 
 Each absolute/relative pair needs a positive combined allowance.
 
@@ -179,7 +180,14 @@ The common end is the smallest of the requested end, the start plus `maximum_ste
 6. Reject heads that cross beyond the head budget over the interval. The cap keeps this check from binding unless a child's stage departs from its plan-area bound.
 7. Check pairing and the composite water balance.
 
-The iteration is a plain fixed-point (Picard) update without history. Stiff links can stall it. An iterate that repeats the iterate two updates earlier, bit for bit, starts a cycle that never converges. The attempt then rejects at once with the iteration-exhaustion rejection.
+The iteration is a plain fixed-point (Picard) update without history. Stiff links can stall it. Each update `k` has a residual norm `r_k`: the largest change over its allowance. Convergence needs `r_k <= 1`. The contraction `ρ = sqrt(r_k / r_{k-2})` spans two updates, so a 2-cycle shows its true rate. Two checks end a stalled attempt at once:
+
+| Check | Rejection | Recorded `ρ` |
+| --- | --- | --- |
+| The iterate repeats the iterate two updates earlier, bit for bit | Iteration exhaustion | `1` |
+| `ρ >= 1`, or `k + ln(r_k)/(-ln ρ)` exceeds `iteration_limit` | Contraction forecast | Measured |
+
+The forecast needs `k >= 2` and `r_k > 1`. An accepted attempt reports its last `ρ` as `diagnostics().contraction`. Below two updates it reports zero.
 
 ### Recalculation
 
@@ -187,7 +195,8 @@ The iteration is a plain fixed-point (Picard) update without history. Stiff link
 | --- | --- |
 | Duration above the surface or channel step limit | `0.95` of the smallest limit |
 | Child suggests a shorter end | That end |
-| Other retryable rejection, including iteration exhaustion | Half the interval |
+| Stalled fixed point, either check | The largest of `1/2`, `1/4`, `1/8` of the interval whose product with `ρ` is at most `contraction_target`, else `1/8` |
+| Other retryable rejection, including exhaustion of every update | Half the interval |
 | `retry_limit` reached, or a duration below `minimum_step_s` | `SurfaceChannelError::Unresolved` |
 
 `SurfaceChannelError::is_retryable` names the retryable rejections. Every other rejection returns unchanged. A rejected trial leaves the batch unchanged.

@@ -117,6 +117,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
             requested_end_s: self.requested_end_s,
             retries: self.retries,
             iterations: self.iterations,
+            contraction: self.contraction,
             head_residual_m: self.head_residual_m,
             transfer_residual_m3: self.transfer_residual_m3,
             totals: self.totals,

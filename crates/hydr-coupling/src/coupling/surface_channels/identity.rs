@@ -63,6 +63,7 @@ fn same_config(a: &SurfaceChannelConfig, b: &SurfaceChannelConfig) -> bool {
             c.mass_relative,
             c.minimum_step_s,
             c.maximum_step_s,
+            c.contraction_target,
         ]
     };
     a.iteration_limit == b.iteration_limit
@@ -251,6 +252,7 @@ fn diagnostics(
         ("start_s", a.start_s, b.start_s),
         ("end_s", a.end_s, b.end_s),
         ("requested_end_s", a.requested_end_s, b.requested_end_s),
+        ("contraction", a.contraction, b.contraction),
         ("head_residual_m", a.head_residual_m, b.head_residual_m),
         (
             "transfer_residual_m3",

@@ -165,6 +165,25 @@ fn forged_last_interval_transfer_rejects() -> Result {
 }
 
 #[test]
+fn forged_last_interval_contraction_rejects() -> Result {
+    let data = package()?;
+    let mut forged = data.clone();
+    let diagnostics = &mut last_interval(&mut forged)?.diagnostics;
+    assert!(
+        diagnostics.contraction > 0.0,
+        "the second interval measures its contraction"
+    );
+    diagnostics.contraction = diagnostics.contraction.next_up();
+    rejects(
+        &forged,
+        &[
+            "last_interval.diagnostics.contraction",
+            "recalculated last interval",
+        ],
+    )
+}
+
+#[test]
 fn synthesized_binding_mismatch_rejects() -> Result {
     let data = package()?;
     let mut forged = data.clone();

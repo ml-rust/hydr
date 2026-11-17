@@ -73,6 +73,11 @@ pub struct SurfaceChannelConfig {
     pub iteration_limit: usize,
     /// Maximum complete interval recalculations after the initial attempt.
     pub retry_limit: usize,
+    /// Target fixed-point contraction per update, in `(0, 1)`.
+    ///
+    /// A stalled attempt retries with `1/2`, `1/4`, or `1/8` of its duration: the largest
+    /// fraction whose product with the measured contraction is at most this target.
+    pub contraction_target: f64,
 }
 
 impl SurfaceChannelConfig {
@@ -83,6 +88,7 @@ impl SurfaceChannelConfig {
     /// - a tolerance pair that is nonfinite, negative, or zero in both parts
     /// - a step duration that is nonfinite, not positive, or out of order
     /// - a zero `iteration_limit`
+    /// - a `contraction_target` outside `(0, 1)`
     pub fn check(&self) -> Result<(), SurfaceChannelError> {
         for (absolute_name, absolute, relative_name, relative) in [
             (
@@ -129,6 +135,12 @@ impl SurfaceChannelConfig {
             return Err(SurfaceChannelError::input(
                 "config iteration_limit=0: supply a positive iteration count",
             ));
+        }
+        if !(self.contraction_target > 0.0 && self.contraction_target < 1.0) {
+            return Err(SurfaceChannelError::input(format!(
+                "config contraction_target={}: supply a value strictly between 0 and 1",
+                self.contraction_target
+            )));
         }
         Ok(())
     }

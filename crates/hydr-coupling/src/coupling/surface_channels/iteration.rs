@@ -12,7 +12,7 @@ use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::optimize::roots::AndersonAlgorithms;
 use solvr::optimize::roots::{AndersonConvergence, AndersonOptions, RootOptions};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 /// Separate head and transfer residuals between an iterate and its map value.
 pub(super) struct Residuals {
@@ -31,6 +31,9 @@ pub(super) struct Solved<R: Runtime<DType = DType>> {
     pub evaluation: Evaluation<R>,
     pub iterations: usize,
     pub residuals: Residuals,
+    /// Contraction per update over the last two updates, `sqrt(r_k / r_{k-2})`. Zero below two
+    /// updates or after a zero norm.
+    pub contraction: f64,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -117,8 +120,12 @@ where
     /// Solves the attempt by Anderson iteration with no history.
     ///
     /// The levelling operands come from one zero-exchange completion before the first update.
-    /// The root's own evaluation is the candidate. An iterate that repeats the one two
-    /// updates earlier rejects at once with the update-limit rejection it would reach.
+    /// The root's own evaluation is the candidate. An attempt that cannot converge rejects at
+    /// once and records its [`Stall`] in `stalled`:
+    /// - An iterate that repeats the one two updates earlier: the update-limit rejection it
+    ///   would reach, with contraction one.
+    /// - A residual forecast past the update limit: see [`stall`].
+    #[allow(clippy::too_many_arguments)]
     pub fn solve(
         &self,
         config: &SurfaceChannelConfig,
@@ -127,6 +134,7 @@ where
         reach_ids: &[&str],
         start: &Start<R>,
         attempt: &Attempt<R>,
+        stalled: &Cell<Option<Stall>>,
     ) -> Result<Solved<R>, SurfaceChannelError> {
         let levelling = self.levelling(surface, reaches, reach_ids, start, attempt)?;
         let error = RefCell::new(None);
@@ -164,6 +172,7 @@ where
         // The iterate before `x`. The map is deterministic, so a next iterate equal to it in
         // every bit starts a cycle of unconverged iterates that lasts to the update limit.
         let before: RefCell<Option<Tensor<R>>> = RefCell::new(None);
+        let norms: RefCell<Vec<f64>> = RefCell::new(Vec::new());
         let root =
             self.client
                 .anderson_with_convergence(map, &start.initial, &options, |x, gx, _| {
@@ -171,8 +180,24 @@ where
                     let (residual, repeats) = self
                         .residuals_against(config, x, gx, earlier.as_ref())
                         .map_err(record)?;
-                    if repeats && !residual.converged {
-                        return Err(record(exhausted(config)));
+                    let mut norms = norms.borrow_mut();
+                    norms.push(residual.norm);
+                    if !residual.converged {
+                        // A cycle never contracts.
+                        let stop = if repeats {
+                            let cycle = Stall {
+                                updates: norms.len() - 1,
+                                contraction: 1.0,
+                            };
+                            Some((cycle, exhausted(config)))
+                        } else {
+                            stall(&norms, config.iteration_limit)
+                                .map(|forecast| (forecast, forecast.rejection(config)))
+                        };
+                        if let Some((forecast, rejection)) = stop {
+                            stalled.set(Some(forecast));
+                            return Err(record(rejection));
+                        }
                     }
                     let decision = AndersonConvergence {
                         residual_norm: residual.norm,
@@ -208,10 +233,16 @@ where
             ));
         }
         self.check_crossing(config, &evaluation)?;
+        let norms = norms.into_inner();
+        let contraction = match norms.as_slice() {
+            [.., earlier, _, latest] if *earlier > 0.0 => (latest / earlier).sqrt(),
+            _ => 0.0,
+        };
         Ok(Solved {
             evaluation,
             iterations: root.iterations,
             residuals,
+            contraction,
         })
     }
 
@@ -252,6 +283,47 @@ where
     }
 }
 
+/// Measured contraction of an attempt that cannot converge within its update limit.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Stall {
+    /// Updates completed when the forecast fails.
+    pub updates: usize,
+    /// Contraction per update: `sqrt(r_k / r_{k-2})`.
+    pub contraction: f64,
+}
+
+impl Stall {
+    /// The retryable rejection that ends the attempt.
+    fn rejection(&self, config: &SurfaceChannelConfig) -> SurfaceChannelError {
+        SurfaceChannelError::Numerical(format!(
+            "fixed-point iteration contracts by {} per update after {} updates and cannot converge within {} updates: shorten the common interval",
+            self.contraction, self.updates, config.iteration_limit
+        ))
+    }
+}
+
+/// Forecast of the residual norms `norms` of one attempt, one per completed update and the start.
+///
+/// `r_k` is the latest norm and `k` the updates so far. The contraction `ρ = sqrt(r_k / r_{k-2})`
+/// spans two updates, so a 2-cycle shows its true rate. Convergence needs `r <= 1`, so it takes
+/// `ln(r_k) / -ln(ρ)` more updates. A forecast past `limit` updates stalls.
+fn stall(norms: &[f64], limit: usize) -> Option<Stall> {
+    let [.., earlier, _, latest] = norms else {
+        return None;
+    };
+    let updates = norms.len() - 1;
+    if !(*earlier > 0.0 && *latest > 1.0) {
+        return None;
+    }
+    let contraction = (latest / earlier).sqrt();
+    let needed = latest.ln() / -contraction.ln();
+    let stalls = contraction >= 1.0 || updates as f64 + needed > limit as f64;
+    stalls.then_some(Stall {
+        updates,
+        contraction,
+    })
+}
+
 /// The rejection of an iteration that reaches its update limit unconverged.
 fn exhausted(config: &SurfaceChannelConfig) -> SurfaceChannelError {
     SurfaceChannelError::Numerical(format!(
@@ -273,4 +345,39 @@ fn same_bits<R: Runtime<DType = DType>>(
             .collect())
     };
     Ok(bits(a)? == bits(b)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stall_needs_three_norms_above_the_budget() {
+        assert_eq!(stall(&[1e9, 1e9], 64), None);
+        assert_eq!(stall(&[1e9, 1e8, 0.5], 64), None);
+        assert_eq!(stall(&[0.0, 1e8, 1e8], 64), None);
+    }
+
+    #[test]
+    fn a_two_cycle_stalls_at_its_two_update_rate() {
+        // One-step ratios alternate around one; the two-step ratio stays at one.
+        let found = stall(&[3.0e9, 3.1e9, 3.0e9], 64);
+        assert_eq!(
+            found,
+            Some(Stall {
+                updates: 2,
+                contraction: 1.0
+            })
+        );
+    }
+
+    #[test]
+    fn forecast_compares_needed_updates_with_the_limit() {
+        // ρ = 0.5 from 1e6 needs about 20 more updates.
+        let norms = [4e6, 2e6, 1e6];
+        assert_eq!(stall(&norms, 64), None);
+        let found = stall(&norms, 21);
+        assert_eq!(found.map(|s| s.contraction), Some(0.5));
+        assert_eq!(stall(&norms, 22), None);
+    }
 }

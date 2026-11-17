@@ -144,6 +144,7 @@ pub fn config() -> SurfaceChannelConfig {
         maximum_step_s: 1.0,
         iteration_limit: 64,
         retry_limit: 16,
+        contraction_target: 0.5,
     }
 }
 

@@ -234,7 +234,7 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         },
         Limit {
             id: "picard-convergence",
-            summary: "Plain fixed-point iteration can stall on stiff drains; the coordinator then halves the common interval.",
+            summary: "Plain fixed-point iteration can stall on stiff drains. A residual forecast ends a stalled attempt early, and its measured contraction sets the shorter retry.",
             doc: SURFACE_CHANNELS_DOC,
         },
         Limit {

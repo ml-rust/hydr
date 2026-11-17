@@ -4,6 +4,7 @@ use super::accounting::within;
 use super::batch::SurfaceChannelBatch;
 use super::evaluate::advanced;
 use super::forcing::BoundForcing;
+use super::iteration::Stall;
 use super::start::Start;
 use super::state::{PreviousFrame, StoredStep};
 use super::{SurfaceChannelError, SurfaceChannelForcingInterval, SurfaceChannelStepDiagnostics};
@@ -20,6 +21,7 @@ use solvr::interpolate::Interp1dAlgorithms;
 use solvr::optimize::roots::{
     AndersonAlgorithms, BatchedBisectionAlgorithms, BatchedNewtonAlgorithms,
 };
+use std::cell::Cell;
 use std::sync::Arc;
 
 /// Fraction of the smallest step limit a shortened attempt uses.
@@ -84,8 +86,9 @@ where
     ///
     /// The end is the smallest of `requested_end_s`, the start plus `maximum_step_s`, and the
     /// end of the covering surface forcing interval. An attempt above the surface or channel
-    /// step limit restarts at 0.95 of the smallest limit. Every other retryable rejection
-    /// halves the common interval, or uses a shorter end a reach suggests.
+    /// step limit restarts at 0.95 of the smallest limit. A stalled fixed point keeps `1/2`,
+    /// `1/4`, or `1/8` of the interval by its measured contraction. Every other retryable
+    /// rejection halves the common interval, or uses a shorter end a reach suggests.
     ///
     /// # Errors
     /// Returns [`SurfaceChannelError::Input`] for invalid forcing or an uncovered surface time.
@@ -131,6 +134,7 @@ where
             .context
             .start(&self.surface, &self.reaches, &reach_ids, end, bound)?;
         let mut retries = 0;
+        let stalled = Cell::new(None);
         loop {
             let dt = end - start;
             if !dt.is_finite() || dt < minimum || end <= start {
@@ -140,8 +144,16 @@ where
                     reason: "common duration falls below minimum_step_s".into(),
                 });
             }
-            let error = match self.attempt(end, requested, retries, &operands, &reach_ids, forcing)
-            {
+            stalled.set(None);
+            let attempted = self.attempt(
+                end,
+                requested,
+                retries,
+                (&operands, &stalled),
+                &reach_ids,
+                forcing,
+            );
+            let error = match attempted {
                 Ok(next) => return Ok(SurfaceChannelTrial { next }),
                 Err(error) => error,
             };
@@ -161,9 +173,12 @@ where
                 } => Some(*suggested_end_s),
                 _ => None,
             };
+            let fraction = stalled.get().map_or(0.5, |stall| {
+                shortening(stall.contraction, config.contraction_target)
+            });
             let shorter = suggested
                 .filter(|&t| t.is_finite() && t > start && t < end)
-                .unwrap_or(start + 0.5 * dt);
+                .unwrap_or(start + fraction * dt);
             if operands.forcing.requires_exact_span {
                 return Err(recompute(
                     start,
@@ -196,7 +211,7 @@ where
         end: f64,
         requested: f64,
         retries: usize,
-        operands: &Start<R>,
+        (operands, stalled): (&Start<R>, &Cell<Option<Stall>>),
         reach_ids: &[&str],
         forcing: &SurfaceChannelForcingInterval,
     ) -> Result<Self, SurfaceChannelError> {
@@ -236,6 +251,7 @@ where
             reach_ids,
             operands,
             &attempt,
+            stalled,
         )?;
         let evaluation = solved.evaluation;
         let mut slots: Vec<Option<ChannelReach<R>>> =
@@ -302,6 +318,7 @@ where
             requested_end_s: requested,
             retries,
             iterations: solved.iterations,
+            contraction: solved.contraction,
             head_residual_m: solved.residuals.head_m,
             transfer_residual_m3: solved.residuals.transfer_m3,
             totals,
@@ -325,6 +342,21 @@ where
             last: Some(Arc::new(step)),
         })
     }
+}
+
+/// Smallest fraction of a stalled duration the next attempt keeps.
+const STALL_FLOOR: f64 = 0.125;
+
+/// Fraction of a stalled duration the next attempt keeps.
+///
+/// The largest of `1/2`, `1/4`, `1/8` whose product with `contraction` is at most `target`,
+/// else `1/8`. Powers of two keep the rule exact.
+fn shortening(contraction: f64, target: f64) -> f64 {
+    let mut fraction = 0.5;
+    while fraction > STALL_FLOOR && contraction * fraction > target {
+        fraction *= 0.5;
+    }
+    fraction
 }
 
 /// Recompute request for a shorter integrated span, or `Unresolved` when none is admissible.
@@ -353,5 +385,19 @@ fn recompute(
             suggested_end_s: suggested,
             reason,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shortening_keeps_the_largest_power_of_two_under_the_target() {
+        assert_eq!(shortening(0.9, 0.5), 0.5);
+        assert_eq!(shortening(1.0, 0.5), 0.5);
+        assert_eq!(shortening(1.2, 0.5), 0.25);
+        assert_eq!(shortening(3.0, 0.5), 0.125);
+        assert_eq!(shortening(100.0, 0.5), 0.125);
     }
 }

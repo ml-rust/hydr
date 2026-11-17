@@ -50,6 +50,8 @@ pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub requested_end_s: f64,
     pub retries: usize,
     pub iterations: usize,
+    /// Contraction per update of the accepted attempt. Zero below two updates.
+    pub contraction: f64,
     pub head_residual_m: f64,
     pub transfer_residual_m3: f64,
     pub totals: StepTotals,

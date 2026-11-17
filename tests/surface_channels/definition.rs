@@ -182,6 +182,18 @@ fn rejects_zero_iteration_limit() -> Result {
 }
 
 #[test]
+fn rejects_contraction_target_outside_the_unit_interval() -> Result {
+    for target in [0.0, 1.0, -0.5, f64::NAN] {
+        let message = reject(|s| s.config.contraction_target = target)?;
+        contains(
+            &message,
+            &["contraction_target=", "strictly between 0 and 1"],
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn rejects_non_unit_reach_tangent() -> Result {
     let message = reject(|s| s.links[0].reach_tangent = [1.0, 1.0])?;
     contains(&message, &["reach_tangent=[1,1]", "unit tangent"])?;
