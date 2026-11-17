@@ -1,0 +1,30 @@
+[package]
+name = "hydr-profile"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Profiling drivers for hydr coupled cases"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "surface-channel-profile"
+path = "src/main.rs"
+
+[features]
+cuda = ["hydr/cuda", "numr/cuda"]
+
+[dependencies]
+hydr = { path = "../.." }
+numr = { workspace = true }
+
+# The counting allocator needs one unsafe trait impl, so the workspace `forbid` cannot apply.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"

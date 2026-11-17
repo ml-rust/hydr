@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "tools/profile"]
 default-members = [".", "crates/*"]
 resolver = "3"
 
@@ -75,3 +75,7 @@ opt-level = 3
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+[profile.profiling]
+inherits = "release"
+debug = true
