@@ -23,7 +23,7 @@ pub(crate) struct TensorFaceFlux<R: Runtime<DType = DType>> {
     pub speed: Tensor<R>,
 }
 
-pub(super) fn constant<R>(like: &Tensor<R>, value: f64) -> Result<Tensor<R>, EngineError>
+pub(crate) fn constant<R>(like: &Tensor<R>, value: f64) -> Result<Tensor<R>, EngineError>
 where
     R: Runtime<DType = DType>,
 {
@@ -35,7 +35,7 @@ where
     )?)
 }
 
-pub(super) fn any<R, C>(client: &C, mask: &Tensor<R>) -> Result<bool, EngineError>
+pub(crate) fn any<R, C>(client: &C, mask: &Tensor<R>) -> Result<bool, EngineError>
 where
     R: Runtime<DType = DType>,
     C: RuntimeClient<R> + ReduceOps<R>,
@@ -46,7 +46,7 @@ where
     Ok(client.max(mask, &[0], false)?.item::<f64>()? != 0.0)
 }
 
-pub(super) fn check_finite<R, C>(
+pub(crate) fn check_finite<R, C>(
     client: &C,
     value: &Tensor<R>,
     operation: &'static str,
@@ -68,7 +68,7 @@ where
     Ok(())
 }
 
-pub(super) fn check_state<R, C>(
+pub(crate) fn check_state<R, C>(
     client: &C,
     state: &TensorFaceState<R>,
     shape: &[usize],

@@ -61,7 +61,7 @@ impl WaterLedger {
             self.water_adjustment_abs_bound,
             step.water_adjustment_abs_charge,
         )
-        .map_err(crate::tensor::land::static_error)?;
+        .map_err(super::tensor::land::static_error)?;
         result.boundary_in += step.boundary_in;
         result.boundary_out += step.boundary_out;
         for axis in 0..2 {

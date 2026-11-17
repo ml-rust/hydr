@@ -1,9 +1,10 @@
+use super::boundary_trace::check_transmissive;
 use super::{TensorDomain, TensorState, TensorTopology};
 use crate::contract::{
     Axis, BoundaryFace, BoundaryForcing, EngineError, ForcingInterval, SolverConfig,
 };
 use crate::model::Domain;
-use crate::numerics::{TensorFaceState, check_transmissive};
+use crate::numerics::TensorFaceState;
 use crate::solver::TransmissiveDiagnostics;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, ConditionalOps, IndexingOps};

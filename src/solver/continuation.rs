@@ -4,9 +4,9 @@ use super::compatibility::same_interval;
 use super::definition::{Definition, retained_index};
 use super::forcing_history::{self, ForcingPrefix};
 use super::receipts::{StepReceipt, rebase_forcing_index};
+use super::tensor::TensorDomain;
 use super::{SnapshotData, Solver};
 use crate::contract::{EngineError, ForcingInterval, ForcingSchedule};
-use crate::tensor::TensorDomain;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, ReduceOps, ScalarOps,

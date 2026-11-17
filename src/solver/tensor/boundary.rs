@@ -1,11 +1,10 @@
+use super::boundary_trace::{TensorBoundaryRequest, TensorBoundaryTrace, characteristic_trace};
 use super::{TensorDomain, TensorState, TensorTopology};
 use crate::contract::{
     Axis, BoundaryFace, BoundaryForcing, EngineError, ForcingInterval, SolverConfig,
 };
 use crate::model::Domain;
-use crate::numerics::{
-    TensorBoundaryRequest, TensorBoundaryTrace, TensorFaceState, characteristic_trace,
-};
+use crate::numerics::TensorFaceState;
 use crate::solver::BoundaryTraceDiagnostics;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, ConditionalOps, IndexingOps, ScatterReduceOp};

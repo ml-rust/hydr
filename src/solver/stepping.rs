@@ -1,8 +1,8 @@
 use super::engine::Accepted;
+use super::tensor::land_sources::{SourceInputs, calculate as calculate_sources, checked_volume};
+use super::tensor::{TensorState, transport};
 use super::{Solver, StepDiagnostics};
 use crate::contract::EngineError;
-use crate::tensor::land_sources::{SourceInputs, calculate as calculate_sources, checked_volume};
-use crate::tensor::{TensorState, transport};
 use numr::dtype::DType;
 use numr::ops::IndexingOps;
 use numr::ops::{

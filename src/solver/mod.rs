@@ -15,6 +15,7 @@ mod restore;
 mod setup;
 mod snapshot;
 mod stepping;
+mod tensor;
 
 pub use crate::contract::{
     Axis, BoundaryConditions, BoundaryFace, BoundaryForcing, BoundaryTolerances, DischargeBoundary,

@@ -1,8 +1,8 @@
 use super::StepDiagnostics;
-use crate::contract::EngineError;
-use crate::tensor::{
+use super::tensor::{
     TensorDomain, land::TensorLand, land_sources::SourceTrial, transport::TensorTransport,
 };
+use crate::contract::EngineError;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, ReduceOps, ScalarOps,

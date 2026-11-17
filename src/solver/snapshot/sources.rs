@@ -66,7 +66,7 @@ where
         r.ponded_depth_m
     })?;
     let storage_before =
-        crate::tensor::land_sources::checked_volume(&solver.context.client, &ponded, area)?;
+        crate::solver::tensor::land_sources::checked_volume(&solver.context.client, &ponded, area)?;
     require(
         step.storage_before == storage_before,
         "source starting storage",
@@ -99,8 +99,11 @@ where
         ),
     ] {
         let depth = tensor::<R>(solver.context.client.device(), &step.sources, select)?;
-        let expected =
-            crate::tensor::land_sources::checked_volume(&solver.context.client, &depth, area)?;
+        let expected = crate::solver::tensor::land_sources::checked_volume(
+            &solver.context.client,
+            &depth,
+            area,
+        )?;
         require(
             expected.is_finite() && last == expected && cumulative >= last,
             "source volume",

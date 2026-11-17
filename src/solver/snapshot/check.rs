@@ -3,9 +3,9 @@ use crate::contract::EngineError;
 use crate::model::FlowState;
 use crate::soil::SoilState;
 use crate::solver::engine::Accepted;
+use crate::solver::tensor::TensorState;
+use crate::solver::tensor::land::{TensorLand, static_error};
 use crate::solver::{CONTRACT_VERSION, Solver};
-use crate::tensor::TensorState;
-use crate::tensor::land::{TensorLand, static_error};
 use numr::dtype::DType;
 use numr::runtime::{Runtime, RuntimeClient};
 
@@ -56,7 +56,7 @@ where
             format!("time={}", data.accepted.time),
         )?;
         let flow = TensorState::from_flow(self.context.client.device(), &data.accepted.flow)?;
-        let storage = crate::tensor::land_sources::checked_volume(
+        let storage = crate::solver::tensor::land_sources::checked_volume(
             &self.context.client,
             &flow.h,
             data.setup.domain.grid().cell_area(),

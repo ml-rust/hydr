@@ -9,7 +9,7 @@ use numr::tensor::Tensor;
 use solvr::optimize::OptimizeError;
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedBisectionOptions};
 
-pub(super) fn bounds<R, C>(
+pub(crate) fn bounds<R, C>(
     client: &C,
     left: &TensorFaceState<R>,
     right: &TensorFaceState<R>,

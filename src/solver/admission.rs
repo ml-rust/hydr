@@ -1,6 +1,6 @@
 use super::Solver;
+use super::tensor::TensorState;
 use crate::contract::EngineError;
-use crate::tensor::TensorState;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, HypotOps, IndexingOps, ReduceOps,

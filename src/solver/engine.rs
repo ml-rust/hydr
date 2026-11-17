@@ -1,14 +1,14 @@
 use super::definition::Definition;
 use super::forcing_history::ForcingPrefix;
+use super::tensor::land::TensorLand;
+use super::tensor::land_sources::checked_volume;
+use super::tensor::{TensorDomain, TensorState};
 use super::{
     BoundaryConditions, CONTRACT_VERSION, CellResult, EngineError, ForcingSchedule, InitialState,
     Snapshot, SolverConfig, SolverSetup, StepDiagnostics, WaterLedger,
 };
 use crate::model::{CellState, Domain, FlowState};
 use crate::soil::{LandModel, SoilState};
-use crate::tensor::land::TensorLand;
-use crate::tensor::land_sources::checked_volume;
-use crate::tensor::{TensorDomain, TensorState};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, ReduceOps, ScalarOps,
@@ -115,9 +115,9 @@ where
             ));
         }
         let land = LandModel::new(&domain, land.cells().to_vec())
-            .map_err(crate::tensor::land::static_error)?;
+            .map_err(super::tensor::land::static_error)?;
         let soil = SoilState::new(&land, soil.cells().to_vec())
-            .map_err(crate::tensor::land::static_error)?;
+            .map_err(super::tensor::land::static_error)?;
         let land_state = TensorLand::new(client.clone(), &land, &soil)?;
         let prefix = match prefix {
             Some(prefix) => prefix,
