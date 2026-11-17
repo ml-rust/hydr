@@ -77,7 +77,8 @@ where
                 "iteration packet shape, dtype, or device differs: supply the complete native packet",
             ));
         }
-        finite(&self.client, x, "channel/pool iteration packet")?;
+        finite(&self.client, x, "channel/pool iteration packet")
+            .map_err(ChannelPoolError::from_transfer)?;
         let flags = x.narrow(0, p + e, p + e)?;
         let zero = Tensor::<R>::zeros(&[1], DType::F64, self.client.device())?;
         let one = Tensor::<R>::full_scalar(&[1], DType::F64, 1.0, self.client.device())?;
@@ -89,7 +90,8 @@ where
             &self.client,
             &self.client.sub(&one, &valid)?,
             "iteration support flags differ from zero or one",
-        )?;
+        )
+        .map_err(ChannelPoolError::from_transfer)?;
         Ok(())
     }
     pub(super) fn residuals(
@@ -103,7 +105,7 @@ where
         let p = self.setup.pools.len();
         let e = self.setup.connections.len();
         let difference = c.abs(&c.sub(gx, x)?)?;
-        finite(c, &difference, "fixed-point residual")?;
+        finite(c, &difference, "fixed-point residual").map_err(ChannelPoolError::from_transfer)?;
         let heads = difference.narrow(0, 0, p)?;
         let transfers = difference.narrow(0, p, e)?;
         let head_scale = c.maximum(
@@ -121,8 +123,10 @@ where
             &c.mul_scalar(&transfer_scale, config.transfer_relative)?,
             config.transfer_absolute_m3,
         )?;
-        finite(c, &head_budget, "head convergence budget")?;
-        finite(c, &transfer_budget, "transfer convergence budget")?;
+        finite(c, &head_budget, "head convergence budget")
+            .map_err(ChannelPoolError::from_transfer)?;
+        finite(c, &transfer_budget, "transfer convergence budget")
+            .map_err(ChannelPoolError::from_transfer)?;
         let zero = Tensor::<R>::zeros(&[1], DType::F64, c.device())?;
         let one = Tensor::<R>::full_scalar(&[1], DType::F64, 1.0, c.device())?;
         let normalized =

@@ -59,13 +59,17 @@ where
         ] {
             let values = c.cat(&[connection, external], 0)?;
             nonnegative(c, &values, "checkpoint directional parent boundary history")?;
-            let grouped = tree.aggregate(c, &values, AggregationKind::Momentum)?;
+            let grouped = tree
+                .aggregate(c, &values, AggregationKind::Momentum)
+                .map_err(ChannelPoolError::from_transfer)?;
             let bounds = c.cat(&[connection_bound, external_bound], 0)?;
             nonnegative(c, &bounds, "checkpoint directional parent counter bounds")?;
             // Claimed historical bounds cannot supply arbitrary credit for invented gross traffic.
             let independent_bound = child_history_bound(c, &values, factor)?;
             let bounded = c.minimum(&bounds, &independent_bound)?;
-            let grouped_bounds = tree.aggregate(c, &bounded, AggregationKind::Momentum)?;
+            let grouped_bounds = tree
+                .aggregate(c, &bounded, AggregationKind::Momentum)
+                .map_err(ChannelPoolError::from_transfer)?;
             let child_values = reaches
                 .iter()
                 .map(|reach| {
@@ -83,14 +87,16 @@ where
                     c,
                     &c.ne(&child, &zero(c)?)?,
                     "zero-history channel boundary counters are nonzero. Restore original child accounting",
-                )?;
+                )
+                .map_err(ChannelPoolError::from_transfer)?;
             }
             let zero = zero(c)?;
             reject(
                 c,
                 &c.ne(&c.eq(&grouped.value, &zero)?, &c.eq(&child, &zero)?)?,
                 "checkpoint zero boundary histories differ between channel and endpoint owners. Restore complete original counters",
-            )?;
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
             let child_bound = child_history_bound(c, &child, factor)?;
             let allowance = add_bounds(
                 c,
@@ -106,18 +112,22 @@ where
                 c,
                 &difference,
                 "checkpoint channel boundary-history difference",
-            )?;
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
             finite(
                 c,
                 &low,
                 "checkpoint channel boundary-history difference low",
-            )?;
-            let used = upward_add(c, &c.abs(&difference)?, &c.abs(&low)?)?;
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
+            let used = upward_add(c, &c.abs(&difference)?, &c.abs(&low)?)
+                .map_err(ChannelPoolError::from_transfer)?;
             reject(
                 c,
                 &c.gt(&used, &allowance)?,
                 "checkpoint directional channel history disagrees with endpoint owners. Restore complete channel and parent counters",
-            )?;
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
         }
         Ok(())
     }
@@ -155,12 +165,8 @@ where
             .zip(&keys)
             .map(|(&(reach, input), key)| (reach, input, key.as_str()))
             .collect::<Vec<_>>();
-        Ok(TransferTree::new_grouped(
-            &self.client,
-            self.setup.reaches.len(),
-            count,
-            &targets,
-        )?)
+        TransferTree::new_grouped(&self.client, self.setup.reaches.len(), count, &targets)
+            .map_err(ChannelPoolError::from_transfer)
     }
 }
 
@@ -199,14 +205,16 @@ where
         client,
         &product,
         "checkpoint child boundary-history error product",
-    )?;
+    )
+    .map_err(ChannelPoolError::from_transfer)?;
     let rounding = rounding_with_client(client, &product)?;
     finite(
         client,
         &rounding,
         "checkpoint child boundary-history product rounding",
-    )?;
-    let upper = upward_add(client, &product, &rounding)?;
+    )
+    .map_err(ChannelPoolError::from_transfer)?;
+    let upper = upward_add(client, &product, &rounding).map_err(ChannelPoolError::from_transfer)?;
     let zero = zero(client)?;
     let result = if factor == 0.0 {
         client.mul_scalar(child, 0.0)?
@@ -217,6 +225,7 @@ where
         client,
         &result,
         "checkpoint child boundary-history arithmetic bound",
-    )?;
+    )
+    .map_err(ChannelPoolError::from_transfer)?;
     Ok(result)
 }

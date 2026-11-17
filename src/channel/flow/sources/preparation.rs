@@ -52,7 +52,7 @@ where
                     "lateral donor state requires one F64 value per cell on the configured client",
                 ));
             }
-            finite(client, value, "lateral donor state")?;
+            finite(client, value, "lateral donor state").map_err(ChannelError::from_transfer)?;
         }
         if self.count() == 0 {
             let cell_zero = zeros(client, self.cells())?;
@@ -88,7 +88,8 @@ where
         let zero = zeros(client, 1)?;
         let rates = client.where_cond(&inputs.rate_mask, &inputs.amounts, &zero)?;
         let rate_volumes = client.mul_scalar(&rates, dt)?;
-        finite(client, &rate_volumes, "lateral rate-times-duration")?;
+        finite(client, &rate_volumes, "lateral rate-times-duration")
+            .map_err(ChannelError::from_transfer)?;
         reject(
             client,
             &client.mul(
@@ -96,7 +97,8 @@ where
                 &client.eq(&rate_volumes, &zero)?,
             )?,
             "positive prescribed lateral rate produces zero volume: use a representable interval or rescale the input",
-        )?;
+        )
+        .map_err(ChannelError::from_transfer)?;
         let volumes = client.where_cond(&inputs.rate_mask, &rate_volumes, &inputs.amounts)?;
         let donor = client.index_select(donor_volume, 0, &self.cell_indices)?;
         let donor_u = client.index_select(donor_velocity, 0, &self.cell_indices)?;
@@ -105,7 +107,8 @@ where
             client,
             &client.mul(&client.gt(&withdrawal, &zero)?, &client.le(&donor, &zero)?)?,
             "positive lateral withdrawal has a dry donor: remove the withdrawal or supply existing donor water",
-        )?;
+        )
+        .map_err(ChannelError::from_transfer)?;
         let velocity = if self.inflow_indices.numel() == 0 {
             donor_u
         } else {
@@ -116,13 +119,16 @@ where
         let product_bound = product_roundoff(client, &volumes, &velocity, &momentum)?;
         let water = self
             .tree
-            .aggregate(client, &volumes, AggregationKind::Water)?;
+            .aggregate(client, &volumes, AggregationKind::Water)
+            .map_err(ChannelError::from_transfer)?;
         let momentum_group = self
             .tree
-            .aggregate(client, &momentum, AggregationKind::Momentum)?;
-        let momentum_products =
-            self.tree
-                .aggregate(client, &product_bound, AggregationKind::Momentum)?;
+            .aggregate(client, &momentum, AggregationKind::Momentum)
+            .map_err(ChannelError::from_transfer)?;
+        let momentum_products = self
+            .tree
+            .aggregate(client, &product_bound, AggregationKind::Momentum)
+            .map_err(ChannelError::from_transfer)?;
         let momentum_bound = add_bounds(
             client,
             &[
@@ -139,7 +145,8 @@ where
             reported_sum(client, &withdrawal_volume, self.cell_reduction)?;
         let physical_total_roundoff_bound_m3 = scalar_charge(in_error, out_error)?;
         let (next_counter, low) = client.two_sum(&previous.cumulative_volume, &volumes)?;
-        finite(client, &next_counter, "lateral cumulative counter addition")?;
+        finite(client, &next_counter, "lateral cumulative counter addition")
+            .map_err(ChannelError::from_transfer)?;
         let next_counter = client.where_cond(
             &client.eq(&volumes, &zero)?,
             &previous.cumulative_volume,
@@ -147,7 +154,8 @@ where
         )?;
         let low = client.where_cond(&client.eq(&volumes, &zero)?, &zero, &low)?;
         let next_counter_bound =
-            upward_add(client, &previous.counter_roundoff_bound, &client.abs(&low)?)?;
+            upward_add(client, &previous.counter_roundoff_bound, &client.abs(&low)?)
+                .map_err(ChannelError::from_transfer)?;
         let counter_addition_bound_m3 =
             upper_sum(client, &client.abs(&low)?, self.binding_reduction)?;
         let signed_momentum =

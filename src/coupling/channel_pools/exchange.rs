@@ -48,7 +48,8 @@ where
         let c = &self.client;
         let p = self.setup.pools.len();
         let midpoint = c.midpoint(&accepted.pools.stages_tensor()?, &x.narrow(0, 0, p)?)?;
-        finite(c, &midpoint, "used midpoint pool stages")?;
+        finite(c, &midpoint, "used midpoint pool stages")
+            .map_err(ChannelPoolError::from_transfer)?;
         let connection_heads =
             c.index_select(&midpoint, 0, &self.topology.connection_pool_indices)?;
         let mut reaches = Vec::with_capacity(accepted.reaches.len());
@@ -108,16 +109,20 @@ where
         let external = c.index_select(&volumes, 0, &self.topology.external_endpoint_indices)?;
         let momentum = c.index_select(&momenta, 0, &self.topology.connection_endpoint_indices)?;
         let zero = Tensor::<R>::zeros(&[1], DType::F64, c.device())?;
-        let incoming = self.topology.pool_transfers.aggregate(
-            c,
-            &c.maximum(&signed, &zero)?,
-            AggregationKind::Water,
-        )?;
-        let outgoing = self.topology.pool_transfers.aggregate(
-            c,
-            &c.maximum(&c.neg(&signed)?, &zero)?,
-            AggregationKind::Water,
-        )?;
+        let incoming = self
+            .topology
+            .pool_transfers
+            .aggregate(c, &c.maximum(&signed, &zero)?, AggregationKind::Water)
+            .map_err(ChannelPoolError::from_transfer)?;
+        let outgoing = self
+            .topology
+            .pool_transfers
+            .aggregate(
+                c,
+                &c.maximum(&c.neg(&signed)?, &zero)?,
+                AggregationKind::Water,
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
         let available = accepted
             .pools
             .coupling_cut_availability(&self.cut_plan)?

@@ -149,7 +149,8 @@ pub(crate) fn check_source_receipt(
         ],
     )?;
     let total = upward_mul(METRES_PER_FOOT, soil.native_roundoff_bound_ft)
-        .and_then(|native| upward_add(native, bridge))?;
+        .and_then(|native| upward_add(native, bridge))
+        .map_err(SoilError::from_outward)?;
     require(
         soil.bridge_roundoff_bound_m == bridge && soil.total_roundoff_bound_m == total,
         "soil source bound identity",
@@ -163,7 +164,7 @@ pub(crate) fn check_source_receipt(
         ("SI source bound", expected_adjustment, total),
     ] {
         if value > 0.0 {
-            let upper = value + rounding_bound(value)?;
+            let upper = value + rounding_bound(value).map_err(SoilError::from_outward)?;
             require(
                 upper.is_finite() && upper <= bound,
                 name,
@@ -178,23 +179,37 @@ fn bridge_bound(dt: f64, native: [f64; 5], si: [f64; 5]) -> Result<f64, SoilErro
     let [a, dh, vh, ia, native_available] = native;
     let [incoming_depth, available, si_rate, si_depth, native_depth] = si;
     let input_native = sum(&[
-        upward_mul(dt, rounding_bound(a)?)?,
-        rounding_bound(dh)?,
-        upward_mul(dt, rounding_bound(vh)?)?,
-        upward_mul(dt, rounding_bound(ia)?)?,
-        rounding_bound(native_available)?,
-    ])?;
+        upward_mul(dt, rounding_bound(a).map_err(SoilError::from_outward)?)
+            .map_err(SoilError::from_outward)?,
+        rounding_bound(dh).map_err(SoilError::from_outward)?,
+        upward_mul(dt, rounding_bound(vh).map_err(SoilError::from_outward)?)
+            .map_err(SoilError::from_outward)?,
+        upward_mul(dt, rounding_bound(ia).map_err(SoilError::from_outward)?)
+            .map_err(SoilError::from_outward)?,
+        rounding_bound(native_available).map_err(SoilError::from_outward)?,
+    ])
+    .map_err(SoilError::from_outward)?;
     let input = sum(&[
-        upward_mul(METRES_PER_FOOT, input_native)?,
-        rounding_bound(incoming_depth)?,
-        rounding_bound(available)?,
-    ])?;
+        upward_mul(METRES_PER_FOOT, input_native).map_err(SoilError::from_outward)?,
+        rounding_bound(incoming_depth).map_err(SoilError::from_outward)?,
+        rounding_bound(available).map_err(SoilError::from_outward)?,
+    ])
+    .map_err(SoilError::from_outward)?;
     let output = sum(&[
-        upward_mul(dt, rounding_bound(si_rate)?)?,
-        rounding_bound(si_depth)?,
-        upward_mul(METRES_PER_FOOT, rounding_bound(native_depth)?)?,
-    ])?;
-    Ok(upward_add(input, output)?)
+        upward_mul(
+            dt,
+            rounding_bound(si_rate).map_err(SoilError::from_outward)?,
+        )
+        .map_err(SoilError::from_outward)?,
+        rounding_bound(si_depth).map_err(SoilError::from_outward)?,
+        upward_mul(
+            METRES_PER_FOOT,
+            rounding_bound(native_depth).map_err(SoilError::from_outward)?,
+        )
+        .map_err(SoilError::from_outward)?,
+    ])
+    .map_err(SoilError::from_outward)?;
+    upward_add(input, output).map_err(SoilError::from_outward)
 }
 
 fn sum(values: &[f64]) -> Result<f64, OutwardError> {

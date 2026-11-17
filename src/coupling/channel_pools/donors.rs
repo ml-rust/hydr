@@ -25,40 +25,48 @@ where
         let c = &self.client;
         let zero = Tensor::<R>::zeros(&[1], DType::F64, c.device())?;
         let outgoing = c.maximum(&c.neg(signed)?, &zero)?;
-        let blocks = self.topology.cut_aggregation.blocks.aggregate(
-            c,
-            &outgoing,
-            AggregationKind::Momentum,
-        )?;
-        let sums = self.topology.cut_aggregation.covers.aggregate(
-            c,
-            &blocks.value,
-            AggregationKind::Momentum,
-        )?;
-        let errors = self.topology.cut_aggregation.covers.aggregate(
-            c,
-            &blocks.bound,
-            AggregationKind::Momentum,
-        )?;
+        let blocks = self
+            .topology
+            .cut_aggregation
+            .blocks
+            .aggregate(c, &outgoing, AggregationKind::Momentum)
+            .map_err(ChannelPoolError::from_transfer)?;
+        let sums = self
+            .topology
+            .cut_aggregation
+            .covers
+            .aggregate(c, &blocks.value, AggregationKind::Momentum)
+            .map_err(ChannelPoolError::from_transfer)?;
+        let errors = self
+            .topology
+            .cut_aggregation
+            .covers
+            .aggregate(c, &blocks.bound, AggregationKind::Momentum)
+            .map_err(ChannelPoolError::from_transfer)?;
         let bound = upward_add(
             c,
             &sums.bound,
-            &upward_add(c, &errors.value, &errors.bound)?,
-        )?;
-        Ok(upward_add(c, &sums.value, &bound)?)
+            &upward_add(c, &errors.value, &errors.bound)
+                .map_err(ChannelPoolError::from_transfer)?,
+        )
+        .map_err(ChannelPoolError::from_transfer)?;
+        upward_add(c, &sums.value, &bound).map_err(ChannelPoolError::from_transfer)
     }
     pub(super) fn check_cuts(
         &self,
         available: &Tensor<R>,
         demand: &Tensor<R>,
     ) -> Result<(), ChannelPoolError> {
-        finite(&self.client, available, "original cut availability")?;
-        finite(&self.client, demand, "cut export upper bound")?;
+        finite(&self.client, available, "original cut availability")
+            .map_err(ChannelPoolError::from_transfer)?;
+        finite(&self.client, demand, "cut export upper bound")
+            .map_err(ChannelPoolError::from_transfer)?;
         reject(
             &self.client,
             &self.client.gt(demand, available)?,
             "connection exports exceed original water above an attachment cut. Shorten the complete interval",
-        )?;
+        )
+        .map_err(ChannelPoolError::from_transfer)?;
         Ok(())
     }
     pub(super) fn attachment_wet(
@@ -94,7 +102,8 @@ where
             c,
             &c.mul(&active, &c.sub(&one, &supported)?)?,
             "active connection loses wet support during the common interval. Shorten the complete interval",
-        )?;
+        )
+        .map_err(ChannelPoolError::from_transfer)?;
         Ok(())
     }
 }

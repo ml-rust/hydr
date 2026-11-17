@@ -88,7 +88,8 @@ where
                     client,
                     &client.ne(value, &zero(client)?)?,
                     "zero accepted steps require zero parent counters and arithmetic history",
-                )?;
+                )
+                .map_err(ChannelPoolError::from_transfer)?;
             }
         }
         for (value, bound) in [
@@ -104,7 +105,8 @@ where
                     &client.ne(bound, &zero(client)?)?,
                 )?,
                 "zero parent throughput requires zero cumulative addition bound",
-            )?;
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
         }
         Ok(())
     }
@@ -171,17 +173,20 @@ where
                 c,
                 &previous.pool_incoming_assembly_bound_m3,
                 &interval.pool_incoming_bound_m3,
-            )?,
+            )
+            .map_err(ChannelPoolError::from_transfer)?,
             pool_outgoing_assembly_bound_m3: upward_add(
                 c,
                 &previous.pool_outgoing_assembly_bound_m3,
                 &interval.pool_outgoing_bound_m3,
-            )?,
+            )
+            .map_err(ChannelPoolError::from_transfer)?,
             historical_physical_charge_m3: upward_add(
                 c,
                 &previous.historical_physical_charge_m3,
                 &accounting.physical_charge_m3,
-            )?,
+            )
+            .map_err(ChannelPoolError::from_transfer)?,
         })
     }
 }
@@ -205,8 +210,11 @@ where
 {
     nonnegative(client, increment, "parent interval counter increment")?;
     let (value, low) = client.two_sum(previous, increment)?;
-    finite(client, &value, "parent cumulative transfer")?;
-    finite(client, &low, "parent cumulative addition low")?;
-    let bound = upward_add(client, previous_bound, &client.abs(&low)?)?;
+    finite(client, &value, "parent cumulative transfer")
+        .map_err(ChannelPoolError::from_transfer)?;
+    finite(client, &low, "parent cumulative addition low")
+        .map_err(ChannelPoolError::from_transfer)?;
+    let bound = upward_add(client, previous_bound, &client.abs(&low)?)
+        .map_err(ChannelPoolError::from_transfer)?;
     Ok((value, bound))
 }

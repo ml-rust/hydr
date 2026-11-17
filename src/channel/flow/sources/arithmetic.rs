@@ -90,7 +90,7 @@ where
         + TwoSumOps<R>
         + UnaryOps<R>,
 {
-    finite(client, product, "lateral momentum product")?;
+    finite(client, product, "lateral momentum product").map_err(ChannelError::from_transfer)?;
     let zero = zeros(client, 1)?;
     let active = client.mul(
         &client.gt(&client.abs(a)?, &zero)?,
@@ -121,7 +121,8 @@ where
     let raised = client.add(&product, &rounding_with_client::<R>(client, &product)?)?;
     let active = client.mul(&client.gt(bound, &zero)?, &client.gt(&factor, &zero)?)?;
     let result = client.where_cond(&active, &raised, &zero)?;
-    finite(client, &result, "lateral propagated momentum bound")?;
+    finite(client, &result, "lateral propagated momentum bound")
+        .map_err(ChannelError::from_transfer)?;
     Ok(result)
 }
 
@@ -145,7 +146,7 @@ where
     })?;
     let mut sum = Tensor::zeros(first.shape(), DType::F64, client.device())?;
     for bound in bounds {
-        sum = upward_add(client, &sum, bound)?;
+        sum = upward_add(client, &sum, bound).map_err(ChannelError::from_transfer)?;
     }
     Ok(sum)
 }

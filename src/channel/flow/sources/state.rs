@@ -48,12 +48,13 @@ where
                     value.shape()
                 )));
             }
-            finite(client, value, field)?;
+            finite(client, value, field).map_err(ChannelError::from_transfer)?;
             reject(
                 client,
                 &client.lt(value, &zeros(client, 1)?)?,
                 "negative lateral counter or bound: restore nonnegative continuation values",
-            )?;
+            )
+            .map_err(ChannelError::from_transfer)?;
         }
         if !state.cumulative_assembly_bound_m3.is_finite()
             || state.cumulative_assembly_bound_m3 < 0.0

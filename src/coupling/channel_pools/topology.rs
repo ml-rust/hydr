@@ -233,8 +233,10 @@ where
                 block_count,
                 setup.connections.len(),
                 &borrowed_blocks,
-            )?,
-            covers: TransferTree::new_grouped(client, cuts.len(), block_count, &borrowed_covers)?,
+            )
+            .map_err(ChannelPoolError::from_transfer)?,
+            covers: TransferTree::new_grouped(client, cuts.len(), block_count, &borrowed_covers)
+                .map_err(ChannelPoolError::from_transfer)?,
         };
         let values = |v: &[f64]| -> Result<Tensor<R>, ChannelPoolError> {
             Ok(Tensor::from_slice(v, &[v.len()], client.device())?)
@@ -262,7 +264,8 @@ where
                 setup.pools.len(),
                 setup.connections.len(),
                 &pool_targets,
-            )?,
+            )
+            .map_err(ChannelPoolError::from_transfer)?,
         })
     }
 }

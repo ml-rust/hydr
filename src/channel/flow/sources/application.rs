@@ -62,29 +62,33 @@ where
             client,
             &client.gt(&prepared.withdrawal_volume, original_volume)?,
             WITHDRAWAL_EXCEEDS,
-        )?;
+        )
+        .map_err(ChannelError::from_transfer)?;
         let (retained, withdrawal_low) =
             client.two_sum(original_volume, &client.neg(&prepared.withdrawal_volume)?)?;
-        finite(client, &retained, "lateral retained water")?;
+        finite(client, &retained, "lateral retained water").map_err(ChannelError::from_transfer)?;
         reject(
             client,
             &client.mul(&withdrawal_active, &client.ge(&retained, original_volume)?)?,
             WITHDRAWAL_ABSORBED,
-        )?;
+        )
+        .map_err(ChannelError::from_transfer)?;
         let (transported_volume, transport_low) = client.two_sum(&retained, face_water_delta)?;
         finite(
             client,
             &transported_volume,
             "post-withdrawal transport water",
-        )?;
+        )
+        .map_err(ChannelError::from_transfer)?;
         reject(
             client,
             &client.lt(&transported_volume, &zero)?,
             OUTFLOW_EXCEEDS,
-        )?;
+        )
+        .map_err(ChannelError::from_transfer)?;
         let (volume, incoming_low) =
             client.two_sum(&transported_volume, &prepared.incoming_volume)?;
-        finite(client, &volume, "lateral accepted water")?;
+        finite(client, &volume, "lateral accepted water").map_err(ChannelError::from_transfer)?;
         let both_positive = client.mul(
             &client.gt(&transported_volume, &zero)?,
             &client.gt(&prepared.incoming_volume, &zero)?,
@@ -97,7 +101,8 @@ where
             client,
             &client.mul(&both_positive, &absorbed)?,
             INFLOW_ABSORBED,
-        )?;
+        )
+        .map_err(ChannelError::from_transfer)?;
         let water_assembly_bound = add_bounds(
             client,
             &[
@@ -117,7 +122,8 @@ where
         let one = client.add_scalar(&zero, 1.0)?;
         let denominator = client.where_cond(&wet, original_volume, &one)?;
         let fraction = client.div(&retained, &denominator)?;
-        finite(client, &fraction, "lateral retained-water fraction")?;
+        finite(client, &fraction, "lateral retained-water fraction")
+            .map_err(ChannelError::from_transfer)?;
         let retained_product = client.mul(original_momentum, &fraction)?;
         let retained_momentum =
             client.where_cond(&withdrawal_active, &retained_product, original_momentum)?;
@@ -125,7 +131,8 @@ where
             client,
             &retained_momentum,
             "lateral retained-water momentum",
-        )?;
+        )
+        .map_err(ChannelError::from_transfer)?;
         let ratio_active = client.mul(&withdrawal_active, &client.gt(&retained, &zero)?)?;
         let ratio_bound = client.where_cond(
             &ratio_active,
@@ -151,24 +158,28 @@ where
             client,
             &recorded_retained,
             "recorded lateral donor momentum",
-        )?;
+        )
+        .map_err(ChannelError::from_transfer)?;
         let (relationship, relationship_low) =
             client.two_sum(&retained_momentum, &client.neg(&recorded_retained)?)?;
         finite(
             client,
             &relationship,
             "retained momentum source relationship",
-        )?;
+        )
+        .map_err(ChannelError::from_transfer)?;
         let (transported_momentum, momentum_transport_low) =
             client.two_sum(&retained_momentum, face_momentum_delta)?;
         finite(
             client,
             &transported_momentum,
             "post-withdrawal transport momentum",
-        )?;
+        )
+        .map_err(ChannelError::from_transfer)?;
         let (momentum, momentum_incoming_low) =
             client.two_sum(&transported_momentum, &prepared.incoming_momentum)?;
-        finite(client, &momentum, "lateral accepted momentum")?;
+        finite(client, &momentum, "lateral accepted momentum")
+            .map_err(ChannelError::from_transfer)?;
         let momentum_assembly_bound = add_bounds(
             client,
             &[

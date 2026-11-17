@@ -257,28 +257,31 @@ where
                 &accepted.counters.pool_outgoing_assembly_bound_m3,
             ),
         ] {
-            let grouped = self.topology.pool_transfers.aggregate(
-                c,
-                connections,
-                AggregationKind::Momentum,
-            )?;
-            let grouped_bounds = self.topology.pool_transfers.aggregate(
-                c,
-                connection_bounds,
-                AggregationKind::Momentum,
-            )?;
-            let grouping_allowance = upward_add(c, &grouped_bounds.value, &grouped_bounds.bound)?;
+            let grouped = self
+                .topology
+                .pool_transfers
+                .aggregate(c, connections, AggregationKind::Momentum)
+                .map_err(ChannelPoolError::from_transfer)?;
+            let grouped_bounds = self
+                .topology
+                .pool_transfers
+                .aggregate(c, connection_bounds, AggregationKind::Momentum)
+                .map_err(ChannelPoolError::from_transfer)?;
+            let grouping_allowance = upward_add(c, &grouped_bounds.value, &grouped_bounds.bound)
+                .map_err(ChannelPoolError::from_transfer)?;
             let allowance = add_bounds(
                 c,
                 &[&grouped.bound, &grouping_allowance, actual_bound, assembly],
             )?;
             let (difference, low) = c.two_sum(&grouped.value, &c.neg(actual)?)?;
-            let used = upward_add(c, &c.abs(&difference)?, &c.abs(&low)?)?;
+            let used = upward_add(c, &c.abs(&difference)?, &c.abs(&low)?)
+                .map_err(ChannelPoolError::from_transfer)?;
             reject(
                 c,
                 &c.gt(&used, &allowance)?,
                 "cumulative connection transfers disagree with pool histories. Restore the complete coordinated state",
-            )?;
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
         }
         Ok(())
     }

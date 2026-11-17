@@ -99,8 +99,11 @@ impl From<numr::error::Error> for CoupledLevelPoolError {
     }
 }
 
-impl From<crate::numerics::water_transfers::WaterTransferError> for CoupledLevelPoolError {
-    fn from(error: crate::numerics::water_transfers::WaterTransferError) -> Self {
+impl CoupledLevelPoolError {
+    /// Converts a water-transfer error into the public level-pool error.
+    pub(crate) fn from_transfer(
+        error: crate::numerics::water_transfers::WaterTransferError,
+    ) -> Self {
         use crate::numerics::water_transfers::WaterTransferError;
         match error {
             WaterTransferError::Input(message) => Self::Input(message),

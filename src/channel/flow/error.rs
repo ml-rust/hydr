@@ -146,8 +146,11 @@ impl From<crate::contract::EngineError> for ChannelError {
     }
 }
 
-impl From<crate::numerics::water_transfers::WaterTransferError> for ChannelError {
-    fn from(error: crate::numerics::water_transfers::WaterTransferError) -> Self {
+impl ChannelError {
+    /// Converts a water-transfer error into the public channel error.
+    pub(crate) fn from_transfer(
+        error: crate::numerics::water_transfers::WaterTransferError,
+    ) -> Self {
         use crate::numerics::water_transfers::WaterTransferError;
         match error {
             WaterTransferError::Input(context) => Self::input(context),

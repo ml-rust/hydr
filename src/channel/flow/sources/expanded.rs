@@ -47,7 +47,8 @@ where
         let update = self.water_update(c, original_volume, water, prepared)?;
         let withdrawal_active = c.gt(&prepared.withdrawal_volume, &zero)?;
         // A normalized point has the sign of its high part.
-        reject(c, &c.lt(&update.retained.high, &zero)?, WITHDRAWAL_EXCEEDS)?;
+        reject(c, &c.lt(&update.retained.high, &zero)?, WITHDRAWAL_EXCEEDS)
+            .map_err(ChannelError::from_transfer)?;
         reject(
             c,
             &c.mul(
@@ -55,8 +56,10 @@ where
                 &same_point(c, &update.retained, original_volume)?,
             )?,
             WITHDRAWAL_ABSORBED,
-        )?;
-        reject(c, &c.lt(&update.transported.high, &zero)?, OUTFLOW_EXCEEDS)?;
+        )
+        .map_err(ChannelError::from_transfer)?;
+        reject(c, &c.lt(&update.transported.high, &zero)?, OUTFLOW_EXCEEDS)
+            .map_err(ChannelError::from_transfer)?;
         let both_positive = c.mul(
             &c.gt(&update.transported.high, &zero)?,
             &c.gt(&prepared.incoming_volume, &zero)?,
@@ -69,7 +72,8 @@ where
             &same_point(c, &update.volume, &update.transported)?,
             &same_point(c, &update.volume, &incoming_point)?,
         )?;
-        reject(c, &c.mul(&both_positive, &absorbed)?, INFLOW_ABSORBED)?;
+        reject(c, &c.mul(&both_positive, &absorbed)?, INFLOW_ABSORBED)
+            .map_err(ChannelError::from_transfer)?;
         let water_assembly_bound = add_bounds(
             c,
             &[

@@ -86,7 +86,8 @@ where
                 binding.boundary_id.as_str(),
             ));
         }
-        let tree = TransferTree::new_grouped(client, group_count, count, &targets)?;
+        let tree = TransferTree::new_grouped(client, group_count, count, &targets)
+            .map_err(ChannelError::from_transfer)?;
         let reduction =
             |n| AdjustmentReduction::new(n).map_err(|e| ChannelError::numerical(e.to_string()));
         Ok(Self {

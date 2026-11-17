@@ -30,8 +30,9 @@ where
         + TwoSumOps<R>
         + UnaryOps<R>,
 {
-    finite(client, value, field)?;
-    reject(client, &client.lt(value, &zero(client)?)?, field)?;
+    finite(client, value, field).map_err(ChannelPoolError::from_transfer)?;
+    reject(client, &client.lt(value, &zero(client)?)?, field)
+        .map_err(ChannelPoolError::from_transfer)?;
     Ok(())
 }
 
@@ -53,7 +54,7 @@ where
     let mut result = zero(client)?;
     for value in values {
         nonnegative(client, value, "nonnegative accounting bound")?;
-        result = upward_add(client, &result, value)?;
+        result = upward_add(client, &result, value).map_err(ChannelPoolError::from_transfer)?;
     }
     Ok(result)
 }
@@ -83,9 +84,12 @@ where
             client.neg(term)?
         };
         let (next, low) = client.two_sum(&value, &operand)?;
-        finite(client, &next, "water accounting expression")?;
-        finite(client, &low, "water accounting expression low")?;
-        bound = upward_add(client, &bound, &client.abs(&low)?)?;
+        finite(client, &next, "water accounting expression")
+            .map_err(ChannelPoolError::from_transfer)?;
+        finite(client, &low, "water accounting expression low")
+            .map_err(ChannelPoolError::from_transfer)?;
+        bound = upward_add(client, &bound, &client.abs(&low)?)
+            .map_err(ChannelPoolError::from_transfer)?;
         value = next;
     }
     Ok((value, bound))
@@ -112,13 +116,15 @@ where
 {
     nonnegative(client, scale, "physical water scale")?;
     let budget = client.add_scalar(&client.mul_scalar(scale, relative)?, absolute)?;
-    finite(client, &budget, "physical water budget")?;
-    let used = upward_add(client, &client.abs(residual)?, bound)?;
+    finite(client, &budget, "physical water budget").map_err(ChannelPoolError::from_transfer)?;
+    let used = upward_add(client, &client.abs(residual)?, bound)
+        .map_err(ChannelPoolError::from_transfer)?;
     reject(
         client,
         &client.gt(&used, &budget)?,
         "water residual and arithmetic bound exceed the physical budget. Refine the common interval or inspect represented storage",
-    )?;
+    )
+    .map_err(ChannelPoolError::from_transfer)?;
     Ok(())
 }
 

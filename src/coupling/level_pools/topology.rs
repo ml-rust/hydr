@@ -60,7 +60,8 @@ where
         input_count: usize,
         targets: &[(usize, usize, &str)],
     ) -> Result<Self, CoupledLevelPoolError> {
-        let shared = SharedTransferTree::new_grouped(client, pool_count, input_count, targets)?;
+        let shared = SharedTransferTree::new_grouped(client, pool_count, input_count, targets)
+            .map_err(CoupledLevelPoolError::from_transfer)?;
         Ok(Self {
             degree_margin: shared.degree_margin.clone(),
             shared,
@@ -74,7 +75,8 @@ where
     ) -> Result<Aggregate<R>, CoupledLevelPoolError> {
         let aggregate = self
             .shared
-            .aggregate(client, endpoint_values, AggregationKind::Water)?;
+            .aggregate(client, endpoint_values, AggregationKind::Water)
+            .map_err(CoupledLevelPoolError::from_transfer)?;
         Ok(Aggregate {
             volume: aggregate.value,
             bound: aggregate.bound,
@@ -98,7 +100,7 @@ where
         + TwoSumOps<R>
         + UnaryOps<R>,
 {
-    Ok(water_transfers::finite(client, value, field)?)
+    water_transfers::finite(client, value, field).map_err(CoupledLevelPoolError::from_transfer)
 }
 
 pub(super) fn reject<R: Runtime<DType = DType>>(
@@ -117,7 +119,7 @@ where
         + TwoSumOps<R>
         + UnaryOps<R>,
 {
-    Ok(water_transfers::reject(client, mask, message)?)
+    water_transfers::reject(client, mask, message).map_err(CoupledLevelPoolError::from_transfer)
 }
 
 pub(super) fn upward_add<R: Runtime<DType = DType>>(
@@ -136,5 +138,5 @@ where
         + TwoSumOps<R>
         + UnaryOps<R>,
 {
-    Ok(water_transfers::upward_add(client, a, b)?)
+    water_transfers::upward_add(client, a, b).map_err(CoupledLevelPoolError::from_transfer)
 }

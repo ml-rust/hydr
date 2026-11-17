@@ -67,7 +67,8 @@ where
             c,
             &c.abs(pools.outgoing_witness_m3)?,
             &c.abs(pools.incoming_witness_m3)?,
-        )?;
+        )
+        .map_err(ChannelPoolError::from_transfer)?;
         // This checks witness evaluation, without converting its allowance into historical water loss.
         let (consistency, arithmetic) = expression(
             c,
@@ -80,15 +81,17 @@ where
                 (pools.incoming_witness_m3, true),
             ],
         )?;
-        let allowed = upward_add(c, pools.witness_consistency_bound_m3, &arithmetic)?;
+        let allowed = upward_add(c, pools.witness_consistency_bound_m3, &arithmetic)
+            .map_err(ChannelPoolError::from_transfer)?;
         reject(
             c,
             &c.gt(&c.abs(&consistency)?, &allowed)?,
             "pool state witnesses disagree with their original water operands. Recalculate the complete interval",
-        )?;
+        )
+        .map_err(ChannelPoolError::from_transfer)?;
         let packed = pack(c, &[pack(c, &faces)?, pack(c, &assemblies)?, pool_charge])?;
         let (charges, reduction_bound) = reduce(c, &self.reductions.physical_charges, &packed)?;
-        Ok(upward_add(c, &charges, &reduction_bound)?)
+        upward_add(c, &charges, &reduction_bound).map_err(ChannelPoolError::from_transfer)
     }
 
     pub(super) fn scalar_physical_charge(
@@ -113,16 +116,24 @@ where
         let z = zero(c)?;
         let incoming = c.maximum(&evaluation.interval.connection_volume_m3, &z)?;
         let outgoing = c.maximum(&c.neg(&evaluation.interval.connection_volume_m3)?, &z)?;
-        let incoming = self.topology.pool_transfers.aggregate(
-            c,
-            &incoming,
-            crate::numerics::water_transfers::AggregationKind::Water,
-        )?;
-        let outgoing = self.topology.pool_transfers.aggregate(
-            c,
-            &outgoing,
-            crate::numerics::water_transfers::AggregationKind::Water,
-        )?;
+        let incoming = self
+            .topology
+            .pool_transfers
+            .aggregate(
+                c,
+                &incoming,
+                crate::numerics::water_transfers::AggregationKind::Water,
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
+        let outgoing = self
+            .topology
+            .pool_transfers
+            .aggregate(
+                c,
+                &outgoing,
+                crate::numerics::water_transfers::AggregationKind::Water,
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
         let pools = evaluation.pools.coupling_native_interval().ok_or_else(|| {
             ChannelPoolError::numerical("pool interval exchange receipt is missing")
         })?;
@@ -144,12 +155,14 @@ where
                 c,
                 &c.ne(expected, actual)?,
                 "pool interval exchanges differ from original grouped channel volumes. Preserve shared transfer operands",
-            )?;
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
             reject(
                 c,
                 &c.ne(retained_bound, recalculated_bound)?,
                 "pool interval exchange assembly bounds differ from retained operands",
-            )?;
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
         }
         Ok(())
     }

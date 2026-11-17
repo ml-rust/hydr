@@ -46,7 +46,8 @@ where
                     &c.ne(view.lateral_inflow_mask, &c.add_scalar(&zero(c)?, 1.0)?)?,
                 )?,
                 "lateral direction mask requires binary values",
-            )?;
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
             let original = if interval {
                 view.lateral_interval_volume_m3.ok_or_else(|| ChannelPoolError::numerical("channel interval lateral receipt is missing. Retain the original accepted transfer operands"))?
             } else {

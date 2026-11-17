@@ -68,7 +68,8 @@ where
             &self.context.client,
             &self.accepted.counters.connection_in_bound_m3,
             &self.accepted.counters.connection_out_bound_m3,
-        )?
+        )
+        .map_err(ChannelPoolError::from_transfer)?
         .try_to_vec::<f64>()?;
         Ok(self
             .context

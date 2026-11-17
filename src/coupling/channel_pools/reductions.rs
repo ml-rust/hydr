@@ -67,7 +67,7 @@ where
         storage_keys.extend(setup.pools.iter().map(|pool| format!("pool/{}", pool.id)));
         let tree = |groups, count, targets: &[(usize, usize, &str)]| {
             TransferTree::new_grouped(client, groups, count, targets)
-                .map_err(ChannelPoolError::from)
+                .map_err(ChannelPoolError::from_transfer)
         };
         let one = |keys: &[String]| {
             tree(
@@ -147,7 +147,8 @@ where
                 client,
                 &client.ne(&lows, &zero)?,
                 "coupled channel cell volume has a nonzero low part: couple only reaches with single-part storage",
-            )?;
+            )
+            .map_err(ChannelPoolError::from_transfer)?;
         }
         values.push(pools.coupling_native_accounting().volume_m3);
         let packed = client.cat(&values, 0)?;
@@ -172,7 +173,9 @@ where
         + UnaryOps<R>,
 {
     nonnegative(client, values, "nonnegative accounting reduction input")?;
-    let aggregate = tree.aggregate(client, values, AggregationKind::Momentum)?;
+    let aggregate = tree
+        .aggregate(client, values, AggregationKind::Momentum)
+        .map_err(ChannelPoolError::from_transfer)?;
     Ok((aggregate.value, aggregate.bound))
 }
 
@@ -193,5 +196,5 @@ where
         + UnaryOps<R>,
 {
     let (value, bound) = reduce(client, tree, values)?;
-    Ok(upward_add(client, &value, &bound)?)
+    upward_add(client, &value, &bound).map_err(ChannelPoolError::from_transfer)
 }
