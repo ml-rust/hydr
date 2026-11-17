@@ -9,13 +9,14 @@ repository.workspace = true
 publish.workspace = true
 
 [features]
-cuda = ["numr/cuda", "solvr/cuda", "hydr-channel/cuda", "hydr-core/cuda", "hydr-runoff/cuda", "hydr-storage/cuda", "hydr-structures/cuda"]
-wgpu = ["numr/wgpu", "solvr/wgpu", "hydr-channel/wgpu", "hydr-core/wgpu", "hydr-runoff/wgpu", "hydr-storage/wgpu", "hydr-structures/wgpu"]
+cuda = ["numr/cuda", "solvr/cuda", "hydr-channel/cuda", "hydr-core/cuda", "hydr-runoff/cuda", "hydr-solver/cuda", "hydr-storage/cuda", "hydr-structures/cuda"]
+wgpu = ["numr/wgpu", "solvr/wgpu", "hydr-channel/wgpu", "hydr-core/wgpu", "hydr-runoff/wgpu", "hydr-solver/wgpu", "hydr-storage/wgpu", "hydr-structures/wgpu"]
 
 [dependencies]
 hydr-channel = { workspace = true }
 hydr-core = { workspace = true }
 hydr-runoff = { workspace = true }
+hydr-solver = { workspace = true }
 hydr-storage = { workspace = true }
 hydr-structures = { workspace = true }
 numr = { workspace = true }

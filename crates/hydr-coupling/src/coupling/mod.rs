@@ -40,3 +40,11 @@ pub use runoff_pools::{
     RunoffPoolOutletBinding, RunoffPoolSetup, RunoffPoolSnapshot, RunoffPoolSnapshotData,
     RunoffPoolStepDiagnostics, RunoffPoolTrial, RunoffPoolWaterBalance, runoff_pool_capabilities,
 };
+
+pub mod surface_channels;
+#[doc(no_inline)]
+pub use surface_channels::{
+    SURFACE_CHANNEL_TANGENT_TOLERANCE, SurfaceChannelBatch, SurfaceChannelConfig,
+    SurfaceChannelDefinition, SurfaceChannelError, SurfaceChannelInitialState, SurfaceChannelLink,
+    SurfaceChannelReach, SurfaceChannelSetup,
+};

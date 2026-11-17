@@ -115,6 +115,7 @@ const TABLE: &[(&str, &[&str])] = &[
             "structures",
             "runoff",
             "channel",
+            "solver",
         ],
     ),
 ];
