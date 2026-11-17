@@ -48,7 +48,7 @@ impl<R: Runtime<DType = DType>> OperatingControlBatch<R> {
             &data.contract,
             OPERATING_CONTROL_CONTRACT_VERSION,
         )
-        .map_err(|message| StructureError::input(StructureInputErrorKind::Definition, message))?;
+        .map_err(StructureError::definition)?;
         super::compatibility::check(self, data)?;
         require(
             data.time_s.is_finite()

@@ -18,7 +18,7 @@ pub(super) fn check<R: Runtime<DType = DType>>(
     controls: &OperatingControlBatch<R>,
     actuators: &GateActuatorBatch<R>,
 ) -> Result<Binding, StructureError> {
-    let invalid = |message| StructureError::input(StructureInputErrorKind::Definition, message);
+    let invalid = StructureError::definition;
     if controls.steps != 0
         || actuators.steps != 0
         || controls.next_decision != 0

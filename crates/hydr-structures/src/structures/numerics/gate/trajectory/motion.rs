@@ -9,7 +9,7 @@ use numr::{dtype::DType, runtime::Runtime};
 
 use super::motion_bounds::{down, finite, up};
 use crate::structures::tensor::TensorStructureContext;
-use crate::structures::{GateTrajectoryAssignment, StructureError, StructureInputErrorKind};
+use crate::structures::{GateTrajectoryAssignment, StructureError};
 
 pub(crate) fn check_motion<R: Runtime<DType = DType>>(
     context: &TensorStructureContext<R>,
@@ -195,7 +195,7 @@ where
             "gate trajectory segment={segment}: supply motion within directional limits and representable arithmetic bounds"
         );
         return Err(if kinds[lane] != 0.0 {
-            StructureError::input(StructureInputErrorKind::Definition, message).at(slot)
+            StructureError::definition(message).at(slot)
         } else {
             StructureError::numerical(message).at(slot)
         });

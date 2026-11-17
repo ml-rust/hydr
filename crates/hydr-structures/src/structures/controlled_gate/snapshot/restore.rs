@@ -5,7 +5,7 @@ use super::{
     CONTROLLED_GATE_CONTRACT_VERSION, CONTROLLED_GATE_SNAPSHOT_SCHEMA, ControlledGateSnapshot,
     ControlledGateSnapshotData,
 };
-use crate::structures::{StructureError, StructureInputErrorKind};
+use crate::structures::StructureError;
 use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
@@ -43,7 +43,7 @@ impl<R: Runtime<DType = DType>> ControlledGateBatch<R> {
             &data.contract,
             CONTROLLED_GATE_CONTRACT_VERSION,
         )
-        .map_err(|message| StructureError::input(StructureInputErrorKind::Definition, message))?;
+        .map_err(StructureError::definition)?;
         let mut controls = self.controls.clone();
         let mut actuators = self.actuators.clone();
         controls.restore_data(&data.controls)?;

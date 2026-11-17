@@ -73,6 +73,10 @@ impl StructureError {
             context: context.into(),
         }
     }
+    /// Builds a definition-kind input error.
+    pub(crate) fn definition(message: impl Into<String>) -> Self {
+        Self::input(StructureInputErrorKind::Definition, message)
+    }
     pub(crate) fn numerical(context: impl Into<String>) -> Self {
         Self::Numerical {
             element: None,

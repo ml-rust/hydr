@@ -3,7 +3,7 @@
 use super::super::*;
 use super::compatibility::{as_definition, require};
 use super::receipt_bits::ReceiptBits;
-use crate::structures::{StructureError, StructureInputErrorKind};
+use crate::structures::StructureError;
 use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
@@ -39,7 +39,7 @@ impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
             &data.contract,
             GATE_ACTUATOR_CONTRACT_VERSION,
         )
-        .map_err(|message| StructureError::input(StructureInputErrorKind::Definition, message))?;
+        .map_err(StructureError::definition)?;
         self.restore_checked(data).map_err(as_definition)
     }
     fn restore_checked(&mut self, data: &GateActuatorSnapshotData) -> Result<(), StructureError>

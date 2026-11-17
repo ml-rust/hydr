@@ -98,7 +98,7 @@ impl<R: Runtime<DType = DType>> ControlledPumpBatch<R> {
             &data.contract,
             CONTROLLED_PUMP_CONTRACT_VERSION,
         )
-        .map_err(|message| StructureError::input(StructureInputErrorKind::Definition, message))?;
+        .map_err(StructureError::definition)?;
         require(
             self.definitions() == data.definitions.as_slice(),
             "controlled pump snapshot original response assumptions differ",
