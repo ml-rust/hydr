@@ -17,7 +17,7 @@ pub use reservoir::{
     RESERVOIR_CONTRACT_VERSION, RESERVOIR_SNAPSHOT_SCHEMA, ReservoirBatch, ReservoirConfig,
     ReservoirElement, ReservoirError, ReservoirInput, ReservoirLedger, ReservoirOutput,
     ReservoirParameters, ReservoirReceipt, ReservoirSnapshot, ReservoirSnapshotData,
-    ReservoirState, ReservoirStepDiagnostics, ReservoirTrial,
+    ReservoirState, ReservoirStepDiagnostics, ReservoirTrial, reservoir_capabilities,
 };
 
 pub use subcatchment::{
@@ -28,4 +28,5 @@ pub use subcatchment::{
     SubcatchmentPartitionReceipt, SubcatchmentPhaseDiagnostics, SubcatchmentReceipt,
     SubcatchmentRouting, SubcatchmentSnapshot, SubcatchmentSnapshotData, SubcatchmentState,
     SubcatchmentStepDiagnostics, SubcatchmentTransfer, SubcatchmentTrial,
+    subcatchment_capabilities,
 };

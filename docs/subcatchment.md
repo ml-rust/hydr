@@ -10,6 +10,8 @@ cargo run --example subcatchment
 
 To send free outlet volumes into storage pools, use the [runoff-to-pool coordinator](runoff-pools.md).
 
+Read capabilities with `subcatchment_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, the outlet endpoint, sources, the routing option, nested and parent components, unsupported uses, and limits.
+
 ## Define the contributing area
 
 `SubcatchmentGeometry` supplies explicit SI geometry and area fractions. `SubcatchmentParameters::new` checks physical support and uses the checked [reservoir relations](reservoir.md).

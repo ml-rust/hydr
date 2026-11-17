@@ -9,6 +9,8 @@ Use `ModifiedGreenAmptBatch<R>` to calculate infiltration while retaining comple
 
 Infiltration means water entering the soil. This component follows the Modified Green–Ampt method in EPA SWMM v5.2.4.
 
+Read capabilities with `soil_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, sources, parent components, unsupported uses, and limits.
+
 ## Construct the soil batch
 
 1. Supply soil parameters in SI or native EPA units.

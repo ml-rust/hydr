@@ -2,6 +2,8 @@
 
 Use `RunoffPoolBatch<R>` to advance subcatchment runoff and connected pools together. First check that receiving water cannot affect runoff generation.
 
+Read capabilities with `runoff_pool_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, the outlet endpoint, sources, nested components, unsupported uses, and limits.
+
 ## Check the physical connection
 
 A free runoff outlet exports water without feedback from the receiving pool's water level. Declare this condition for every connection.

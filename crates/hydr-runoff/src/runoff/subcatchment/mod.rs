@@ -3,6 +3,7 @@
 mod accounting;
 mod accounting_bounds;
 mod batch;
+mod capabilities;
 mod config;
 mod error;
 mod native_exports;
@@ -21,6 +22,7 @@ pub use accounting::{
     SubcatchmentLedger, SubcatchmentPhaseDiagnostics, SubcatchmentStepDiagnostics,
 };
 pub use batch::{SubcatchmentBatch, SubcatchmentTrial};
+pub use capabilities::subcatchment_capabilities;
 pub use config::SubcatchmentConfig;
 pub use error::SubcatchmentError;
 pub use output::{SubareaOutput, SubcatchmentOutput};

@@ -52,6 +52,31 @@ mod pools_variants;
 #[path = "component_capabilities/pools.rs"]
 mod pools;
 
+#[allow(dead_code)]
+#[path = "land_sources/fixture.rs"]
+mod land_fixture;
+
+#[allow(dead_code)]
+#[path = "nonlinear_reservoir/fixture.rs"]
+mod reservoir_fixture;
+
+#[allow(dead_code)]
+#[path = "subcatchment/fixture.rs"]
+mod subcatchment_fixture;
+
+#[allow(dead_code)]
+#[path = "component_capabilities/runoff_pool_support.rs"]
+mod runoff_pools;
+
+#[path = "component_capabilities/runoff_fixture.rs"]
+mod runoff_fixture;
+
+#[path = "component_capabilities/runoff_variants.rs"]
+mod runoff_variants;
+
+#[path = "component_capabilities/runoff.rs"]
+mod runoff;
+
 use hydr::capability::{ComponentCapabilities, RegimeScope};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -92,6 +117,26 @@ fn declarations() -> Vec<Declared> {
             capabilities: hydr::coupling::channel_pool_capabilities(),
             contract: Some(hydr::coupling::CHANNEL_POOL_CONTRACT_VERSION),
             snapshot_schema: Some(hydr::coupling::CHANNEL_POOL_SNAPSHOT_SCHEMA),
+        },
+        Declared {
+            capabilities: hydr::soil::soil_capabilities(),
+            contract: None,
+            snapshot_schema: None,
+        },
+        Declared {
+            capabilities: hydr::runoff::reservoir_capabilities(),
+            contract: Some(hydr::runoff::RESERVOIR_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::runoff::RESERVOIR_SNAPSHOT_SCHEMA),
+        },
+        Declared {
+            capabilities: hydr::runoff::subcatchment_capabilities(),
+            contract: Some(hydr::runoff::SUBCATCHMENT_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::runoff::SUBCATCHMENT_SNAPSHOT_SCHEMA),
+        },
+        Declared {
+            capabilities: hydr::coupling::runoff_pool_capabilities(),
+            contract: Some(hydr::coupling::RUNOFF_POOL_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::coupling::RUNOFF_POOL_SNAPSHOT_SCHEMA),
         },
     ]
 }
@@ -170,6 +215,30 @@ fn declarations_are_unique_and_identified() -> Result<(), Box<dyn std::error::Er
                 record.0,
                 record.1
             );
+        }
+        for option in capabilities.options {
+            assert!(is_kebab(option.id), "`{id}`: option `{}`", option.id);
+            assert!(
+                ids.insert(option.id),
+                "`{id}`: `{}` appears twice",
+                option.id
+            );
+            let mut values = BTreeSet::new();
+            for value in option.values {
+                assert!(is_kebab(value), "`{id}` `{}`: value `{value}`", option.id);
+                assert!(
+                    values.insert(*value),
+                    "`{id}` `{}`: `{value}` twice",
+                    option.id
+                );
+            }
+            if let Some(default) = option.default {
+                assert!(
+                    values.contains(default),
+                    "`{id}` `{}`: default `{default}` is not a value",
+                    option.id
+                );
+            }
         }
         for linked in capabilities.nested.iter().chain(capabilities.attachable_to) {
             assert!(

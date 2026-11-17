@@ -77,7 +77,7 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
     sources: &[SourceKind::LocalPoolRain, SourceKind::LocalPoolLoss],
     options: &[],
     nested: &[ComponentId::LevelPool],
-    attachable_to: &[],
+    attachable_to: &[ComponentId::RunoffPools],
     unsupported: &[
         unsupported(
             "implicit-pump-operation",

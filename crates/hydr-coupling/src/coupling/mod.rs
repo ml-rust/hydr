@@ -38,5 +38,5 @@ pub use runoff_pools::{
     RUNOFF_POOL_CONTRACT_VERSION, RUNOFF_POOL_SNAPSHOT_SCHEMA, RunoffPoolBatch, RunoffPoolConfig,
     RunoffPoolError, RunoffPoolForcingInterval, RunoffPoolInitialState, RunoffPoolMeteorology,
     RunoffPoolOutletBinding, RunoffPoolSetup, RunoffPoolSnapshot, RunoffPoolSnapshotData,
-    RunoffPoolStepDiagnostics, RunoffPoolTrial, RunoffPoolWaterBalance,
+    RunoffPoolStepDiagnostics, RunoffPoolTrial, RunoffPoolWaterBalance, runoff_pool_capabilities,
 };

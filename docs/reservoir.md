@@ -4,6 +4,8 @@ Use `hydr::runoff::ReservoirBatch` to advance storage and calculate the volume e
 
 The component supplies no hydraulic attachment or internal routing. Soil and evaporation require separate components.
 
+Read capabilities with `reservoir_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, the outlet endpoint, parent components, unsupported uses, and limits.
+
 ## Choose the drainage branch
 
 Depression storage is the depth retained before drainage begins.

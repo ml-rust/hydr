@@ -108,7 +108,7 @@ static CAPABILITIES: ComponentCapabilities = ComponentCapabilities {
         SourceKind::Withdrawal,
     ],
     options: &[],
-    nested: &[],
+    nested: &[ComponentId::Soil],
     attachable_to: &[],
     unsupported: &[
         Unsupported {

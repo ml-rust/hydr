@@ -2,6 +2,7 @@
 
 mod accounting;
 mod batch;
+mod capabilities;
 mod context;
 mod definition;
 mod error;
@@ -12,6 +13,7 @@ mod snapshot;
 mod trial;
 
 pub use batch::RunoffPoolBatch;
+pub use capabilities::runoff_pool_capabilities;
 pub use definition::{
     RunoffPoolConfig, RunoffPoolForcingInterval, RunoffPoolInitialState, RunoffPoolMeteorology,
     RunoffPoolOutletBinding, RunoffPoolSetup,

@@ -1,6 +1,7 @@
 //! Immutable batched Modified Green–Ampt soil on the numr CPU runtime.
 
 mod batch;
+mod capabilities;
 mod continuation;
 mod error;
 #[doc(hidden)]
@@ -12,6 +13,7 @@ mod state;
 mod surface_trial;
 
 pub use batch::{ModifiedGreenAmptBatch, ModifiedGreenAmptTrial};
+pub use capabilities::soil_capabilities;
 pub use error::SoilError;
 pub use land::{LandCell, LandModel, SoilCellState, SoilState};
 pub use parameters::ModifiedGreenAmptParameters;
