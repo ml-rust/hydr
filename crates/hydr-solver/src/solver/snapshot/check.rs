@@ -1,5 +1,5 @@
 use super::{SNAPSHOT_SCHEMA, SnapshotData};
-use crate::contract::EngineError;
+use crate::contract::{EngineError, package_identity};
 use crate::model::FlowState;
 use crate::soil::SoilState;
 use crate::solver::engine::Accepted;
@@ -35,11 +35,14 @@ where
     /// # Errors
     /// Rejects incompatible identities, definitions, fields, accounting, or face support before changing accepted state.
     pub fn restore_data(&mut self, data: &SnapshotData) -> Result<(), EngineError> {
-        require(
-            data.schema == SNAPSHOT_SCHEMA && data.contract == CONTRACT_VERSION,
-            "schema or contract",
-            format!("schema={:?}, contract={:?}", data.schema, data.contract),
-        )?;
+        package_identity(
+            "surface solver",
+            &data.schema,
+            SNAPSHOT_SCHEMA,
+            &data.contract,
+            CONTRACT_VERSION,
+        )
+        .map_err(|reason| EngineError::rejected("checkpoint import", reason))?;
         super::forcing_window::check(&self.definition, data)?;
         FlowState::new(&data.setup.domain, data.accepted.flow.cells().to_vec())?;
         let soil = SoilState::new(&data.setup.land, data.accepted.soil.cells().to_vec())
