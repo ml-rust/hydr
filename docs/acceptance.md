@@ -25,6 +25,7 @@ cargo test --test cross_sections
 cargo test --test channel_flow --test channel_restart -- --nocapture
 cargo test --test channel_lateral -- --nocapture
 cargo test --test channel_pools -- --nocapture
+cargo test --test surface_channels
 ```
 
 The fixtures need no external datasets or random inputs. [Analytical cases](../tests/analytical_cases.rs) use formulas from [the analytical helpers](../tests/support/analytic.rs), independently of the production tensor kernel.
@@ -592,9 +593,27 @@ Global accounting cancels runoff exports against pool imports. A separate lifeti
 
 These cases establish no downstream feedback, geometric nonoverlap proof, dynamic network flow, or measured-event accuracy.
 
+## Surface/channel checks
+
+Use the [surface/channel guide](surface-channels.md) to declare bank links and their evidence.
+
+[Surface/channel cases](../tests/surface_channels.rs) check the surface and every reach over one accepted interval:
+
+| Check | Required behavior |
+| --- | --- |
+| Pairing | Each side's net exchange matches the summed link volumes within the paired bound |
+| Physics | Free overflow, flood then recession through one link, dry floodplain wetting, and zero transfer from dry or below-crest donors |
+| Rest | A lake level with the crest stays still |
+| Donors | Competing links share one donor factor. Limited channel withdrawals pass combined depletion. |
+| Order | Link and reach declaration order change no bit |
+| Recalculation | Nonconvergence halves the interval. Regime flips and head crossings shorten it. Integrated inputs request recomputation. |
+| Continuation | Snapshot, restore, import, resume, and forecast continuation match the uninterrupted run bit for bit. Forged packages reject. A standalone surface restore of a coupled package rejects. |
+
+These cases establish no weir-coefficient accuracy, bank-mapping proof, or measured-event accuracy.
+
 ## Runtime support
 
-All 15 capability declarations claim the same status on each runtime. A named test backs each claim.
+Every capability declaration claims the same status on each runtime. A named test backs each claim.
 
 | Runtime | Declared status | Evidence |
 | --- | --- | --- |
@@ -602,12 +621,13 @@ All 15 capability declarations claim the same status on each runtime. A named te
 | CUDA | Executes. Each test runs the component on a CUDA client and checks its results and continuation. | `cuda` tests, built with `--features cuda` |
 | WGPU | Rejects construction, because numr WGPU lacks F64 arithmetic. No CPU fallback runs. | `wgpu` tests, built with `--features wgpu` |
 
-Six CUDA tests also run the same case on CPU and compare complete checkpoint data:
+The CUDA tests of these components also run the same case on CPU and compare complete checkpoint data:
 
 | Components | CPU/CUDA comparison |
 | --- | --- |
 | Operating controls, controlled gates, controlled pumps | Every field matches bit for bit |
 | Level pools, reservoirs, subcatchments | Per-element states match bit for bit. Batch totals and residual diagnostics agree within `volume_absolute + volume_relative * scale`. |
+| Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. |
 
 Those totals and diagnostics differ in their last bits between CPU and CUDA. CUDA execution establishes no GPU accuracy qualification.
 
@@ -622,11 +642,11 @@ Each WGPU test also requires `WgpuRuntime::computes_float_dtype(DType::F64)` to 
 | Contract | SI inputs, shapes, references, masks, sources, boundaries, outputs, and exclusions | Physical suitability of each application domain |
 | Determinism | Repeated runs, complete trusted/package restart, bit checks, rollback, and cancellation | Cross-platform bitwise equality remains unsupported |
 | Analytical | Selected lake, dam, vacuum, friction, Manning, contracting radial lake, shear transport, and moving-shoreline cases | Broader hydraulic jumps, radial cycles, and application-specific diffusion budgets |
-| Conservation | Rain, prescribed losses, shared faces, ports, donor depletion, barrier isolation, pool transfers, and paired native runoff | Surface-to-network transfers remain unsupported |
+| Conservation | Rain, prescribed losses, shared faces, ports, donor depletion, barrier isolation, pool transfers, paired native runoff, and paired surface/channel exchange | Surface-to-pool and surface-to-structure transfers remain unsupported |
 | Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
 | Independent engine | Nine matched wet-bed/dry-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Analytical front accuracy, independent terrain/transverse-flow comparisons, and broader hydraulic regimes |
-| Extensions | Land sources, coupled pools, free runoff outlets, and finite channel/pool connections have separate checks | General channel profiles, wider networks, surface/network exchanges, and dynamic coupled controls require separate acceptance |
+| Extensions | Land sources, coupled pools, free runoff outlets, finite channel/pool connections, and surface/channel bank weirs have separate checks | General channel profiles, wider networks, surface exchange with pools or structures, and dynamic coupled controls require separate acceptance |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 
 ### Numerical limits retained by the checks

@@ -19,10 +19,13 @@
 //! [`SurfaceChannelBatch::snapshot_data`] projects a [`SurfaceChannelSnapshotData`] package.
 //! [`SurfaceChannelBatch::import_snapshot`] and [`SurfaceChannelBatch::resume`] recalculate its
 //! last interval and compare every bit. The nested surface package restores only through them.
+//!
+//! [`surface_channel_capabilities`] returns the declared scope.
 
 mod accounting;
 mod batch;
 mod bindings;
+mod capabilities;
 mod capture;
 mod context;
 mod definition;
@@ -43,6 +46,7 @@ mod trial;
 mod validation;
 
 pub use batch::SurfaceChannelBatch;
+pub use capabilities::surface_channel_capabilities;
 pub use definition::{
     SURFACE_CHANNEL_TANGENT_TOLERANCE, SurfaceChannelConfig, SurfaceChannelInitialState,
     SurfaceChannelLink, SurfaceChannelReach, SurfaceChannelSetup,

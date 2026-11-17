@@ -218,7 +218,6 @@ const SCALAR_REACH_UNSUPPORTED: &[Unsupported] = &[
     TRANSMISSIVE_ENDPOINTS,
     JUNCTIONS,
     STRUCTURES,
-    SURFACE_SOLVER,
     VARYING_GEOMETRY,
     LOCAL_LOSSES,
     DRAINAGE,
@@ -226,6 +225,10 @@ const SCALAR_REACH_UNSUPPORTED: &[Unsupported] = &[
     GPU_QUALIFICATION,
     MEASURED_EVENT_ACCURACY,
 ];
+
+/// Coordinators that nest rectangular and triangular reaches.
+const SCALAR_REACH_PARENTS: &[ComponentId] =
+    &[ComponentId::ChannelPools, ComponentId::SurfaceChannels];
 
 const LATERAL_OWNERSHIP: Limit = Limit {
     id: "lateral-ownership-attested",
@@ -265,7 +268,7 @@ static RECTANGULAR: ComponentCapabilities = ComponentCapabilities {
     sources: SOURCES,
     options: &[],
     nested: &[],
-    attachable_to: &[ComponentId::ChannelPools],
+    attachable_to: SCALAR_REACH_PARENTS,
     unsupported: SCALAR_REACH_UNSUPPORTED,
     limits: &[
         LATERAL_OWNERSHIP,
@@ -307,7 +310,7 @@ static TRIANGULAR: ComponentCapabilities = ComponentCapabilities {
         default: Some("limited-linear"),
     }],
     nested: &[],
-    attachable_to: &[ComponentId::ChannelPools],
+    attachable_to: SCALAR_REACH_PARENTS,
     unsupported: SCALAR_REACH_UNSUPPORTED,
     limits: &[LATERAL_OWNERSHIP, RESERVOIR_HELD_ELEVATION],
     summary: Summary {
@@ -355,6 +358,12 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
             UnsupportedReason::RejectedByAdmission,
             "Channel-to-pool connections reject surveyed reaches.",
             "docs/channel-pools.md",
+        ),
+        unsupported(
+            "surveyed-surface-channel-link",
+            UnsupportedReason::RejectedByAdmission,
+            "Surface/channel links reject surveyed reaches.",
+            "docs/surface-channels.md",
         ),
         TRANSMISSIVE_ENDPOINTS,
         JUNCTIONS,

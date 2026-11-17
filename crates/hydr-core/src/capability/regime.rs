@@ -18,6 +18,12 @@ pub enum Regime {
     WetDryFront,
     /// Flow that reverses direction within one branch.
     ReversalInBranch,
+    /// Weir flow with only the upstream side above the crest.
+    FreeWeirFlow,
+    /// Weir flow with both sides above the crest, including equal heads.
+    SubmergedWeirFlow,
+    /// Both sides of a weir at or below the crest, with no flow.
+    BelowCrest,
 }
 
 impl Regime {
@@ -30,6 +36,9 @@ impl Regime {
             Self::Dry => "dry",
             Self::WetDryFront => "wet-dry-front",
             Self::ReversalInBranch => "reversal-in-branch",
+            Self::FreeWeirFlow => "free-weir-flow",
+            Self::SubmergedWeirFlow => "submerged-weir-flow",
+            Self::BelowCrest => "below-crest",
         }
     }
 }
@@ -78,6 +87,9 @@ mod tests {
             Regime::Dry,
             Regime::WetDryFront,
             Regime::ReversalInBranch,
+            Regime::FreeWeirFlow,
+            Regime::SubmergedWeirFlow,
+            Regime::BelowCrest,
         ];
         assert_ids(&all.map(|r| r.id()));
     }

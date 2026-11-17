@@ -1,0 +1,213 @@
+# Couple the surface to channel reaches
+
+Use `SurfaceChannelBatch<R>` to advance the 2D surface engine and 1D channel reaches over one common interval. Water crosses a bank weir between a surface cell and a channel cell, in either direction.
+
+Read [channel flow](channels.md), [numerics](numerics.md), and [structure laws](structures.md#orifices-and-rectangular-weirs) before constructing the inputs.
+
+Read capabilities with `surface_channel_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, link endpoints, weir regimes, sources, nested components, unsupported uses, and limits.
+
+## What the coordinator couples
+
+| Part | Supplied as | Notes |
+| --- | --- | --- |
+| Surface | `SolverSetup` and `InitialState` | Exterior faces, land model, and surface forcing keep their surface rules. |
+| Reaches | `SurfaceChannelReach` entries | Rectangular or triangular geometry. A linked surveyed reach rejects. |
+| Links | `SurfaceChannelLink` entries | One bank weir between one active surface cell and one channel cell. |
+
+Reach ends take the nested reach's endpoint policies. No reach end exchanges water with the surface.
+
+A reach without links advances on the same common interval with its own forcing.
+
+## Declare each link
+
+Import the coordinator types from `hydr::coupling`.
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Unique nonempty identity. Ledgers and synthesized bindings use it. |
+| `surface_cell` | Active row-major surface cell index |
+| `reach_id`, `channel_cell` | Linked setup reach and its ordered cell index |
+| `crest_elevation_m` | Crest in the common vertical datum, at or above both beds |
+| `crest_length_m`, `weir_coefficient` | Finite positive weir length, in m, and coefficient, in m^(1/2)/s |
+| `applicability` | `WeirApplicability` evidence, with `symmetric_reversal = true` |
+| `reach_tangent` | Unit horizontal tangent of the reach's increasing coordinate, in surface x/y axes |
+| `mapping_evidence` | Your evidence that both cells share this bank location |
+
+`SURFACE_CHANNEL_TANGENT_TOLERANCE` bounds `|hypot(reach_tangent) - 1|`.
+
+`SurfaceChannelSetup.storage_exclusion_evidence` records why surface cells and channel cells store no water twice. Hydr records this evidence. It proves no geographic separation.
+
+### Construction checks
+
+`SurfaceChannelDefinition::new` and `SurfaceChannelBatch::new` return `SurfaceChannelError::Input` for each case:
+
+- Crest below the surface bed or the channel bed. An unobstructed connection is unsupported.
+- Linked reach with surveyed geometry.
+- Repeated link identity, or a repeated `(surface_cell, reach_id, channel_cell)` triple.
+- Surface cell outside the grid or inactive.
+- Nonfinite reach tangent, or a tangent off unit length.
+- Reach vertical datum or gravity bits that differ from the surface.
+- Caller lateral binding under the reserved `surface-exchange:` prefix.
+- `applicability.symmetric_reversal = false`. Links carry water both ways.
+- Empty evidence or identity text, or text with control characters.
+- Initial surface or reach time that differs from the common time bit for bit.
+
+The coordinator appends two bindings per link to each linked reach: `surface-exchange:<link id>:inflow` and `surface-exchange:<link id>:withdrawal`. They follow the caller bindings, in ascending link identity. `coordinated_reach(id)` returns the result.
+
+### Set explicit controls
+
+`SurfaceChannelConfig` has no default. Choose allowances in physical units.
+
+| Controls | Purpose |
+| --- | --- |
+| `head_absolute_m`, `head_relative` | Limit changes in iterated end stages |
+| `transfer_absolute_m3`, `transfer_relative` | Limit changes in iterated signed link volumes |
+| `mass_absolute_m3`, `mass_relative` | Limit composite water residuals |
+| `minimum_step_s`, `maximum_step_s` | Bound the common interval |
+| `iteration_limit`, `retry_limit` | Bound iterations and complete recalculations |
+
+Each absolute/relative pair needs a positive combined allowance.
+
+| Rule against the children | Error |
+| --- | --- |
+| `maximum_step_s` above the surface or a reach `max_step` | Input |
+| `minimum_step_s` below the surface or a reach `min_step` | Input |
+| `retry_limit` above the surface `max_retries` | Input |
+
+## Exchange law
+
+Each link is a suppressed sharp-crested rectangular weir with the Villemonte submergence correction. [Structure laws](structures.md#numerical-formulas) give the formulas.
+
+The weir uses midpoint heads: the mean of start and end stage on each side. Its discharge times the interval gives the link volume. Positive volumes flow from surface to channel.
+
+| Regime | Heads at the midpoint | Link volume |
+| --- | --- | --- |
+| `BelowCrest` | No supported side above the crest | Zero |
+| `Free` | One side above the crest | Free weir discharge |
+| `Submerged` | Both sides above the crest at different heads | Villemonte-reduced discharge |
+| `EqualHeads` | Both sides above the crest at equal heads | Zero |
+
+The capability declaration names these `below-crest`, `free-weir-flow`, and `submerged-weir-flow`. `EqualHeads` counts as submerged flow.
+
+### Limit each donor to its water
+
+Each donor gives only water it holds for this interval.
+
+| Donor | Available water |
+| --- | --- |
+| Surface cell | Post-transport water of the cell |
+| Channel cell | Start water, minus native face outflow over the interval and caller withdrawals, with a rounding margin |
+
+One factor per donor scales every link that donor feeds. When demand exceeds the available water, the factor is `(available - margin) / (demand + bound)`, rounded down once more. Incoming water gives no same-interval donor credit.
+
+### Momentum closure
+
+Exchange water carries momentum along the reach tangent only:
+
+| Direction | Velocity carried |
+| --- | --- |
+| Surface to channel | Surface post-transport velocity projected on `reach_tangent` |
+| Channel to surface | Channel accepted-start velocity, along `reach_tangent` in surface x/y |
+
+The normal component dissipates at the bank. Several links into one surface cell carry their summed momentum.
+
+## Advance one common interval
+
+1. Create `SurfaceChannelForcingInterval` with `start_s = batch.time()` and one `SurfaceChannelReachForcing` per reach.
+2. Call `trial_to(requested_end_s, &forcing)`.
+3. Read the trial's `time()` and `diagnostics()`.
+4. Replace the batch with `trial.into_next()` when accepting the candidate.
+5. Repeat from the returned time.
+
+Surface forcing stays in `setup.surface.forcing`. Supply every caller lateral binding once per interval, including zeros. Omit the `surface-exchange:` bindings. The coordinator supplies them.
+
+The common end is the smallest of the requested end, the start plus `maximum_step_s`, and the end of the covering surface forcing interval.
+
+### What one attempt calculates
+
+1. Bind caller forcing and reserve channel donor water from the accepted start.
+2. Prepare the surface transport. Reject a duration above the surface or channel step limit.
+3. Iterate end stages and signed link volumes from the accepted state. Each evaluation:
+   - Calculates midpoint heads and weir volumes.
+   - Applies the donor limit.
+   - Completes the surface with the summed volume of each linked cell.
+   - Advances each linked reach with each link's volume on its synthesized bindings.
+4. Accept the iterate when both budgets pass and the support and regime flags repeat exactly.
+5. Reject heads that cross beyond the head budget over the interval.
+6. Check pairing and the composite water balance.
+
+The iteration is a plain fixed-point (Picard) update without history. Stiff links can stall it.
+
+### Recalculation
+
+| Rejection | Next attempt |
+| --- | --- |
+| Duration above the surface or channel step limit | `0.95` of the smallest limit |
+| Child suggests a shorter end | That end |
+| Other retryable rejection, including iteration exhaustion | Half the interval |
+| `retry_limit` reached, or a duration below `minimum_step_s` | `SurfaceChannelError::Unresolved` |
+
+`SurfaceChannelError::is_retryable` names the retryable rejections. Every other rejection returns unchanged. A rejected trial leaves the batch unchanged.
+
+### Recompute integrated inputs
+
+An integrated caller lateral volume belongs to its exact supplied interval.
+
+- Forcing end: `end_s` must equal `requested_end_s`. Otherwise the trial returns `Input`.
+- Shorter interval: Hydr returns `SurfaceChannelError::RecomputeInterval`. Recompute every input for `suggested_end_s` and submit fresh forcing from the unchanged start.
+
+Never slice or scale old integrated inputs.
+
+## Read exchange and water accounting
+
+| Call | Result |
+| --- | --- |
+| `last_step()?` | `SurfaceChannelStepDiagnostics` of the last interval, absent before the first |
+| `link_ledgers()?` | Lifetime surface-to-channel and channel-to-surface volume per link, with a rounding bound |
+| `ledger()?` | `SurfaceChannelWaterBalance` of the surface and every reach as one system |
+| `surface()`, `reach(id)` | Read-only children |
+
+Each `SurfaceChannelLinkTransfer` holds the signed volume, weir volume, donor factor, regime, and both midpoint stages.
+
+Each accepted interval passes three checks:
+
+- Binding: Each channel binding holds its link volume bit for bit.
+- Pairing: Each side's net exchange matches the summed link volumes within `paired_bound_m3`.
+- Mass: Storage change minus external water stays within `mass_bound_m3`.
+
+Exchange stays inside the composite system. It appears only in the surface and channel exchange totals.
+
+## Save, restore, and continue
+
+| Use | Save | Restore |
+| --- | --- | --- |
+| In-memory continuation | `snapshot()` | `restore(&snapshot)` |
+| Application-owned persistence | `snapshot_data()?` | `import_snapshot(&data)?` |
+| Restart on a new client | `snapshot_data()?` | `SurfaceChannelBatch::resume(client, &data, forcing)` |
+
+Construct a `restore` or `import_snapshot` destination with the same setup and original initial state. Each call returns a new batch.
+
+Pass `data.surface.setup.forcing.clone()` to `resume` for a plain restart.
+
+`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`). Import checks both first. It recalculates the last interval and compares every bit. An error names the first differing field.
+
+The nested surface package carries exchange water. It restores only through the coordinator. `Solver::restore_data`, `Solver::restore`, and `Solver::resume` reject it.
+
+`continue_surface_forcing(schedule)` splices a surface forecast after the accepted time. It follows the [surface splice rule](integration.md#continue-a-forecast-under-new-forcing). The original batch stays unchanged.
+
+Preserve every package field and floating-point value exactly. Follow the [persistence requirements](integration.md#save-complete-restart-data).
+
+## Stay within the supported scope
+
+| Supported | Excluded |
+| --- | --- |
+| Bank weirs between active surface cells and rectangular or triangular reach cells | Unobstructed connections, surveyed reaches, and reach-end ports |
+| Reversal through one link between intervals | Normal momentum exchange and child subcycling |
+| Surface rain, impervious land, Modified Green-Ampt soil, evaporation, and withdrawal | Level pools, structures, and device-resident forcing |
+| Caller lateral inflow and withdrawal on reaches | |
+
+Time integration remains first order. The weir law establishes no energy guarantee for the complete calculation.
+
+Numerical agreement establishes no measured-event accuracy. CUDA runs execute without a GPU accuracy qualification.
+
+Read [surface/channel checks](acceptance.md#surfacechannel-checks) for the checked cases and runtime support.

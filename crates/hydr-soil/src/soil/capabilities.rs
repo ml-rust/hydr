@@ -53,7 +53,11 @@ static SOIL: ComponentCapabilities = ComponentCapabilities {
     sources: &[SourceKind::ModifiedGreenAmpt],
     options: &[],
     nested: &[],
-    attachable_to: &[ComponentId::SurfaceSolver, ComponentId::Subcatchment],
+    attachable_to: &[
+        ComponentId::SurfaceSolver,
+        ComponentId::Subcatchment,
+        ComponentId::SurfaceChannels,
+    ],
     unsupported: &[
         unsupported(
             "unrepresentable-derived-parameters",

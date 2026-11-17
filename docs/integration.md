@@ -66,7 +66,7 @@ Use [coupled level pools](coupled-level-pools.md) for declared pool-to-pool tran
 
 Use [runoff-to-pool connections](runoff-pools.md) to generate upstream inflows and accept both engines over one common interval. Every runoff outlet must drain without receiving-pool feedback.
 
-The network, structure, and channel components exist. None attaches to the surface solver.
+Rectangular and triangular reaches attach to the surface solver through the [surface/channel coordinator](surface-channels.md). Pools, structures, and reach-end ports do not attach to the surface solver.
 
 ### Channel flow and geometry
 
@@ -83,6 +83,8 @@ Surveyed advancement supports lateral rates, exact interval volumes, diagnostics
 Use [channel-to-pool connections](channel-pools.md) for rectangular or triangular reaches when finite pool levels respond to channel transfers. `ChannelPoolBatch` accepts both components together and retains their combined restart data.
 
 Surface state remains separate from these channel/pool calculations.
+
+Use [surface/channel coupling](surface-channels.md) when water crosses a bank between surface cells and rectangular or triangular reach cells. `SurfaceChannelBatch` accepts the surface and every reach over one common interval.
 
 ## Read component capabilities
 
@@ -109,6 +111,7 @@ A test in `tests/component_capabilities` backs every claim. A named test under t
 | Coupled level pool | `hydr::coupling::coupled_level_pool_capabilities` | [Coupled level pools](coupled-level-pools.md) |
 | Channel pool | `hydr::coupling::channel_pool_capabilities` | [Channel-to-pool connections](channel-pools.md) |
 | Runoff pool | `hydr::coupling::runoff_pool_capabilities` | [Runoff-to-pool connections](runoff-pools.md) |
+| Surface/channel | `hydr::coupling::surface_channel_capabilities` | [Surface/channel coupling](surface-channels.md) |
 
 ## Runtime selection and admission
 
@@ -244,7 +247,7 @@ Compatibility checks cover geometry, parameters, forcing, boundaries, controls, 
 
 Every snapshot package carries a `schema` and a `contract` identity. The schema names the package layout. The contract names the numerical contract.
 
-Each row except surface/channel names a component that also declares [capabilities](#read-component-capabilities).
+Each row names a component that also declares [capabilities](#read-component-capabilities).
 
 | Component | Package type | Schema constant (value) | Contract constant (value) | Import call | Nested packages |
 | --- | --- | --- | --- | --- | --- |
@@ -260,7 +263,7 @@ Each row except surface/channel names a component that also declares [capabiliti
 | [Coupled level pool](coupled-level-pools.md) | `CoupledLevelPoolSnapshotData` | `COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-coupled-level-pool-checkpoint-1`) | `COUPLED_LEVEL_POOL_CONTRACT_VERSION` (`hydr-coupled-level-pool-numr-cpu-1`) | `CoupledLevelPoolBatch::restore_data` | Level pool |
 | [Channel pool](channel-pools.md) | `ChannelPoolSnapshotData` | `CHANNEL_POOL_SNAPSHOT_SCHEMA` (`hydr-channel-pool-checkpoint-1`) | `CHANNEL_POOL_CONTRACT_VERSION` (`hydr-channel-pool-numr-cpu-1`) | `ChannelPoolBatch::import_snapshot` | Channel (per reach), level pool |
 | [Runoff pool](runoff-pools.md) | `RunoffPoolSnapshotData` | `RUNOFF_POOL_SNAPSHOT_SCHEMA` (`hydr-runoff-pool-checkpoint-1`) | `RUNOFF_POOL_CONTRACT_VERSION` (`hydr-runoff-pool-numr-cpu-1`) | `RunoffPoolBatch::restore_data` | Subcatchment, coupled level pool |
-| Surface/channel | `SurfaceChannelSnapshotData` | `SURFACE_CHANNEL_SNAPSHOT_SCHEMA` (`hydr-surface-channel-checkpoint-1`) | `SURFACE_CHANNEL_CONTRACT_VERSION` (`hydr-surface-channel-numr-cpu-1`) | `SurfaceChannelBatch::import_snapshot`, `SurfaceChannelBatch::resume` | Surface solver, channel (per reach) |
+| [Surface/channel](surface-channels.md) | `SurfaceChannelSnapshotData` | `SURFACE_CHANNEL_SNAPSHOT_SCHEMA` (`hydr-surface-channel-checkpoint-1`) | `SURFACE_CHANNEL_CONTRACT_VERSION` (`hydr-surface-channel-numr-cpu-1`) | `SurfaceChannelBatch::import_snapshot`, `SurfaceChannelBatch::resume` | Surface solver, channel (per reach) |
 
 Import follows these rules:
 

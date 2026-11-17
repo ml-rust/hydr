@@ -34,6 +34,8 @@ pub enum ComponentId {
     ControlledGate,
     /// Pump under operating control.
     ControlledPump,
+    /// 2D surface coupled to channel reaches through lateral bank weirs.
+    SurfaceChannels,
 }
 
 impl ComponentId {
@@ -55,6 +57,7 @@ impl ComponentId {
             Self::GateActuator => "gate-actuator",
             Self::ControlledGate => "controlled-gate",
             Self::ControlledPump => "controlled-pump",
+            Self::SurfaceChannels => "surface-channels",
         }
     }
 }
@@ -82,6 +85,7 @@ mod tests {
             ComponentId::GateActuator,
             ComponentId::ControlledGate,
             ComponentId::ControlledPump,
+            ComponentId::SurfaceChannels,
         ];
         assert_ids(&all.map(|c| c.id()));
     }

@@ -52,5 +52,5 @@ pub use surface_channels::{
     SurfaceChannelPreviousData, SurfaceChannelReach, SurfaceChannelReachForcing,
     SurfaceChannelSetup, SurfaceChannelSetupData, SurfaceChannelSnapshot,
     SurfaceChannelSnapshotData, SurfaceChannelStepDiagnostics, SurfaceChannelTrial,
-    SurfaceChannelWaterBalance, SurfaceChannelWeirRegime,
+    SurfaceChannelWaterBalance, SurfaceChannelWeirRegime, surface_channel_capabilities,
 };

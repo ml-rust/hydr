@@ -1,6 +1,6 @@
 //! Configurable surface grids, reaches, and links for common-interval tests.
 
-use crate::fixture::{DATUM, Result, applicability, config};
+use super::fixture::{DATUM, Result, applicability, config};
 use hydr::channel::*;
 use hydr::coupling::*;
 use hydr::forcing::WaterAmount;

@@ -301,8 +301,15 @@ fn solver_regimes_match_admission() -> TestResult {
 
 #[test]
 fn solver_capabilities_point_to_standalone_components() -> TestResult {
+    // Rectangular and triangular reaches attach through the surface/channel coordinator.
+    let solver = surface_solver_capabilities();
+    assert!(solver.unsupported_by_id("channel-reaches").is_none());
+    assert!(
+        solver
+            .attachable_to
+            .contains(&hydr::capability::ComponentId::SurfaceChannels)
+    );
     for id in [
-        "channel-reaches",
         "channel-pools",
         "level-pools",
         "coupled-level-pools",

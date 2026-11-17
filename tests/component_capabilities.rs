@@ -94,6 +94,19 @@ mod structures_variants;
 #[path = "component_capabilities/structures.rs"]
 mod structures;
 
+#[allow(dead_code)]
+#[path = "component_capabilities/surface_channel_support.rs"]
+mod surface_channel_support;
+
+#[path = "component_capabilities/surface_channels_fixture.rs"]
+mod surface_channels_fixture;
+
+#[path = "component_capabilities/surface_channels_variants.rs"]
+mod surface_channels_variants;
+
+#[path = "component_capabilities/surface_channels.rs"]
+mod surface_channels;
+
 use hydr::capability::{ComponentCapabilities, RegimeScope, RuntimeKind};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -174,6 +187,11 @@ fn declarations() -> Vec<Declared> {
             capabilities: hydr::structures::controlled_pump_capabilities(),
             contract: Some(hydr::structures::CONTROLLED_PUMP_CONTRACT_VERSION),
             snapshot_schema: Some(hydr::structures::CONTROLLED_PUMP_SNAPSHOT_SCHEMA),
+        },
+        Declared {
+            capabilities: hydr::coupling::surface_channel_capabilities(),
+            contract: Some(hydr::coupling::SURFACE_CHANNEL_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::coupling::SURFACE_CHANNEL_SNAPSHOT_SCHEMA),
         },
     ]
 }

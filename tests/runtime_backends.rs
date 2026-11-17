@@ -44,6 +44,8 @@ mod runoff_pools;
 mod runtime;
 #[path = "runtime_backends/subcatchment.rs"]
 mod subcatchment;
+#[path = "runtime_backends/surface_channels.rs"]
+mod surface_channels;
 #[path = "runtime_backends/triangular_channels.rs"]
 mod triangular_channels;
 

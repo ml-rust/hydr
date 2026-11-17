@@ -18,6 +18,8 @@ pub enum EndpointId {
     Outlet,
     /// Lateral exchange along a reach or pool.
     Lateral,
+    /// Active cell of a 2D grid that exchanges water with another component.
+    SurfaceCell,
 }
 
 impl EndpointId {
@@ -31,6 +33,7 @@ impl EndpointId {
             Self::StructureEndpoint => "structure-endpoint",
             Self::Outlet => "outlet",
             Self::Lateral => "lateral",
+            Self::SurfaceCell => "surface-cell",
         }
     }
 }
@@ -128,6 +131,7 @@ mod tests {
             EndpointId::StructureEndpoint,
             EndpointId::Outlet,
             EndpointId::Lateral,
+            EndpointId::SurfaceCell,
         ];
         assert_ids(&all.map(|e| e.id()));
     }

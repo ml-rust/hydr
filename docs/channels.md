@@ -491,7 +491,8 @@ The solver represents hydrostatic, one-dimensional shallow-water flow. It exclud
 - Geometry: Rectangular width and bed can vary between cells. Triangles require one common bed and bank slopes. Surveyed reaches require one horizontal profile.
 - Profiles: Certified surveyed profiles support reach advancement. Mixed sections, longitudinally varying surveyed or triangular profiles, and changing geometry remain unsupported.
 - Boundaries: Scalar policies require resolved wet-subcritical traces. Complete exterior data supports other flow regimes. Use walls only for physical closures. Transmissive policies remain unsupported.
-- Connections: [Channel-to-pool connections](channel-pools.md) coordinate rectangular or triangular reaches with finite pool storage. Surveyed attachments, general junctions, structures, and surface exchange remain unsupported.
+- Connections: [Channel-to-pool connections](channel-pools.md) coordinate rectangular or triangular reaches with finite pool storage. Surveyed attachments, general junctions, and structures remain unsupported.
+- Surface: [Surface/channel coupling](surface-channels.md) exchanges water between surface cells and rectangular or triangular reach cells over bank weirs.
 - Losses: Separate abrupt contraction and expansion losses remain unsupported.
 - Drainage: This solver supplies no SWMM drainage, surcharge, or pressurized-pipe model.
 - Accuracy: Read [acceptance coverage](acceptance.md) for numerical cases and limits. Numerical agreement establishes no measured-event accuracy.

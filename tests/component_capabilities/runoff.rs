@@ -390,6 +390,7 @@ fn runoff_parents_run_nested_admission() -> TestResult {
     for parent in [
         hydr::solver::surface_solver_capabilities(),
         Kind::Subcatchment.capabilities(),
+        hydr::coupling::surface_channel_capabilities(),
     ] {
         assert!(
             parent.nested.contains(&ComponentId::Soil),

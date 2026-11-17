@@ -114,7 +114,7 @@ static CAPABILITIES: ComponentCapabilities = ComponentCapabilities {
     ],
     options: &[],
     nested: &[ComponentId::Soil],
-    attachable_to: &[],
+    attachable_to: &[ComponentId::SurfaceChannels],
     unsupported: &[
         Unsupported {
             id: "stage-outside-wet-subcritical",
@@ -133,12 +133,6 @@ static CAPABILITIES: ComponentCapabilities = ComponentCapabilities {
             reason: UnsupportedReason::RejectedByAdmission,
             summary: "Transmissive faces with subcritical, critical or incoming wet flow reject.",
             doc: BOUNDARIES_DOC,
-        },
-        Unsupported {
-            id: "channel-reaches",
-            reason: UnsupportedReason::NotAttached,
-            summary: STANDALONE,
-            doc: "docs/channels.md",
         },
         Unsupported {
             id: "channel-pools",
