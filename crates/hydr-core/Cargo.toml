@@ -1,0 +1,20 @@
+[package]
+name = "hydr-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Grid, model, forcing and shared numerics for the hydr simulation crates"
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+cuda = ["numr/cuda", "solvr/cuda"]
+wgpu = ["numr/wgpu", "solvr/wgpu"]
+
+[dependencies]
+numr = { workspace = true }
+solvr = { workspace = true }
+
+[lints]
+workspace = true

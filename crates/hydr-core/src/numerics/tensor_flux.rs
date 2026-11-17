@@ -13,7 +13,7 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 ///
 /// The caller assigns face identities and rotates normal/tangent components for y-faces.
 /// Reflected input states implement walls. Positive films remain wet.
-pub(crate) fn hydrostatic_hll_tensor<R, C>(
+pub fn hydrostatic_hll_tensor<R, C>(
     client: &C,
     left: TensorFaceState<R>,
     right: TensorFaceState<R>,

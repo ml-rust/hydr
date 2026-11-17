@@ -1,7 +1,7 @@
 use std::fmt;
 
 #[derive(Debug)]
-pub(crate) enum WaterTransferError {
+pub enum WaterTransferError {
     Input(String),
     Numerical(String),
     Runtime(numr::error::Error),

@@ -12,17 +12,15 @@
 //! # Ok::<(), hydr::error::GridError>(())
 //! ```
 
+#[doc(inline)]
+pub use hydr_core::{error, forcing, grid, model};
+
+use hydr_core::{contract, numerics, tensor};
+
 pub mod channel;
-mod contract;
 pub mod coupling;
-pub mod error;
-pub mod forcing;
-pub mod grid;
-pub mod model;
-mod numerics;
 pub mod runoff;
 pub mod soil;
 pub mod solver;
 pub mod storage;
 pub mod structures;
-mod tensor;

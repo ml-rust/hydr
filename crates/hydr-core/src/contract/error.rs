@@ -41,7 +41,8 @@ pub enum EngineError {
 }
 
 impl EngineError {
-    pub(crate) fn rejected(operation: &'static str, reason: impl Into<String>) -> Self {
+    #[doc(hidden)]
+    pub fn rejected(operation: &'static str, reason: impl Into<String>) -> Self {
         Self::Rejected {
             operation,
             reason: reason.into(),

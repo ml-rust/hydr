@@ -4,13 +4,14 @@ mod error;
 mod lanes;
 mod reduction;
 
-pub(crate) use error::OutwardError;
-pub(crate) use reduction::{AdjustmentReduction, adjustment_volume_totals};
+pub use error::OutwardError;
+pub use reduction::{AdjustmentReduction, adjustment_volume_totals};
 
 use error::{finite, nonnegative};
 
 /// One stored-F64 binade spacing, including the smallest subnormal quantum.
-pub(crate) fn rounding_bound(value: f64) -> Result<f64, OutwardError> {
+#[inline]
+pub fn rounding_bound(value: f64) -> Result<f64, OutwardError> {
     finite(value, "rounding-bound input")?;
     finite(
         f64::EPSILON * value.abs() + f64::from_bits(1),
@@ -18,14 +19,16 @@ pub(crate) fn rounding_bound(value: f64) -> Result<f64, OutwardError> {
     )
 }
 
-pub(crate) fn upward_add(a: f64, b: f64) -> Result<f64, OutwardError> {
+#[inline]
+pub fn upward_add(a: f64, b: f64) -> Result<f64, OutwardError> {
     nonnegative(a, "outward addition first operand")?;
     nonnegative(b, "outward addition second operand")?;
     let result = finite(a + b, "outward addition intermediate")?;
     finite(result + rounding_bound(result)?, "outward addition")
 }
 
-pub(crate) fn upward_mul(a: f64, b: f64) -> Result<f64, OutwardError> {
+#[inline]
+pub fn upward_mul(a: f64, b: f64) -> Result<f64, OutwardError> {
     nonnegative(a, "outward product first operand")?;
     nonnegative(b, "outward product second operand")?;
     let result = finite(a * b, "outward product intermediate")?;
@@ -33,7 +36,8 @@ pub(crate) fn upward_mul(a: f64, b: f64) -> Result<f64, OutwardError> {
 }
 
 /// Zero charges preserve the accepted accumulator exactly, including signed zero.
-pub(crate) fn add_adjustment_charge(current: f64, step: f64) -> Result<f64, OutwardError> {
+#[inline]
+pub fn add_adjustment_charge(current: f64, step: f64) -> Result<f64, OutwardError> {
     nonnegative(current, "accepted adjustment charge")?;
     nonnegative(step, "step adjustment charge")?;
     if step == 0.0 {

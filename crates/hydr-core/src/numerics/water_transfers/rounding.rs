@@ -7,7 +7,7 @@ use numr::ops::{
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 
-pub(crate) fn finite<R: Runtime<DType = DType>>(
+pub fn finite<R: Runtime<DType = DType>>(
     client: &R::Client,
     value: &Tensor<R>,
     field: &str,
@@ -36,7 +36,7 @@ where
     Ok(())
 }
 
-pub(crate) fn reject<R: Runtime<DType = DType>>(
+pub fn reject<R: Runtime<DType = DType>>(
     client: &R::Client,
     mask: &Tensor<R>,
     message: &str,
@@ -61,7 +61,7 @@ where
     Ok(())
 }
 
-pub(crate) fn upward_add<R: Runtime<DType = DType>>(
+pub fn upward_add<R: Runtime<DType = DType>>(
     client: &R::Client,
     a: &Tensor<R>,
     b: &Tensor<R>,

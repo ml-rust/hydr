@@ -2,4 +2,4 @@
 
 mod arithmetic;
 
-pub(crate) use arithmetic::probe_f64;
+pub use arithmetic::probe_f64;

@@ -5,7 +5,7 @@ mod config;
 mod error;
 mod forcing;
 
-pub(crate) use boundary::exterior_cell;
+pub use boundary::exterior_cell;
 pub use boundary::{
     Axis, BoundaryConditions, BoundaryFace, BoundaryForcing, DischargeBoundary, ExteriorBoundary,
     ExteriorState, FluxPort, StageBoundary,

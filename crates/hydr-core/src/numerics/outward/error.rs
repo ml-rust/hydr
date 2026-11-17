@@ -4,7 +4,7 @@ use std::fmt;
 ///
 /// Display names the outward-rounding arithmetic. Soil callers convert into `SoilError` for soil text.
 #[derive(Debug)]
-pub(crate) enum OutwardError {
+pub enum OutwardError {
     /// Input does not satisfy the reduction contract.
     Input {
         /// Actionable input context.
@@ -25,7 +25,8 @@ pub(crate) enum OutwardError {
 
 impl OutwardError {
     /// Lane identity, independent of diagnostic text.
-    pub(crate) fn cell(&self) -> Option<usize> {
+    #[inline]
+    pub fn cell(&self) -> Option<usize> {
         match self {
             Self::Input { cell, .. } | Self::Numerical { cell, .. } => *cell,
             Self::Runtime(_) => None,
@@ -33,7 +34,8 @@ impl OutwardError {
     }
 
     /// Arithmetic rejection permits a bounded retry from accepted state.
-    pub(crate) fn is_retryable(&self) -> bool {
+    #[inline]
+    pub fn is_retryable(&self) -> bool {
         matches!(self, Self::Numerical { .. })
     }
 

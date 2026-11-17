@@ -117,7 +117,8 @@ impl ForcingSchedule {
     }
 
     /// Returns the checked contiguous tail from interval `from`, or `None` when it is empty.
-    pub(crate) fn window(&self, from: usize) -> Option<Self> {
+    #[doc(hidden)]
+    pub fn window(&self, from: usize) -> Option<Self> {
         let intervals = self.intervals.get(from..)?;
         (!intervals.is_empty()).then(|| Self {
             intervals: intervals.to_vec(),
@@ -128,7 +129,8 @@ impl ForcingSchedule {
     ///
     /// The tail of a checked schedule is checked: contiguity and per-interval checks hold
     /// for any contiguous run of the intervals that passed them.
-    pub(crate) fn into_window(mut self, from: usize) -> Option<Self> {
+    #[doc(hidden)]
+    pub fn into_window(mut self, from: usize) -> Option<Self> {
         if from >= self.intervals.len() {
             return None;
         }
@@ -137,11 +139,13 @@ impl ForcingSchedule {
     }
 
     /// Returns the intervals by value.
-    pub(crate) fn into_intervals(self) -> Vec<ForcingInterval> {
+    #[doc(hidden)]
+    pub fn into_intervals(self) -> Vec<ForcingInterval> {
         self.intervals
     }
 
-    pub(crate) fn at(&self, time: f64) -> Option<&ForcingInterval> {
+    #[doc(hidden)]
+    pub fn at(&self, time: f64) -> Option<&ForcingInterval> {
         self.intervals
             .iter()
             .find(|interval| interval.start <= time && time < interval.end)

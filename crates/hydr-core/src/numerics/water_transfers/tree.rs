@@ -14,20 +14,20 @@ struct Level<R: Runtime<DType = DType>> {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum AggregationKind {
+pub enum AggregationKind {
     Water,
     Momentum,
 }
 
 #[derive(Debug)]
-pub(crate) struct TransferTree<R: Runtime<DType = DType>> {
+pub struct TransferTree<R: Runtime<DType = DType>> {
     input_count: usize,
     order: Tensor<R>,
     levels: Vec<Level<R>>,
     pub degree_margin: Tensor<R>,
 }
 
-pub(crate) struct Aggregate<R: Runtime<DType = DType>> {
+pub struct Aggregate<R: Runtime<DType = DType>> {
     pub value: Tensor<R>,
     pub bound: Tensor<R>,
 }

@@ -9,7 +9,7 @@ use numr::tensor::Tensor;
 use solvr::optimize::OptimizeError;
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedBisectionOptions};
 
-pub(crate) fn bounds<R, C>(
+pub fn bounds<R, C>(
     client: &C,
     left: &TensorFaceState<R>,
     right: &TensorFaceState<R>,
@@ -87,7 +87,7 @@ where
 ///
 /// `2c = 2 sqrt(g h)` is the rectangular dry-front invariant term `φ(h)`. The padding follows
 /// the face bounds: it enlarges each speed by `16 ε` of the local speed scale.
-pub(crate) fn dry_front_bounds<R, C>(
+pub fn dry_front_bounds<R, C>(
     client: &C,
     depth: &Tensor<R>,
     velocity: &Tensor<R>,
@@ -124,7 +124,7 @@ where
     Ok((lower, upper))
 }
 
-pub(crate) fn shock_speed<R, C>(
+pub fn shock_speed<R, C>(
     client: &C,
     upper: &Tensor<R>,
     h: &Tensor<R>,
@@ -146,7 +146,7 @@ where
     Ok(speed)
 }
 
-pub(crate) fn curve<R, C>(
+pub fn curve<R, C>(
     client: &C,
     h: &Tensor<R>,
     reference: &Tensor<R>,

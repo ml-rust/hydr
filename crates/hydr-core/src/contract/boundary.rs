@@ -94,7 +94,8 @@ pub struct ExteriorBoundary {
 }
 
 impl ExteriorBoundary {
-    pub(crate) fn conserved(&self, domain: &Domain) -> Result<[f64; 3], EngineError> {
+    #[doc(hidden)]
+    pub fn conserved(&self, domain: &Domain) -> Result<[f64; 3], EngineError> {
         let cell = exterior_cell(domain, self.face)?;
         let ExteriorState::Wet {
             elevation,
@@ -210,7 +211,8 @@ impl BoundaryConditions {
     }
 }
 
-pub(crate) fn exterior_cell(domain: &Domain, face: BoundaryFace) -> Result<usize, EngineError> {
+#[inline]
+pub fn exterior_cell(domain: &Domain, face: BoundaryFace) -> Result<usize, EngineError> {
     let (nx, ny) = domain.grid().dimensions();
     let cell = match face.axis {
         Axis::X if face.row < ny && (face.column == 0 || face.column == nx) => {

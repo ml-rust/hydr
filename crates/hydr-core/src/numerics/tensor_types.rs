@@ -8,7 +8,7 @@ use numr::tensor::Tensor;
 
 /// Finite F64 one-dimensional arrays in a common face normal/tangent frame.
 #[derive(Clone)]
-pub(crate) struct TensorFaceState<R: Runtime<DType = DType>> {
+pub struct TensorFaceState<R: Runtime<DType = DType>> {
     pub h: Tensor<R>,
     pub q_normal: Tensor<R>,
     pub q_tangent: Tensor<R>,
@@ -16,14 +16,14 @@ pub(crate) struct TensorFaceState<R: Runtime<DType = DType>> {
 }
 
 /// Shared conservative flux and normal pressure additions for each side.
-pub(crate) struct TensorFaceFlux<R: Runtime<DType = DType>> {
+pub struct TensorFaceFlux<R: Runtime<DType = DType>> {
     pub shared: [Tensor<R>; 3],
     pub left_pressure: Tensor<R>,
     pub right_pressure: Tensor<R>,
     pub speed: Tensor<R>,
 }
 
-pub(crate) fn constant<R>(like: &Tensor<R>, value: f64) -> Result<Tensor<R>, EngineError>
+pub fn constant<R>(like: &Tensor<R>, value: f64) -> Result<Tensor<R>, EngineError>
 where
     R: Runtime<DType = DType>,
 {
@@ -35,7 +35,7 @@ where
     )?)
 }
 
-pub(crate) fn any<R, C>(client: &C, mask: &Tensor<R>) -> Result<bool, EngineError>
+pub fn any<R, C>(client: &C, mask: &Tensor<R>) -> Result<bool, EngineError>
 where
     R: Runtime<DType = DType>,
     C: RuntimeClient<R> + ReduceOps<R>,
@@ -46,7 +46,7 @@ where
     Ok(client.max(mask, &[0], false)?.item::<f64>()? != 0.0)
 }
 
-pub(crate) fn check_finite<R, C>(
+pub fn check_finite<R, C>(
     client: &C,
     value: &Tensor<R>,
     operation: &'static str,
@@ -68,7 +68,7 @@ where
     Ok(())
 }
 
-pub(crate) fn check_state<R, C>(
+pub fn check_state<R, C>(
     client: &C,
     state: &TensorFaceState<R>,
     shape: &[usize],

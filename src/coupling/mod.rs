@@ -14,6 +14,8 @@ pub use channel_pools::{
 
 pub mod level_pools;
 
+#[doc(no_inline)]
+pub use level_pools::CoupledPoolInflowValue;
 pub use level_pools::{
     CoupledLevelPoolBatch, CoupledLevelPoolConfig, CoupledLevelPoolError,
     CoupledLevelPoolForcingInterval, CoupledLevelPoolInitialState, CoupledLevelPoolIterationData,
@@ -21,7 +23,7 @@ pub use level_pools::{
     CoupledLevelPoolStartData, CoupledLevelPoolStepDiagnostics, CoupledLevelPoolTransfer,
     CoupledLevelPoolTrial, CoupledPoolAttachment, CoupledPoolConnection, CoupledPoolInflow,
     CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolInflowReceipt,
-    CoupledPoolInflowValue, CoupledPoolSupport,
+    CoupledPoolSupport,
 };
 
 pub mod runoff_pools;

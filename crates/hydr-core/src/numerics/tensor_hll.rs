@@ -10,7 +10,7 @@ use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
 /// Shared flux and signal bounds without hydrostatic side corrections.
-pub(crate) struct TensorHomogeneousFlux<R: Runtime<DType = DType>> {
+pub struct TensorHomogeneousFlux<R: Runtime<DType = DType>> {
     pub shared: [Tensor<R>; 3],
     /// Signal magnitude `max(|lower|, |upper|)`.
     pub speed: Tensor<R>,
@@ -23,7 +23,7 @@ pub(crate) struct TensorHomogeneousFlux<R: Runtime<DType = DType>> {
 /// Calculate HLL fluxes without bed reconstruction or side-pressure corrections.
 ///
 /// Inputs contain equal-length finite F64 arrays in a common normal/tangent frame.
-pub(crate) fn homogeneous_hll_tensor<R, C>(
+pub fn homogeneous_hll_tensor<R, C>(
     client: &C,
     left: &TensorFaceState<R>,
     right: &TensorFaceState<R>,
@@ -48,7 +48,7 @@ where
 }
 
 /// Calculate checked signed HLL signal bounds `(lower, upper)` without unused fluxes.
-pub(crate) fn homogeneous_wave_bounds_tensor<R, C>(
+pub fn homogeneous_wave_bounds_tensor<R, C>(
     client: &C,
     left: &TensorFaceState<R>,
     right: &TensorFaceState<R>,

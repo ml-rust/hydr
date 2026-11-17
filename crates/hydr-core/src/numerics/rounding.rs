@@ -6,7 +6,7 @@ use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
 /// Reuse the rounding expression with a caller-specific shape and diagnostic context.
-pub(crate) fn rounding_with_client<R>(
+pub fn rounding_with_client<R>(
     client: &R::Client,
     value: &Tensor<R>,
 ) -> numr::error::Result<Tensor<R>>

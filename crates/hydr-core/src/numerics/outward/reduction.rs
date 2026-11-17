@@ -11,13 +11,14 @@ use super::{rounding_bound, upward_add, upward_mul};
 
 /// Count-dependent reduction bound, cached by the surface runtime.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct AdjustmentReduction {
+pub struct AdjustmentReduction {
     count: usize,
     denominator: f64,
 }
 
 impl AdjustmentReduction {
-    pub(crate) fn new(count: usize) -> Result<Self, OutwardError> {
+    #[inline]
+    pub fn new(count: usize) -> Result<Self, OutwardError> {
         let additions = count
             .checked_add(7)
             .ok_or_else(|| OutwardError::input("correction reduction count overflows usize"))?;
@@ -41,7 +42,8 @@ impl AdjustmentReduction {
     ///
     /// Assume IEEE round-to-nearest addition with gradual underflow and at most N-1 additions.
     /// Unit-area multiplication is exact. This bound does not cover rounded area products.
-    pub(crate) fn unit_sum_error_bound(self, reported: f64) -> Result<f64, OutwardError> {
+    #[inline]
+    pub fn unit_sum_error_bound(self, reported: f64) -> Result<f64, OutwardError> {
         nonnegative(reported, "reported unit-area sum")?;
         if self.count == 0 && reported != 0.0 {
             return Err(OutwardError::input(
@@ -74,7 +76,7 @@ impl AdjustmentReduction {
         )
     }
 
-    pub(crate) fn totals<R>(
+    pub fn totals<R>(
         self,
         client: &R::Client,
         depths: &Tensor<R>,
@@ -106,7 +108,7 @@ impl AdjustmentReduction {
     }
 
     /// Reduce corrections with checked positive per-lane F64 areas, without broadcasting.
-    pub(crate) fn totals_with_areas<R>(
+    pub fn totals_with_areas<R>(
         self,
         client: &R::Client,
         depths: &Tensor<R>,
@@ -217,7 +219,7 @@ impl AdjustmentReduction {
     }
 }
 
-pub(crate) fn adjustment_volume_totals<R>(
+pub fn adjustment_volume_totals<R>(
     client: &R::Client,
     depths: &Tensor<R>,
     area: f64,

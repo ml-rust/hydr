@@ -5,7 +5,7 @@ use numr::ops::{BinaryOps, ScalarOps};
 use numr::runtime::{FloatArithmeticContract, Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 
-pub(crate) enum F64EnvironmentError {
+pub enum F64EnvironmentError {
     Runtime {
         name: &'static str,
         computes_f64: bool,
@@ -21,7 +21,7 @@ pub(crate) enum F64EnvironmentError {
 }
 
 impl F64EnvironmentError {
-    pub(crate) fn message(&self, component: &str) -> String {
+    pub fn message(&self, component: &str) -> String {
         match self {
             Self::Runtime {
                 name,
@@ -46,7 +46,7 @@ impl F64EnvironmentError {
     }
 }
 
-pub(crate) fn probe_f64<R, C>(client: &C) -> numr::error::Result<Option<F64EnvironmentError>>
+pub fn probe_f64<R, C>(client: &C) -> numr::error::Result<Option<F64EnvironmentError>>
 where
     R: Runtime<DType = DType>,
     C: RuntimeClient<R> + BinaryOps<R> + ScalarOps<R>,
