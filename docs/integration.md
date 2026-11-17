@@ -215,9 +215,32 @@ Compatibility checks cover geometry, parameters, forcing, boundaries, controls, 
 
 ### Know each checkpoint's scope
 
-Checkpoint compatibility includes the numerical contract `hydr-swe-numr-cpu-1`.
+Every snapshot package carries a `schema` and a `contract` identity. The schema names the package layout. The contract names the numerical contract.
 
-Surface packages use the schema `hydr-checkpoint-2`. Import rejects `hydr-checkpoint-1` packages. Capture a new package from a running engine.
+| Component | Package type | Schema constant (value) | Contract constant (value) | Import call | Nested packages |
+| --- | --- | --- | --- | --- | --- |
+| Surface solver | `SnapshotData` | `SNAPSHOT_SCHEMA` (`hydr-checkpoint-2`) | `CONTRACT_VERSION` (`hydr-swe-numr-cpu-1`) | `Solver::restore_data` | none |
+| [Channel](channels.md) | `ChannelSnapshotData` | `CHANNEL_SNAPSHOT_SCHEMA` (`hydr-channel-checkpoint-1`) | `CHANNEL_CONTRACT_VERSION` (`hydr-channel-1d-numr-cpu-1`) | `ChannelReach::import_snapshot` | none |
+| [Level pool](level-pool.md) | `LevelPoolSnapshotData` | `LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-level-pool-checkpoint-1`) | `LEVEL_POOL_CONTRACT_VERSION` (`hydr-level-pool-numr-cpu-1`) | `LevelPoolBatch::restore_data` | none |
+| [Subcatchment](subcatchment.md) | `SubcatchmentSnapshotData` | `SUBCATCHMENT_SNAPSHOT_SCHEMA` (`hydr-subcatchment-checkpoint-1`) | `SUBCATCHMENT_CONTRACT_VERSION` (`hydr-subcatchment-numr-cpu-1`) | `SubcatchmentBatch::restore_data` | none |
+| [Reservoir](reservoir.md) | `ReservoirSnapshotData` | `RESERVOIR_SNAPSHOT_SCHEMA` (`hydr-reservoir-checkpoint-1`) | `RESERVOIR_CONTRACT_VERSION` (`hydr-reservoir-numr-cpu-1`) | `ReservoirBatch::restore_data` | none |
+| [Operating control](operating-controls.md) | `OperatingControlSnapshotData` | `OPERATING_CONTROL_SNAPSHOT_SCHEMA` (`hydr-operating-control-checkpoint-1`) | `OPERATING_CONTROL_CONTRACT_VERSION` (`hydr-operating-control-numr-cpu-1`) | `OperatingControlBatch::restore_data` | none |
+| [Gate actuator](gate-actuators.md) | `GateActuatorSnapshotData` | `GATE_ACTUATOR_SNAPSHOT_SCHEMA` (`hydr-gate-actuator-checkpoint-1`) | `GATE_ACTUATOR_CONTRACT_VERSION` (`hydr-gate-actuator-numr-cpu-1`) | `GateActuatorBatch::restore_data` | none |
+| [Controlled gate](controlled-gates.md) | `ControlledGateSnapshotData` | `CONTROLLED_GATE_SNAPSHOT_SCHEMA` (`hydr-controlled-gate-checkpoint-1`) | `CONTROLLED_GATE_CONTRACT_VERSION` (`hydr-controlled-gate-numr-cpu-1`) | `ControlledGateBatch::restore_data` | Operating control, gate actuator |
+| [Controlled pump](controlled-pumps.md) | `ControlledPumpSnapshotData` | `CONTROLLED_PUMP_SNAPSHOT_SCHEMA` (`hydr-controlled-pump-checkpoint-1`) | `CONTROLLED_PUMP_CONTRACT_VERSION` (`hydr-controlled-pump-numr-cpu-1`) | `ControlledPumpBatch::restore_data` | Operating control |
+| [Coupled level pool](coupled-level-pools.md) | `CoupledLevelPoolSnapshotData` | `COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-coupled-level-pool-checkpoint-1`) | `COUPLED_LEVEL_POOL_CONTRACT_VERSION` (`hydr-coupled-level-pool-numr-cpu-1`) | `CoupledLevelPoolBatch::restore_data` | Level pool |
+| [Channel pool](channel-pools.md) | `ChannelPoolSnapshotData` | `CHANNEL_POOL_SNAPSHOT_SCHEMA` (`hydr-channel-pool-checkpoint-1`) | `CHANNEL_POOL_CONTRACT_VERSION` (`hydr-channel-pool-numr-cpu-1`) | `ChannelPoolBatch::import_snapshot` | Channel (per reach), level pool |
+| [Runoff pool](runoff-pools.md) | `RunoffPoolSnapshotData` | `RUNOFF_POOL_SNAPSHOT_SCHEMA` (`hydr-runoff-pool-checkpoint-1`) | `RUNOFF_POOL_CONTRACT_VERSION` (`hydr-runoff-pool-numr-cpu-1`) | `RunoffPoolBatch::restore_data` | Subcatchment, coupled level pool |
+
+Import follows these rules:
+
+- Import checks the schema first, then the contract. Both checks run before any other check or state change.
+- A nested package carries its own identity. A nested error names its path.
+- Schema mismatch: Capture a new package from this build.
+- Contract mismatch: Restore with the producing build, or capture a new package.
+- Import rejects a package without identity fields. Earlier layouts have none.
+- Identities establish the layout and the numerical contract. They prove no authenticity.
+- The surface solver identities predate the per-component naming.
 
 | Component | Restart responsibility |
 | --- | --- |
@@ -230,6 +253,8 @@ Source bindings retain no independent numerical clock or continuation history.
 ### Encode checkpoints without rounding
 
 Save original numerical values before formatting them for display. Do not round displayed decimals and then persist those rounded values.
+
+Persist `schema` and `contract` verbatim and first. Dispatch on `schema` before decoding the rest.
 
 Choose an encoding that preserves every package field and these special cases:
 
