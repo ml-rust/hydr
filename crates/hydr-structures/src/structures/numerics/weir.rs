@@ -97,6 +97,9 @@ where
         &c.maximum(&c.lt(&ratio, &context.zero)?, &c.gt(&ratio, &context.one)?)?,
         "represented submerged head ratio lies outside [0,1]",
     )?;
+    // No outward bound covers this square root, so no runtime square-root contract is checked.
+    // Its error reaches only `k`, which shares the uncontracted log/exp path to the discharge.
+    // Downstream finite and positive checks reject any nonfinite or vanished result.
     let k = c.add(
         &context.one,
         &c.div(&ratio, &c.add(&context.one, &c.sqrt(&ratio)?)?)?,

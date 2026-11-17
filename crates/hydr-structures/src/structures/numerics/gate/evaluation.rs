@@ -55,6 +55,9 @@ where
         &c.maximum(&c.lt(&ratio, &context.zero)?, &c.gt(&ratio, &context.one)?)?,
         "gate free pressure-head ratio lies outside zero to one",
     )?;
+    // No outward bound covers this square root, so no runtime square-root contract is checked.
+    // Its error reaches only `k`, which shares the uncontracted log/exp path to the discharge.
+    // Downstream finite and positive checks reject any nonfinite or vanished result.
     let k = c.add_scalar(&c.div(&ratio, &c.add_scalar(&c.sqrt(&ratio)?, 1.0)?)?, 1.0)?;
     let free_log = c.add(
         &c.add(
