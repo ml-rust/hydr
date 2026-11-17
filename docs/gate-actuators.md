@@ -4,6 +4,8 @@ Use `GateActuatorBatch` to calculate opening under a declared ideal response. Su
 
 This model binds to existing hydrostatic rectangular gates. It retains complete state for continuation, but does not consume hydraulic water.
 
+Read capabilities with `gate_actuator_capabilities()`. It returns a `ComponentCapabilities` declaration: arithmetic, runtimes, parent components, unsupported uses, and limits.
+
 ## Check that the model applies
 
 The response uses constant, independently supplied opening and closing rates.

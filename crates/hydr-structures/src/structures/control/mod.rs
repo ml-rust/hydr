@@ -1,6 +1,7 @@
 //! Sampled operating commands with explicit qualification, transactional trials, and complete continuation.
 
 mod batch;
+mod capabilities;
 mod command;
 mod definition;
 mod projection;
@@ -13,6 +14,7 @@ mod state;
 mod trial;
 
 pub use batch::OperatingControlBatch;
+pub use capabilities::operating_control_capabilities;
 pub use command::{ControlCommand, ControlCommandOutput, ControlLatch};
 pub use definition::OperatingControlDefinition;
 pub use receipts::{

@@ -1,6 +1,7 @@
 //! Explicit ideal instantaneous pump response to admitted sampled controls.
 
 mod batch;
+mod capabilities;
 mod compatibility;
 mod definition;
 mod output;
@@ -9,6 +10,7 @@ mod snapshot;
 mod trial;
 
 pub use batch::ControlledPumpBatch;
+pub use capabilities::controlled_pump_capabilities;
 pub(crate) use compatibility::same_context as same_controlled_pump_context;
 pub use definition::{PumpResponseDefinition, PumpResponseModel};
 pub use output::ControlledPumpOutput;

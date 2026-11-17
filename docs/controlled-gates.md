@@ -4,6 +4,8 @@ Use `ControlledGateBatch` to accept sampled control and ideal gate response as o
 
 The batch owns both children. Requested target and actual opening remain separate values.
 
+Read capabilities with `controlled_gate_capabilities()`. It returns a `ComponentCapabilities` declaration: arithmetic, runtimes, nested components, unsupported uses, and limits.
+
 ## Construct the owner
 
 `ControlledGateBatch::new` consumes an `OperatingControlBatch` and a `GateActuatorBatch`.

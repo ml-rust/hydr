@@ -31,7 +31,7 @@ pub use actuator::{
     GateActuatorSchedule, GateActuatorSnapshot, GateActuatorSnapshotData, GateActuatorState,
     GateActuatorStepDiagnostics, GateActuatorStepReceipt, GateActuatorSupport,
     GateActuatorTargetChangeReceipt, GateActuatorTimeExpansion, GateActuatorTrial,
-    GateTargetUpdate,
+    GateTargetUpdate, gate_actuator_capabilities,
 };
 pub use applicability::{OrificeApplicability, WeirApplicability};
 pub use batch::StructureBatch;
@@ -65,7 +65,7 @@ pub use control::{
     ControlTimerWitness, ControlTransitionReceipt, OPERATING_CONTROL_CONTRACT_VERSION,
     OPERATING_CONTROL_SNAPSHOT_SCHEMA, OperatingControlBatch, OperatingControlDefinition,
     OperatingControlSnapshot, OperatingControlSnapshotData, OperatingControlTrial,
-    SampledControlTiming,
+    SampledControlTiming, operating_control_capabilities,
 };
 
 mod operating_source;
@@ -83,6 +83,7 @@ mod controlled_gate;
 pub use controlled_gate::{
     CONTROLLED_GATE_CONTRACT_VERSION, CONTROLLED_GATE_SNAPSHOT_SCHEMA, ControlledGateBatch,
     ControlledGateEvent, ControlledGateSnapshot, ControlledGateSnapshotData, ControlledGateTrial,
+    controlled_gate_capabilities,
 };
 
 mod controlled_pump;
@@ -91,5 +92,5 @@ pub(crate) use controlled_pump::same_controlled_pump_context;
 pub use controlled_pump::{
     CONTROLLED_PUMP_CONTRACT_VERSION, CONTROLLED_PUMP_SNAPSHOT_SCHEMA, ControlledPumpBatch,
     ControlledPumpOutput, ControlledPumpSnapshot, ControlledPumpSnapshotData, ControlledPumpTrial,
-    PumpResponseDefinition, PumpResponseModel,
+    PumpResponseDefinition, PumpResponseModel, controlled_pump_capabilities,
 };

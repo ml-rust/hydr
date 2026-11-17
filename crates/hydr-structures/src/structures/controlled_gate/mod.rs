@@ -1,11 +1,13 @@
 //! Atomic sampled commands and explicitly admitted ideal actual gate response.
 
 mod batch;
+mod capabilities;
 mod event;
 mod snapshot;
 mod trial;
 
 pub use batch::ControlledGateBatch;
+pub use capabilities::controlled_gate_capabilities;
 pub use event::ControlledGateEvent;
 pub use snapshot::{
     CONTROLLED_GATE_CONTRACT_VERSION, CONTROLLED_GATE_SNAPSHOT_SCHEMA, ControlledGateSnapshot,

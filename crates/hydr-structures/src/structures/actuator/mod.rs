@@ -1,11 +1,13 @@
 //! Explicit ideal finite-rate gate response with checked numerical continuation.
 
+mod capabilities;
 mod definition;
 mod event;
 mod package;
 mod position;
 mod receipts;
 mod state;
+pub use capabilities::gate_actuator_capabilities;
 pub use definition::{
     GateActuatorAccuracy, GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule,
     GateTargetUpdate,

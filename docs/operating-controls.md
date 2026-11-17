@@ -4,6 +4,8 @@ Use `OperatingControlBatch` to generate pump commands or gate targets from sampl
 
 A command requests an operation. It does not establish actual device response, flow, donor availability, or water transfer.
 
+Read capabilities with `operating_control_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, parent components, unsupported uses, and limits.
+
 ## Declare the controller
 
 | Input | Required value |
@@ -26,7 +28,7 @@ The signal's physical support can differ from both structure endpoints. Declare 
 3. Supply an availability time no later than the observation time.
 4. Keep the original finite timestamps, including negative availability and antecedent times.
 
-Unknown, dry, stale, future, or incompatible samples reject. Hydr supplies no replacement or last-value hold.
+Missing, nonfinite, stale, future, or incompatible samples reject. A sample carries a finite stage only, so a dry source supplies no sample. Hydr supplies no replacement or last-value hold.
 
 ## Understand qualification
 

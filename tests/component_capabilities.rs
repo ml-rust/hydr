@@ -77,6 +77,23 @@ mod runoff_variants;
 #[path = "component_capabilities/runoff.rs"]
 mod runoff;
 
+#[allow(dead_code)]
+#[path = "controlled_gate_support/fixture.rs"]
+mod gate_fixture;
+
+#[allow(dead_code)]
+#[path = "controlled_pump_support/fixture.rs"]
+mod pump_fixture;
+
+#[path = "component_capabilities/structures_fixture.rs"]
+mod structures_fixture;
+
+#[path = "component_capabilities/structures_variants.rs"]
+mod structures_variants;
+
+#[path = "component_capabilities/structures.rs"]
+mod structures;
+
 use hydr::capability::{ComponentCapabilities, RegimeScope};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -137,6 +154,26 @@ fn declarations() -> Vec<Declared> {
             capabilities: hydr::coupling::runoff_pool_capabilities(),
             contract: Some(hydr::coupling::RUNOFF_POOL_CONTRACT_VERSION),
             snapshot_schema: Some(hydr::coupling::RUNOFF_POOL_SNAPSHOT_SCHEMA),
+        },
+        Declared {
+            capabilities: hydr::structures::operating_control_capabilities(),
+            contract: Some(hydr::structures::OPERATING_CONTROL_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::structures::OPERATING_CONTROL_SNAPSHOT_SCHEMA),
+        },
+        Declared {
+            capabilities: hydr::structures::gate_actuator_capabilities(),
+            contract: Some(hydr::structures::GATE_ACTUATOR_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::structures::GATE_ACTUATOR_SNAPSHOT_SCHEMA),
+        },
+        Declared {
+            capabilities: hydr::structures::controlled_gate_capabilities(),
+            contract: Some(hydr::structures::CONTROLLED_GATE_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::structures::CONTROLLED_GATE_SNAPSHOT_SCHEMA),
+        },
+        Declared {
+            capabilities: hydr::structures::controlled_pump_capabilities(),
+            contract: Some(hydr::structures::CONTROLLED_PUMP_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::structures::CONTROLLED_PUMP_SNAPSHOT_SCHEMA),
         },
     ]
 }

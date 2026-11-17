@@ -2,6 +2,8 @@
 
 Use `ControlledPumpBatch` when actual pump operation follows sampled commands instantaneously. Declare that response assumption before constructing the batch.
 
+Read capabilities with `controlled_pump_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, the response-model option, nested components, unsupported uses, and limits.
+
 ## Declare the response
 
 `ControlledPumpBatch::new` consumes a checked pump-only `OperatingControlBatch` and complete ordered response definitions.
