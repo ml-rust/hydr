@@ -45,7 +45,7 @@ Always read `AdvanceStatus` before treating the requested horizon as complete.
 | Outcome | State retained by Hydr |
 | --- | --- |
 | Invalid target | No advancement occurs. |
-| Numerical error | The last accepted step remains. Earlier accepted steps in the same call stay committed. |
+| Numerical error | The last accepted step remains. Earlier accepted steps in the same call stay committed. On `Err`, read `time()` and `snapshot()` to find the progress and keep it. |
 | Cancellation or exhausted step budget | The result reports the time actually reached. |
 
 ### 3. Read results and retain checkpoints
@@ -355,7 +355,7 @@ A new epoch drops the forcing prefix and all history. It starts with a fresh led
 4. Use the same sequence of accepted timestep lengths.
 5. Preserve the same requested intermediate times when comparing runs.
 
-The accepted timestep sequence is the step partition. Changing intermediate targets can change that sequence and the numerical result.
+The accepted timestep sequence is the step partition. Changing intermediate targets can change that sequence and the numerical result. Output cadence sets those targets. An observer or output interval that adds a target splits a step, so bitwise replay needs identical intermediate targets.
 
 A continuation equals a single run over the spliced schedule with the same intermediate targets, bit for bit. Stop the single run at each continuation time to compare.
 

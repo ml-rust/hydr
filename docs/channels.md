@@ -352,6 +352,16 @@ Surveyed restart data also retain the original profile, surveyed numerical contr
 
 Geometry variants and original geometry bits bind both restart paths. Changed triangular slopes or bed bits reject restoration. Equal area laws do not make different bank declarations interchangeable.
 
+Each stored conserved value is a high part plus a normalized low part. The application must persist every low part with its high part, bit for bit:
+
+| Package type | Fields |
+| --- | --- |
+| `ChannelSnapshotData` | `volume_low_m3`, `longitudinal_momentum_low_m4_per_s` |
+| `ChannelIntervalSnapshotData` | `previous_volume_low_m3`, `previous_longitudinal_momentum_low_m4_per_s` |
+| `ChannelWaterLedger` | `storage_selection_abs_bound_m3` |
+
+`ChannelStepDiagnostics` reports the matching accepted-interval records: `face_volume_low_m3`, `face_momentum_low_m4_per_s`, `friction_impulse_low_m4_per_s`, `storage_selection_bound_m3`, `recovery_selection_bound_m2`, and `discharge_recovery_selection_bound_m3_per_s`. The low parts are zero outside surveyed geometry.
+
 Persistence must preserve every floating-point bit. Step bounds can contain positive infinity, which ordinary JSON numbers cannot represent.
 
 Exact continuation requires the same build, dependency sources, runtime arithmetic, and sequence of accepted timesteps. Different intermediate targets can change those steps.
