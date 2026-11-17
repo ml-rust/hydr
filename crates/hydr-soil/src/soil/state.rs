@@ -18,7 +18,8 @@ pub struct NativeSoilState {
 }
 
 impl NativeSoilState {
-    pub(crate) fn check(
+    #[doc(hidden)]
+    pub fn check(
         self,
         parameters: ModifiedGreenAmptParameters,
         index: usize,

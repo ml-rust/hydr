@@ -52,7 +52,8 @@ impl SoilError {
         self
     }
 
-    pub(crate) fn input(context: impl Into<String>) -> Self {
+    #[doc(hidden)]
+    pub fn input(context: impl Into<String>) -> Self {
         Self::InvalidInput {
             context: context.into(),
             cell: None,
@@ -86,7 +87,8 @@ impl From<numr::error::Error> for SoilError {
 }
 impl SoilError {
     /// Converts an outward-solver error into the public soil error.
-    pub(crate) fn from_outward(error: crate::numerics::outward::OutwardError) -> Self {
+    #[doc(hidden)]
+    pub fn from_outward(error: crate::numerics::outward::OutwardError) -> Self {
         use crate::numerics::outward::OutwardError;
         match error {
             OutwardError::Input { context, cell } => Self::InvalidInput { context, cell },

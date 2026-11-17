@@ -26,7 +26,8 @@ const METRES_PER_FOOT: f64 = 0.3048;
 
 /// Actual SI intermediates supplied to one native soil call.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct SoilReceiptInput {
+#[doc(hidden)]
+pub struct SoilReceiptInput {
     pub dt_s: f64,
     pub incoming_rate_m_per_s: f64,
     pub ponded_depth_m: f64,
@@ -37,7 +38,8 @@ pub(crate) struct SoilReceiptInput {
 }
 
 /// Check receipt algebra without replaying antecedent native state.
-pub(crate) fn check_source_receipt(
+#[doc(hidden)]
+pub fn check_source_receipt(
     input: &SoilReceiptInput,
     soil: &SoilSourceReceipt,
 ) -> Result<(), SoilError> {

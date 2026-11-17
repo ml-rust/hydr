@@ -2,8 +2,8 @@
 
 use super::check::rejected;
 use crate::contract::EngineError;
-use crate::soil::{SoilReceiptInput, check_source_receipt};
 use crate::solver::{SoilSourceReceipt, SourceReceipt};
+use hydr_soil::internal::{SoilReceiptInput, check_source_receipt};
 
 pub(super) fn check(
     receipt: &SourceReceipt,

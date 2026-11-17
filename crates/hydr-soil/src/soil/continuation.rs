@@ -5,7 +5,8 @@ use numr::dtype::DType;
 use numr::runtime::{Device, Runtime, RuntimeClient};
 
 impl<R: Runtime<DType = DType>> ModifiedGreenAmptBatch<R> {
-    pub(crate) fn restore_trusted(&mut self, snapshot: &Self) -> Result<(), SoilError> {
+    #[doc(hidden)]
+    pub fn restore_trusted(&mut self, snapshot: &Self) -> Result<(), SoilError> {
         if !self
             .context
             .client

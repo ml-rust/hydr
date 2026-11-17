@@ -16,7 +16,7 @@ use crate::runoff::numerics::subcatchment::{
 };
 use crate::runoff::tensor::subcatchment::{TensorSubcatchmentContext, TensorSubcatchmentInput};
 use crate::runoff::{Subarea, SubareaReceipt, SubcatchmentError, SubcatchmentStepDiagnostics};
-use crate::soil::{SoilReceiptInput, check_source_receipt};
+use hydr_soil::internal::{SoilReceiptInput, check_source_receipt};
 
 pub(super) fn import<R>(
     context: &TensorSubcatchmentContext<R>,

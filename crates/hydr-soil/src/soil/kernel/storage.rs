@@ -10,7 +10,8 @@ use numr::tensor::Tensor;
 
 use crate::soil::{ModifiedGreenAmptParameters, NativeSoilState, SoilError};
 
-pub(crate) struct TensorSoilContext<R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub struct TensorSoilContext<R: Runtime<DType = DType>> {
     pub client: R::Client,
     pub parameters: Vec<ModifiedGreenAmptParameters>,
     pub suction: Tensor<R>,
@@ -43,7 +44,8 @@ where
         + TypeConversionOps<R>
         + UnaryOps<R>,
 {
-    pub(crate) fn new(
+    #[doc(hidden)]
+    pub fn new(
         client: R::Client,
         parameters: &[ModifiedGreenAmptParameters],
     ) -> Result<Self, SoilError> {
@@ -105,7 +107,8 @@ where
         )
     }
 
-    pub(crate) fn reject_mask(
+    #[doc(hidden)]
+    pub fn reject_mask(
         &self,
         mask: &Tensor<R>,
         quantity: &str,

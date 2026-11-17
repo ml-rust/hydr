@@ -20,7 +20,9 @@ use hydr_core::{contract, numerics, tensor};
 pub mod channel;
 pub mod coupling;
 pub mod runoff;
-pub mod soil;
+#[doc(inline)]
+pub use hydr_soil::soil;
+
 pub mod solver;
 pub mod storage;
 pub mod structures;

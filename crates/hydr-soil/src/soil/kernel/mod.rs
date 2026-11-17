@@ -5,5 +5,6 @@ pub(crate) mod roundoff;
 mod storage;
 pub(crate) mod transition;
 
-pub(crate) use storage::{TensorSoilContext, TensorSoilState};
+pub use storage::TensorSoilContext;
+pub(crate) use storage::TensorSoilState;
 pub(crate) use transition::advance;

@@ -3,7 +3,8 @@
 mod batch;
 mod continuation;
 mod error;
-pub(crate) mod kernel;
+#[doc(hidden)]
+pub mod kernel;
 mod land;
 mod parameters;
 mod receipt;
@@ -15,5 +16,8 @@ pub use error::SoilError;
 pub use land::{LandCell, LandModel, SoilCellState, SoilState};
 pub use parameters::ModifiedGreenAmptParameters;
 pub use receipt::SoilSourceReceipt;
-pub(crate) use receipt::{SoilReceiptInput, check_source_receipt};
+#[doc(hidden)]
+pub use receipt::{SoilReceiptInput, check_source_receipt};
 pub use state::{NativeSoilInput, NativeSoilState, SoilInput, SoilOutput};
+#[doc(hidden)]
+pub use surface_trial::SoilSurfaceTrial;

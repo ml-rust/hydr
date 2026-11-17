@@ -14,7 +14,8 @@ use super::kernel::roundoff::Bounds;
 use super::parameters::METRES_PER_FOOT;
 
 #[derive(Debug)]
-pub(crate) struct SoilSurfaceTrial<R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub struct SoilSurfaceTrial<R: Runtime<DType = DType>> {
     pub next: ModifiedGreenAmptBatch<R>,
     pub infiltration_depth: Tensor<R>,
     pub adjustment_depth: Tensor<R>,
@@ -40,7 +41,8 @@ where
         + BatchedNewtonAlgorithms<R>,
 {
     /// Require round-to-nearest and gradual underflow, checked when the context is created.
-    pub(crate) fn trial_surface_tensors(
+    #[doc(hidden)]
+    pub fn trial_surface_tensors(
         &self,
         dt: f64,
         rain_si: &Tensor<R>,
