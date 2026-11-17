@@ -10,8 +10,8 @@ use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::SoilError;
 use super::batch::ModifiedGreenAmptBatch;
+use super::kernel::roundoff::Bounds;
 use super::parameters::METRES_PER_FOOT;
-use crate::numerics::soil::roundoff::Bounds;
 
 #[derive(Debug)]
 pub(crate) struct SoilSurfaceTrial<R: Runtime<DType = DType>> {

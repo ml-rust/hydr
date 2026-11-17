@@ -3,7 +3,6 @@
 mod arithmetic;
 pub(crate) mod level_pool;
 pub(crate) mod reservoir_storage;
-pub(crate) mod soil_storage;
 pub(crate) mod structures;
 pub(crate) mod subcatchment;
 

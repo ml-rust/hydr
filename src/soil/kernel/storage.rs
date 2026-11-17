@@ -51,7 +51,7 @@ where
             return Err(SoilError::input("batch requires at least one soil cell"));
         }
         let device = client.device().clone();
-        if let Some(error) = super::arithmetic::probe_f64::<R, _>(&client)? {
+        if let Some(error) = crate::tensor::probe_f64::<R, _>(&client)? {
             return Err(SoilError::input(error.message("soil")));
         }
         let tensor = |values: Vec<f64>| Tensor::<R>::from_slice(&values, &[values.len()], &device);

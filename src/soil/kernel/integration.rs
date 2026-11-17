@@ -7,8 +7,8 @@ use numr::ops::{
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
+use super::storage::TensorSoilContext;
 use crate::soil::SoilError;
-use crate::tensor::soil_storage::TensorSoilContext;
 use solvr::optimize::roots::{BatchedNewtonAlgorithms, BatchedNewtonOptions};
 
 /// Conditional MAX preserves the source comparison and tie behavior.

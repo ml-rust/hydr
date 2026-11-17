@@ -6,7 +6,8 @@ use crate::runoff::{
     SubcatchmentDefinition, SubcatchmentGeometry, SubcatchmentParameters, SubcatchmentRouting,
 };
 use crate::soil::ModifiedGreenAmptParameters;
-use crate::tensor::{reservoir_storage::TensorReservoirContext, soil_storage::TensorSoilContext};
+use crate::soil::kernel::TensorSoilContext;
+use crate::tensor::reservoir_storage::TensorReservoirContext;
 use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 use numr::tensor::Tensor;
 

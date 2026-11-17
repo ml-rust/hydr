@@ -4,6 +4,7 @@ pub(crate) mod admission;
 mod batch;
 mod continuation;
 mod error;
+pub(crate) mod kernel;
 mod land;
 mod parameters;
 mod receipt;

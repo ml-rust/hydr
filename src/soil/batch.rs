@@ -8,11 +8,11 @@ use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
+use super::kernel::{TensorSoilContext, TensorSoilState};
 use super::parameters::METRES_PER_FOOT;
 use super::{
     ModifiedGreenAmptParameters, NativeSoilInput, NativeSoilState, SoilError, SoilInput, SoilOutput,
 };
-use crate::tensor::soil_storage::{TensorSoilContext, TensorSoilState};
 use std::sync::Arc;
 
 /// Persistent native soil memory with an explicitly configured one-thread numr CPU client.
@@ -160,14 +160,14 @@ where
     ) -> Result<
         (
             ModifiedGreenAmptTrial<R>,
-            crate::numerics::soil::transition::NativeTrace<R>,
+            super::kernel::transition::NativeTrace<R>,
         ),
         SoilError,
     > {
         self.context.finite(&rain, "native incoming rate (ft/s)")?;
         self.context.finite(&depth, "native ponded depth (ft)")?;
         let (state, native_rate, trace) =
-            crate::numerics::soil::advance(&self.context, &self.state, dt, &rain, &depth)?;
+            super::kernel::advance(&self.context, &self.state, dt, &rain, &depth)?;
         let c = &self.context.client;
         let native_depth = c.mul_scalar(&native_rate, dt)?;
         let si_rate = c.mul_scalar(&native_rate, METRES_PER_FOOT)?;

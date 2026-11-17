@@ -9,8 +9,8 @@ use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::integration::{integral, native_min};
+use super::storage::{TensorSoilContext, TensorSoilState};
 use crate::soil::SoilError;
-use crate::tensor::soil_storage::{TensorSoilContext, TensorSoilState};
 
 /// Actual source intermediates retained for surface admission, without recomputation.
 pub(crate) struct NativeTrace<R: Runtime<DType = DType>> {

@@ -7,8 +7,8 @@ use numr::ops::{
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
+use super::storage::TensorSoilContext;
 use crate::soil::SoilError;
-use crate::tensor::soil_storage::TensorSoilContext;
 
 pub(crate) struct Bounds<'a, R: Runtime<DType = DType>> {
     pub context: &'a TensorSoilContext<R>,
