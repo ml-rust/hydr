@@ -102,6 +102,7 @@ where
             + solvr::optimize::CertifiedMappedBisectionAlgorithms<R>
             + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
     {
+        data.check_identities().map_err(ChannelPoolError::input)?;
         require(
             same_setup(&self.context.setup, &data.setup)
                 && same_initial(&self.context.initial, &data.initial),

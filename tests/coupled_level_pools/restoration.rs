@@ -1,5 +1,107 @@
 use super::fixture::{Result, orifice_case};
-use hydr::coupling::CoupledLevelPoolBatch;
+use hydr::coupling::{
+    COUPLED_LEVEL_POOL_CONTRACT_VERSION, COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA, CoupledLevelPoolBatch,
+    CoupledLevelPoolError, CoupledLevelPoolSnapshotData,
+};
+use hydr::storage::LEVEL_POOL_SNAPSHOT_SCHEMA;
+
+fn advanced() -> Result<CoupledLevelPoolBatch<crate::runtime::Runtime>> {
+    let (setup, initial) = orifice_case([4.0, 2.0])?;
+    Ok(CoupledLevelPoolBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        setup,
+        initial,
+    )?
+    .trial_to(0.25)?
+    .into_next())
+}
+
+/// Import `changed`, then check the input error names every `needle` and the destination is unchanged.
+fn assert_rejected(changed: &CoupledLevelPoolSnapshotData, needles: &[&str]) -> Result {
+    let mut destination = advanced()?;
+    let before = destination.snapshot_data()?;
+    let Err(error) = destination.restore_data(changed) else {
+        return Err("foreign identity was accepted".into());
+    };
+    assert!(
+        matches!(error, CoupledLevelPoolError::Input(_)),
+        "unexpected kind: {error}"
+    );
+    let message = error.to_string();
+    for needle in needles {
+        assert!(message.contains(needle), "missing {needle:?}: {message}");
+    }
+    assert_eq!(destination.snapshot_data()?, before);
+    Ok(())
+}
+
+#[test]
+fn coupled_level_pool_package_carries_identity() -> Result {
+    assert_eq!(
+        COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA,
+        "hydr-coupled-level-pool-checkpoint-1"
+    );
+    assert_eq!(
+        COUPLED_LEVEL_POOL_CONTRACT_VERSION,
+        "hydr-coupled-level-pool-numr-cpu-1"
+    );
+    let package = advanced()?.snapshot_data()?;
+    assert_eq!(package.schema, COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA);
+    assert_eq!(package.contract, COUPLED_LEVEL_POOL_CONTRACT_VERSION);
+    Ok(())
+}
+
+#[test]
+fn coupled_level_pool_import_rejects_foreign_schema() -> Result {
+    let package = advanced()?.snapshot_data()?;
+    for found in ["hydr-coupled-level-pool-checkpoint-0", ""] {
+        let mut changed = package.clone();
+        changed.schema = found.into();
+        assert_rejected(
+            &changed,
+            &[
+                "coupled level pool checkpoint schema",
+                &format!("found \"{found}\""),
+                COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA,
+                "capture a new package",
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn coupled_level_pool_import_rejects_foreign_contract() -> Result {
+    let mut changed = advanced()?.snapshot_data()?;
+    changed.contract = "hydr-coupled-level-pool-numr-gpu-1".into();
+    assert_rejected(
+        &changed,
+        &[
+            "coupled level pool checkpoint contract",
+            "found \"hydr-coupled-level-pool-numr-gpu-1\"",
+            COUPLED_LEVEL_POOL_CONTRACT_VERSION,
+        ],
+    )
+}
+
+#[test]
+fn coupled_level_pool_import_rejects_nested_start_pools_schema() -> Result {
+    let mut changed = advanced()?.snapshot_data()?;
+    let start = changed
+        .start
+        .as_mut()
+        .ok_or("advanced package lacks its start frame")?;
+    start.pools.schema = "hydr-level-pool-checkpoint-0".into();
+    assert_rejected(
+        &changed,
+        &[
+            "coupled level pool checkpoint start.pools",
+            "level pool checkpoint schema",
+            "found \"hydr-level-pool-checkpoint-0\"",
+            LEVEL_POOL_SNAPSHOT_SCHEMA,
+        ],
+    )
+}
 
 #[test]
 fn trusted_and_owned_restart_reproduce_complete_continuation() -> Result {

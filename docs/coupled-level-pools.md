@@ -196,6 +196,8 @@ Preserve every checkpoint field and floating-point bit when encoding data. Compl
 
 Import recalculates the final interval's forcing. It checks transfers and accepted state before restoration.
 
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA` and `COUPLED_LEVEL_POOL_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with an input error. Next it checks the nested `pools` and `start.pools` level-pool packages. A nested error names its path, such as `start.pools`. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+
 ## Unsupported uses and support limits
 
 ### Hydraulic support still applies

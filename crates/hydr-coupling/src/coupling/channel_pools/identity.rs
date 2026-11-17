@@ -66,7 +66,9 @@ pub(super) fn same_initial(a: &ChannelPoolInitialState, b: &ChannelPoolInitialSt
 }
 
 pub(super) fn same_data(a: &ChannelPoolSnapshotData, b: &ChannelPoolSnapshotData) -> bool {
-    same_setup(&a.setup, &b.setup)
+    a.schema == b.schema
+        && a.contract == b.contract
+        && same_setup(&a.setup, &b.setup)
         && same_initial(&a.initial, &b.initial)
         && same_reaches(&a.reaches, &b.reaches)
         && same_pools(&a.pools, &b.pools)

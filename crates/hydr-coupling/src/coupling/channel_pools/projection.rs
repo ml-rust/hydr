@@ -1,7 +1,7 @@
 use super::context_types::Context;
 use super::snapshot::{
-    ChannelPoolIntervalSnapshotData, ChannelPoolPreviousData, ChannelPoolSnapshot,
-    ChannelPoolSnapshotData,
+    CHANNEL_POOL_CONTRACT_VERSION, CHANNEL_POOL_SNAPSHOT_SCHEMA, ChannelPoolIntervalSnapshotData,
+    ChannelPoolPreviousData, ChannelPoolSnapshot, ChannelPoolSnapshotData,
 };
 use super::state::{BoundForcing, StoredStep};
 use super::{
@@ -154,6 +154,8 @@ where
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ChannelPoolSnapshotData {
+            schema: CHANNEL_POOL_SNAPSHOT_SCHEMA.into(),
+            contract: CHANNEL_POOL_CONTRACT_VERSION.into(),
             setup: self.context.setup.clone(),
             initial: self.context.initial.clone(),
             reaches,

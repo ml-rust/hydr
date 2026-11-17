@@ -35,6 +35,7 @@ where
 {
     /// Check complete owned child proofs and their pairing before replacing either accepted engine.
     pub fn restore_data(&mut self, data: &RunoffPoolSnapshotData) -> Result<(), RunoffPoolError> {
+        data.check_identities().map_err(RunoffPoolError::input)?;
         self.check_identity(&data.setup, data.initial_time_s)?;
         let mut runoff = self.runoff.clone();
         runoff.restore_data(&data.runoff)?;

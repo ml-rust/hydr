@@ -1,6 +1,7 @@
 use super::{RunoffPoolBatch, RunoffPoolError, RunoffPoolSetup, RunoffPoolStepDiagnostics};
-use crate::coupling::CoupledLevelPoolSnapshotData;
+use crate::coupling::{CoupledLevelPoolSnapshotData, checkpoint};
 use crate::runoff::SubcatchmentSnapshotData;
+use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,
@@ -13,9 +14,18 @@ use solvr::optimize::roots::{
 };
 use std::sync::Arc;
 
+/// Schema identity of the runoff pool snapshot package.
+pub const RUNOFF_POOL_SNAPSHOT_SCHEMA: &str = "hydr-runoff-pool-checkpoint-1";
+/// Numerical contract identity of the runoff pool snapshot package.
+pub const RUNOFF_POOL_CONTRACT_VERSION: &str = "hydr-runoff-pool-numr-cpu-1";
+
 /// Complete caller-owned paired state, with one bounded common receipt.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RunoffPoolSnapshotData {
+    /// Package schema identity.
+    pub schema: String,
+    /// Numerical contract identity.
+    pub contract: String,
     /// Immutable definitions, mapping, evidence, and numerical controls.
     pub setup: RunoffPoolSetup,
     /// Exact original common epoch, required to match the destination.
@@ -26,6 +36,22 @@ pub struct RunoffPoolSnapshotData {
     pub pools: CoupledLevelPoolSnapshotData,
     /// Final common interval, absent exactly before any accepted interval.
     pub last_step: Option<RunoffPoolStepDiagnostics>,
+}
+impl RunoffPoolSnapshotData {
+    /// Check this package identity, then the identity of every nested package.
+    pub(super) fn check_identities(&self) -> Result<(), String> {
+        package_identity(
+            "runoff pool",
+            &self.schema,
+            RUNOFF_POOL_SNAPSHOT_SCHEMA,
+            &self.contract,
+            RUNOFF_POOL_CONTRACT_VERSION,
+        )?;
+        checkpoint::subcatchment("runoff pool checkpoint runoff", &self.runoff)?;
+        self.pools
+            .check_identities()
+            .map_err(|message| format!("runoff pool checkpoint pools: {message}"))
+    }
 }
 /// Trusted paired tensor continuation without numerical field projection.
 #[derive(Clone, Debug)]
@@ -90,6 +116,8 @@ where
     /// Explicitly project both complete native child packages and the common receipt.
     pub fn snapshot_data(&self) -> Result<RunoffPoolSnapshotData, RunoffPoolError> {
         Ok(RunoffPoolSnapshotData {
+            schema: RUNOFF_POOL_SNAPSHOT_SCHEMA.into(),
+            contract: RUNOFF_POOL_CONTRACT_VERSION.into(),
             setup: self.setup().clone(),
             initial_time_s: self.initial_time(),
             runoff: self.runoff.snapshot_data()?,

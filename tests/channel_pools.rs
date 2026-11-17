@@ -4,6 +4,8 @@
 mod admission;
 #[path = "channel_pools/fixture.rs"]
 mod fixture;
+#[path = "channel_pools/identity.rs"]
+mod identity;
 #[path = "channel_pools/lifecycle.rs"]
 mod lifecycle;
 #[path = "channel_pools/linear_mode.rs"]

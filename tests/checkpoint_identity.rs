@@ -1,0 +1,72 @@
+//! Every snapshot package identity is unique across the public API.
+
+use hydr::channel::{CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA};
+use hydr::coupling::{
+    CHANNEL_POOL_CONTRACT_VERSION, CHANNEL_POOL_SNAPSHOT_SCHEMA,
+    COUPLED_LEVEL_POOL_CONTRACT_VERSION, COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA,
+    RUNOFF_POOL_CONTRACT_VERSION, RUNOFF_POOL_SNAPSHOT_SCHEMA,
+};
+use hydr::runoff::{
+    RESERVOIR_CONTRACT_VERSION, RESERVOIR_SNAPSHOT_SCHEMA, SUBCATCHMENT_CONTRACT_VERSION,
+    SUBCATCHMENT_SNAPSHOT_SCHEMA,
+};
+use hydr::solver::{CONTRACT_VERSION, SNAPSHOT_SCHEMA};
+use hydr::storage::{LEVEL_POOL_CONTRACT_VERSION, LEVEL_POOL_SNAPSHOT_SCHEMA};
+use hydr::structures::{
+    CONTROLLED_GATE_CONTRACT_VERSION, CONTROLLED_GATE_SNAPSHOT_SCHEMA,
+    CONTROLLED_PUMP_CONTRACT_VERSION, CONTROLLED_PUMP_SNAPSHOT_SCHEMA,
+    GATE_ACTUATOR_CONTRACT_VERSION, GATE_ACTUATOR_SNAPSHOT_SCHEMA,
+    OPERATING_CONTROL_CONTRACT_VERSION, OPERATING_CONTROL_SNAPSHOT_SCHEMA,
+};
+
+const SCHEMAS: [&str; 12] = [
+    SNAPSHOT_SCHEMA,
+    CHANNEL_SNAPSHOT_SCHEMA,
+    LEVEL_POOL_SNAPSHOT_SCHEMA,
+    RESERVOIR_SNAPSHOT_SCHEMA,
+    SUBCATCHMENT_SNAPSHOT_SCHEMA,
+    GATE_ACTUATOR_SNAPSHOT_SCHEMA,
+    OPERATING_CONTROL_SNAPSHOT_SCHEMA,
+    CONTROLLED_GATE_SNAPSHOT_SCHEMA,
+    CONTROLLED_PUMP_SNAPSHOT_SCHEMA,
+    COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA,
+    CHANNEL_POOL_SNAPSHOT_SCHEMA,
+    RUNOFF_POOL_SNAPSHOT_SCHEMA,
+];
+
+const CONTRACTS: [&str; 12] = [
+    CONTRACT_VERSION,
+    CHANNEL_CONTRACT_VERSION,
+    LEVEL_POOL_CONTRACT_VERSION,
+    RESERVOIR_CONTRACT_VERSION,
+    SUBCATCHMENT_CONTRACT_VERSION,
+    GATE_ACTUATOR_CONTRACT_VERSION,
+    OPERATING_CONTROL_CONTRACT_VERSION,
+    CONTROLLED_GATE_CONTRACT_VERSION,
+    CONTROLLED_PUMP_CONTRACT_VERSION,
+    COUPLED_LEVEL_POOL_CONTRACT_VERSION,
+    CHANNEL_POOL_CONTRACT_VERSION,
+    RUNOFF_POOL_CONTRACT_VERSION,
+];
+
+fn assert_pairwise_distinct(values: &[&str]) {
+    for (index, value) in values.iter().enumerate() {
+        assert!(!value.is_empty(), "identity {index} is empty");
+        for (other_index, other) in values.iter().enumerate().skip(index + 1) {
+            assert_ne!(
+                value, other,
+                "identities {index} and {other_index} are equal"
+            );
+        }
+    }
+}
+
+#[test]
+fn snapshot_schemas_are_pairwise_distinct() {
+    assert_pairwise_distinct(&SCHEMAS);
+}
+
+#[test]
+fn snapshot_contracts_are_pairwise_distinct() {
+    assert_pairwise_distinct(&CONTRACTS);
+}

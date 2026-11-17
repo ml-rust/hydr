@@ -38,6 +38,8 @@ where
         &mut self,
         data: &CoupledLevelPoolSnapshotData,
     ) -> Result<(), CoupledLevelPoolError> {
+        data.check_identities()
+            .map_err(CoupledLevelPoolError::input)?;
         require(
             same_setup(self.setup(), &data.setup),
             "immutable setup bits differ from the destination",

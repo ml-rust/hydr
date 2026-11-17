@@ -156,4 +156,12 @@ Both restoration methods return a new batch and retain the destination client. H
 
 Import recalculates the final common interval to check shared heads and transfers. Separate child checkpoints cannot establish this connected consistency.
 
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `CHANNEL_POOL_SNAPSHOT_SCHEMA` and `CHANNEL_POOL_CONTRACT_VERSION`. `import_snapshot` compares both before any other check and rejects a foreign value with an input error. Next it checks every nested package before any replay:
+
+- `reaches[i]` channel packages.
+- The `pools` level-pool package.
+- `last_interval.previous.reaches[i]` and `last_interval.previous.pools`.
+
+A nested error names its path and, for a reach, the reach ID. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+
 Preserve every package field and floating-point value exactly. Follow the [persistence and reproducibility requirements](integration.md#save-complete-restart-data).

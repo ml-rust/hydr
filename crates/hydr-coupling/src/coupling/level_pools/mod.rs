@@ -29,6 +29,7 @@ pub use output::{
     CoupledLevelPoolIterationData, CoupledLevelPoolStepDiagnostics, CoupledLevelPoolTransfer,
 };
 pub use snapshot::{
+    COUPLED_LEVEL_POOL_CONTRACT_VERSION, COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA,
     CoupledLevelPoolSnapshot, CoupledLevelPoolSnapshotData, CoupledLevelPoolStartData,
 };
 pub use trial::CoupledLevelPoolTrial;

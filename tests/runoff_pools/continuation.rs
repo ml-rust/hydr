@@ -1,7 +1,110 @@
 use super::exports::assert_paired;
 use super::fixture::{Batch, Result, exact_case, forcing, shortened_case};
-use hydr::coupling::CoupledPoolInflowValue;
-use hydr::runoff::{SubcatchmentBatch, SubcatchmentInput};
+use hydr::coupling::{
+    CoupledPoolInflowValue, RUNOFF_POOL_CONTRACT_VERSION, RUNOFF_POOL_SNAPSHOT_SCHEMA,
+    RunoffPoolError, RunoffPoolSnapshotData,
+};
+use hydr::runoff::{SUBCATCHMENT_SNAPSHOT_SCHEMA, SubcatchmentBatch, SubcatchmentInput};
+use hydr::storage::LEVEL_POOL_CONTRACT_VERSION;
+
+fn advanced() -> Result<Batch> {
+    let (setup, initial) = exact_case()?;
+    Ok(Batch::new(crate::runtime::client(), setup, initial)?
+        .trial_with_forcing_to(0.5, &forcing(1, 0.25, 0.0))?
+        .into_next())
+}
+
+/// Import `changed`, then check the input error names every `needle` and the destination is unchanged.
+fn assert_rejected(changed: &RunoffPoolSnapshotData, needles: &[&str]) -> Result {
+    let mut destination = advanced()?;
+    let before = destination.snapshot_data()?;
+    let Err(error) = destination.restore_data(changed) else {
+        return Err("foreign identity was accepted".into());
+    };
+    assert!(
+        matches!(error, RunoffPoolError::Input(_)),
+        "unexpected kind: {error}"
+    );
+    let message = error.to_string();
+    for needle in needles {
+        assert!(message.contains(needle), "missing {needle:?}: {message}");
+    }
+    assert_eq!(destination.snapshot_data()?, before);
+    Ok(())
+}
+
+#[test]
+fn runoff_pool_package_carries_identity() -> Result {
+    assert_eq!(RUNOFF_POOL_SNAPSHOT_SCHEMA, "hydr-runoff-pool-checkpoint-1");
+    assert_eq!(RUNOFF_POOL_CONTRACT_VERSION, "hydr-runoff-pool-numr-cpu-1");
+    let package = advanced()?.snapshot_data()?;
+    assert_eq!(package.schema, RUNOFF_POOL_SNAPSHOT_SCHEMA);
+    assert_eq!(package.contract, RUNOFF_POOL_CONTRACT_VERSION);
+    Ok(())
+}
+
+#[test]
+fn runoff_pool_import_rejects_foreign_schema() -> Result {
+    let package = advanced()?.snapshot_data()?;
+    for found in ["hydr-runoff-pool-checkpoint-0", ""] {
+        let mut changed = package.clone();
+        changed.schema = found.into();
+        assert_rejected(
+            &changed,
+            &[
+                "runoff pool checkpoint schema",
+                &format!("found \"{found}\""),
+                RUNOFF_POOL_SNAPSHOT_SCHEMA,
+                "capture a new package",
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn runoff_pool_import_rejects_foreign_contract() -> Result {
+    let mut changed = advanced()?.snapshot_data()?;
+    changed.contract = "hydr-runoff-pool-numr-gpu-1".into();
+    assert_rejected(
+        &changed,
+        &[
+            "runoff pool checkpoint contract",
+            "found \"hydr-runoff-pool-numr-gpu-1\"",
+            RUNOFF_POOL_CONTRACT_VERSION,
+        ],
+    )
+}
+
+#[test]
+fn runoff_pool_import_rejects_nested_runoff_schema() -> Result {
+    let mut changed = advanced()?.snapshot_data()?;
+    changed.runoff.schema = "hydr-subcatchment-checkpoint-0".into();
+    assert_rejected(
+        &changed,
+        &[
+            "runoff pool checkpoint runoff",
+            "subcatchment checkpoint schema",
+            "found \"hydr-subcatchment-checkpoint-0\"",
+            SUBCATCHMENT_SNAPSHOT_SCHEMA,
+        ],
+    )
+}
+
+#[test]
+fn runoff_pool_import_rejects_nested_level_pool_contract() -> Result {
+    let mut changed = advanced()?.snapshot_data()?;
+    changed.pools.pools.contract = "hydr-level-pool-numr-gpu-1".into();
+    assert_rejected(
+        &changed,
+        &[
+            "runoff pool checkpoint pools: coupled level pool checkpoint pools",
+            "level pool checkpoint contract",
+            "found \"hydr-level-pool-numr-gpu-1\"",
+            LEVEL_POOL_CONTRACT_VERSION,
+        ],
+    )
+}
 
 #[test]
 fn pervious_soil_routing_and_both_children_repeat_after_trusted_and_cold_restore() -> Result {

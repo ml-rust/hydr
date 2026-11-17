@@ -18,5 +18,8 @@ pub use definition::{
 };
 pub use error::RunoffPoolError;
 pub use output::{RunoffPoolStepDiagnostics, RunoffPoolWaterBalance};
-pub use snapshot::{RunoffPoolSnapshot, RunoffPoolSnapshotData};
+pub use snapshot::{
+    RUNOFF_POOL_CONTRACT_VERSION, RUNOFF_POOL_SNAPSHOT_SCHEMA, RunoffPoolSnapshot,
+    RunoffPoolSnapshotData,
+};
 pub use trial::RunoffPoolTrial;

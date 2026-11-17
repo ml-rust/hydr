@@ -3,7 +3,9 @@ use super::{
     CoupledLevelPoolBatch, CoupledLevelPoolError, CoupledLevelPoolSetup,
     CoupledLevelPoolStepDiagnostics, trial::StoredStart,
 };
+use crate::coupling::checkpoint;
 use crate::storage::LevelPoolSnapshotData;
+use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,
@@ -13,6 +15,11 @@ use numr::runtime::Device;
 use numr::runtime::{Runtime, RuntimeClient};
 use solvr::interpolate::Interp1dAlgorithms;
 use std::sync::Arc;
+
+/// Schema identity of the coupled level pool snapshot package.
+pub const COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA: &str = "hydr-coupled-level-pool-checkpoint-1";
+/// Numerical contract identity of the coupled level pool snapshot package.
+pub const COUPLED_LEVEL_POOL_CONTRACT_VERSION: &str = "hydr-coupled-level-pool-numr-cpu-1";
 
 /// One native pool and external ledger frame, without recursive coupled history.
 #[derive(Clone, Debug, PartialEq)]
@@ -26,6 +33,10 @@ pub struct CoupledLevelPoolStartData {
 /// Complete caller-owned continuation. Preserve every F64 bit when encoding.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoupledLevelPoolSnapshotData {
+    /// Package schema identity.
+    pub schema: String,
+    /// Numerical contract identity.
+    pub contract: String,
     /// Original immutable physical definitions, operations, and numerical budgets.
     pub setup: CoupledLevelPoolSetup,
     /// Complete accepted native storage and cumulative accounting.
@@ -36,6 +47,23 @@ pub struct CoupledLevelPoolSnapshotData {
     pub start: Option<CoupledLevelPoolStartData>,
     /// Complete cumulative external ledger in immutable boundary order.
     pub external_inflows: Vec<super::CoupledPoolInflowLedger>,
+}
+impl CoupledLevelPoolSnapshotData {
+    /// Check this package identity, then the identity of every nested level-pool package.
+    pub(crate) fn check_identities(&self) -> Result<(), String> {
+        package_identity(
+            "coupled level pool",
+            &self.schema,
+            COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA,
+            &self.contract,
+            COUPLED_LEVEL_POOL_CONTRACT_VERSION,
+        )?;
+        checkpoint::level_pool("coupled level pool checkpoint pools", &self.pools)?;
+        if let Some(start) = &self.start {
+            checkpoint::level_pool("coupled level pool checkpoint start.pools", &start.pools)?;
+        }
+        Ok(())
+    }
 }
 /// Trusted device-resident continuation without a host projection.
 #[derive(Clone, Debug)]
@@ -94,6 +122,8 @@ where
     /// Explicitly read complete state and its single bounded start frame.
     pub fn snapshot_data(&self) -> Result<CoupledLevelPoolSnapshotData, CoupledLevelPoolError> {
         Ok(CoupledLevelPoolSnapshotData {
+            schema: COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA.into(),
+            contract: COUPLED_LEVEL_POOL_CONTRACT_VERSION.into(),
             setup: self.setup().clone(),
             pools: self.pools.snapshot_data()?,
             last_step: self.last_step()?,

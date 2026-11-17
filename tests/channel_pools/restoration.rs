@@ -3,7 +3,7 @@ use super::reference::CASES;
 use hydr::channel::ChannelBoundary;
 use hydr::coupling::{ChannelPoolEndpoint, ChannelPoolSnapshotData};
 
-fn history() -> Result<(Batch, Batch)> {
+pub(super) fn history() -> Result<(Batch, Batch)> {
     let (mut setup, initial) = single(CASES[0], ChannelPoolEndpoint::Right)?;
     setup.connections[0].entrance_loss_coefficient = -0.0;
     let origin = batch(setup.clone(), initial)?;

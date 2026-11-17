@@ -43,7 +43,8 @@ pub use output::{
     ChannelPoolStepDiagnostics, ChannelPoolTransfer, ChannelPoolWaterBalance,
 };
 pub use snapshot::{
-    ChannelPoolCounterData, ChannelPoolIntervalAccountingData, ChannelPoolIntervalSnapshotData,
+    CHANNEL_POOL_CONTRACT_VERSION, CHANNEL_POOL_SNAPSHOT_SCHEMA, ChannelPoolCounterData,
+    ChannelPoolIntervalAccountingData, ChannelPoolIntervalSnapshotData,
     ChannelPoolNativeIntervalData, ChannelPoolPreviousData, ChannelPoolSnapshot,
     ChannelPoolSnapshotData,
 };

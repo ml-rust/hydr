@@ -2,13 +2,24 @@ use super::context_types::Context;
 use super::state::{ParentCounters, StoredStep};
 use super::{ChannelPoolForcingInterval, ChannelPoolInitialState, ChannelPoolSetup};
 use crate::channel::{ChannelSnapshot, ChannelSnapshotData};
+use crate::coupling::checkpoint;
 use crate::storage::{LevelPoolSnapshot, LevelPoolSnapshotData};
+use hydr_core::contract::package_identity;
 use numr::{dtype::DType, runtime::Runtime};
 use std::sync::Arc;
+
+/// Schema identity of the channel pool snapshot package.
+pub const CHANNEL_POOL_SNAPSHOT_SCHEMA: &str = "hydr-channel-pool-checkpoint-1";
+/// Numerical contract identity of the channel pool snapshot package.
+pub const CHANNEL_POOL_CONTRACT_VERSION: &str = "hydr-channel-pool-numr-cpu-1";
 
 /// Complete caller-owned continuation. Preserve every floating-point bit when encoding.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChannelPoolSnapshotData {
+    /// Package schema identity.
+    pub schema: String,
+    /// Numerical contract identity.
+    pub contract: String,
     /// Immutable geometry, topology, evidence, and numerical controls.
     pub setup: ChannelPoolSetup,
     /// Original common epoch and authoritative original child states.
@@ -21,6 +32,47 @@ pub struct ChannelPoolSnapshotData {
     pub counters: ChannelPoolCounterData,
     /// Bounded final common interval, absent before the first accepted step.
     pub last_interval: Option<ChannelPoolIntervalSnapshotData>,
+}
+
+impl ChannelPoolSnapshotData {
+    /// Check this package identity, then the identity of every nested channel and pool package.
+    pub(super) fn check_identities(&self) -> Result<(), String> {
+        package_identity(
+            "channel pool",
+            &self.schema,
+            CHANNEL_POOL_SNAPSHOT_SCHEMA,
+            &self.contract,
+            CHANNEL_POOL_CONTRACT_VERSION,
+        )?;
+        self.check_frame("", &self.reaches, &self.pools)?;
+        if let Some(last) = &self.last_interval {
+            self.check_frame(
+                "last_interval.previous.",
+                &last.previous.reaches,
+                &last.previous.pools,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn check_frame(
+        &self,
+        prefix: &str,
+        reaches: &[ChannelSnapshotData],
+        pools: &LevelPoolSnapshotData,
+    ) -> Result<(), String> {
+        for (index, reach) in reaches.iter().enumerate() {
+            let path = match self.setup.reaches.get(index) {
+                Some(definition) => format!(
+                    "channel pool checkpoint {prefix}reaches[{index}] ({:?})",
+                    definition.id
+                ),
+                None => format!("channel pool checkpoint {prefix}reaches[{index}]"),
+            };
+            checkpoint::channel(&path, reach)?;
+        }
+        checkpoint::level_pool(&format!("channel pool checkpoint {prefix}pools"), pools)
+    }
 }
 
 /// Parent directional counters and retained physical arithmetic charges.

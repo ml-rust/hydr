@@ -168,6 +168,8 @@ Water-balance checks include rounding errors from sums, transfers, and cumulativ
 
 Preserve the immutable setup, both complete child packages, and the last common receipt. No previous composite snapshot chain is required.
 
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `RUNOFF_POOL_SNAPSHOT_SCHEMA` and `RUNOFF_POOL_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with an input error. Next it checks the nested `runoff` subcatchment package and the `pools` coupled level-pool package, with its own nested packages. A nested error names its path, such as `pools: coupled level pool checkpoint pools`. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+
 Store every field and floating-point bit unchanged. Exact continuation also requires the build, runtime conditions, and accepted-step partition described in [integration](integration.md).
 
 The initial time identifies the ledger epoch. Restoration requires the same setup and exact original initial epoch. Matching the current time alone is insufficient.
