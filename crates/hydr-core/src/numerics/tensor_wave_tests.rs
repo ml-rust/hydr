@@ -78,8 +78,11 @@ fn unequal_positive_films_keep_a_tight_nonnegative_root_bracket() -> TestResult 
         GRAVITY,
         &SolverConfig::default(),
     )?;
-    let residuals =
-        residual(&client, &upper, &left.h, &right.h, &zero, GRAVITY)?.try_to_vec::<f64>()?;
+    let (hl, hr) = (
+        Rooted::new(&client, &left.h)?,
+        Rooted::new(&client, &right.h)?,
+    );
+    let residuals = residual(&client, &upper, &hl, &hr, &zero, GRAVITY)?.try_to_vec::<f64>()?;
     for ((&(hl, hr), upper), residual) in
         DEPTHS.iter().zip(upper.try_to_vec::<f64>()?).zip(residuals)
     {
@@ -161,7 +164,8 @@ fn compressed_states_skip_a_nonfinite_one_sided_candidate() -> TestResult {
         &SolverConfig::default(),
     )?;
     let value = upper.item::<f64>()?;
-    let residual = residual(&client, &upper, &hl, &hr, &jump, gravity)?.item::<f64>()?;
+    let (left, right) = (Rooted::new(&client, &hl)?, Rooted::new(&client, &hr)?);
+    let residual = residual(&client, &upper, &left, &right, &jump, gravity)?.item::<f64>()?;
     let expected = std::f64::consts::SQRT_2 * 1e150;
     assert!(value.is_finite() && value > 0.0);
     assert!(

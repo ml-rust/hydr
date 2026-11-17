@@ -2,11 +2,13 @@ use super::error::riemann_error;
 use crate::channel::flow::{
     ChannelError, ChannelTensorBoundary,
     admission::Fields,
+    cfl_speeds::CflSpeeds,
     conserved_update::{Parts, parts},
     context::Context,
     flux::{Flux, SurveyedRates},
     geometry::SurveyedGeometry,
     riemann_diagnostics::RiemannDiagnosticState,
+    speed_memo::SpeedEntry,
     surveyed_points::{PrismaticPointRiemannResult, PrismaticPointTraceKind},
 };
 use numr::{
@@ -25,6 +27,7 @@ use solvr::{
         roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
     },
 };
+use std::sync::Arc;
 
 impl<R: Runtime<DType = DType>> Context<R>
 where
@@ -69,13 +72,34 @@ where
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
     ) -> Result<Flux<R>, ChannelError> {
-        let result = self.surveyed_point_riemann(geometry, fields, left, right)?;
+        // A kept candidate evaluation of these exact operands holds this solve and its speeds.
+        let key = self.speed_key(fields, left, right)?;
+        let kept = self.speed_memo.find(&key, true);
+        let result = match kept.as_ref().and_then(|entry| entry.riemann.clone()) {
+            Some(result) => result,
+            None => Arc::new(self.surveyed_point_riemann(geometry, fields, left, right)?),
+        };
         let work = result.work();
         let water_flux_width = self.surveyed_width(result.water_flux_bound_m3_per_s())?;
         let momentum_flux_width = self.surveyed_width(result.momentum_flux_bound_m4_per_s2())?;
         let water = self.surveyed_wall_water(&result, left, right)?;
         let momentum = parts(result.momentum_flux_m4_per_s2());
-        let speed = self.surveyed_face_speeds(result.wave_speed_m_per_s())?;
+        let (speed, dry_fronts) = match kept {
+            Some(entry) => (entry.speeds.outer.clone(), entry.speeds.fronts.clone()),
+            None => {
+                let speeds = CflSpeeds {
+                    outer: self.surveyed_face_speeds(result.wave_speed_m_per_s())?,
+                    internal: None,
+                    fronts: self.surveyed_fronts(geometry, fields, left, right)?,
+                };
+                let entry = SpeedEntry {
+                    speeds: speeds.clone(),
+                    riemann: Some(Arc::clone(&result)),
+                };
+                self.speed_memo.keep(key, entry);
+                (speeds.outer, speeds.fronts)
+            }
+        };
         let zero = self.constant(&water.high, 0.0)?;
         Ok(Flux {
             boundary_traces: None,
@@ -85,7 +109,7 @@ where
             surveyed: Some(SurveyedRates { water, momentum }),
             speed,
             internal_speed: None,
-            dry_fronts: self.surveyed_fronts(geometry, fields, left, right)?,
+            dry_fronts,
             water_bound: zero.clone(),
             momentum_bound: zero.clone(),
             riemann: Some(RiemannDiagnosticState {

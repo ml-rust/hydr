@@ -10,8 +10,14 @@ use hydr::channel::{
 };
 use hydr::forcing::WaterAmount;
 
+#[path = "channel_restart/frozen.rs"]
+mod frozen;
 #[path = "channel_restart/identity.rs"]
 mod identity;
+// The standalone profiler shares these fixtures and parses fixture names.
+#[allow(dead_code)]
+#[path = "channel_restart/standalone.rs"]
+mod standalone;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 

@@ -2,6 +2,7 @@ use super::paired_sources::{PairedSources, SelectedRows};
 use super::potential_absolute::endpoint_potential;
 use super::potential_range::{PotentialContext, PotentialEvaluation};
 use super::source_binding::SourcePanelLevel;
+use super::source_terms::SourceRows;
 use super::wave_curve;
 use super::wave_curve_types::{CurveValue, EndpointCurve, scatter_value, unavailable};
 use crate::channel::{
@@ -114,6 +115,10 @@ where
                 stage.boundaries.select(a, rows)?,
             ))
         })?;
+        let parents = SourceRows {
+            terms: &parent.source_terms[side],
+            parents: c.index_select(&stage.rows, 0, rows)?,
+        };
         let context = PotentialContext::new(
             parent.geometry,
             &bands,
@@ -125,7 +130,8 @@ where
                 panels: level.panels(),
                 work: parent.evaluation.work,
             },
-        )?;
+        )?
+        .with_source_rows(Some(parents));
         let value = wave_curve::endpoint(&context, PhysicalEndpoint::Lower)?;
         let assemble = |curve: &CurveValue<R>| {
             checked(c, "paired local wave assembly", |a| {

@@ -112,6 +112,10 @@ where
                 context.boundaries.select(a, &rare_rows)?,
             ))
         })?;
+        let parents = match &context.source_rows {
+            Some(parents) => Some(parents.select(c, &rare_rows)?),
+            None => None,
+        };
         let selected = PotentialContext::new(
             context.geometry,
             &bands,
@@ -123,7 +127,8 @@ where
                 panels: context.evaluation.panels,
                 work: context.evaluation.work,
             },
-        )?;
+        )?
+        .with_source_rows(parents);
         let increment = endpoint_increment(&selected, PhysicalEndpoint::Lower)?;
         rare = checked(c, "point rare branch capture", |a| {
             let value = CurveValue {

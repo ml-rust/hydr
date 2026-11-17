@@ -99,6 +99,7 @@ mod source_sonic_selection;
 mod source_sonic_start;
 mod source_sonic_tightening;
 mod source_sonic_types;
+mod source_terms;
 pub(crate) mod source_velocity;
 #[cfg(test)]
 mod source_velocity_binding_tests;

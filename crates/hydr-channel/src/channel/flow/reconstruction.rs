@@ -8,6 +8,7 @@ use super::{
     cfl_speeds::{CflSpeeds, FaceSpeeds},
     context::Context,
     geometry::TensorGeometry,
+    speed_memo::SpeedEntry,
 };
 use crate::numerics::{TensorFaceState, homogeneous_wave_bounds_tensor};
 use numr::dtype::DType;
@@ -212,18 +213,39 @@ where
         + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {
+    /// Wave bounds of a candidate state, or the kept result of an identical earlier evaluation.
     pub fn candidate_speed(
         &self,
         fields: &Fields<R>,
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
     ) -> Result<CflSpeeds<R>, ChannelError> {
-        if let TensorGeometry::Triangular(geometry) = &self.geometry {
-            return self.triangular_speed(geometry, fields, left, right);
+        let key = self.speed_key(fields, left, right)?;
+        if let Some(entry) = self.speed_memo.find(&key, false) {
+            return Ok(entry.speeds.clone());
         }
-        if let TensorGeometry::Surveyed(geometry) = &self.geometry {
-            return self.surveyed_speed(geometry, fields, left, right);
-        }
+        let entry = match &self.geometry {
+            TensorGeometry::Surveyed(geometry) => {
+                self.surveyed_speed(geometry, fields, left, right)?
+            }
+            TensorGeometry::Triangular(geometry) => SpeedEntry {
+                speeds: self.triangular_speed(geometry, fields, left, right)?,
+                riemann: None,
+            },
+            TensorGeometry::Rectangular(_) => SpeedEntry {
+                speeds: self.rectangular_speed(fields, left, right)?,
+                riemann: None,
+            },
+        };
+        Ok(self.speed_memo.keep(key, entry).speeds.clone())
+    }
+
+    fn rectangular_speed(
+        &self,
+        fields: &Fields<R>,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
+    ) -> Result<CflSpeeds<R>, ChannelError> {
         let reconstructed = self.reconstruct(fields, left, right)?;
         let directional = |left_face: &TensorFaceState<R>,
                            right_face: &TensorFaceState<R>|

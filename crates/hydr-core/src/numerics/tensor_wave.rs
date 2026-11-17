@@ -161,10 +161,51 @@ where
         + ScalarOps<R>
         + UnaryOps<R>,
 {
-    let rarefaction = client.mul_scalar(
-        &client.sub(&client.sqrt(h)?, &client.sqrt(reference)?)?,
-        2.0 * gravity.sqrt(),
-    )?;
+    let root = Rooted::new(client, reference)?;
+    rooted_curve(client, h, &client.sqrt(h)?, &root, gravity)
+}
+
+/// A reference depth and its square root, taken once for repeated curve evaluations.
+struct Rooted<'a, R: Runtime<DType = DType>> {
+    reference: &'a Tensor<R>,
+    /// `sqrt(reference)`.
+    depth: Tensor<R>,
+}
+
+impl<'a, R: Runtime<DType = DType>> Rooted<'a, R> {
+    fn new<C: UnaryOps<R>>(client: &C, reference: &'a Tensor<R>) -> numr::error::Result<Self> {
+        Ok(Self {
+            depth: client.sqrt(reference)?,
+            reference,
+        })
+    }
+}
+
+/// [`curve`] with `sqrt(h)` and `sqrt(reference)` supplied.
+///
+/// Every operation matches [`curve`] on the same operands, so every bit agrees.
+fn rooted_curve<R, C>(
+    client: &C,
+    h: &Tensor<R>,
+    root_h: &Tensor<R>,
+    reference: &Rooted<'_, R>,
+    gravity: f64,
+) -> numr::error::Result<Tensor<R>>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>,
+{
+    let Rooted {
+        reference,
+        depth: root_reference,
+    } = reference;
+    let rarefaction =
+        client.mul_scalar(&client.sub(root_h, root_reference)?, 2.0 * gravity.sqrt())?;
     let shock_h = client.maximum(h, reference)?;
     let factor = client.sqrt(&client.mul_scalar(
         &client.add_scalar(&client.div(reference, &shock_h)?, 1.0)?,
@@ -172,7 +213,7 @@ where
     )?)?;
     let shock = client.mul(
         &client.mul_scalar(
-            &client.div(&client.sub(&shock_h, reference)?, &client.sqrt(reference)?)?,
+            &client.div(&client.sub(&shock_h, reference)?, root_reference)?,
             gravity.sqrt(),
         )?,
         &factor,
@@ -180,11 +221,12 @@ where
     client.where_cond(&client.le(h, reference)?, &rarefaction, &shock)
 }
 
+/// `fL(h) + fR(h) + jump`, taking `sqrt(h)` once for both curves.
 fn residual<R, C>(
     client: &C,
     h: &Tensor<R>,
-    hl: &Tensor<R>,
-    hr: &Tensor<R>,
+    left: &Rooted<'_, R>,
+    right: &Rooted<'_, R>,
     jump: &Tensor<R>,
     gravity: f64,
 ) -> numr::error::Result<Tensor<R>>
@@ -197,10 +239,11 @@ where
         + ScalarOps<R>
         + UnaryOps<R>,
 {
+    let root_h = client.sqrt(h)?;
     let result = client.add(
         &client.add(
-            &curve(client, h, hl, gravity)?,
-            &curve(client, h, hr, gravity)?,
+            &rooted_curve(client, h, &root_h, left, gravity)?,
+            &rooted_curve(client, h, &root_h, right, gravity)?,
         )?,
         jump,
     )?;
@@ -228,11 +271,14 @@ where
         + BatchedBisectionAlgorithms<R>,
 {
     let zero = constant(hl, 0.0)?;
+    // The reference roots stay fixed over every bracket expansion and bisection callback.
+    let left = Rooted::new(client, hl)?;
+    let right = Rooted::new(client, hr)?;
     let maximum = client.maximum(hl, hr)?;
     let coefficient_scale = gravity.sqrt() * std::f64::consts::FRAC_1_SQRT_2;
     let coefficient = client.add(
-        &client.div(&constant(hl, coefficient_scale)?, &client.sqrt(hl)?)?,
-        &client.div(&constant(hr, coefficient_scale)?, &client.sqrt(hr)?)?,
+        &client.div(&constant(hl, coefficient_scale)?, &left.depth)?,
+        &client.div(&constant(hr, coefficient_scale)?, &right.depth)?,
     )?;
     check_finite(client, &coefficient, "compression bracket coefficient")?;
     // For H>=M, fL(H)+fR(H)>=(H-M)*sum(sqrt(g/(2ha))).
@@ -240,19 +286,17 @@ where
     let seed = client.add(&maximum, &client.div(&compression, &coefficient)?)?;
     // Each one-sided shock lower bound supplies an upper root bracket, including mixed-wave states.
     let mut seed = seed;
-    for (other, reference) in [(hl, hr), (hr, hl)] {
+    for (other, reference) in [(&left, &right), (&right, &left)] {
         let numerator = client.maximum(
             &client.sub(
-                &client.mul_scalar(&client.sqrt(other)?, 2.0 * gravity.sqrt())?,
+                &client.mul_scalar(&other.depth, 2.0 * gravity.sqrt())?,
                 jump,
             )?,
             &zero,
         )?;
-        let factor = client.mul_scalar(
-            &client.sqrt(reference)?,
-            std::f64::consts::SQRT_2 / gravity.sqrt(),
-        )?;
-        let candidate = client.add(reference, &client.mul(&numerator, &factor)?)?;
+        let factor =
+            client.mul_scalar(&reference.depth, std::f64::consts::SQRT_2 / gravity.sqrt())?;
+        let candidate = client.add(reference.reference, &client.mul(&numerator, &factor)?)?;
         let finite = client.le(&client.abs(&candidate)?, &constant(&candidate, f64::MAX)?)?;
         let candidate = client.where_cond(&finite, &candidate, &seed)?;
         seed = client.minimum(&seed, &candidate)?;
@@ -275,7 +319,7 @@ where
             |depth| {
                 client.where_cond(
                     solve,
-                    &residual(client, depth, hl, hr, jump, gravity)?,
+                    &residual(client, depth, &left, &right, jump, gravity)?,
                     &zero,
                 )
             },

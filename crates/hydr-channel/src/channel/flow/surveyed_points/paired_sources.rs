@@ -1,6 +1,7 @@
 use super::paired_source_cache::{self, SourcePotentialCache};
 use super::potential_range::{PotentialEvaluation, admit_evaluation, source_query};
 use super::source_binding::{RootSourceIdentity, RootSourceWitness};
+use super::source_terms::SourceTerms;
 use super::types::SourceVelocity;
 use super::wave_curve_types::CurveValue;
 use crate::channel::{
@@ -35,6 +36,8 @@ pub(super) struct PairedSources<'a, R: Runtime<DType = DType>> {
     pub(super) original_rows: Tensor<R>,
     pub(super) cache: [SourcePotentialCache<R>; 2],
     pub(super) panel_cache: Vec<(usize, [SourcePotentialCache<R>; 2])>,
+    /// Source geometry of each side's rows, filled once per row over every callback.
+    pub(super) source_terms: [SourceTerms<R>; 2],
     identity: Arc<RootSourceIdentity>,
     construction_witness: RootSourceWitness,
 }
@@ -172,6 +175,7 @@ where
         })?;
         let identity = Arc::new(RootSourceIdentity);
         let construction_witness = RootSourceWitness::capture(&identity, &evaluation);
+        let count = original_rows.numel();
         Ok(Self {
             geometry,
             bands,
@@ -182,6 +186,7 @@ where
             original_rows,
             cache,
             panel_cache: Vec::new(),
+            source_terms: [SourceTerms::new(count), SourceTerms::new(count)],
             identity,
             construction_witness,
         })

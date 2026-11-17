@@ -38,6 +38,25 @@ pub(super) struct CflSpeeds<R: Runtime<DType = DType>> {
     pub fronts: Option<DryFronts<R>>,
 }
 
+impl<R: Runtime<DType = DType>> Clone for FaceSpeeds<R> {
+    fn clone(&self) -> Self {
+        Self {
+            rightward: self.rightward.clone(),
+            leftward: self.leftward.clone(),
+        }
+    }
+}
+
+impl<R: Runtime<DType = DType>> Clone for CflSpeeds<R> {
+    fn clone(&self) -> Self {
+        Self {
+            outer: self.outer.clone(),
+            internal: self.internal.clone(),
+            fronts: self.fronts.clone(),
+        }
+    }
+}
+
 impl<R: Runtime<DType = DType>> Context<R>
 where
     R::Client:

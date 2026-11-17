@@ -33,6 +33,7 @@ mod rounding;
 mod segmented_max;
 mod snapshot;
 mod sources;
+mod speed_memo;
 mod stepping;
 mod surveyed_recovery;
 mod surveyed_residuals;

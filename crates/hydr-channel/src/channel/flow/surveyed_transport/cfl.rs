@@ -9,6 +9,7 @@ use crate::channel::flow::{
     conserved_update::{exact_over, expanded},
     context::Context,
     geometry::SurveyedGeometry,
+    speed_memo::SpeedEntry,
 };
 use numr::{
     dtype::DType,
@@ -25,6 +26,7 @@ use solvr::{
         roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
     },
 };
+use std::sync::Arc;
 
 impl<R: Runtime<DType = DType>> Context<R>
 where
@@ -46,12 +48,15 @@ where
         fields: &Fields<R>,
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
-    ) -> Result<CflSpeeds<R>, ChannelError> {
+    ) -> Result<SpeedEntry<R>, ChannelError> {
         let result = self.surveyed_point_riemann(geometry, fields, left, right)?;
-        Ok(CflSpeeds {
-            outer: self.surveyed_face_speeds(result.wave_speed_m_per_s())?,
-            internal: None,
-            fronts: self.surveyed_fronts(geometry, fields, left, right)?,
+        Ok(SpeedEntry {
+            speeds: CflSpeeds {
+                outer: self.surveyed_face_speeds(result.wave_speed_m_per_s())?,
+                internal: None,
+                fronts: self.surveyed_fronts(geometry, fields, left, right)?,
+            },
+            riemann: Some(Arc::new(result)),
         })
     }
 

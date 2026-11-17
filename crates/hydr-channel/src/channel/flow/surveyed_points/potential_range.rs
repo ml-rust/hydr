@@ -1,4 +1,5 @@
 use super::analytic_bottom::AnalyticSource;
+use super::source_terms::SourceRows;
 use crate::channel::{
     flow::surveyed::{
         PrismaticRiemannConfig,
@@ -43,6 +44,8 @@ pub(super) struct PotentialContext<'a, R: Runtime<DType = DType>> {
     pub(super) query: &'a SupportedAreaQuery<R>,
     pub(super) boundaries: &'a BoundaryAreas<R>,
     pub(super) evaluation: PotentialEvaluation<'a>,
+    /// Parent rows of a fixed paired side whose source terms persist over target callbacks.
+    pub(super) source_rows: Option<SourceRows<'a, R>>,
 }
 
 impl<'a, R> PotentialContext<'a, R>
@@ -75,7 +78,14 @@ where
             query,
             boundaries,
             evaluation,
+            source_rows: None,
         })
+    }
+
+    /// This context with its rows bound to the parent rows of a fixed paired side.
+    pub(super) fn with_source_rows(mut self, rows: Option<SourceRows<'a, R>>) -> Self {
+        self.source_rows = rows;
+        self
     }
 
     pub(super) fn source_query(&self) -> HydraulicResult<SupportedAreaQuery<R>> {

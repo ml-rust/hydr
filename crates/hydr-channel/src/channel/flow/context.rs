@@ -19,6 +19,8 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub manning: Tensor<R>,
     pub charge_reduction: crate::numerics::outward::AdjustmentReduction,
     pub lateral: super::sources::LateralContext<R>,
+    /// Recent wave-bound evaluations, shared by every state of this reach.
+    pub speed_memo: super::speed_memo::SpeedMemo<R>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -101,6 +103,7 @@ where
             manning,
             charge_reduction,
             lateral,
+            speed_memo: super::speed_memo::SpeedMemo::new(),
         })
     }
 }

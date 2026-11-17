@@ -5,12 +5,13 @@ use super::potential_numerical::wet_contributions;
 use super::potential_range::{
     PotentialContext, PotentialValue, scatter, select_expansion, zero_value,
 };
+use super::source_terms::SourceRows;
 use crate::channel::{
     flow::surveyed::{
         equation_ops::select_interval,
         error::{HydraulicResult, checked},
     },
-    section::{ConditionalBandSegments, PhysicalEndpoint, source_difference},
+    section::{ConditionalBandSegments, PhysicalEndpoint, SupportedAreaQuery, source_difference},
 };
 use numr::{
     dtype::DType,
@@ -21,7 +22,7 @@ use numr::{
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
-use solvr::integrate::CertifiedSimpsonAlgorithms;
+use solvr::{common::arithmetic::CertifiedExpansion, integrate::CertifiedSimpsonAlgorithms};
 
 /// Integrate source-to-endpoint segments directly. Absolute leaves remain unevaluated.
 pub(super) fn endpoint_increment<R>(
@@ -40,11 +41,13 @@ where
         + CertifiedSimpsonAlgorithms<R>,
 {
     let c = context.geometry.client();
-    let source_query = context.source_query()?;
-    let (target_query, mut result, dry_forward, dry_reverse, wet) = checked(
-        c,
-        "point signed potential dispatch",
-        |a| {
+    // Kept source terms leave the fresh source query to the reversed dry prefix alone.
+    let source = match &context.source_rows {
+        Some(rows) => SourceSide::Kept(rows),
+        None => SourceSide::Fresh(Box::new(context.source_query()?)),
+    };
+    let (target_query, target_area, delta, equal, nonzero_rows) =
+        checked(c, "point signed potential dispatch", |a| {
             let target_query = context.query.endpoint(a, context.bands, endpoint)?;
             let target_area =
                 target_query.retained_endpoint_area(a, context.bands, context.boundaries)?;
@@ -58,52 +61,67 @@ where
             .lower;
             let n = context.bands.section_owner.numel();
             let zero = Tensor::zeros(&[n], DType::F64, c.device())?;
-            let exact_zero = |value: &solvr::common::arithmetic::CertifiedExpansion<R>| -> HydraulicResult<Tensor<R>> {
-                Ok(c.mul(&c.eq(value.high(), &zero)?,
-                    &c.mul(&c.eq(value.low(), &zero)?, &c.eq(value.abs_error(), &zero)?)?)?)
-            };
-            let equal = exact_zero(&delta)?;
+            let equal = exact_zero(c, &delta, &zero)?;
             let nonzero_rows = c.nonzero(&c.eq(&equal, &zero)?)?.flatten()?;
+            Ok((target_query, target_area, delta, equal, nonzero_rows))
+        })?;
+    if let SourceSide::Kept(rows) = &source
+        && nonzero_rows.numel() != 0
+    {
+        rows.ensure(context, &nonzero_rows)?;
+    }
+    let (mut result, dry_forward, dry_reverse, wet) =
+        checked(c, "point signed potential dispatch", |a| {
+            let n = context.bands.section_owner.numel();
+            let zero = Tensor::zeros(&[n], DType::F64, c.device())?;
             let mut result = zero_value(a, n)?;
             let mut analytic_mask = zero.clone();
             if nonzero_rows.numel() != 0 {
                 let bands = context.bands.select(a, &nonzero_rows)?;
-                let source_query = source_query.select(a, &nonzero_rows)?;
                 let target_query = target_query.select(a, &nonzero_rows)?;
-                let source_area =
-                    select_expansion(a, context.source.requested_areas_m2(), &nonzero_rows)?;
+                let gravity = context.evaluation.config.gravity_m_per_s2;
+                let (source_width, source) = match &source {
+                    SourceSide::Kept(rows) => {
+                        let terms = rows.terms(a, &nonzero_rows)?;
+                        (terms.top_width, terms.analytic)
+                    }
+                    SourceSide::Fresh(source_query) => {
+                        let source_query = source_query.select(a, &nonzero_rows)?;
+                        let source_area = select_expansion(
+                            a,
+                            context.source.requested_areas_m2(),
+                            &nonzero_rows,
+                        )?;
+                        let source_state = context
+                            .geometry
+                            .recover_query(a, &bands, &source_query)?
+                            .state;
+                        let source = admitted_analytic(
+                            a,
+                            &bands,
+                            &source_area,
+                            &source_state.depth,
+                            gravity,
+                        )?;
+                        (source_state.top_width, source)
+                    }
+                };
                 let target_area = select_expansion(a, &target_area, &nonzero_rows)?;
                 let delta = select_expansion(a, &delta, &nonzero_rows)?;
-                let source_state = context
-                    .geometry
-                    .recover_query(a, &bands, &source_query)?
-                    .state;
                 let target_state = context
                     .geometry
                     .recover_query(a, &bands, &target_query)?
                     .state;
-                let source = admitted_analytic(
-                    a,
-                    &bands,
-                    &source_area,
-                    &source_state.depth,
-                    context.evaluation.config.gravity_m_per_s2,
-                )?;
-                let target = admitted_analytic(
-                    a,
-                    &bands,
-                    &target_area,
-                    &target_state.depth,
-                    context.evaluation.config.gravity_m_per_s2,
-                )?;
+                let target =
+                    admitted_analytic(a, &bands, &target_area, &target_state.depth, gravity)?;
                 let analytic = potential_analytic::difference(
                     a,
                     &source,
                     &target,
-                    &source_state.top_width,
+                    &source_width,
                     &target_state.top_width,
                     &delta,
-                    context.evaluation.config.gravity_m_per_s2,
+                    gravity,
                 )?;
                 let local_zero = Tensor::zeros(&[nonzero_rows.numel()], DType::F64, c.device())?;
                 let local = c
@@ -119,8 +137,8 @@ where
                 analytic_mask = c.index_put(&zero, 0, &nonzero_rows, &analytic.eligible)?;
             }
             let remaining = c.eq(&c.maximum(&equal, &analytic_mask)?, &zero)?;
-            let source_dry = exact_zero(context.source.requested_areas_m2())?;
-            let target_dry = exact_zero(&target_area)?;
+            let source_dry = exact_zero(c, context.source.requested_areas_m2(), &zero)?;
+            let target_dry = exact_zero(c, &target_area, &zero)?;
             let forward = c.nonzero(&c.mul(&remaining, &source_dry)?)?.flatten()?;
             let reverse = c.nonzero(&c.mul(&remaining, &target_dry)?)?.flatten()?;
             let wet = c
@@ -129,16 +147,20 @@ where
                     &c.eq(&c.maximum(&source_dry, &target_dry)?, &zero)?,
                 )?)?
                 .flatten()?;
-            Ok((target_query, result, forward, reverse, wet))
-        },
-    )?;
+            Ok((result, forward, reverse, wet))
+        })?;
+    let source_query = match source {
+        SourceSide::Fresh(query) => Some(*query),
+        SourceSide::Kept(_) if dry_reverse.numel() != 0 => Some(context.source_query()?),
+        SourceSide::Kept(_) => None,
+    };
     for (rows, query, reverse) in [
-        (&dry_forward, &target_query, false),
-        (&dry_reverse, &source_query, true),
+        (&dry_forward, Some(&target_query), false),
+        (&dry_reverse, source_query.as_ref(), true),
     ] {
-        if rows.numel() == 0 {
+        let Some(query) = query.filter(|_| rows.numel() != 0) else {
             continue;
-        }
+        };
         let (bands, query, boundaries) = checked(c, "point signed dry prefix selection", |a| {
             Ok((
                 context.bands.select(a, rows)?,
@@ -177,4 +199,28 @@ where
         })?;
     }
     Ok(result)
+}
+
+/// The source of the source terms of the nonzero rows.
+enum SourceSide<'q, 'a, R: Runtime<DType = DType>> {
+    /// Kept per-row terms of a fixed paired side.
+    Kept(&'q SourceRows<'a, R>),
+    /// The source query of every context row.
+    Fresh(Box<SupportedAreaQuery<R>>),
+}
+
+/// One where every component of `value` is exactly zero.
+fn exact_zero<R>(
+    c: &R::Client,
+    value: &CertifiedExpansion<R>,
+    zero: &Tensor<R>,
+) -> HydraulicResult<Tensor<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: CompareOps<R> + BinaryOps<R>,
+{
+    Ok(c.mul(
+        &c.eq(value.high(), zero)?,
+        &c.mul(&c.eq(value.low(), zero)?, &c.eq(value.abs_error(), zero)?)?,
+    )?)
 }

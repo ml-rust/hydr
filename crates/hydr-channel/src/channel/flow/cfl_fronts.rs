@@ -39,6 +39,25 @@ pub(super) struct DryFronts<R: Runtime<DType = DType>> {
     pub right: SideFronts<R>,
 }
 
+impl<R: Runtime<DType = DType>> Clone for SideFronts<R> {
+    fn clone(&self) -> Self {
+        Self {
+            rightward: self.rightward.clone(),
+            leftward: self.leftward.clone(),
+            wet: self.wet.clone(),
+        }
+    }
+}
+
+impl<R: Runtime<DType = DType>> Clone for DryFronts<R> {
+    fn clone(&self) -> Self {
+        Self {
+            left: self.left.clone(),
+            right: self.right.clone(),
+        }
+    }
+}
+
 /// Nonnegative directional dry-front speeds from signed bounds `[u - φ, u + φ]`.
 pub(super) fn side_fronts<R, C>(
     client: &C,
