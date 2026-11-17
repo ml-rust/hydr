@@ -12,6 +12,10 @@ publish = false
 name = "surface-channel-profile"
 path = "src/main.rs"
 
+[[bin]]
+name = "channel-profile"
+path = "src/channel.rs"
+
 [features]
 cuda = ["hydr/cuda", "numr/cuda"]
 
