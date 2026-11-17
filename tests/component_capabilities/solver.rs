@@ -8,7 +8,8 @@ use hydr::capability::{
 use hydr::model::CellState;
 use hydr::solver::{
     AdvanceStatus, Axis, BoundaryFace, BoundaryForcing, DischargeBoundary, EngineError,
-    ExteriorBoundary, ExteriorState, FluxPort, Solver, SolverConfig, StageBoundary, capabilities,
+    ExteriorBoundary, ExteriorState, FluxPort, Solver, SolverConfig, StageBoundary,
+    surface_solver_capabilities,
 };
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -234,7 +235,7 @@ fn admits(case: Case) -> TestResult {
 
 #[test]
 fn solver_admits_declared_boundaries() -> TestResult {
-    let endpoint = capabilities()
+    let endpoint = surface_solver_capabilities()
         .endpoint(EndpointId::ExteriorFace)
         .ok_or("solver declares no exterior face")?;
     for kind in endpoint.admitted {
@@ -246,7 +247,7 @@ fn solver_admits_declared_boundaries() -> TestResult {
 
 #[test]
 fn solver_rejects_declared_rejections() -> TestResult {
-    let rejected = capabilities()
+    let rejected = surface_solver_capabilities()
         .unsupported
         .iter()
         .filter(|u| u.reason == UnsupportedReason::RejectedByAdmission);
@@ -269,7 +270,7 @@ fn solver_rejects_declared_rejections() -> TestResult {
 
 #[test]
 fn solver_regimes_match_admission() -> TestResult {
-    let declared = capabilities().regimes;
+    let declared = surface_solver_capabilities().regimes;
     for claim in declared {
         let case = regime_case(claim.scope, claim.regime).ok_or(format!(
             "no case for `{}` at {:?}",
@@ -310,14 +311,14 @@ fn solver_capabilities_point_to_standalone_components() -> TestResult {
         "subcatchment",
         "structures",
     ] {
-        let entry = capabilities()
+        let entry = surface_solver_capabilities()
             .unsupported_by_id(id)
             .ok_or(format!("`{id}` is undeclared"))?;
         assert_eq!(entry.reason, UnsupportedReason::NotAttached, "`{id}`");
         assert!(entry.summary.contains("not attached"), "`{id}`");
         assert!(entry.summary.contains("standalone component"), "`{id}`");
     }
-    for entry in capabilities().unsupported {
+    for entry in surface_solver_capabilities().unsupported {
         let summary = entry.summary.to_lowercase();
         assert!(
             !summary.contains("network") || summary.contains("not attached"),

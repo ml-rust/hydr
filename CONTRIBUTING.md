@@ -53,6 +53,7 @@ Member crates live under `crates/`. Each crate depends only on the crates in thi
 - Cross-crate internals: Put them in a `#[doc(hidden)] internal` module or on `#[doc(hidden)]` methods. They stay out of the public API.
 - Layering test: `tests/layering.rs` enforces the module order inside each crate and the crate order in the table.
 - New crate: Add a row to the crate table in `tests/layering.rs`. The test fails until the row exists.
+- Capability declaration: An admission change updates the component's capability declaration and its test case in `tests/component_capabilities`. A new runtime claim names a test under the matching feature gate.
 - Snapshot identity: Any field change to a snapshot package bumps its schema number. Any change to its numerical semantics bumps its contract number. A child package change bumps only the child. Keep `tests/checkpoint_identity.rs` passing. It requires all identities to be distinct.
 
 ## Documentation

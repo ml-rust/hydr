@@ -388,7 +388,7 @@ fn runoff_components_reject_declared_rejections() -> TestResult {
 fn runoff_parents_run_nested_admission() -> TestResult {
     let soil = Kind::Soil.capabilities();
     for parent in [
-        hydr::solver::capabilities(),
+        hydr::solver::surface_solver_capabilities(),
         Kind::Subcatchment.capabilities(),
     ] {
         assert!(

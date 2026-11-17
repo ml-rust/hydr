@@ -110,7 +110,7 @@ fn runoff_public_variants_are_classified() -> TestResult {
             t_s: 0.0,
         }),
     ];
-    let solver = hydr::solver::capabilities();
+    let solver = hydr::solver::surface_solver_capabilities();
     let one = domain(1, 1, vec![true])?;
     for cell in cells {
         let source = land_source(cell);

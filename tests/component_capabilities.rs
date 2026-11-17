@@ -113,7 +113,7 @@ fn declarations() -> Vec<Declared> {
     };
     vec![
         Declared {
-            capabilities: hydr::solver::capabilities(),
+            capabilities: hydr::solver::surface_solver_capabilities(),
             contract: Some(hydr::solver::CONTRACT_VERSION),
             snapshot_schema: Some(hydr::solver::SNAPSHOT_SCHEMA),
         },

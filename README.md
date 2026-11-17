@@ -23,7 +23,7 @@ The library is unpublished. Its components support the following calculations:
 | Structure laws | Flow proposals for openings, weirs, pumps, and gates | [Structures](docs/structures.md) |
 | Operating controls | Sampled commands and explicitly assumed ideal pump or gate responses | [Controls](docs/operating-controls.md), [actuators](docs/gate-actuators.md), [controlled gates](docs/controlled-gates.md), and [controlled pumps](docs/controlled-pumps.md) |
 
-Connected level pools support accepted water transfers, local sources, prescribed external inflows, and static manual operations. Runoff-to-pool coordination requires free outlets without downstream feedback. Surface-to-network coupling remains unsupported.
+Connected level pools support accepted water transfers, local sources, prescribed external inflows, and static manual operations. Runoff-to-pool coordination requires free outlets without downstream feedback. The network components exist and are not attached to the surface solver.
 
 The [operating-source registry](docs/operating-sources.md) assigns one source of operating inputs to each structure. [Contributing-support checks](docs/contributing-support.md) check which areas receive rainfall and where measured inflows replace generated runoff completely. Applications supply the ownership evidence. These checks do not establish hydraulic connections or prove that geographic areas do not overlap.
 

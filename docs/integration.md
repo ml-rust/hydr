@@ -30,9 +30,10 @@ An accepted step is a completed update that passes Hydr's numerical checks.
 
 ### 2. Construct and advance the solver
 
+Read capabilities with `surface_solver_capabilities()`. It returns a `ComponentCapabilities` declaration: precision, arithmetic, runtimes, boundaries, regimes, sources, unsupported uses, and limits.
+
 | API | Application action |
 | --- | --- |
-| `capabilities()` | Read the `ComponentCapabilities` declaration: precision, arithmetic requirements, runtimes, admitted boundaries and regimes, sources, unsupported uses, and limits. |
 | `Solver::<R>::new(client, setup, initial)` | Supply physical inputs and a configured client. Hydr checks them and allocates `Tensor<R>` state. |
 | `advance_to` | Request a target time, then read the accepted time and completion status. |
 | `advance_controlled` | Check cancellation between steps and receive accepted fields through an observer. |
@@ -65,7 +66,7 @@ Use [coupled level pools](coupled-level-pools.md) for declared pool-to-pool tran
 
 Use [runoff-to-pool connections](runoff-pools.md) to generate upstream inflows and accept both engines over one common interval. Every runoff outlet must drain without receiving-pool feedback.
 
-Surface-to-network coupling remains unsupported.
+The network, structure, and channel components exist. None attaches to the surface solver.
 
 ### Channel flow and geometry
 
@@ -82,6 +83,32 @@ Surveyed advancement supports lateral rates, exact interval volumes, diagnostics
 Use [channel-to-pool connections](channel-pools.md) for rectangular or triangular reaches when finite pool levels respond to channel transfers. `ChannelPoolBatch` accepts both components together and retains their combined restart data.
 
 Surface state remains separate from these channel/pool calculations.
+
+## Read component capabilities
+
+Each component returns a `ComponentCapabilities` declaration. It holds precision, arithmetic requirements, runtimes, admitted boundaries, regimes, and sources. It also holds options, nested components, unsupported uses, and limits.
+
+Ids in a declaration are stable. Persisted decisions can store them.
+
+A test in `tests/component_capabilities` backs every claim. A named test under the matching feature gate backs every runtime claim.
+
+| Component | Function | Doc |
+| --- | --- | --- |
+| Surface solver | `hydr::solver::surface_solver_capabilities` | [Integrate Hydr](#lifecycle) |
+| Rectangular reach | `hydr::channel::rectangular_reach_capabilities` | [Channel flow](channels.md) |
+| Triangular reach | `hydr::channel::triangular_reach_capabilities` | [Channel flow](channels.md) |
+| Surveyed reach | `hydr::channel::surveyed_reach_capabilities` | [Channel flow](channels.md) |
+| Soil | `hydr::soil::soil_capabilities` | [Soil](soil.md) |
+| Level pool | `hydr::storage::level_pool_capabilities` | [Level pool](level-pool.md) |
+| Subcatchment | `hydr::runoff::subcatchment_capabilities` | [Subcatchment](subcatchment.md) |
+| Reservoir | `hydr::runoff::reservoir_capabilities` | [Reservoir](reservoir.md) |
+| Operating control | `hydr::structures::operating_control_capabilities` | [Operating controls](operating-controls.md) |
+| Gate actuator | `hydr::structures::gate_actuator_capabilities` | [Gate actuators](gate-actuators.md) |
+| Controlled gate | `hydr::structures::controlled_gate_capabilities` | [Controlled gates](controlled-gates.md) |
+| Controlled pump | `hydr::structures::controlled_pump_capabilities` | [Controlled pumps](controlled-pumps.md) |
+| Coupled level pool | `hydr::coupling::coupled_level_pool_capabilities` | [Coupled level pools](coupled-level-pools.md) |
+| Channel pool | `hydr::coupling::channel_pool_capabilities` | [Channel-to-pool connections](channel-pools.md) |
+| Runoff pool | `hydr::coupling::runoff_pool_capabilities` | [Runoff-to-pool connections](runoff-pools.md) |
 
 ## Runtime selection and admission
 
@@ -216,6 +243,8 @@ Compatibility checks cover geometry, parameters, forcing, boundaries, controls, 
 ### Know each checkpoint's scope
 
 Every snapshot package carries a `schema` and a `contract` identity. The schema names the package layout. The contract names the numerical contract.
+
+Each row names a component that also declares [capabilities](#read-component-capabilities).
 
 | Component | Package type | Schema constant (value) | Contract constant (value) | Import call | Nested packages |
 | --- | --- | --- | --- | --- | --- |

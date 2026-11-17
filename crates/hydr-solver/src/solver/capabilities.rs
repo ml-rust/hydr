@@ -253,6 +253,6 @@ static CAPABILITIES: ComponentCapabilities = ComponentCapabilities {
 /// Returns the surface solver's declared scope, independent of application eligibility.
 ///
 /// Execution success establishes no field accuracy.
-pub fn capabilities() -> &'static ComponentCapabilities {
+pub fn surface_solver_capabilities() -> &'static ComponentCapabilities {
     &CAPABILITIES
 }
