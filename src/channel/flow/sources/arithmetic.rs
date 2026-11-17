@@ -1,5 +1,5 @@
 use super::super::ChannelError;
-use crate::numerics::subcatchment::bounds::rounding_with_client;
+use crate::numerics::rounding::rounding_with_client;
 use crate::numerics::water_transfers::{finite, upward_add};
 use crate::soil::admission::{AdjustmentReduction, add_adjustment_charge};
 use numr::dtype::DType;

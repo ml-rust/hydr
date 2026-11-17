@@ -1,6 +1,6 @@
 //! Four-envelope directed expansions for finite F64 primitive results.
 
-use crate::numerics::subcatchment::bounds::rounding_with_client;
+use crate::numerics::rounding::rounding_with_client;
 use numr::{
     dtype::DType,
     ops::{BinaryOps, ScalarOps, UnaryOps},

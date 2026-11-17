@@ -3,7 +3,7 @@ use super::accounting_math::{add_bounds, nonnegative, zero};
 use super::context_types::Context;
 use super::state::ParentCounters;
 use crate::channel::ChannelSnapshotData;
-use crate::numerics::subcatchment::bounds::rounding_with_client;
+use crate::numerics::rounding::rounding_with_client;
 use crate::numerics::water_transfers::{AggregationKind, TransferTree, finite, reject, upward_add};
 use numr::dtype::DType;
 use numr::ops::{

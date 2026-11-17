@@ -240,7 +240,7 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>,
 {
-    let result = bounds::rounding_with_client(&ctx.client, value)?;
+    let result = crate::numerics::rounding::rounding_with_client(&ctx.client, value)?;
     ctx.finite(&result, "catchment arithmetic rounding bound")?;
     Ok(result)
 }

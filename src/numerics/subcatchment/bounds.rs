@@ -8,6 +8,7 @@ use numr::ops::{
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
+use crate::numerics::rounding::rounding_with_client;
 use crate::runoff::ReservoirError;
 use crate::soil::admission;
 use crate::tensor::reservoir_storage::TensorReservoirContext;
@@ -61,21 +62,6 @@ where
     let bound = rounding_with_client(&ctx.client, value)?;
     ctx.finite(&bound, "arithmetic rounding bound")?;
     Ok(bound)
-}
-
-/// Reuse the rounding expression with a caller-specific shape and diagnostic context.
-pub(crate) fn rounding_with_client<R>(
-    client: &R::Client,
-    value: &Tensor<R>,
-) -> numr::error::Result<Tensor<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: ScalarOps<R> + UnaryOps<R>,
-{
-    client.add_scalar(
-        &client.mul_scalar(&client.abs(value)?, f64::EPSILON)?,
-        f64::from_bits(1),
-    )
 }
 
 pub(crate) fn upward_add<R>(

@@ -4,7 +4,7 @@ use super::{
     conserved_update::{ExpansionClient, lower_bound, outgoing_upper},
     context::Context,
 };
-use crate::numerics::subcatchment::bounds::rounding_with_client;
+use crate::numerics::rounding::rounding_with_client;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TwoSumOps, UnaryOps};
 use numr::runtime::Runtime;

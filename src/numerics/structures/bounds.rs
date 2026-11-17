@@ -22,8 +22,7 @@ where
         + numr::ops::TypeConversionOps<R>
         + numr::ops::UnaryOps<R>,
 {
-    let bound =
-        crate::numerics::subcatchment::bounds::rounding_with_client(&context.client, value)?;
+    let bound = crate::numerics::rounding::rounding_with_client(&context.client, value)?;
     context.finite(&bound, quantity)?;
     Ok(bound)
 }

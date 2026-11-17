@@ -40,8 +40,7 @@ where
         + numr::ops::TypeConversionOps<R>
         + numr::ops::UnaryOps<R>,
 {
-    let bound =
-        crate::numerics::subcatchment::bounds::rounding_with_client(&context.client, value)?;
+    let bound = crate::numerics::rounding::rounding_with_client(&context.client, value)?;
     Ok(context.client.add(value, &bound)?)
 }
 pub(super) fn down<R: Runtime<DType = DType>>(
@@ -56,7 +55,6 @@ where
         + numr::ops::TypeConversionOps<R>
         + numr::ops::UnaryOps<R>,
 {
-    let bound =
-        crate::numerics::subcatchment::bounds::rounding_with_client(&context.client, value)?;
+    let bound = crate::numerics::rounding::rounding_with_client(&context.client, value)?;
     Ok(context.client.sub(value, &bound)?)
 }

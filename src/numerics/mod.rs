@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod flux;
 pub(crate) mod reservoir;
+pub(crate) mod rounding;
 pub(crate) mod soil;
 pub(crate) mod storage;
 pub(crate) mod structures;

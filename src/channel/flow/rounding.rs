@@ -1,7 +1,7 @@
 //! Bounds for detected erased channel products, excluding other rounding and solution errors.
 
 use super::{ChannelError, context::Context};
-use crate::numerics::subcatchment::bounds::rounding_with_client;
+use crate::numerics::rounding::rounding_with_client;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
 use numr::runtime::Runtime;

@@ -30,7 +30,7 @@ pub(super) fn bound<R: Runtime<DType = DType>>(
 where
     R::Client: numr::ops::ScalarOps<R> + numr::ops::UnaryOps<R>,
 {
-    Ok(crate::numerics::subcatchment::bounds::rounding_with_client(
+    Ok(crate::numerics::rounding::rounding_with_client(
         &ctx.structures.client,
         x,
     )?)

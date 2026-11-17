@@ -5,7 +5,7 @@ use super::arithmetic::{
     add_bounds, product_roundoff, propagated_bound, scalar_charge, upper_sum, zeros,
 };
 use super::{LateralContext, PreparedLateral, SourceApplication};
-use crate::numerics::subcatchment::bounds::rounding_with_client;
+use crate::numerics::rounding::rounding_with_client;
 use crate::numerics::water_transfers::{finite, reject};
 use numr::dtype::DType;
 use numr::ops::{
