@@ -6,6 +6,7 @@ mod accounting_math;
 mod accounting_physical;
 mod batch;
 mod boundary_history;
+mod capabilities;
 mod context;
 mod context_types;
 mod counters;
@@ -29,6 +30,7 @@ mod topology;
 mod trial;
 
 pub use batch::ChannelPoolBatch;
+pub use capabilities::channel_pool_capabilities;
 pub use definition::{
     ChannelPoolConfig, ChannelPoolConnection, ChannelPoolEndpoint, ChannelPoolInitialState,
     ChannelPoolReach, ChannelPoolSetup,

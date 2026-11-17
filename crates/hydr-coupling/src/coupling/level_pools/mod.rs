@@ -1,6 +1,7 @@
 //! Connected level pools with checked laws, explicit local sources, and prescribed external inflows.
 
 mod batch;
+mod capabilities;
 mod context;
 mod definition;
 mod error;
@@ -20,6 +21,7 @@ mod topology;
 mod trial;
 
 pub use batch::CoupledLevelPoolBatch;
+pub use capabilities::coupled_level_pool_capabilities;
 pub use definition::{
     CoupledLevelPoolConfig, CoupledLevelPoolInitialState, CoupledLevelPoolSetup,
     CoupledPoolAttachment, CoupledPoolConnection, CoupledPoolSupport,

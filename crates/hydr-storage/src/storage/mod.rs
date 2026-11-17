@@ -2,6 +2,7 @@
 
 mod accounting;
 mod batch;
+mod capabilities;
 pub(crate) mod coupling;
 mod coupling_cut_bounds;
 pub(crate) mod coupling_cuts;
@@ -21,6 +22,7 @@ pub(crate) mod tensor;
 mod trial;
 
 pub use batch::{LevelPoolBatch, LevelPoolTrial};
+pub use capabilities::level_pool_capabilities;
 pub use curve::{LevelPoolCurve, LevelPoolKnot};
 pub use definition::{LevelPoolConfig, LevelPoolElement, LevelPoolInput, LevelPoolState};
 pub use error::LevelPoolError;

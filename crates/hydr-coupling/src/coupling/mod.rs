@@ -13,6 +13,7 @@ pub use channel_pools::{
     ChannelPoolReach, ChannelPoolReachForcing, ChannelPoolSetup, ChannelPoolSnapshot,
     ChannelPoolSnapshotData, ChannelPoolStepDiagnostics, ChannelPoolTensorForcingInterval,
     ChannelPoolTensorReachForcing, ChannelPoolTransfer, ChannelPoolTrial, ChannelPoolWaterBalance,
+    channel_pool_capabilities,
 };
 
 pub mod level_pools;
@@ -28,6 +29,7 @@ pub use level_pools::{
     CoupledLevelPoolStepDiagnostics, CoupledLevelPoolTransfer, CoupledLevelPoolTrial,
     CoupledPoolAttachment, CoupledPoolConnection, CoupledPoolInflow, CoupledPoolInflowBinding,
     CoupledPoolInflowLedger, CoupledPoolInflowReceipt, CoupledPoolSupport,
+    coupled_level_pool_capabilities,
 };
 
 pub mod runoff_pools;

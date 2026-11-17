@@ -6,6 +6,8 @@ This guide covers static manual operations with optional local sources and presc
 
 For generated upstream inflows, use the [runoff-to-pool coordinator](runoff-pools.md). It owns both children and their common interval.
 
+Read capabilities with `coupled_level_pool_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, structure and inflow endpoints, regimes, sources, nested components, unsupported uses, and limits.
+
 ## Define the physical model
 
 1. Give each pool its own [stage-volume curve](level-pool.md).

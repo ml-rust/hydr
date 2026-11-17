@@ -6,6 +6,8 @@ This component represents connected, approximately level water. Disconnected dep
 
 For accepted transfers through structures, use [coupled level pools](coupled-level-pools.md).
 
+Read capabilities with `level_pool_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, regimes, sources, unsupported uses, and limits.
+
 ## Construct a pool
 
 1. Create ordered `LevelPoolKnot` values for volume and stage.

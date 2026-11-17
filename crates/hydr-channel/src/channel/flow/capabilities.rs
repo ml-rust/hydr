@@ -265,7 +265,7 @@ static RECTANGULAR: ComponentCapabilities = ComponentCapabilities {
     sources: SOURCES,
     options: &[],
     nested: &[],
-    attachable_to: &[],
+    attachable_to: &[ComponentId::ChannelPools],
     unsupported: SCALAR_REACH_UNSUPPORTED,
     limits: &[
         LATERAL_OWNERSHIP,
@@ -307,7 +307,7 @@ static TRIANGULAR: ComponentCapabilities = ComponentCapabilities {
         default: "limited-linear",
     }],
     nested: &[],
-    attachable_to: &[],
+    attachable_to: &[ComponentId::ChannelPools],
     unsupported: SCALAR_REACH_UNSUPPORTED,
     limits: &[LATERAL_OWNERSHIP, RESERVOIR_HELD_ELEVATION],
     summary: Summary {

@@ -23,6 +23,35 @@ mod channel_variants;
 #[path = "component_capabilities/channel.rs"]
 mod channel;
 
+#[allow(dead_code)]
+#[path = "level_pool/fixture.rs"]
+mod level_pool_fixture;
+
+#[allow(dead_code)]
+#[path = "coupled_level_pools/fixture.rs"]
+mod coupled_pool_fixture;
+
+#[allow(dead_code)]
+#[path = "coupled_pool_inflows/inflow_fixture.rs"]
+mod inflow_fixture;
+
+#[allow(dead_code)]
+#[path = "channel_pools/reference.rs"]
+mod reference;
+
+#[allow(dead_code)]
+#[path = "channel_pools/fixture.rs"]
+mod channel_pool_fixture;
+
+#[path = "component_capabilities/pools_fixture.rs"]
+mod pools_fixture;
+
+#[path = "component_capabilities/pools_variants.rs"]
+mod pools_variants;
+
+#[path = "component_capabilities/pools.rs"]
+mod pools;
+
 use hydr::capability::{ComponentCapabilities, RegimeScope};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -49,6 +78,21 @@ fn declarations() -> Vec<Declared> {
         channel(hydr::channel::rectangular_reach_capabilities()),
         channel(hydr::channel::triangular_reach_capabilities()),
         channel(hydr::channel::surveyed_reach_capabilities()),
+        Declared {
+            capabilities: hydr::storage::level_pool_capabilities(),
+            contract: Some(hydr::storage::LEVEL_POOL_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::storage::LEVEL_POOL_SNAPSHOT_SCHEMA),
+        },
+        Declared {
+            capabilities: hydr::coupling::coupled_level_pool_capabilities(),
+            contract: Some(hydr::coupling::COUPLED_LEVEL_POOL_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::coupling::COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA),
+        },
+        Declared {
+            capabilities: hydr::coupling::channel_pool_capabilities(),
+            contract: Some(hydr::coupling::CHANNEL_POOL_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::coupling::CHANNEL_POOL_SNAPSHOT_SCHEMA),
+        },
     ]
 }
 
@@ -132,6 +176,37 @@ fn declarations_are_unique_and_identified() -> Result<(), Box<dyn std::error::Er
                 components.contains(linked.id()),
                 "`{id}` links undeclared component `{}`",
                 linked.id()
+            );
+        }
+        let find = |component: &hydr::capability::ComponentId| {
+            declared
+                .iter()
+                .map(|d| d.capabilities)
+                .find(|c| c.component == *component)
+                .ok_or(format!("`{id}` links undeclared `{}`", component.id()))
+        };
+        // A parent runs its nested components, so it needs their arithmetic too.
+        for nested in capabilities.nested {
+            let child = find(nested)?;
+            for requirement in child.arithmetic {
+                assert!(
+                    capabilities.arithmetic.contains(requirement),
+                    "`{id}` omits `{}` arithmetic `{}`",
+                    nested.id(),
+                    requirement.id()
+                );
+            }
+            assert!(
+                child.attachable_to.contains(&capabilities.component),
+                "`{}` omits attachment to `{id}`",
+                nested.id()
+            );
+        }
+        for parent in capabilities.attachable_to {
+            assert!(
+                find(parent)?.nested.contains(&capabilities.component),
+                "`{}` does not nest `{id}`",
+                parent.id()
             );
         }
         for runtime in capabilities.runtimes {

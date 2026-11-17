@@ -6,6 +6,8 @@ Pool levels respond to the channel's actual water transfers. Multiple channel en
 
 Read [channel flow](channels.md) and [level pools](level-pool.md) before constructing their inputs.
 
+Read capabilities with `channel_pool_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, connected endpoints, regimes, sources, nested components, unsupported uses, and limits.
+
 ## Construct the connected system
 
 Import the coordinator types from `hydr::coupling`.
