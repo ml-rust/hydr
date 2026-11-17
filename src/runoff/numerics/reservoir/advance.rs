@@ -12,7 +12,7 @@ use super::check::finish;
 use super::receipt::TensorReservoirStep;
 use super::{algebra, drainage};
 use crate::runoff::ReservoirError;
-use crate::tensor::reservoir_storage::{TensorReservoirContext, TensorReservoirState};
+use crate::runoff::tensor::reservoir_storage::{TensorReservoirContext, TensorReservoirState};
 
 pub(crate) fn advance<R>(
     context: &TensorReservoirContext<R>,

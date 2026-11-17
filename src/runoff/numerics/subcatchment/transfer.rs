@@ -10,7 +10,7 @@ use numr::tensor::Tensor;
 
 use super::bounds;
 use crate::runoff::ReservoirError;
-use crate::tensor::reservoir_storage::TensorReservoirContext;
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Partition<R: Runtime<DType = DType>> {
@@ -173,7 +173,7 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>,
 {
-    crate::numerics::reservoir::drainage::check_metadata(ctx, actual, name)?;
+    crate::runoff::numerics::reservoir::drainage::check_metadata(ctx, actual, name)?;
     ctx.finite(actual, name)?;
     ctx.reject_mask(
         &ctx.client.ne(actual, expected)?,

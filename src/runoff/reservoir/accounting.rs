@@ -8,8 +8,8 @@ use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
 use super::ReservoirError;
-use crate::numerics::reservoir::TensorReservoirStep;
-use crate::tensor::reservoir_storage::TensorReservoirContext;
+use crate::runoff::numerics::reservoir::TensorReservoirStep;
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 
 /// Lifetime represented reservoir water accounting, without numerical adjustments.
 #[derive(Clone, Debug, PartialEq)]

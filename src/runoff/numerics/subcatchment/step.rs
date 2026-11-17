@@ -6,8 +6,8 @@ use numr::tensor::Tensor;
 
 use super::bridge::Bridge;
 use super::transfer::{Merged, Partition};
-use crate::numerics::reservoir::drainage::DrainageResult;
-use crate::tensor::subcatchment::TensorSubcatchmentInput;
+use crate::runoff::numerics::reservoir::drainage::DrainageResult;
+use crate::runoff::tensor::subcatchment::TensorSubcatchmentInput;
 
 #[derive(Clone, Debug)]
 pub(crate) struct TensorSubcatchmentSoilStep<R: Runtime<DType = DType>> {

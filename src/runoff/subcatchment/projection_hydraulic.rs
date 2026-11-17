@@ -14,8 +14,8 @@ use super::{
     SubcatchmentBridgeReceipt, SubcatchmentDrainageReceipt, SubcatchmentError,
     SubcatchmentPartitionReceipt,
 };
-use crate::numerics::subcatchment::TensorSubareaStep;
-use crate::tensor::subcatchment::TensorSubareaGroup;
+use crate::runoff::numerics::subcatchment::TensorSubareaStep;
+use crate::runoff::tensor::subcatchment::TensorSubareaGroup;
 
 pub(super) fn read<R>(tensor: &Tensor<R>, count: usize) -> Result<Vec<f64>, SubcatchmentError>
 where

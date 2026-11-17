@@ -11,11 +11,11 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::restore::require;
-use crate::numerics::reservoir::drainage::DrainageResult;
-use crate::numerics::subcatchment::TensorSubareaStep;
-use crate::numerics::subcatchment::transfer::{Merged, Partition};
+use crate::runoff::numerics::reservoir::drainage::DrainageResult;
+use crate::runoff::numerics::subcatchment::TensorSubareaStep;
+use crate::runoff::numerics::subcatchment::transfer::{Merged, Partition};
+use crate::runoff::tensor::subcatchment::TensorSubareaGroup;
 use crate::runoff::{SubareaReceipt, SubcatchmentError, SubcatchmentPhaseDiagnostics};
-use crate::tensor::subcatchment::TensorSubareaGroup;
 
 pub(super) fn import<R>(
     group: Option<&TensorSubareaGroup<R>>,

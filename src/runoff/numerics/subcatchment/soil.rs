@@ -11,8 +11,8 @@ use solvr::optimize::roots::BatchedNewtonAlgorithms;
 use super::sources::Supply;
 use super::step::TensorSubcatchmentSoilStep;
 use crate::runoff::ReservoirError;
+use crate::runoff::tensor::subcatchment::TensorSubareaGroup;
 use crate::soil::{ModifiedGreenAmptBatch, SoilError};
-use crate::tensor::subcatchment::TensorSubareaGroup;
 use numr::dtype::DType;
 use numr::runtime::Device;
 

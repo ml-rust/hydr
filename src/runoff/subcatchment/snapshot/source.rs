@@ -10,10 +10,10 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::phase::from_sources;
-use crate::numerics::subcatchment::TensorSubcatchmentSoilStep;
-use crate::numerics::subcatchment::bridge::Bridge;
+use crate::runoff::numerics::subcatchment::TensorSubcatchmentSoilStep;
+use crate::runoff::numerics::subcatchment::bridge::Bridge;
+use crate::runoff::tensor::subcatchment::TensorSubareaGroup;
 use crate::runoff::{SubareaReceipt, SubcatchmentError};
-use crate::tensor::subcatchment::TensorSubareaGroup;
 
 pub(super) fn bridge<R>(
     group: &TensorSubareaGroup<R>,

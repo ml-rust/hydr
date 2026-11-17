@@ -11,7 +11,7 @@ use super::algebra;
 use super::budget::DrainageBudget;
 use super::receipt::{DrainageResult, DrainageRoot};
 use crate::runoff::ReservoirError;
-use crate::tensor::reservoir_storage::TensorReservoirContext;
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 
 pub(crate) fn admit_drainage<R>(
     prepared: &DrainageBudget<'_, R>,
@@ -246,7 +246,7 @@ where
     context.reject_mask(&c.mul(active, &c.gt(&c.abs(residual)?, &tolerance)?)?, quantity, &[("residual", residual), ("scale", scale), ("tolerance", &tolerance)], &[], "Physical volume admission rejects the interval. Shorten the interval, tighten the root, or rescale the reservoir")
 }
 
-pub(in crate::numerics::reservoir) fn equal<R>(
+pub(in crate::runoff::numerics::reservoir) fn equal<R>(
     context: &TensorReservoirContext<R>,
     actual: &Tensor<R>,
     expected: &Tensor<R>,

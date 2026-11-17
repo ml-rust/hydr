@@ -2,10 +2,8 @@
 
 #[cfg(test)]
 mod flux;
-pub(crate) mod reservoir;
 pub(crate) mod rounding;
 pub(crate) mod structures;
-pub(crate) mod subcatchment;
 mod tensor_flux;
 mod tensor_hll;
 pub(crate) mod tensor_types;

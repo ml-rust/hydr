@@ -1,7 +1,7 @@
 //! Checked SI geometry and separately cached native-derived closure.
 
 use super::ReservoirError;
-use crate::numerics::reservoir::EXPONENT;
+use crate::runoff::numerics::reservoir::EXPONENT;
 
 const FOOT: f64 = 0.3048;
 const SQUARE_FOOT: f64 = FOOT * FOOT;

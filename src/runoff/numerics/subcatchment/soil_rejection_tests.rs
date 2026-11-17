@@ -1,12 +1,12 @@
 //! Compact native evidence errors retain their original physical lane.
 
 use super::*;
+use crate::runoff::tensor::subcatchment::TensorSubcatchmentContext;
 use crate::runoff::{
     Subarea, SubcatchmentConfig, SubcatchmentDefinition, SubcatchmentGeometry,
     SubcatchmentParameters, SubcatchmentRouting,
 };
 use crate::soil::ModifiedGreenAmptParameters;
-use crate::tensor::subcatchment::TensorSubcatchmentContext;
 use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 
 #[test]

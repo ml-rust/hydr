@@ -12,9 +12,9 @@ use solvr::optimize::roots::BatchedNewtonAlgorithms;
 use super::sources::Supply;
 use super::step::{TensorSubareaStep, TensorSubcatchmentStep};
 use super::{accounting, bounds, phase, sources};
-use crate::numerics::reservoir::drainage;
 use crate::runoff::SubcatchmentError;
-use crate::tensor::subcatchment::{
+use crate::runoff::numerics::reservoir::drainage;
+use crate::runoff::tensor::subcatchment::{
     TensorSubareaGroup, TensorSubcatchmentContext, TensorSubcatchmentInput, TensorSubcatchmentState,
 };
 use numr::dtype::DType;

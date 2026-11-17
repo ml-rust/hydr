@@ -16,7 +16,7 @@ use super::{
     SubcatchmentError, SubcatchmentInput, SubcatchmentReceipt, SubcatchmentStepDiagnostics,
     SubcatchmentTransfer,
 };
-use crate::tensor::subcatchment::TensorSubcatchmentContext;
+use crate::runoff::tensor::subcatchment::TensorSubcatchmentContext;
 
 pub(super) fn project_step<R>(
     context: &TensorSubcatchmentContext<R>,
@@ -39,7 +39,7 @@ where
 {
     let step = &stored.step;
     let dt = stored.end - stored.start;
-    crate::numerics::subcatchment::check_step(context, step, dt)?;
+    crate::runoff::numerics::subcatchment::check_step(context, step, dt)?;
     let totals = &stored.totals;
     let n = context.definitions.len();
     let flat = n * 3;

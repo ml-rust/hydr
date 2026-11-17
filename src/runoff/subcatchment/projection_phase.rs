@@ -11,9 +11,9 @@ use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::projection_hydraulic::{self, read};
 use super::{Subarea, SubareaReceipt, SubcatchmentError, SubcatchmentPhaseDiagnostics};
-use crate::numerics::subcatchment::TensorSubareaStep;
+use crate::runoff::numerics::subcatchment::TensorSubareaStep;
+use crate::runoff::tensor::subcatchment::TensorSubareaGroup;
 use crate::soil::SoilSourceReceipt;
-use crate::tensor::subcatchment::TensorSubareaGroup;
 
 pub(super) fn phase<R>(
     group: &TensorSubareaGroup<R>,

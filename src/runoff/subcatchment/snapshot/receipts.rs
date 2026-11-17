@@ -11,10 +11,12 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::restore::require;
-use crate::numerics::subcatchment::{TensorSubcatchmentStep, TensorSubcatchmentTotals, check_step};
+use crate::runoff::numerics::subcatchment::{
+    TensorSubcatchmentStep, TensorSubcatchmentTotals, check_step,
+};
+use crate::runoff::tensor::subcatchment::{TensorSubcatchmentContext, TensorSubcatchmentInput};
 use crate::runoff::{Subarea, SubareaReceipt, SubcatchmentError, SubcatchmentStepDiagnostics};
 use crate::soil::{SoilReceiptInput, check_source_receipt};
-use crate::tensor::subcatchment::{TensorSubcatchmentContext, TensorSubcatchmentInput};
 
 pub(super) fn import<R>(
     context: &TensorSubcatchmentContext<R>,

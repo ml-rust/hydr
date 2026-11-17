@@ -10,8 +10,8 @@ use numr::tensor::Tensor;
 
 use crate::numerics::rounding::rounding_with_client;
 use crate::runoff::ReservoirError;
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 use crate::soil::admission;
-use crate::tensor::reservoir_storage::TensorReservoirContext;
 
 pub(crate) fn check_nonnegative<R>(
     ctx: &TensorReservoirContext<R>,
@@ -31,7 +31,7 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>,
 {
-    crate::numerics::reservoir::drainage::check_metadata(ctx, value, name)?;
+    crate::runoff::numerics::reservoir::drainage::check_metadata(ctx, value, name)?;
     ctx.finite(value, name)?;
     ctx.reject_mask(
         &ctx.client.lt(value, &ctx.zero)?,

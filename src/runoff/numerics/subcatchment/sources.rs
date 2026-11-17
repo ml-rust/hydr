@@ -12,9 +12,9 @@ use super::bridge::Bridge;
 use super::step::TensorSubcatchmentSoilStep;
 use super::transfer::Merged;
 use super::{bounds, bridge, transfer};
-use crate::numerics::reservoir::drainage;
 use crate::runoff::ReservoirError;
-use crate::tensor::subcatchment::TensorSubareaGroup;
+use crate::runoff::numerics::reservoir::drainage;
+use crate::runoff::tensor::subcatchment::TensorSubareaGroup;
 
 pub(super) struct Supply<R: Runtime<DType = DType>> {
     pub old_depth: Tensor<R>,

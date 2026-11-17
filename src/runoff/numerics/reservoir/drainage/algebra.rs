@@ -8,7 +8,7 @@ use numr::tensor::Tensor;
 
 use super::budget::DrainageBudget;
 use crate::runoff::ReservoirError;
-use crate::tensor::reservoir_storage::TensorReservoirContext;
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 use numr::dtype::DType;
 use numr::runtime::Device;
 

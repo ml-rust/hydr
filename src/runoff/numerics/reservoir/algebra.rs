@@ -9,7 +9,7 @@ use numr::tensor::Tensor;
 
 use super::drainage::{self, DrainageBudget};
 use crate::runoff::ReservoirError;
-use crate::tensor::reservoir_storage::TensorReservoirContext;
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 
 pub(super) struct Prepared<'ctx, R: Runtime<DType = DType>> {
     pub incoming_depth: Tensor<R>,

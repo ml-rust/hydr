@@ -1,13 +1,13 @@
 //! First-lane numerical diagnostics using scalar runtime reads.
 
 use super::TensorSubcatchmentContext;
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 use crate::runoff::{
     ReservoirConfig, ReservoirElement, ReservoirParameters, Subarea, SubcatchmentConfig,
     SubcatchmentDefinition, SubcatchmentGeometry, SubcatchmentParameters, SubcatchmentRouting,
 };
 use crate::soil::ModifiedGreenAmptParameters;
 use crate::soil::kernel::TensorSoilContext;
-use crate::tensor::reservoir_storage::TensorReservoirContext;
 use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 use numr::tensor::Tensor;
 

@@ -9,9 +9,9 @@ use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
 use super::restore::require;
-use crate::numerics::reservoir::{TensorReservoirStep, check_step};
+use crate::runoff::numerics::reservoir::{TensorReservoirStep, check_step};
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 use crate::runoff::{ReservoirError, ReservoirReceipt, ReservoirStepDiagnostics};
-use crate::tensor::reservoir_storage::TensorReservoirContext;
 
 pub(super) fn import<R>(
     context: &TensorReservoirContext<R>,

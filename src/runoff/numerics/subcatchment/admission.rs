@@ -9,9 +9,9 @@ use numr::tensor::Tensor;
 
 use super::step::{TensorSubareaStep, TensorSubcatchmentStep, TensorSubcatchmentTotals};
 use super::{accounting, bridge, phase, transfer, trial};
-use crate::numerics::reservoir::drainage::DrainageResult;
 use crate::runoff::SubcatchmentError;
-use crate::tensor::subcatchment::{TensorSubareaGroup, TensorSubcatchmentContext};
+use crate::runoff::numerics::reservoir::drainage::DrainageResult;
+use crate::runoff::tensor::subcatchment::{TensorSubareaGroup, TensorSubcatchmentContext};
 use numr::dtype::DType;
 use numr::runtime::Device;
 

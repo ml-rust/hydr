@@ -9,9 +9,9 @@ use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
 use super::sources::Sources;
-use crate::numerics::reservoir::drainage::{self, DrainageBudget};
 use crate::runoff::ReservoirError;
-use crate::tensor::reservoir_storage::TensorReservoirContext;
+use crate::runoff::numerics::reservoir::drainage::{self, DrainageBudget};
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 
 pub(super) fn prepare<'ctx, R>(
     ctx: &'ctx TensorReservoirContext<R>,

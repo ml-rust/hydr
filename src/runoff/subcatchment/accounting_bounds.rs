@@ -10,8 +10,8 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::{SubcatchmentError, SubcatchmentLedger};
+use crate::runoff::tensor::subcatchment::TensorSubcatchmentContext;
 use crate::soil::admission::{rounding_bound, upward_add};
-use crate::tensor::subcatchment::TensorSubcatchmentContext;
 
 fn cumulative_count<R: Runtime<DType = DType>>(
     context: &TensorSubcatchmentContext<R>,

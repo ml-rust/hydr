@@ -13,7 +13,7 @@ use super::{
     transfer::{self, Merged},
 };
 use crate::runoff::ReservoirError;
-use crate::tensor::reservoir_storage::TensorReservoirContext;
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Bridge<R: Runtime<DType = DType>> {

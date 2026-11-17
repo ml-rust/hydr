@@ -11,7 +11,7 @@ use numr::tensor::Tensor;
 use super::bounds;
 use super::step::{TensorSubareaStep, TensorSubcatchmentTotals};
 use crate::runoff::SubcatchmentError;
-use crate::tensor::subcatchment::{
+use crate::runoff::tensor::subcatchment::{
     TensorSubareaGroup, TensorSubcatchmentContext, TensorSubcatchmentInput,
 };
 

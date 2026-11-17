@@ -13,10 +13,10 @@ use solvr::optimize::roots::BatchedNewtonAlgorithms;
 use super::sources::{Sources, Supply};
 use super::step::TensorSubareaStep;
 use super::{bounds, sources, timing, transfer};
-use crate::numerics::reservoir::drainage::{self, DrainageResult, DrainageRoot};
+use crate::runoff::numerics::reservoir::drainage::{self, DrainageResult, DrainageRoot};
+use crate::runoff::tensor::subcatchment::TensorSubareaGroup;
 use crate::runoff::{ReservoirError, SubcatchmentError};
 use crate::soil::ModifiedGreenAmptBatch;
-use crate::tensor::subcatchment::TensorSubareaGroup;
 
 pub(super) fn advance<R>(
     group: &TensorSubareaGroup<R>,

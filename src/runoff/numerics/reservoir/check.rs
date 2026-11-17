@@ -11,7 +11,7 @@ use super::algebra::{self, Prepared};
 use super::drainage::{self, DrainageResult, DrainageRoot};
 use super::receipt::TensorReservoirStep;
 use crate::runoff::ReservoirError;
-use crate::tensor::reservoir_storage::TensorReservoirContext;
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 
 pub(crate) fn check_step<R>(
     context: &TensorReservoirContext<R>,

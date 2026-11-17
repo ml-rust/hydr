@@ -13,8 +13,8 @@ use super::{
     ReservoirConfig, ReservoirElement, ReservoirError, ReservoirInput, ReservoirLedger,
     ReservoirOutput, ReservoirState, ReservoirStepDiagnostics,
 };
-use crate::numerics::reservoir::TensorReservoirStep;
-use crate::tensor::reservoir_storage::{TensorReservoirContext, TensorReservoirState};
+use crate::runoff::numerics::reservoir::TensorReservoirStep;
+use crate::runoff::tensor::reservoir_storage::{TensorReservoirContext, TensorReservoirState};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -144,8 +144,9 @@ where
                 .map(|i| i.incoming_rate_m_per_s)
                 .collect::<Vec<_>>(),
         )?;
-        let step = crate::numerics::reservoir::advance(&self.context, &self.state, dt, &incoming)?;
-        crate::numerics::reservoir::check_step(&self.context, &step, dt)?;
+        let step =
+            crate::runoff::numerics::reservoir::advance(&self.context, &self.state, dt, &incoming)?;
+        crate::runoff::numerics::reservoir::check_step(&self.context, &step, dt)?;
         let totals = aggregate_step(&self.context, &step)?;
         let ledger = self.ledger.advance(&self.context, &totals)?;
         let steps = self.steps.checked_add(1).ok_or_else(|| {

@@ -1,8 +1,10 @@
 //! Standalone runoff storage primitives, independent of hydraulic attachment.
 
+mod numerics;
 mod reservoir;
 mod subcatchment;
 mod support;
+mod tensor;
 
 pub use support::{
     AdmittedInterval, BoundBoundaryInput, BoundaryBinding, CellRainAssignment, Contribution,

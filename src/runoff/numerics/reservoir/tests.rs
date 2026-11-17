@@ -1,8 +1,8 @@
 use super::{advance, check_step};
+use crate::runoff::tensor::reservoir_storage::{TensorReservoirContext, TensorReservoirState};
 use crate::runoff::{
     ReservoirConfig, ReservoirElement, ReservoirError, ReservoirParameters, ReservoirState,
 };
-use crate::tensor::reservoir_storage::{TensorReservoirContext, TensorReservoirState};
 use numr::runtime::cpu::CpuRuntime;
 
 fn element(id: &str, n: f64, width: f64) -> Result<ReservoirElement, ReservoirError> {

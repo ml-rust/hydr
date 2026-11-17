@@ -10,9 +10,9 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::{SubcatchmentError, SubcatchmentReceipt, SubcatchmentTransfer};
-use crate::numerics::subcatchment::{TensorSubcatchmentStep, bounds};
+use crate::runoff::numerics::subcatchment::{TensorSubcatchmentStep, bounds};
+use crate::runoff::tensor::subcatchment::TensorSubcatchmentContext;
 use crate::soil::admission::add_adjustment_charge;
-use crate::tensor::subcatchment::TensorSubcatchmentContext;
 
 /// Independent physical mass counters and separate numerical admission budgets.
 #[derive(Clone, Debug, PartialEq)]

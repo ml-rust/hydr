@@ -15,8 +15,8 @@ use super::{
     SubcatchmentConfig, SubcatchmentDefinition, SubcatchmentError, SubcatchmentInput,
     SubcatchmentLedger, SubcatchmentOutput, SubcatchmentState, SubcatchmentStepDiagnostics,
 };
-use crate::numerics::subcatchment::{self, TensorSubcatchmentStep};
-use crate::tensor::subcatchment::{
+use crate::runoff::numerics::subcatchment::{self, TensorSubcatchmentStep};
+use crate::runoff::tensor::subcatchment::{
     TensorSubcatchmentContext, TensorSubcatchmentInput, TensorSubcatchmentState,
 };
 use std::sync::Arc;

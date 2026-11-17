@@ -8,7 +8,7 @@ mod solve;
 
 pub(crate) use admission::admit_drainage;
 pub(crate) use admission::check_residual;
-pub(in crate::numerics::reservoir) use admission::equal;
+pub(in crate::runoff::numerics::reservoir) use admission::equal;
 pub(crate) use algebra::EXPONENT;
 pub(crate) use algebra::{check_metadata, volume};
 pub(crate) use budget::{DrainageBudget, prepare_budget};

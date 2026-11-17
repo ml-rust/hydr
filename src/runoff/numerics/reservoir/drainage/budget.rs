@@ -9,7 +9,7 @@ use numr::tensor::Tensor;
 
 use super::algebra;
 use crate::runoff::ReservoirError;
-use crate::tensor::reservoir_storage::TensorReservoirContext;
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 
 /// Construction binds checked masks and storage to one immutable numerical context.
 /// The budget borrows its context, preventing mutation or destruction before its last use.

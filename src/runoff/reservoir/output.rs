@@ -10,7 +10,7 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use super::accounting::aggregate_step;
 use super::batch::StoredStep;
 use super::{ReservoirError, ReservoirReceipt, ReservoirStepDiagnostics};
-use crate::tensor::reservoir_storage::TensorReservoirContext;
+use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 
 /// Raw element output for one represented accepted interval.
 #[derive(Clone, Debug, PartialEq)]
@@ -50,7 +50,7 @@ where
 {
     let step = &stored.step;
     let dt = stored.end - stored.start;
-    crate::numerics::reservoir::check_step(context, step, dt)?;
+    crate::runoff::numerics::reservoir::check_step(context, step, dt)?;
     let totals = aggregate_step(context, step)?;
     let tensors = [
         &step.old_depth,
