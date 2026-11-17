@@ -44,6 +44,11 @@ static GATE_ACTUATOR: ComponentCapabilities = ComponentCapabilities {
             status: RuntimeStatus::Executed,
             evidence: "selected_cuda_client_executes_gate_motion_reversal_and_complete_restart",
         },
+        RuntimeSupport {
+            runtime: RuntimeKind::Wgpu,
+            status: RuntimeStatus::RejectedLacksF64,
+            evidence: "selected_wgpu_rejects_gate_actuator_f64_without_fallback",
+        },
     ],
     endpoints: &[],
     regimes: &[],

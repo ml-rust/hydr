@@ -33,11 +33,23 @@ static SUBCATCHMENT: ComponentCapabilities = ComponentCapabilities {
         ArithmeticRequirement::F64Ieee754Basic,
         ArithmeticRequirement::NearestEvenGradualUnderflow,
     ],
-    runtimes: &[RuntimeSupport {
-        runtime: RuntimeKind::Cpu,
-        status: RuntimeStatus::Reference,
-        evidence: "repeated_trials_leave_every_accepted_component_field_unchanged",
-    }],
+    runtimes: &[
+        RuntimeSupport {
+            runtime: RuntimeKind::Cpu,
+            status: RuntimeStatus::Reference,
+            evidence: "repeated_trials_leave_every_accepted_component_field_unchanged",
+        },
+        RuntimeSupport {
+            runtime: RuntimeKind::Cuda,
+            status: RuntimeStatus::Executed,
+            evidence: "selected_cuda_client_executes_subcatchment_routing_and_complete_restart",
+        },
+        RuntimeSupport {
+            runtime: RuntimeKind::Wgpu,
+            status: RuntimeStatus::RejectedLacksF64,
+            evidence: "selected_wgpu_rejects_subcatchment_f64_without_fallback",
+        },
+    ],
     endpoints: &[Endpoint {
         id: EndpointId::Outlet,
         admitted: &[BoundaryKind::RunoffOutletNoFeedback],
@@ -102,6 +114,12 @@ static SUBCATCHMENT: ComponentCapabilities = ComponentCapabilities {
             UnsupportedReason::NotAttached,
             "exists as a standalone component; not attached to this subcatchment",
             "docs/integration.md",
+        ),
+        unsupported(
+            "gpu-numerical-qualification",
+            UnsupportedReason::Unqualified,
+            "CUDA runs execute, but only the CPU reference qualifies numerical accuracy.",
+            SUBCATCHMENT_DOC,
         ),
         unsupported(
             "measured-event-accuracy",

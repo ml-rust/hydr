@@ -242,3 +242,32 @@ fn selected_cuda_client_executes_gate_motion_reversal_and_complete_restart() -> 
     actuator_execution!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?);
     Ok(())
 }
+
+#[cfg(feature = "wgpu")]
+#[test]
+fn selected_wgpu_rejects_gate_actuator_f64_without_fallback() -> Result {
+    use numr::runtime::wgpu::WgpuRuntime;
+    let built = StructureBatch::<WgpuRuntime>::new(super::wgpu_client()?, gates(1)?).and_then(
+        |structures| {
+            structures.with_gate_actuators(
+                definitions(1, (0.25, 0.5)),
+                vec![GateActuatorInitialState {
+                    actuator_id: "actuator-0".into(),
+                    opening_m: 0.0,
+                    target_opening_m: 1.0,
+                }],
+                GateActuatorSchedule {
+                    initial_time_s: 0.0,
+                    target_times_s: vec![],
+                    end_s: 1.0,
+                },
+            )
+        },
+    );
+    let error = super::f64_rejection(built, "gate actuator")?;
+    assert_eq!(
+        error.input_kind(),
+        Some(StructureInputErrorKind::Definition)
+    );
+    Ok(())
+}

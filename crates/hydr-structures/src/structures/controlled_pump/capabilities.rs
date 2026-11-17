@@ -32,11 +32,23 @@ static CONTROLLED_PUMP: ComponentCapabilities = ComponentCapabilities {
         ArithmeticRequirement::F64Ieee754Basic,
         ArithmeticRequirement::NearestEvenGradualUnderflow,
     ],
-    runtimes: &[RuntimeSupport {
-        runtime: RuntimeKind::Cpu,
-        status: RuntimeStatus::Reference,
-        evidence: "ideal_response_applies_selected_stopped_and_running_operations_on_the_decision_right",
-    }],
+    runtimes: &[
+        RuntimeSupport {
+            runtime: RuntimeKind::Cpu,
+            status: RuntimeStatus::Reference,
+            evidence: "ideal_response_applies_selected_stopped_and_running_operations_on_the_decision_right",
+        },
+        RuntimeSupport {
+            runtime: RuntimeKind::Cuda,
+            status: RuntimeStatus::Executed,
+            evidence: "selected_cuda_client_executes_controlled_pump_operations_and_complete_restart",
+        },
+        RuntimeSupport {
+            runtime: RuntimeKind::Wgpu,
+            status: RuntimeStatus::RejectedLacksF64,
+            evidence: "selected_wgpu_rejects_controlled_pump_f64_without_fallback",
+        },
+    ],
     endpoints: &[],
     regimes: &[],
     sources: &[],
@@ -82,6 +94,12 @@ static CONTROLLED_PUMP: ComponentCapabilities = ComponentCapabilities {
             "accepted-transfer",
             UnsupportedReason::NotAttached,
             "Operation feeds instantaneous proposals through operating sources; no donor budget or accepted transfer.",
+            CONTROLLED_PUMP_DOC,
+        ),
+        unsupported(
+            "gpu-numerical-qualification",
+            UnsupportedReason::Unqualified,
+            "CUDA runs execute, but only the CPU reference qualifies numerical accuracy.",
             CONTROLLED_PUMP_DOC,
         ),
         unsupported(

@@ -183,3 +183,23 @@ fn selected_cuda_client_pairs_native_runoff_and_preserves_complete_restart() -> 
     native_runoff_execution!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?);
     Ok(())
 }
+
+#[cfg(feature = "wgpu")]
+#[test]
+fn selected_wgpu_rejects_runoff_pools_f64_without_fallback() -> Result {
+    use hydr::coupling::{RunoffPoolBatch, RunoffPoolError};
+    use numr::runtime::wgpu::WgpuRuntime;
+    let (setup, initial) = exact_case()?;
+    let error = super::f64_rejection(
+        RunoffPoolBatch::<WgpuRuntime>::new(super::wgpu_client()?, setup, initial),
+        "runoff pool",
+    )?;
+    assert!(
+        matches!(
+            error,
+            RunoffPoolError::Runoff(_) | RunoffPoolError::Pools(_)
+        ),
+        "Unexpected WGPU runoff pool rejection: {error}"
+    );
+    Ok(())
+}

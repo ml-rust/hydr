@@ -94,7 +94,7 @@ mod structures_variants;
 #[path = "component_capabilities/structures.rs"]
 mod structures;
 
-use hydr::capability::{ComponentCapabilities, RegimeScope};
+use hydr::capability::{ComponentCapabilities, RegimeScope, RuntimeKind};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -204,10 +204,140 @@ fn rust_sources(directory: &Path, found: &mut Vec<PathBuf>) -> std::io::Result<(
     Ok(())
 }
 
-/// Returns `true` when a test or library source under the repository defines `fn name(`.
-fn defines_function(sources: &[String], name: &str) -> bool {
+/// Reads every Rust source under `tests/` and `crates/`, with its path.
+fn repository_sources() -> std::io::Result<Vec<(PathBuf, String)>> {
+    let mut files = Vec::new();
+    rust_sources(&root().join("tests"), &mut files)?;
+    rust_sources(&root().join("crates"), &mut files)?;
+    files
+        .into_iter()
+        .map(|path| std::fs::read_to_string(&path).map(|source| (path, source)))
+        .collect()
+}
+
+/// One definition of an evidence function, with the attributes that gate it.
+struct Definition<'a> {
+    path: &'a Path,
+    /// Attribute and comment lines directly above `fn`, plus the file's inner attributes.
+    gates: Vec<&'a str>,
+}
+
+/// Finds each `fn name(` definition and the attribute lines that gate it.
+///
+/// A gate counts only on the function's own attribute block or as a file inner attribute.
+fn definitions_of<'a>(sources: &'a [(PathBuf, String)], name: &str) -> Vec<Definition<'a>> {
     let needle = format!("fn {name}(");
-    sources.iter().any(|source| source.contains(&needle))
+    let mut found = Vec::new();
+    for (path, source) in sources {
+        let lines = source.lines().collect::<Vec<_>>();
+        let inner = lines
+            .iter()
+            .copied()
+            .filter(|line| line.trim_start().starts_with("#!["));
+        for (index, line) in lines.iter().enumerate() {
+            let signature = line.trim_start();
+            let signature = signature.strip_prefix("pub ").unwrap_or(signature);
+            if !signature.starts_with(&needle) {
+                continue;
+            }
+            let mut gates = inner.clone().collect::<Vec<_>>();
+            for above in lines[..index].iter().rev() {
+                let above = above.trim();
+                if above.is_empty() || above.ends_with(['}', ';', '{']) {
+                    break;
+                }
+                gates.push(above);
+            }
+            found.push(Definition { path, gates });
+        }
+    }
+    found
+}
+
+/// Returns the feature gate the runtime's evidence needs: `Some` for a GPU, `None` for CPU.
+fn required_gate(runtime: RuntimeKind) -> Result<Option<&'static str>, String> {
+    match runtime {
+        RuntimeKind::Cpu => Ok(None),
+        RuntimeKind::Cuda => Ok(Some("feature = \"cuda\"")),
+        RuntimeKind::Wgpu => Ok(Some("feature = \"wgpu\"")),
+        other => Err(format!(
+            "runtime `{}` has no evidence gate rule. Add one to `required_gate`",
+            other.id()
+        )),
+    }
+}
+
+#[test]
+fn evidence_gates_come_from_the_attribute_block_only() {
+    let source = "fn helper() {}\n\n#[cfg(feature = \"cuda\")]\n#[test]\nfn gated() -> Result {\n}\n\n#[test]\npub fn plain() {\n    let _ = \"#[cfg(feature = \\\"wgpu\\\")]\";\n}\n";
+    let sources = vec![(PathBuf::from("synthetic.rs"), source.to_string())];
+    let gated = definitions_of(&sources, "gated");
+    assert_eq!(gated.len(), 1);
+    assert!(gated[0].gates.contains(&"#[cfg(feature = \"cuda\")]"));
+    assert!(gated[0].gates.contains(&"#[test]"));
+    let plain = definitions_of(&sources, "plain");
+    assert_eq!(plain.len(), 1);
+    assert_eq!(plain[0].gates, ["#[test]"]);
+    assert!(definitions_of(&sources, "missing").is_empty());
+    let inner = vec![(
+        PathBuf::from("inner.rs"),
+        "#![cfg(feature = \"wgpu\")]\nuse x;\n\n#[test]\nfn whole() {}\n".to_string(),
+    )];
+    let whole = definitions_of(&inner, "whole");
+    assert_eq!(whole.len(), 1);
+    assert!(whole[0].gates.contains(&"#![cfg(feature = \"wgpu\")]"));
+}
+
+/// Each runtime claim names exactly one test, gated by the claimed runtime's feature.
+///
+/// CUDA evidence carries `cfg(feature = "cuda")` and WGPU evidence `cfg(feature = "wgpu")`.
+/// CPU evidence carries neither, so a default build runs it.
+#[test]
+fn runtime_claims_name_existing_tests() -> Result<(), Box<dyn std::error::Error>> {
+    let sources = repository_sources()?;
+    let gpu_gates = [RuntimeKind::Cuda, RuntimeKind::Wgpu]
+        .into_iter()
+        .map(required_gate)
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut errors = Vec::new();
+    for entry in declarations() {
+        let id = entry.capabilities.component.id();
+        for claim in entry.capabilities.runtimes {
+            let (runtime, evidence) = (claim.runtime.id(), claim.evidence);
+            let definitions = definitions_of(&sources, evidence);
+            let [definition] = definitions.as_slice() else {
+                errors.push(format!(
+                    "`{id}` {runtime} evidence `{evidence}` has {} definitions. Define it once under tests/ or crates/",
+                    definitions.len()
+                ));
+                continue;
+            };
+            let place = definition
+                .path
+                .strip_prefix(root())
+                .unwrap_or(definition.path);
+            let place = place.display();
+            let has = |gate: &str| definition.gates.iter().any(|line| line.contains(gate));
+            if !definition.gates.contains(&"#[test]") {
+                errors.push(format!(
+                    "`{id}` {runtime} evidence `{evidence}` in {place} is not a #[test]. Name a test function"
+                ));
+            }
+            match required_gate(claim.runtime)? {
+                Some(gate) if !has(gate) => errors.push(format!(
+                    "`{id}` {runtime} evidence `{evidence}` in {place} lacks #[cfg({gate})]. Gate the test on its runtime feature"
+                )),
+                None if gpu_gates.iter().flatten().any(|gate| has(gate)) => {
+                    errors.push(format!(
+                        "`{id}` {runtime} evidence `{evidence}` in {place} carries a GPU feature gate. Name an ungated CPU test"
+                    ))
+                }
+                _ => {}
+            }
+        }
+    }
+    assert!(errors.is_empty(), "{}", errors.join("\n"));
+    Ok(())
 }
 
 #[test]
@@ -218,13 +348,6 @@ fn declarations_are_unique_and_identified() -> Result<(), Box<dyn std::error::Er
         let id = entry.capabilities.component.id();
         assert!(components.insert(id), "`{id}` is declared twice");
     }
-    let mut files = Vec::new();
-    rust_sources(&root().join("tests"), &mut files)?;
-    rust_sources(&root().join("crates"), &mut files)?;
-    let sources = files
-        .iter()
-        .map(std::fs::read_to_string)
-        .collect::<std::io::Result<Vec<_>>>()?;
     for entry in &declared {
         let capabilities = entry.capabilities;
         let id = capabilities.component.id();
@@ -313,14 +436,6 @@ fn declarations_are_unique_and_identified() -> Result<(), Box<dyn std::error::Er
                 find(parent)?.nested.contains(&capabilities.component),
                 "`{}` does not nest `{id}`",
                 parent.id()
-            );
-        }
-        for runtime in capabilities.runtimes {
-            assert!(
-                defines_function(&sources, runtime.evidence),
-                "`{id}` {} evidence `{}` names no function",
-                runtime.runtime.id(),
-                runtime.evidence
             );
         }
         for regime in capabilities.regimes {

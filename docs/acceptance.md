@@ -592,6 +592,29 @@ Global accounting cancels runoff exports against pool imports. A separate lifeti
 
 These cases establish no downstream feedback, geometric nonoverlap proof, dynamic network flow, or measured-event accuracy.
 
+## Runtime support
+
+All 15 capability declarations claim the same status on each runtime. A named test backs each claim.
+
+| Runtime | Declared status | Evidence |
+| --- | --- | --- |
+| CPU | Reference. The accuracy checks on this page run on CPU. | One test per component, built without GPU features |
+| CUDA | Executes. Each test runs the component on a CUDA client and checks its results and continuation. | `cuda` tests, built with `--features cuda` |
+| WGPU | Rejects construction, because numr WGPU lacks F64 arithmetic. No CPU fallback runs. | `wgpu` tests, built with `--features wgpu` |
+
+Six CUDA tests also run the same case on CPU and compare complete checkpoint data:
+
+| Components | CPU/CUDA comparison |
+| --- | --- |
+| Operating controls, controlled gates, controlled pumps | Every field matches bit for bit |
+| Level pools, reservoirs, subcatchments | Per-element states match bit for bit. Batch totals and residual diagnostics agree within `volume_absolute + volume_relative * scale`. |
+
+Those totals and diagnostics differ in their last bits between CPU and CUDA. CUDA execution establishes no GPU accuracy qualification.
+
+Each WGPU test also requires `WgpuRuntime::computes_float_dtype(DType::F64)` to return `false`. A numr release with F64 WGPU fails these tests. Then replace the WGPU claims with execution evidence.
+
+[`runtime_claims_name_existing_tests`](../tests/component_capabilities.rs) checks that each claim names one test. CUDA evidence needs `cfg(feature = "cuda")`, and WGPU evidence needs `cfg(feature = "wgpu")`. CPU evidence carries neither gate.
+
 ## Remaining acceptance work
 
 | Area | Checked scope | Remaining evidence |

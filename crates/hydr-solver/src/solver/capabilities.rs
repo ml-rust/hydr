@@ -42,6 +42,11 @@ static CAPABILITIES: ComponentCapabilities = ComponentCapabilities {
             status: RuntimeStatus::Executed,
             evidence: "selected_cuda_client_preserves_still_water_and_trusted_restart",
         },
+        RuntimeSupport {
+            runtime: RuntimeKind::Wgpu,
+            status: RuntimeStatus::RejectedLacksF64,
+            evidence: "selected_wgpu_rejects_surface_solver_f64_without_fallback",
+        },
     ],
     endpoints: &[Endpoint {
         id: EndpointId::ExteriorFace,

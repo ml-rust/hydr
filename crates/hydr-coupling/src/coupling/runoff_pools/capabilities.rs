@@ -44,6 +44,11 @@ static RUNOFF_POOLS: ComponentCapabilities = ComponentCapabilities {
             status: RuntimeStatus::Executed,
             evidence: "selected_cuda_client_pairs_native_runoff_and_preserves_complete_restart",
         },
+        RuntimeSupport {
+            runtime: RuntimeKind::Wgpu,
+            status: RuntimeStatus::RejectedLacksF64,
+            evidence: "selected_wgpu_rejects_runoff_pools_f64_without_fallback",
+        },
     ],
     endpoints: &[Endpoint {
         id: EndpointId::Outlet,

@@ -33,11 +33,23 @@ static LEVEL_POOL: ComponentCapabilities = ComponentCapabilities {
         ArithmeticRequirement::F64Ieee754Basic,
         ArithmeticRequirement::NearestEvenGradualUnderflow,
     ],
-    runtimes: &[RuntimeSupport {
-        runtime: RuntimeKind::Cpu,
-        status: RuntimeStatus::Reference,
-        evidence: "ordinary_decimal_exchange_retains_original_transfers_and_exact_twosum_witnesses",
-    }],
+    runtimes: &[
+        RuntimeSupport {
+            runtime: RuntimeKind::Cpu,
+            status: RuntimeStatus::Reference,
+            evidence: "ordinary_decimal_exchange_retains_original_transfers_and_exact_twosum_witnesses",
+        },
+        RuntimeSupport {
+            runtime: RuntimeKind::Cuda,
+            status: RuntimeStatus::Executed,
+            evidence: "selected_cuda_client_executes_level_pool_exchange_and_complete_restart",
+        },
+        RuntimeSupport {
+            runtime: RuntimeKind::Wgpu,
+            status: RuntimeStatus::RejectedLacksF64,
+            evidence: "selected_wgpu_rejects_level_pool_f64_without_fallback",
+        },
+    ],
     endpoints: &[],
     regimes: &[
         RegimeSupport {
@@ -98,6 +110,12 @@ static LEVEL_POOL: ComponentCapabilities = ComponentCapabilities {
             "within-interval-trajectory",
             UnsupportedReason::OutsideModel,
             "No continuous storage trajectory or knot-event splitting within an interval.",
+            LEVEL_POOL_DOC,
+        ),
+        unsupported(
+            "gpu-numerical-qualification",
+            UnsupportedReason::Unqualified,
+            "CUDA runs execute, but only the CPU reference qualifies numerical accuracy.",
             LEVEL_POOL_DOC,
         ),
         unsupported(

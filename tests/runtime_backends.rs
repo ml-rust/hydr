@@ -10,12 +10,20 @@ mod channel_reservoir;
 mod channel_tensor_forcing;
 #[path = "runtime_backends/channels.rs"]
 mod channels;
+#[path = "runtime_backends/control_fixture.rs"]
+mod control_fixture;
+#[path = "runtime_backends/controlled_gates.rs"]
+mod controlled_gates;
+#[path = "runtime_backends/controlled_pumps.rs"]
+mod controlled_pumps;
 #[path = "coupled_level_pools/fixture.rs"]
 mod coupled_pool_fixture;
 #[path = "cross_sections/profiles.rs"]
 mod cross_section_profiles;
 #[path = "runtime_backends/cross_sections.rs"]
 mod cross_sections;
+#[path = "runtime_backends/device_checks.rs"]
+mod device_checks;
 #[path = "runtime_backends/gate_actuators.rs"]
 mod gate_actuators;
 #[path = "coupled_pool_inflows/inflow_fixture.rs"]
@@ -24,10 +32,18 @@ mod inflow_fixture;
 mod inflows;
 #[path = "runtime_backends/interval_volumes.rs"]
 mod interval_volumes;
+#[path = "runtime_backends/level_pool.rs"]
+mod level_pool;
+#[path = "runtime_backends/operating_controls.rs"]
+mod operating_controls;
+#[path = "runtime_backends/reservoir.rs"]
+mod reservoir;
 #[path = "runtime_backends/runoff_pools.rs"]
 mod runoff_pools;
 #[path = "support/runtime.rs"]
 mod runtime;
+#[path = "runtime_backends/subcatchment.rs"]
+mod subcatchment;
 #[path = "runtime_backends/triangular_channels.rs"]
 mod triangular_channels;
 
@@ -35,6 +51,11 @@ use hydr::soil::{
     ModifiedGreenAmptBatch, ModifiedGreenAmptParameters, NativeSoilInput, NativeSoilState,
 };
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+#[cfg(feature = "wgpu")]
+use device_checks::{f64_rejection, wgpu_client};
+#[cfg(feature = "cuda")]
+use device_checks::{same_bits, same_states_bounded_data};
 
 macro_rules! dry_soil_execution {
     ($runtime:ty, $client:expr) => {{
@@ -85,69 +106,79 @@ fn selected_cuda_client_executes_soil_trial_without_mutating_accepted_state() ->
     Ok(())
 }
 
+/// Still water at depth one on a closed 2 x 2 grid, with the expected cells.
+fn still_water_case() -> Result<(
+    hydr::solver::SolverSetup,
+    hydr::solver::InitialState,
+    Vec<hydr::model::CellState>,
+)> {
+    use hydr::grid::CartesianGrid;
+    use hydr::model::{CellState, Domain, FlowState, SpatialReference};
+    use hydr::soil::{LandModel, SoilState};
+    use hydr::solver::{
+        BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, SolverConfig,
+        SolverSetup,
+    };
+
+    let grid = CartesianGrid::new(2, 2, 1.0, 1.0)?;
+    let count = grid.cell_count();
+    let reference = SpatialReference::new(
+        "synthetic metric plane".into(),
+        "synthetic datum".into(),
+        [0.0, 0.0],
+    )?;
+    let domain = Domain::new(
+        grid,
+        vec![0.0; count],
+        vec![0.0; count],
+        vec![true; count],
+        reference,
+    )?;
+    let cells = vec![
+        CellState {
+            h: 1.0,
+            qx: 0.0,
+            qy: 0.0
+        };
+        count
+    ];
+    let flow = FlowState::new(&domain, cells.clone())?;
+    let boundaries = BoundaryConditions::impermeable_walls();
+    let forcing = ForcingSchedule::new(
+        &domain,
+        &boundaries,
+        vec![ForcingInterval {
+            start: 0.0,
+            end: 2.0,
+            rain: vec![0.0; count],
+            potential_evaporation: vec![0.0; count],
+            withdrawal: vec![0.0; count],
+            boundaries: vec![],
+        }],
+    )?;
+    let land = LandModel::impervious(&domain);
+    let soil = SoilState::initialized(&land)?;
+    let setup = SolverSetup {
+        domain,
+        land,
+        boundaries,
+        forcing,
+        config: SolverConfig::default(),
+    };
+    let initial = InitialState {
+        time: 0.0,
+        flow,
+        soil,
+    };
+    Ok((setup, initial, cells))
+}
+
 macro_rules! still_water_execution {
     ($runtime:ty, $client:expr) => {{
-        use hydr::grid::CartesianGrid;
-        use hydr::model::{CellState, Domain, FlowState, SpatialReference};
-        use hydr::soil::{LandModel, SoilState};
-        use hydr::solver::{
-            BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, Solver,
-            SolverConfig, SolverSetup,
-        };
+        use hydr::solver::Solver;
 
-        let grid = CartesianGrid::new(2, 2, 1.0, 1.0)?;
-        let count = grid.cell_count();
-        let reference = SpatialReference::new(
-            "synthetic metric plane".into(),
-            "synthetic datum".into(),
-            [0.0, 0.0],
-        )?;
-        let domain = Domain::new(
-            grid,
-            vec![0.0; count],
-            vec![0.0; count],
-            vec![true; count],
-            reference,
-        )?;
-        let cells = vec![
-            CellState {
-                h: 1.0,
-                qx: 0.0,
-                qy: 0.0
-            };
-            count
-        ];
-        let flow = FlowState::new(&domain, cells.clone())?;
-        let boundaries = BoundaryConditions::impermeable_walls();
-        let forcing = ForcingSchedule::new(
-            &domain,
-            &boundaries,
-            vec![ForcingInterval {
-                start: 0.0,
-                end: 2.0,
-                rain: vec![0.0; count],
-                potential_evaporation: vec![0.0; count],
-                withdrawal: vec![0.0; count],
-                boundaries: vec![],
-            }],
-        )?;
-        let land = LandModel::impervious(&domain);
-        let soil = SoilState::initialized(&land)?;
-        let mut solver = Solver::<$runtime>::new(
-            $client,
-            SolverSetup {
-                domain,
-                land,
-                boundaries,
-                forcing,
-                config: SolverConfig::default(),
-            },
-            InitialState {
-                time: 0.0,
-                flow,
-                soil,
-            },
-        )?;
+        let (setup, initial, cells) = still_water_case()?;
+        let mut solver = Solver::<$runtime>::new($client, setup, initial)?;
         assert_eq!(solver.advance_to(0.5, 1_000)?.accepted_time, 0.5);
         let checkpoint = solver.snapshot();
         let checkpoint_data = checkpoint.data()?;
@@ -307,5 +338,42 @@ fn selected_wgpu_client_rejects_f64_profile() -> Result {
         .err()
         .ok_or("WGPU admitted unsupported F64 profile")?;
     assert!(error.to_string().contains("F64"));
+    Ok(())
+}
+
+#[cfg(feature = "wgpu")]
+#[test]
+fn selected_wgpu_rejects_surface_solver_f64_without_fallback() -> Result {
+    use hydr::solver::{EngineError, Solver};
+    use numr::runtime::wgpu::WgpuRuntime;
+    let (setup, initial, _) = still_water_case()?;
+    let error = f64_rejection(
+        Solver::<WgpuRuntime>::new(wgpu_client()?, setup, initial),
+        "surface solver",
+    )?;
+    let EngineError::Rejected { operation, .. } = error else {
+        return Err(format!("Unexpected WGPU surface rejection: {error}").into());
+    };
+    assert_eq!(operation, "arithmetic environment");
+    Ok(())
+}
+
+#[cfg(feature = "wgpu")]
+#[test]
+fn selected_wgpu_rejects_coupled_level_pools_f64_without_fallback() -> Result {
+    use hydr::coupling::{CoupledLevelPoolBatch, CoupledLevelPoolError};
+    use numr::runtime::wgpu::WgpuRuntime;
+    let (setup, initial) = coupled_pool_fixture::orifice_case([4.0, 2.0])?;
+    let error = f64_rejection(
+        CoupledLevelPoolBatch::<WgpuRuntime>::new(wgpu_client()?, setup, initial),
+        "coupled level pool",
+    )?;
+    assert!(
+        matches!(
+            error,
+            CoupledLevelPoolError::Pool(_) | CoupledLevelPoolError::Structure(_)
+        ),
+        "Unexpected WGPU coupled pool rejection: {error}"
+    );
     Ok(())
 }

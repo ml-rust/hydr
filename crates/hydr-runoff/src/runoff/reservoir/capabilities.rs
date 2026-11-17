@@ -33,11 +33,23 @@ static RESERVOIR: ComponentCapabilities = ComponentCapabilities {
         ArithmeticRequirement::F64Ieee754Basic,
         ArithmeticRequirement::NearestEvenGradualUnderflow,
     ],
-    runtimes: &[RuntimeSupport {
-        runtime: RuntimeKind::Cpu,
-        status: RuntimeStatus::Reference,
-        evidence: "immutable_repeated_trials_preserve_the_accepted_batch",
-    }],
+    runtimes: &[
+        RuntimeSupport {
+            runtime: RuntimeKind::Cpu,
+            status: RuntimeStatus::Reference,
+            evidence: "immutable_repeated_trials_preserve_the_accepted_batch",
+        },
+        RuntimeSupport {
+            runtime: RuntimeKind::Cuda,
+            status: RuntimeStatus::Executed,
+            evidence: "selected_cuda_client_executes_reservoir_recession_and_complete_restart",
+        },
+        RuntimeSupport {
+            runtime: RuntimeKind::Wgpu,
+            status: RuntimeStatus::RejectedLacksF64,
+            evidence: "selected_wgpu_rejects_reservoir_f64_without_fallback",
+        },
+    ],
     endpoints: &[Endpoint {
         id: EndpointId::Outlet,
         admitted: &[BoundaryKind::RunoffOutletNoFeedback],
@@ -82,6 +94,12 @@ static RESERVOIR: ComponentCapabilities = ComponentCapabilities {
             "native-adaptive-stepping",
             UnsupportedReason::OutsideModel,
             "No SWMM adaptive ODE controller or endpoint-discharge volume bookkeeping.",
+            RESERVOIR_DOC,
+        ),
+        unsupported(
+            "gpu-numerical-qualification",
+            UnsupportedReason::Unqualified,
+            "CUDA runs execute, but only the CPU reference qualifies numerical accuracy.",
             RESERVOIR_DOC,
         ),
         unsupported(

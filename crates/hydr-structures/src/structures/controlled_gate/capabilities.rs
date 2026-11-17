@@ -33,11 +33,23 @@ static CONTROLLED_GATE: ComponentCapabilities = ComponentCapabilities {
         ArithmeticRequirement::NearestEvenGradualUnderflow,
         ArithmeticRequirement::FusedMulAdd,
     ],
-    runtimes: &[RuntimeSupport {
-        runtime: RuntimeKind::Cpu,
-        status: RuntimeStatus::Reference,
-        evidence: "dyadic_switches_and_reversal_enclose_frozen_physical_positions_across_layouts",
-    }],
+    runtimes: &[
+        RuntimeSupport {
+            runtime: RuntimeKind::Cpu,
+            status: RuntimeStatus::Reference,
+            evidence: "dyadic_switches_and_reversal_enclose_frozen_physical_positions_across_layouts",
+        },
+        RuntimeSupport {
+            runtime: RuntimeKind::Cuda,
+            status: RuntimeStatus::Executed,
+            evidence: "selected_cuda_client_executes_controlled_gate_motion_and_complete_restart",
+        },
+        RuntimeSupport {
+            runtime: RuntimeKind::Wgpu,
+            status: RuntimeStatus::RejectedLacksF64,
+            evidence: "selected_wgpu_rejects_controlled_gate_f64_without_fallback",
+        },
+    ],
     endpoints: &[],
     regimes: &[],
     sources: &[],
@@ -97,6 +109,12 @@ static CONTROLLED_GATE: ComponentCapabilities = ComponentCapabilities {
             "accepted-hydraulic-transfer",
             UnsupportedReason::NotAttached,
             "Opening feeds structure proposals through operating sources; no accepted transfer or discharge enclosure.",
+            CONTROLLED_GATE_DOC,
+        ),
+        unsupported(
+            "gpu-numerical-qualification",
+            UnsupportedReason::Unqualified,
+            "CUDA runs execute, but only the CPU reference qualifies numerical accuracy.",
             CONTROLLED_GATE_DOC,
         ),
         unsupported(

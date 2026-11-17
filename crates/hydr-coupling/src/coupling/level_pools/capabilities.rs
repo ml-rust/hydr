@@ -44,6 +44,11 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
             status: RuntimeStatus::Executed,
             evidence: "selected_cuda_client_executes_coupled_pool_exchange_and_trusted_restart",
         },
+        RuntimeSupport {
+            runtime: RuntimeKind::Wgpu,
+            status: RuntimeStatus::RejectedLacksF64,
+            evidence: "selected_wgpu_rejects_coupled_level_pools_f64_without_fallback",
+        },
     ],
     endpoints: &[
         Endpoint {
