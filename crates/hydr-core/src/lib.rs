@@ -2,6 +2,7 @@
 //!
 //! This crate implements part of `hydr`. Users depend on `hydr`, which re-exports the public modules.
 
+pub mod capability;
 pub mod error;
 pub mod forcing;
 pub mod grid;

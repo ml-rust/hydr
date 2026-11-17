@@ -13,7 +13,7 @@
 //! ```
 
 #[doc(inline)]
-pub use hydr_core::{error, forcing, grid, model};
+pub use hydr_core::{capability, error, forcing, grid, model};
 
 #[doc(inline)]
 pub use hydr_channel::channel;

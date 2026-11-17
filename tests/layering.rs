@@ -12,10 +12,18 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const CORE: &[&str] = &["error", "grid", "model", "forcing", "contract"];
+const CORE: &[&str] = &[
+    "capability",
+    "error",
+    "grid",
+    "model",
+    "forcing",
+    "contract",
+];
 
 /// Module and the modules it may reference.
 const TABLE: &[(&str, &[&str])] = &[
+    ("capability", &[]),
     ("error", &[]),
     ("grid", &["error"]),
     ("model", &["error", "grid"]),
@@ -29,37 +37,78 @@ const TABLE: &[(&str, &[&str])] = &[
     (
         "soil",
         &[
-            "error", "grid", "model", "forcing", "contract", "tensor", "numerics",
+            "capability",
+            "error",
+            "grid",
+            "model",
+            "forcing",
+            "contract",
+            "tensor",
+            "numerics",
         ],
     ),
     (
         "storage",
         &[
-            "error", "grid", "model", "forcing", "contract", "tensor", "numerics",
+            "capability",
+            "error",
+            "grid",
+            "model",
+            "forcing",
+            "contract",
+            "tensor",
+            "numerics",
         ],
     ),
     (
         "structures",
         &[
-            "error", "grid", "model", "forcing", "contract", "tensor", "numerics",
+            "capability",
+            "error",
+            "grid",
+            "model",
+            "forcing",
+            "contract",
+            "tensor",
+            "numerics",
         ],
     ),
     (
         "runoff",
         &[
-            "error", "grid", "model", "forcing", "contract", "tensor", "numerics", "soil",
+            "capability",
+            "error",
+            "grid",
+            "model",
+            "forcing",
+            "contract",
+            "tensor",
+            "numerics",
+            "soil",
         ],
     ),
-    ("channel", &["forcing", "contract", "tensor", "numerics"]),
+    (
+        "channel",
+        &["capability", "forcing", "contract", "tensor", "numerics"],
+    ),
     (
         "solver",
         &[
-            "error", "grid", "model", "forcing", "contract", "tensor", "numerics", "soil",
+            "capability",
+            "error",
+            "grid",
+            "model",
+            "forcing",
+            "contract",
+            "tensor",
+            "numerics",
+            "soil",
         ],
     ),
     (
         "coupling",
         &[
+            "capability",
             "forcing",
             "numerics",
             "storage",
