@@ -354,6 +354,8 @@ Persistence must preserve every floating-point bit. Step bounds can contain posi
 
 Exact continuation requires the same build, dependency sources, runtime arithmetic, and sequence of accepted timesteps. Different intermediate targets can change those steps.
 
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `CHANNEL_SNAPSHOT_SCHEMA` and `CHANNEL_CONTRACT_VERSION`. `import_snapshot` compares both before any other check and rejects a foreign value with an input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected. These include earlier layouts and packages with surveyed low parts.
+
 Import checks continuation consistency. The application owns content hashes and the authenticity of earlier history.
 
 ## Understand the numerical method

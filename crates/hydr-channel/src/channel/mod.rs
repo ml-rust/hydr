@@ -4,16 +4,16 @@ pub(crate) mod flow;
 mod section;
 
 pub use flow::{
-    ChannelBoundary, ChannelBoundaryConfig, ChannelBoundaryTrace, ChannelCellResult, ChannelConfig,
-    ChannelError, ChannelForcingInterval, ChannelFrictionGeometryDiagnostics, ChannelGeometry,
-    ChannelInitialState, ChannelIntervalSnapshotData, ChannelLateralBinding,
-    ChannelLateralDirection, ChannelLateralInput, ChannelLateralLedger, ChannelLateralReceipt,
-    ChannelLateralStateData, ChannelReach, ChannelReachDefinition, ChannelReservoirTrace,
-    ChannelRiemannDiagnostics, ChannelSnapshot, ChannelSnapshotData, ChannelStep,
-    ChannelStepDiagnostics, ChannelSurveyedConfig, ChannelTensorBoundary,
-    ChannelTensorForcingInterval, ChannelTensorLateralInput, ChannelTensorWaterAmount,
-    ChannelTriangularReconstruction, ChannelWaterLedger, RectangularChannelCell,
-    SurveyedChannelCell, TriangularChannelCell,
+    CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelBoundary, ChannelBoundaryConfig,
+    ChannelBoundaryTrace, ChannelCellResult, ChannelConfig, ChannelError, ChannelForcingInterval,
+    ChannelFrictionGeometryDiagnostics, ChannelGeometry, ChannelInitialState,
+    ChannelIntervalSnapshotData, ChannelLateralBinding, ChannelLateralDirection,
+    ChannelLateralInput, ChannelLateralLedger, ChannelLateralReceipt, ChannelLateralStateData,
+    ChannelReach, ChannelReachDefinition, ChannelReservoirTrace, ChannelRiemannDiagnostics,
+    ChannelSnapshot, ChannelSnapshotData, ChannelStep, ChannelStepDiagnostics,
+    ChannelSurveyedConfig, ChannelTensorBoundary, ChannelTensorForcingInterval,
+    ChannelTensorLateralInput, ChannelTensorWaterAmount, ChannelTriangularReconstruction,
+    ChannelWaterLedger, RectangularChannelCell, SurveyedChannelCell, TriangularChannelCell,
 };
 pub use section::{
     CrossSectionBatch, CrossSectionDefinition, CrossSectionError, CrossSectionPoint,

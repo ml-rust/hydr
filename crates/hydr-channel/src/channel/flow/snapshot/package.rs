@@ -10,9 +10,18 @@ use numr::ops::{
 use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
+/// Schema identity of the channel snapshot package.
+pub const CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-channel-checkpoint-1";
+/// Numerical contract identity of the channel snapshot package.
+pub const CHANNEL_CONTRACT_VERSION: &str = "hydr-channel-1d-numr-cpu-1";
+
 /// Complete caller-owned continuation values. Preserve every floating-point bit when encoding.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChannelSnapshotData {
+    /// Package schema identity.
+    pub schema: String,
+    /// Numerical contract identity.
+    pub contract: String,
     /// Exact immutable geometry, identities, assumptions, and numerical controls.
     pub definition: ChannelReachDefinition,
     /// Original epoch and authoritative initial conserved state.
@@ -91,6 +100,8 @@ impl ChannelSnapshotData {
             _ => false,
         };
         interval
+            && self.schema == other.schema
+            && self.contract == other.contract
             && super::check::definition(&self.definition, &other.definition)
             && super::check::initial(&self.initial, &other.initial)
             && self.time_s.to_bits() == other.time_s.to_bits()
@@ -197,6 +208,8 @@ where
             None
         };
         Ok(ChannelSnapshotData {
+            schema: CHANNEL_SNAPSHOT_SCHEMA.into(),
+            contract: CHANNEL_CONTRACT_VERSION.into(),
             definition: (*self.context.definition).clone(),
             initial: self.context.original_initial.clone(),
             time_s: self.accepted.time,

@@ -56,7 +56,10 @@ pub use output::{
     ChannelLateralReceipt, ChannelLateralStateData, ChannelRiemannDiagnostics,
     ChannelStepDiagnostics, ChannelWaterLedger,
 };
-pub use snapshot::{ChannelIntervalSnapshotData, ChannelSnapshot, ChannelSnapshotData};
+pub use snapshot::{
+    CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelIntervalSnapshotData,
+    ChannelSnapshot, ChannelSnapshotData,
+};
 
 pub use forcing::{
     ChannelTensorBoundary, ChannelTensorForcingInterval, ChannelTensorLateralInput,

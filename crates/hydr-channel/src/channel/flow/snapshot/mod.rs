@@ -7,4 +7,7 @@ mod restore;
 #[cfg(test)]
 mod tests;
 
-pub use package::{ChannelIntervalSnapshotData, ChannelSnapshot, ChannelSnapshotData};
+pub use package::{
+    CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelIntervalSnapshotData,
+    ChannelSnapshot, ChannelSnapshotData,
+};

@@ -10,6 +10,9 @@ use hydr::channel::{
 };
 use hydr::forcing::WaterAmount;
 
+#[path = "channel_restart/identity.rs"]
+mod identity;
+
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 fn reach() -> Result<ChannelReach<runtime::Runtime>, Box<dyn std::error::Error>> {

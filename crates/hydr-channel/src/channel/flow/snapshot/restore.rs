@@ -1,8 +1,11 @@
 use super::check::{self, require};
-use super::{ChannelSnapshot, ChannelSnapshotData};
+use super::{
+    CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelSnapshot, ChannelSnapshotData,
+};
 use crate::channel::flow::{
     ChannelError, ChannelInitialState, ChannelReach, conserved_point::check_parts,
 };
+use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
@@ -69,6 +72,14 @@ where
             + CertifiedMappedBisectionAlgorithms<R>
             + CertifiedUpperBracketAlgorithms<R>,
     {
+        package_identity(
+            "channel",
+            &data.schema,
+            CHANNEL_SNAPSHOT_SCHEMA,
+            &data.contract,
+            CHANNEL_CONTRACT_VERSION,
+        )
+        .map_err(ChannelError::input)?;
         require(
             check::definition(self.definition(), &data.definition)
                 && check::initial(&self.context.original_initial, &data.initial),
