@@ -247,13 +247,7 @@ where
             let reach = &self.reaches[index];
             let bound = &operands.forcing.reaches[index];
             let forcing = reach
-                .bind_coupling_tensor(
-                    start,
-                    end,
-                    Some(&bound.left),
-                    Some(&bound.right),
-                    &bound.lateral,
-                )
+                .bind_coupling_reserved(&operands.reservations[index], end, &bound.lateral)
                 .map_err(|source| SurfaceChannelError::Channel {
                     reach_id: reach_ids[index].to_string(),
                     source,

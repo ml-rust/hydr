@@ -5,6 +5,7 @@ use super::{
     ChannelTensorLateralInput,
     conserved_update::{exact, expanded, magnitude, transfer},
     forcing::{BoundChannelForcing, BoundLateralInputs},
+    interval_start::ReservedStart,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -78,6 +79,8 @@ pub struct ChannelCouplingForcing<R: Runtime<DType = DType>> {
     pub(super) left: Option<ChannelTensorBoundary<R>>,
     pub(super) right: Option<ChannelTensorBoundary<R>>,
     pub(super) lateral: BoundLateralInputs<R>,
+    /// Accepted-start operands from a reservation. `None` calculates them in the trial.
+    pub(super) reserved: Option<Arc<ReservedStart<R>>>,
 }
 
 /// Actual coordinator-owned midpoint reservoir operands. Neither operand is projected.
@@ -323,7 +326,7 @@ where
         )
     }
 
-    fn bind_coupling_owned(
+    pub(super) fn bind_coupling_owned(
         &self,
         start_s: f64,
         end_s: f64,
@@ -351,6 +354,7 @@ where
                 .context
                 .lateral
                 .bind_lateral_owned(&self.context.client, lateral)?,
+            reserved: None,
         })
     }
 }
@@ -409,7 +413,7 @@ where
             right,
             lateral: forcing.lateral.clone(),
         };
-        match self.step_bound_policy(requested_end_s, &bound, true) {
+        match self.step_bound_policy(requested_end_s, &bound, true, forcing.reserved.as_deref()) {
             Ok(step) => Ok(ChannelCouplingTrial::Accepted(Box::new(step.next))),
             Err(ChannelError::RecomputeInterval {
                 suggested_end_s,

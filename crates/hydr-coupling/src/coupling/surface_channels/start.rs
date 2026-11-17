@@ -5,6 +5,7 @@ use super::context::{Context, Ops};
 use super::forcing::BoundForcing;
 use crate::channel::{ChannelReach, ChannelTensorLateralInput, ChannelTensorWaterAmount};
 use crate::solver::Solver;
+use hydr_channel::internal::ChannelCouplingReservation;
 use hydr_structures::internal::TensorStructureResult;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, IndexingOps, ShapeOps};
@@ -28,6 +29,10 @@ pub(super) struct Start<R: Runtime<DType = DType>> {
     pub channel_velocity: [Tensor<R>; 2],
     /// Smallest accepted-start CFL or face depletion limit over every reach, in seconds.
     pub channel_limit_s: f64,
+    /// Accepted-start reservation of every reach in setup order.
+    ///
+    /// Every candidate binds through it, so each reach calculates its start fluxes once per trial.
+    pub reservations: Vec<ChannelCouplingReservation<R>>,
     pub forcing: BoundForcing<R>,
 }
 
@@ -106,6 +111,8 @@ where
         let mut donors = Vec::with_capacity(self.linked.len());
         let mut outgoing = Vec::with_capacity(self.linked.len());
         let mut velocities = Vec::with_capacity(self.linked.len());
+        let mut reserved: Vec<Option<ChannelCouplingReservation<R>>> =
+            (0..reaches.len()).map(|_| None).collect();
         let channel = |reach: usize| {
             move |source| SurfaceChannelError::Channel {
                 reach_id: reach_ids[reach].to_string(),
@@ -135,7 +142,14 @@ where
                 outgoing.push(c.index_select(&reservation.outgoing_rate_m3_per_s, 0, index)?);
                 velocities.push(c.index_select(&reservation.velocity_m_per_s, 0, index)?);
             }
+            reserved[reach] = Some(reservation);
         }
+        let reservations = reserved
+            .into_iter()
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| {
+                SurfaceChannelError::Numerical("a reach lacks its reservation".into())
+            })?;
         let linked: Vec<&ChannelReach<R>> = self.linked.iter().map(|r| &reaches[r.reach]).collect();
         let (stage, wet) = self.stages(surface, &linked, reach_ids)?;
         let surface_zero = Tensor::<R>::zeros(&[self.surface_count], DType::F64, c.device())?;
@@ -157,6 +171,7 @@ where
             initial,
             channel_velocity,
             channel_limit_s,
+            reservations,
             forcing,
         })
     }

@@ -2,8 +2,8 @@ use super::{
     ChannelError, ChannelForcingInterval, ChannelReach, ChannelStep, ChannelStepDiagnostics,
     ChannelTensorForcingInterval, accounting::Impulses, boundary::assembly::is_scalar,
     conserved_point::ConservedPoint, engine::Accepted, forcing::BoundChannelForcing,
-    interval::IntervalControl, interval_start::IntervalStart, receipt::LastInterval,
-    surveyed_residuals::ExpandedImpulses,
+    interval::IntervalControl, interval_start::IntervalStart, interval_start::ReservedStart,
+    receipt::LastInterval, surveyed_residuals::ExpandedImpulses,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -80,14 +80,16 @@ where
         requested_end_s: f64,
         forcing: &BoundChannelForcing<R>,
     ) -> Result<ChannelStep<R>, ChannelError> {
-        self.step_bound_policy(requested_end_s, forcing, false)
+        self.step_bound_policy(requested_end_s, forcing, false, None)
     }
 
+    /// Steps with `reserved` accepted-start operands when they belong to this reach.
     pub(super) fn step_bound_policy(
         &self,
         requested_end_s: f64,
         forcing: &BoundChannelForcing<R>,
         exact_endpoint: bool,
+        reserved: Option<&ReservedStart<R>>,
     ) -> Result<ChannelStep<R>, ChannelError> {
         if !Arc::ptr_eq(&self.context.definition, &forcing.definition)
             && !self.definition().same_bits(&forcing.definition)
@@ -133,18 +135,16 @@ where
         let mut dt = endpoint - self.time();
         let mut reason = String::new();
         // These depend only on the accepted state and the start forcing.
+        let start =
+            context.select_start(reserved, &self.accepted, &forcing.left, &forcing.right)?;
         let IntervalStart {
             donor,
             fields,
             flux,
             outgoing,
             start_cfl,
-        } = context.interval_start(
-            &self.accepted.volume,
-            &self.accepted.momentum,
-            &forcing.left,
-            &forcing.right,
-        )?;
+        } = &*start;
+        let start_cfl = *start_cfl;
         for retries in 0..=config.max_retries {
             let end = if retries == 0 {
                 endpoint
@@ -163,14 +163,14 @@ where
                 c,
                 &forcing.lateral,
                 &self.accepted.lateral,
-                &donor,
+                donor,
                 &fields.velocity,
                 dt,
             )?;
             let reservation = if prepared.has_nonzero_values {
                 Some(context.combined_depletion_limit(
-                    &donor,
-                    &outgoing,
+                    donor,
+                    outgoing,
                     &prepared.withdrawal_volume,
                     &prepared.withdrawal_volume_bound,
                     dt,
@@ -181,7 +181,7 @@ where
             let (depletion_limit, donor_admitted) = if let Some(reservation) = &reservation {
                 (reservation.limit_s, reservation.admitted)
             } else {
-                let limit = context.face_depletion_limit(&donor, &outgoing)?;
+                let limit = context.face_depletion_limit(donor, outgoing)?;
                 (limit, dt <= limit)
             };
             let limit = start_cfl.min(depletion_limit);
@@ -192,7 +192,7 @@ where
                 dt = control.shorten(dt, 0.95 * limit, retries, reason.clone())?;
                 continue;
             }
-            let transport = context.integrate_transport(&flux, dt)?;
+            let transport = context.integrate_transport(flux, dt)?;
             if let Some(reservation) = &reservation
                 && !context.actual_outgoing_admitted(
                     &reservation.remaining_lower,
@@ -440,9 +440,9 @@ where
                 forcing: forcing.clone(),
                 requested_end: requested_end_s,
                 scalar,
-                riemann: flux.riemann,
+                riemann: flux.riemann.clone(),
                 friction_geometry,
-                boundary_traces: flux.boundary_traces,
+                boundary_traces: flux.boundary_traces.clone(),
                 face_volume: transport.face_volume,
                 face_volume_low: transport.face_volume_low,
                 face_momentum: transport.face_momentum,

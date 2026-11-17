@@ -135,18 +135,18 @@ The common end is the smallest of the requested end, the start plus `maximum_ste
 
 ### What one attempt calculates
 
-1. Bind caller forcing and reserve channel donor water from the accepted start.
+1. Bind caller forcing and reserve channel donor water from the accepted start. Each reach calculates its accepted-start face fluxes once here. Every evaluation reuses them.
 2. Prepare the surface transport. Reject a duration above the surface or channel step limit.
 3. Iterate end stages and signed link volumes from the accepted state. Each evaluation:
    - Calculates midpoint heads and weir volumes.
    - Applies the donor limit.
    - Completes the surface with the summed volume of each linked cell.
    - Advances each linked reach with each link's volume on its synthesized bindings.
-4. Accept the iterate when both budgets pass and the support and regime flags repeat exactly.
+4. Accept the iterate when both budgets pass and the support and regime flags repeat exactly. The evaluation of the accepted iterate is the candidate.
 5. Reject heads that cross beyond the head budget over the interval.
 6. Check pairing and the composite water balance.
 
-The iteration is a plain fixed-point (Picard) update without history. Stiff links can stall it.
+The iteration is a plain fixed-point (Picard) update without history. Stiff links can stall it. An iterate that repeats the iterate two updates earlier, bit for bit, starts a cycle that never converges. The attempt then rejects at once with the iteration-exhaustion rejection.
 
 ### Recalculation
 

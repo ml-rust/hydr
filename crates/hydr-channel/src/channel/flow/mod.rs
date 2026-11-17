@@ -15,6 +15,7 @@ mod conserved_update;
 mod context;
 pub(crate) mod coupling;
 pub(crate) mod coupling_reservation;
+mod coupling_reserved;
 mod definition;
 mod engine;
 mod error;

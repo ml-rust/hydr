@@ -2,7 +2,7 @@
 
 use super::{
     ChannelError, ChannelInitialState, ChannelReach, ChannelReachDefinition, context::Context,
-    coupling::ChannelCouplingForcing,
+    coupling::ChannelCouplingForcing, interval_start::ReservedStart,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -30,6 +30,8 @@ pub struct ChannelCouplingReservation<R: Runtime<DType = DType>> {
     pub start_cfl_s: f64,
     /// Longest span whose face outflow alone exhausts no donor, in seconds.
     pub face_depletion_limit_s: f64,
+    /// Accepted-start operands that [`ChannelReach::bind_coupling_reserved`] forcing reuses.
+    pub(super) reserved: Arc<ReservedStart<R>>,
 }
 
 impl<R: Runtime<DType = DType>> ChannelReach<R>
@@ -117,11 +119,17 @@ where
             .context
             .face_depletion_limit(&start.donor, &start.outgoing)?;
         Ok(ChannelCouplingReservation {
-            donor_volume_m3: start.donor,
-            outgoing_rate_m3_per_s: start.outgoing,
-            velocity_m_per_s: start.fields.velocity,
+            donor_volume_m3: start.donor.clone(),
+            outgoing_rate_m3_per_s: start.outgoing.clone(),
+            velocity_m_per_s: start.fields.velocity.clone(),
             start_cfl_s: start.start_cfl,
             face_depletion_limit_s,
+            reserved: Arc::new(ReservedStart::new(
+                start,
+                &self.accepted,
+                left.clone(),
+                right.clone(),
+            )),
         })
     }
 }
@@ -320,6 +328,48 @@ mod tests {
                 .to_string()
                 .contains("Connected pool endpoints are unsupported")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn reserved_trial_matches_unreserved_bits() -> TestResult {
+        let reach = ChannelReach::<CpuRuntime>::new_coordinated(
+            client(),
+            definition(vec![exchange_binding()]),
+            initial(),
+        )?;
+        let wall = ChannelBoundary::Wall;
+        let withdrawal = ChannelLateralInput::Withdrawal {
+            boundary_id: exchange_binding().boundary_id,
+            amount: WaterAmount::IntervalVolume { volume_m3: 0.5 },
+        };
+        let end = 0.05;
+        let plain = reach.bind_coupling_host(0.0, end, Some(&wall), Some(&wall), &[withdrawal])?;
+        let reservation = reach.coupling_reservation(&plain)?;
+        let reserved = reach.bind_coupling_reserved(&reservation, end, &plain.lateral.original)?;
+        // Debug text shows every bit of finite values.
+        let bits = |trial| -> Result<String, Box<dyn std::error::Error>> {
+            match trial {
+                ChannelCouplingTrial::<CpuRuntime>::Accepted(next) => {
+                    Ok(format!("{:?} {:?}", next.state()?, next.snapshot_data()?))
+                }
+                ChannelCouplingTrial::Shorter { reason, .. } => Err(reason.into()),
+            }
+        };
+        assert_eq!(
+            bits(reach.trial_coupled(end, &reserved, None, None)?)?,
+            bits(reach.trial_coupled(end, &plain, None, None)?)?
+        );
+        let other = ChannelReach::<CpuRuntime>::new_coordinated(
+            client(),
+            definition(vec![exchange_binding()]),
+            initial(),
+        )?;
+        let error = other
+            .bind_coupling_reserved(&reservation, end, &[])
+            .err()
+            .ok_or("a reservation from another reach must reject")?;
+        assert!(error.to_string().contains("another accepted state"));
         Ok(())
     }
 

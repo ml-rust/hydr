@@ -6,6 +6,8 @@ mod definition;
 mod donors;
 #[path = "surface_channels/fixture.rs"]
 mod fixture;
+#[path = "surface_channels/frozen.rs"]
+mod frozen;
 #[path = "surface_channels/identity.rs"]
 mod identity;
 #[path = "surface_channels/lifecycle.rs"]

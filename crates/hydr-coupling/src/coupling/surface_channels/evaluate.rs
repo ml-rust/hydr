@@ -162,13 +162,7 @@ where
                 source,
             };
             let forcing = reach
-                .bind_coupling_tensor(
-                    start.time,
-                    attempt.end,
-                    Some(&bound.left),
-                    Some(&bound.right),
-                    &inputs,
-                )
+                .bind_coupling_reserved(&start.reservations[entry.reach], attempt.end, &inputs)
                 .map_err(channel)?;
             linked.push(advanced(
                 reach.trial_coupled(attempt.end, &forcing, None, None),
