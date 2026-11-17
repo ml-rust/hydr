@@ -15,7 +15,7 @@
 #[doc(inline)]
 pub use hydr_core::{error, forcing, grid, model};
 
-use hydr_core::{contract, numerics, tensor};
+use hydr_core::numerics;
 
 #[doc(inline)]
 pub use hydr_channel::channel;
@@ -25,7 +25,8 @@ pub use hydr_runoff::runoff;
 #[doc(inline)]
 pub use hydr_soil::soil;
 
-pub mod solver;
+#[doc(inline)]
+pub use hydr_solver::solver;
 #[doc(inline)]
 pub use hydr_storage::storage;
 

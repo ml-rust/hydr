@@ -1,0 +1,23 @@
+[package]
+name = "hydr-solver"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Shallow-water solver for the hydr simulation crates"
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+cuda = ["numr/cuda", "solvr/cuda", "hydr-core/cuda", "hydr-soil/cuda"]
+wgpu = ["numr/wgpu", "solvr/wgpu", "hydr-core/wgpu", "hydr-soil/wgpu"]
+
+[dependencies]
+hydr-core = { workspace = true }
+hydr-soil = { workspace = true }
+numr = { workspace = true }
+solvr = { workspace = true }
+sha2 = { workspace = true }
+
+[lints]
+workspace = true

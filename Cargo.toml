@@ -19,6 +19,7 @@ hydr-channel = { path = "crates/hydr-channel", version = "=0.1.0" }
 hydr-core = { path = "crates/hydr-core", version = "=0.1.0" }
 hydr-runoff = { path = "crates/hydr-runoff", version = "=0.1.0" }
 hydr-soil = { path = "crates/hydr-soil", version = "=0.1.0" }
+hydr-solver = { path = "crates/hydr-solver", version = "=0.1.0" }
 hydr-storage = { path = "crates/hydr-storage", version = "=0.1.0" }
 hydr-structures = { path = "crates/hydr-structures", version = "=0.1.0" }
 
@@ -46,19 +47,19 @@ publish.workspace = true
 exclude = [".agents/", "resource/", ".github/", "crates/"]
 
 [features]
-cuda = ["numr/cuda", "solvr/cuda", "hydr-channel/cuda", "hydr-core/cuda", "hydr-runoff/cuda", "hydr-soil/cuda", "hydr-storage/cuda", "hydr-structures/cuda"]
-wgpu = ["numr/wgpu", "solvr/wgpu", "hydr-channel/wgpu", "hydr-core/wgpu", "hydr-runoff/wgpu", "hydr-soil/wgpu", "hydr-storage/wgpu", "hydr-structures/wgpu"]
+cuda = ["numr/cuda", "solvr/cuda", "hydr-channel/cuda", "hydr-core/cuda", "hydr-runoff/cuda", "hydr-soil/cuda", "hydr-solver/cuda", "hydr-storage/cuda", "hydr-structures/cuda"]
+wgpu = ["numr/wgpu", "solvr/wgpu", "hydr-channel/wgpu", "hydr-core/wgpu", "hydr-runoff/wgpu", "hydr-soil/wgpu", "hydr-solver/wgpu", "hydr-storage/wgpu", "hydr-structures/wgpu"]
 
 [dependencies]
 hydr-channel = { workspace = true }
 hydr-core = { workspace = true }
 hydr-runoff = { workspace = true }
 hydr-soil = { workspace = true }
+hydr-solver = { workspace = true }
 hydr-storage = { workspace = true }
 hydr-structures = { workspace = true }
 numr = { workspace = true }
 solvr = { workspace = true }
-sha2 = { workspace = true }
 
 [lints]
 workspace = true
