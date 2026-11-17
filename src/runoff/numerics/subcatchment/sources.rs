@@ -12,6 +12,7 @@ use super::bridge::Bridge;
 use super::step::TensorSubcatchmentSoilStep;
 use super::transfer::Merged;
 use super::{bounds, bridge, transfer};
+use crate::numerics::outward::OutwardError;
 use crate::runoff::ReservoirError;
 use crate::runoff::numerics::reservoir::drainage;
 use crate::runoff::tensor::subcatchment::TensorSubareaGroup;
@@ -174,15 +175,11 @@ where
         .map_err(|error| {
             let index = error.cell();
             let mapped = match error {
-                crate::soil::SoilError::InvalidInput { context, .. } => {
-                    ReservoirError::input(context)
-                }
-                crate::soil::SoilError::Numerical { context, .. } => {
-                    ReservoirError::numerical(context)
-                }
-                crate::soil::SoilError::Runtime { context, .. } => ReservoirError::Runtime {
+                OutwardError::Input { context, .. } => ReservoirError::input(context),
+                OutwardError::Numerical { context, .. } => ReservoirError::numerical(context),
+                OutwardError::Runtime(error) => ReservoirError::Runtime {
                     element: None,
-                    context,
+                    context: error.to_string(),
                 },
             };
             if let Some(index) = index {

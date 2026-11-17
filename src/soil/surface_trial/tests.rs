@@ -116,7 +116,7 @@ fn negative_crossing_time_uses_predicate_envelope() -> Result<(), SoilError> {
     let available = trace.raw_availability_rate.item::<f64>()? * dt;
     let excess = raw.native_depth.item::<f64>()? - available;
     assert!(excess > 0.0);
-    assert!(super::super::admission::upward_add(excess, 0.0)? <= bound.item::<f64>()?);
+    assert!(crate::numerics::outward::upward_add(excess, 0.0)? <= bound.item::<f64>()?);
     let admitted = surface(&batch, dt, 1.5 * ks * METRES_PER_FOOT, 0.0)?;
     assert!(admitted.adjustment_depth.item::<f64>()? > 0.0);
     Ok(())

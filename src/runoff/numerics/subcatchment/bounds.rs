@@ -8,10 +8,10 @@ use numr::ops::{
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
+use crate::numerics::outward;
 use crate::numerics::rounding::rounding_with_client;
 use crate::runoff::ReservoirError;
 use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
-use crate::soil::admission;
 
 pub(crate) fn check_nonnegative<R>(
     ctx: &TensorReservoirContext<R>,
@@ -120,7 +120,7 @@ where
 
 /// Nonnegative independent uncertainty charges, with exact zero identity.
 pub(crate) fn add_charge(current: f64, step: f64) -> Result<f64, ReservoirError> {
-    admission::add_adjustment_charge(current, step)
+    outward::add_adjustment_charge(current, step)
         .map_err(|e| ReservoirError::numerical(e.to_string()))
 }
 
@@ -137,7 +137,7 @@ fn nonnegative(value: f64, name: &str) -> Result<f64, ReservoirError> {
 fn down(value: f64) -> Result<f64, ReservoirError> {
     nonnegative(value, "downward arithmetic intermediate")?;
     let bound =
-        admission::rounding_bound(value).map_err(|e| ReservoirError::numerical(e.to_string()))?;
+        outward::rounding_bound(value).map_err(|e| ReservoirError::numerical(e.to_string()))?;
     Ok((value - bound).max(0.0))
 }
 
@@ -247,7 +247,7 @@ where
 {
     check_nonnegative(ctx, values, "uncertainty charges")?;
     // Unit areas reuse the proved flat-reduction envelope without another algorithm.
-    let (_, charge) = admission::AdjustmentReduction::new(values.numel())
+    let (_, charge) = outward::AdjustmentReduction::new(values.numel())
         .and_then(|reduction| reduction.totals(&ctx.client, values, 1.0))
         .map_err(|e| ReservoirError::numerical(e.to_string()))?;
     Ok(charge)

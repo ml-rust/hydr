@@ -4,8 +4,8 @@ use super::{
     CellRainAssignment, ContributionKind, SupportError, SupportErrorKind, SupportPlanInput,
 };
 use crate::model::Domain;
+use crate::numerics::outward::{rounding_bound, upward_add};
 use crate::runoff::SubcatchmentDefinition;
-use crate::soil::admission::{rounding_bound, upward_add};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn check(
@@ -191,7 +191,7 @@ fn area(
 ) -> Result<(), SupportError> {
     let mut sum = 0.0;
     let mut bound = 0.0;
-    let arithmetic = |error: crate::soil::SoilError| {
+    let arithmetic = |error: crate::numerics::outward::OutwardError| {
         err(
             SupportErrorKind::Area,
             format!("{label}: static area arithmetic: {error}"),

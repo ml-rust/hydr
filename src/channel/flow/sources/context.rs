@@ -1,6 +1,6 @@
 use super::super::{ChannelError, ChannelLateralDirection, ChannelReachDefinition};
+use crate::numerics::outward::AdjustmentReduction;
 use crate::numerics::water_transfers::TransferTree;
-use crate::soil::admission::AdjustmentReduction;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,

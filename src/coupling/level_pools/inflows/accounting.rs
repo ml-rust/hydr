@@ -3,7 +3,7 @@
 use super::super::CoupledLevelPoolError;
 use super::context::map_error;
 use super::{InflowContext, InflowState};
-use crate::soil::admission::AdjustmentReduction;
+use crate::numerics::outward::AdjustmentReduction;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,

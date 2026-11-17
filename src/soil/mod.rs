@@ -1,6 +1,5 @@
 //! Immutable batched Modified Green–Ampt soil on the numr CPU runtime.
 
-pub(crate) mod admission;
 mod batch;
 mod continuation;
 mod error;

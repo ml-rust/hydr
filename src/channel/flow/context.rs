@@ -17,7 +17,7 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub bed: Tensor<R>,
     pub cap: Tensor<R>,
     pub manning: Tensor<R>,
-    pub charge_reduction: crate::soil::admission::AdjustmentReduction,
+    pub charge_reduction: crate::numerics::outward::AdjustmentReduction,
     pub lateral: super::sources::LateralContext<R>,
 }
 
@@ -75,7 +75,7 @@ where
         )?;
         let manning = make(definition.geometry.cells().map(|c| c.manning_n).collect())?;
         let count = definition.geometry.len();
-        let charge_reduction = crate::soil::admission::AdjustmentReduction::new(count)
+        let charge_reduction = crate::numerics::outward::AdjustmentReduction::new(count)
             .map_err(|error| ChannelError::numerical(error.to_string()))?;
         let geometry = super::geometry::TensorGeometry::new(&client, &definition, &cap, &length)?;
         let definition = Arc::new(definition);

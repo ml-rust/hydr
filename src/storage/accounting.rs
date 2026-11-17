@@ -19,7 +19,7 @@ pub(super) fn outward_add(a: f64, b: f64) -> Result<f64, LevelPoolError> {
     if b == 0.0 {
         return Ok(a);
     }
-    crate::soil::admission::upward_add(a, b).map_err(|e| LevelPoolError::numerical(e.to_string()))
+    crate::numerics::outward::upward_add(a, b).map_err(|e| LevelPoolError::numerical(e.to_string()))
 }
 
 pub(super) fn reduction_bound<R>(
@@ -55,7 +55,7 @@ where
     }
     let x = additions as f64 * f64::EPSILON;
     let b = |v: f64| {
-        crate::soil::admission::rounding_bound(v)
+        crate::numerics::outward::rounding_bound(v)
             .map_err(|e| LevelPoolError::numerical(e.to_string()))
     };
     let d0 = 1.0 - x;
@@ -72,7 +72,7 @@ where
         if *value == 0.0 {
             continue;
         }
-        let bound = crate::soil::admission::upward_mul(*value, factor)
+        let bound = crate::numerics::outward::upward_mul(*value, factor)
             .map_err(|e| LevelPoolError::numerical(e.to_string()))?;
         total = outward_add(total, bound)?;
     }

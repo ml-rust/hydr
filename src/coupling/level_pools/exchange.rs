@@ -152,7 +152,7 @@ where
     if bound == 0.0 {
         Ok(0.0)
     } else {
-        crate::soil::admission::upward_mul(bound, pool_count as f64)
+        crate::numerics::outward::upward_mul(bound, pool_count as f64)
             .map_err(|e| CoupledLevelPoolError::numerical(e.to_string()))
     }
 }

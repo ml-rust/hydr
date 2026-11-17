@@ -10,8 +10,16 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::{SubcatchmentError, SubcatchmentLedger};
+use crate::numerics::outward;
 use crate::runoff::tensor::subcatchment::TensorSubcatchmentContext;
-use crate::soil::admission::{rounding_bound, upward_add};
+
+fn rounding_bound(value: f64) -> Result<f64, SubcatchmentError> {
+    outward::rounding_bound(value).map_err(SubcatchmentError::from_outward)
+}
+
+fn upward_add(a: f64, b: f64) -> Result<f64, SubcatchmentError> {
+    outward::upward_add(a, b).map_err(SubcatchmentError::from_outward)
+}
 
 fn cumulative_count<R: Runtime<DType = DType>>(
     context: &TensorSubcatchmentContext<R>,

@@ -2,6 +2,7 @@
 
 #[cfg(test)]
 mod flux;
+pub(crate) mod outward;
 pub(crate) mod rounding;
 mod tensor_flux;
 mod tensor_hll;

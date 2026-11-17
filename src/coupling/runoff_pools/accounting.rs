@@ -51,7 +51,7 @@ where
         } else {
             charge(
                 pairing_error,
-                crate::soil::admission::rounding_bound(pairing_error)
+                crate::numerics::outward::rounding_bound(pairing_error)
                     .map_err(|e| RunoffPoolError::numerical(e.to_string()))?,
             )?
         };
@@ -194,7 +194,7 @@ fn combine(p: Parts) -> Result<RunoffPoolWaterBalance, RunoffPoolError> {
         corrected,
         residual,
     ]) {
-        let rounding = crate::soil::admission::rounding_bound(value)
+        let rounding = crate::numerics::outward::rounding_bound(value)
             .map_err(|e| RunoffPoolError::numerical(e.to_string()))?;
         bound = charge(bound, rounding)?;
     }
@@ -218,6 +218,6 @@ fn combine(p: Parts) -> Result<RunoffPoolWaterBalance, RunoffPoolError> {
     })
 }
 fn charge(a: f64, b: f64) -> Result<f64, RunoffPoolError> {
-    crate::soil::admission::add_adjustment_charge(a, b)
+    crate::numerics::outward::add_adjustment_charge(a, b)
         .map_err(|e| RunoffPoolError::numerical(e.to_string()))
 }

@@ -1,7 +1,7 @@
 //! Shared native/SI source receipts and algebraic import admission.
 
 use super::SoilError;
-use super::admission::{rounding_bound, upward_add, upward_mul};
+use crate::numerics::outward::{OutwardError, rounding_bound, upward_add, upward_mul};
 
 /// Native soil admission evidence for one accepted source interval.
 #[derive(Clone, Debug, PartialEq)]
@@ -194,10 +194,10 @@ fn bridge_bound(dt: f64, native: [f64; 5], si: [f64; 5]) -> Result<f64, SoilErro
         rounding_bound(si_depth)?,
         upward_mul(METRES_PER_FOOT, rounding_bound(native_depth)?)?,
     ])?;
-    upward_add(input, output)
+    Ok(upward_add(input, output)?)
 }
 
-fn sum(values: &[f64]) -> Result<f64, SoilError> {
+fn sum(values: &[f64]) -> Result<f64, OutwardError> {
     values
         .iter()
         .try_fold(0.0, |total, &value| upward_add(total, value))

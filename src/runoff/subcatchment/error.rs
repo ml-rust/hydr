@@ -141,6 +141,12 @@ impl From<ReservoirError> for SubcatchmentError {
         }
     }
 }
+impl SubcatchmentError {
+    /// Outward arithmetic errors map through the soil error, keeping its text and kind.
+    pub(crate) fn from_outward(error: crate::numerics::outward::OutwardError) -> Self {
+        SoilError::from(error).into()
+    }
+}
 impl From<SoilError> for SubcatchmentError {
     fn from(error: SoilError) -> Self {
         match error {

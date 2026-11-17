@@ -198,7 +198,7 @@ where
             &impulses.transfer_underflow_bound.narrow(0, 1, count)?,
         )?;
         let charge_add = |current, step| {
-            crate::soil::admission::add_adjustment_charge(current, step)
+            crate::numerics::outward::add_adjustment_charge(current, step)
                 .map_err(|error| ChannelError::numerical(error.to_string()))
         };
         // Reported total plus the reduction error bound of summing it.

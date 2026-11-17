@@ -7,12 +7,13 @@ use numr::ops::{
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 
+use crate::numerics::outward::AdjustmentReduction;
 use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
 use crate::runoff::{
     ReservoirElement, ReservoirError, Subarea, SubcatchmentConfig, SubcatchmentDefinition,
     SubcatchmentError,
 };
-use crate::soil::{ModifiedGreenAmptParameters, SoilError, admission::AdjustmentReduction};
+use crate::soil::{ModifiedGreenAmptParameters, SoilError};
 
 #[derive(Debug)]
 pub(crate) struct TensorSubareaRoute<R: Runtime<DType = DType>> {
@@ -129,7 +130,8 @@ where
                 });
             }
         }
-        let adjustment_reduction = AdjustmentReduction::new(slots.len())?;
+        let adjustment_reduction =
+            AdjustmentReduction::new(slots.len()).map_err(SubcatchmentError::from_outward)?;
         Ok(Some(Self {
             area_bound: reservoir.tensor(&area_bound)?,
             route_fraction: reservoir.tensor(&fractions)?,

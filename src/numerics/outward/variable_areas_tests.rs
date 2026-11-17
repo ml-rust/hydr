@@ -3,6 +3,7 @@
 use numr::runtime::cpu::CpuRuntime;
 
 use super::*;
+use crate::numerics::outward::add_adjustment_charge;
 use numr::runtime::cpu::{CpuClient, CpuDevice, ParallelismConfig};
 
 fn setup() -> (CpuDevice, CpuClient) {
@@ -15,7 +16,7 @@ fn setup() -> (CpuDevice, CpuClient) {
 fn tensor(
     device: &CpuDevice,
     values: &[f64],
-) -> Result<numr::tensor::Tensor<CpuRuntime>, SoilError> {
+) -> Result<numr::tensor::Tensor<CpuRuntime>, OutwardError> {
     Ok(numr::tensor::Tensor::<CpuRuntime>::from_slice(
         values,
         &[values.len()],
@@ -24,7 +25,7 @@ fn tensor(
 }
 
 #[test]
-fn equal_areas_match_scalar_bits_at_simd_and_tail_lengths() -> Result<(), SoilError> {
+fn equal_areas_match_scalar_bits_at_simd_and_tail_lengths() -> Result<(), OutwardError> {
     let (device, client) = setup();
     for count in [1, 31, 32, 33, 64, 65] {
         let values: Vec<_> = (0..count)
@@ -50,7 +51,7 @@ fn equal_areas_match_scalar_bits_at_simd_and_tail_lengths() -> Result<(), SoilEr
 }
 
 #[test]
-fn unequal_power_of_two_products_have_known_reported_sum() -> Result<(), SoilError> {
+fn unequal_power_of_two_products_have_known_reported_sum() -> Result<(), OutwardError> {
     let (device, client) = setup();
     let depths = tensor(&device, &[1.0, 2.0, 4.0, 8.0])?;
     let areas = tensor(&device, &[8.0, 4.0, 2.0, 1.0])?;
@@ -64,7 +65,7 @@ fn unequal_power_of_two_products_have_known_reported_sum() -> Result<(), SoilErr
 }
 
 #[test]
-fn empty_and_zero_corrections_preserve_zero_charge() -> Result<(), SoilError> {
+fn empty_and_zero_corrections_preserve_zero_charge() -> Result<(), OutwardError> {
     let (device, client) = setup();
     let empty = tensor(&device, &[])?;
     let reduction = AdjustmentReduction::new(0)?;
@@ -86,21 +87,21 @@ fn empty_and_zero_corrections_preserve_zero_charge() -> Result<(), SoilError> {
 }
 
 #[test]
-fn positive_product_underflow_identifies_the_rejected_lane() -> Result<(), SoilError> {
+fn positive_product_underflow_identifies_the_rejected_lane() -> Result<(), OutwardError> {
     let (device, client) = setup();
     let depths = tensor(&device, &[1.0, f64::from_bits(1), 0.0])?;
     let areas = tensor(&device, &[1.0, 0.5, 1.0])?;
     let result = AdjustmentReduction::new(3)?.totals_with_areas(&client, &depths, &areas);
     let error = result
         .err()
-        .ok_or_else(|| SoilError::numerical("underflow unexpectedly returned totals"))?;
+        .ok_or_else(|| OutwardError::numerical("underflow unexpectedly returned totals"))?;
     assert_eq!(error.cell(), Some(1));
     assert!(error.is_retryable());
     Ok(())
 }
 
 #[test]
-fn overflowing_product_and_outward_bound_reject_with_lane_identity() -> Result<(), SoilError> {
+fn overflowing_product_and_outward_bound_reject_with_lane_identity() -> Result<(), OutwardError> {
     let (device, client) = setup();
     let depths = tensor(&device, &[0.0, f64::MAX])?;
     for area in [1.0, 2.0] {
@@ -108,7 +109,7 @@ fn overflowing_product_and_outward_bound_reject_with_lane_identity() -> Result<(
         let error = AdjustmentReduction::new(2)?
             .totals_with_areas(&client, &depths, &areas)
             .err()
-            .ok_or_else(|| SoilError::numerical("overflow unexpectedly returned totals"))?;
+            .ok_or_else(|| OutwardError::numerical("overflow unexpectedly returned totals"))?;
         assert_eq!(error.cell(), Some(1));
         assert!(error.is_retryable());
     }
@@ -116,7 +117,7 @@ fn overflowing_product_and_outward_bound_reject_with_lane_identity() -> Result<(
 }
 
 #[test]
-fn invalid_area_values_are_typed_static_lane_errors() -> Result<(), SoilError> {
+fn invalid_area_values_are_typed_static_lane_errors() -> Result<(), OutwardError> {
     let (device, client) = setup();
     let depths = tensor(&device, &[0.0, 0.0, 0.0])?;
     for area in [0.0, -0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
@@ -124,7 +125,7 @@ fn invalid_area_values_are_typed_static_lane_errors() -> Result<(), SoilError> {
         let error = AdjustmentReduction::new(3)?
             .totals_with_areas(&client, &depths, &areas)
             .err()
-            .ok_or_else(|| SoilError::numerical("invalid area unexpectedly returned totals"))?;
+            .ok_or_else(|| OutwardError::numerical("invalid area unexpectedly returned totals"))?;
         assert_eq!(error.cell(), Some(2));
         assert!(!error.is_retryable());
     }
@@ -132,7 +133,7 @@ fn invalid_area_values_are_typed_static_lane_errors() -> Result<(), SoilError> {
 }
 
 #[test]
-fn mismatched_flat_shape_and_dtype_reject_without_lane_guessing() -> Result<(), SoilError> {
+fn mismatched_flat_shape_and_dtype_reject_without_lane_guessing() -> Result<(), OutwardError> {
     let (device, client) = setup();
     let depths = tensor(&device, &[1.0, 2.0])?;
     let correct = tensor(&device, &[1.0, 1.0])?;
@@ -144,7 +145,9 @@ fn mismatched_flat_shape_and_dtype_reject_without_lane_guessing() -> Result<(), 
         let error = AdjustmentReduction::new(2)?
             .totals_with_areas(&client, &depths, areas)
             .err()
-            .ok_or_else(|| SoilError::numerical("invalid metadata unexpectedly returned totals"))?;
+            .ok_or_else(|| {
+                OutwardError::numerical("invalid metadata unexpectedly returned totals")
+            })?;
         assert_eq!(error.cell(), None);
         assert!(!error.is_retryable());
     }

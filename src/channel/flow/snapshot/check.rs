@@ -310,7 +310,7 @@ pub(super) fn ledger_admission(
         ledger.lateral_assembly_abs_bound_m3,
         ledger.storage_selection_abs_bound_m3,
     ] {
-        charged_residual = crate::soil::admission::add_adjustment_charge(charged_residual, charge)
+        charged_residual = crate::numerics::outward::add_adjustment_charge(charged_residual, charge)
             .map_err(|error| ChannelError::input(format!(
                 "channel checkpoint charged water residual rejects: {error}. Supply an unchanged complete same-build package"
             )))?;

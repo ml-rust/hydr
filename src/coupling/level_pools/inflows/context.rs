@@ -2,7 +2,7 @@
 
 use super::super::{CoupledLevelPoolError, topology::TransferTree};
 use super::{CoupledPoolInflow, CoupledPoolInflowBinding};
-use crate::soil::admission::AdjustmentReduction;
+use crate::numerics::outward::AdjustmentReduction;
 use crate::storage::LevelPoolElement;
 use numr::dtype::DType;
 use numr::ops::{
@@ -230,7 +230,7 @@ where
     }
 }
 
-pub(super) fn map_error(error: crate::soil::SoilError) -> CoupledLevelPoolError {
+pub(super) fn map_error(error: crate::numerics::outward::OutwardError) -> CoupledLevelPoolError {
     CoupledLevelPoolError::numerical(error.to_string())
 }
 

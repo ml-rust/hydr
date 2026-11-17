@@ -1,10 +1,9 @@
 //! Constructor-only outward propagation for represented subarea support.
 
 use super::{SubcatchmentError, SubcatchmentGeometry};
-use crate::soil::SoilError;
-use crate::soil::admission::{rounding_bound, upward_add, upward_mul};
+use crate::numerics::outward::{OutwardError, rounding_bound, upward_add, upward_mul};
 
-fn product(a: f64, ea: f64, b: f64, eb: f64) -> Result<f64, SoilError> {
+fn product(a: f64, ea: f64, b: f64, eb: f64) -> Result<f64, OutwardError> {
     let inherited = upward_add(
         upward_add(upward_mul(a.abs(), eb)?, upward_mul(b.abs(), ea)?)?,
         upward_mul(ea, eb)?,
@@ -16,7 +15,7 @@ pub(super) fn area_bounds(
     g: SubcatchmentGeometry,
     areas: [f64; 3],
 ) -> Result<[f64; 3], SubcatchmentError> {
-    let derive = || -> Result<[f64; 3], SoilError> {
+    let derive = || -> Result<[f64; 3], OutwardError> {
         let ai = g.total_area_m2 * g.impervious_fraction;
         let eai = product(g.total_area_m2, 0.0, g.impervious_fraction, 0.0)?;
         let complement_zero = 1.0 - g.zero_storage_impervious_fraction;

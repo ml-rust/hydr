@@ -5,7 +5,7 @@ use super::{
     context::Context,
     mass::{InflowMass, charge},
 };
-use crate::soil::admission::AdjustmentReduction;
+use crate::numerics::outward::AdjustmentReduction;
 use crate::storage::{LevelPoolIntervalSources, LevelPoolTotals};
 use numr::dtype::DType;
 use numr::ops::{

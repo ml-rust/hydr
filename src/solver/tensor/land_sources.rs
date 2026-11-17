@@ -11,6 +11,7 @@ use solvr::optimize::roots::BatchedNewtonAlgorithms;
 use super::land::{LandTrial, TensorLand};
 use super::{TensorDomain, TensorSources, TensorState};
 use crate::contract::{EngineError, SolverConfig};
+use crate::numerics::outward::add_adjustment_charge;
 use crate::solver::SourceReceipt;
 use numr::dtype::DType;
 
@@ -87,8 +88,8 @@ where
     let adjustment = soil.adjustment.clone();
     let (adjustment_volume, adjustment_charge) =
         land.adjustment_totals(client, &adjustment, area)?;
-    let prospective = crate::soil::admission::add_adjustment_charge(charged, adjustment_charge)
-        .map_err(|error| EngineError::Soil {
+    let prospective =
+        add_adjustment_charge(charged, adjustment_charge).map_err(|error| EngineError::Soil {
             cell: error.cell(),
             retryable: error.is_retryable(),
             reason: error.to_string(),

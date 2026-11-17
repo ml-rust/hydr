@@ -84,11 +84,80 @@ impl From<numr::error::Error> for SoilError {
         }
     }
 }
+impl From<crate::numerics::outward::OutwardError> for SoilError {
+    fn from(error: crate::numerics::outward::OutwardError) -> Self {
+        use crate::numerics::outward::OutwardError;
+        match error {
+            OutwardError::Input { context, cell } => Self::InvalidInput { context, cell },
+            OutwardError::Numerical { context, cell } => Self::Numerical { context, cell },
+            OutwardError::Runtime(error) => Self::from(error),
+        }
+    }
+}
 impl From<solvr::optimize::OptimizeError> for SoilError {
     fn from(error: solvr::optimize::OptimizeError) -> Self {
         Self::Runtime {
             context: error.to_string(),
             cell: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::numerics::outward::OutwardError;
+    use numr::runtime::cpu::{CpuDevice, CpuRuntime};
+    use numr::tensor::Tensor;
+
+    #[test]
+    fn outward_errors_keep_text_kind_and_cell() -> Result<(), Box<dyn std::error::Error>> {
+        let cases = [
+            (
+                OutwardError::Input {
+                    context: "bad count".into(),
+                    cell: Some(3),
+                },
+                "outward-rounding input: bad count",
+                "soil input: bad count",
+            ),
+            (
+                OutwardError::Numerical {
+                    context: "overflow".into(),
+                    cell: None,
+                },
+                "outward-rounding arithmetic: overflow",
+                "soil arithmetic: overflow",
+            ),
+        ];
+        for (error, neutral, soil_text) in cases {
+            assert_eq!(error.to_string(), neutral);
+            let (retryable, cell) = (error.is_retryable(), error.cell());
+            let soil = SoilError::from(error);
+            assert_eq!(soil.to_string(), soil_text);
+            assert_eq!(soil.is_retryable(), retryable);
+            assert_eq!(soil.cell(), cell);
+        }
+        let Err(runtime) = Tensor::<CpuRuntime>::from_slice(&[1.0f64], &[2], &CpuDevice::new())
+        else {
+            return Err("mismatched tensor shape unexpectedly succeeded".into());
+        };
+        let context = runtime.to_string();
+        let outward = OutwardError::from(runtime);
+        assert_eq!(
+            outward.to_string(),
+            format!("outward-rounding runtime: {context}")
+        );
+        assert!(!outward.is_retryable());
+        let soil = SoilError::from(outward);
+        assert_eq!(soil.to_string(), format!("soil runtime: {context}"));
+        assert_eq!(
+            soil,
+            SoilError::Runtime {
+                context,
+                cell: None
+            }
+        );
+        Ok(())
     }
 }

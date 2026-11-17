@@ -11,6 +11,7 @@ use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::TensorDomain;
 use crate::contract::EngineError;
+use crate::numerics::outward::OutwardError;
 use crate::soil::{
     LandCell, LandModel, ModifiedGreenAmptBatch, SoilCellState, SoilError, SoilState,
 };
@@ -22,7 +23,7 @@ struct Support<R: Runtime<DType = DType>> {
     land: LandModel,
     ids: Vec<usize>,
     indices: Tensor<R>,
-    adjustment: crate::soil::admission::AdjustmentReduction,
+    adjustment: crate::numerics::outward::AdjustmentReduction,
 }
 
 #[derive(Clone, Debug)]
@@ -76,8 +77,8 @@ where
             .collect::<Result<_, _>>()
             .map_err(|_| EngineError::rejected("land support", "cell ID exceeds I64 indexing"))?;
         let indices = Tensor::<R>::from_slice(&indices, &[indices.len()], client.device())?;
-        let adjustment = crate::soil::admission::AdjustmentReduction::new(land.cells().len())
-            .map_err(static_error)?;
+        let adjustment = crate::numerics::outward::AdjustmentReduction::new(land.cells().len())
+            .map_err(static_outward_error)?;
         let support = Arc::new(Support {
             land: land.clone(),
             ids,
@@ -250,6 +251,14 @@ where
 }
 
 pub(crate) fn static_error(error: SoilError) -> EngineError {
+    EngineError::Soil {
+        cell: error.cell(),
+        reason: error.to_string(),
+        retryable: false,
+    }
+}
+
+pub(crate) fn static_outward_error(error: OutwardError) -> EngineError {
     EngineError::Soil {
         cell: error.cell(),
         reason: error.to_string(),

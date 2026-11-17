@@ -148,6 +148,6 @@ where
     }
 }
 pub(super) fn charge(a: f64, b: f64) -> Result<f64, CoupledLevelPoolError> {
-    crate::soil::admission::add_adjustment_charge(a, b)
+    crate::numerics::outward::add_adjustment_charge(a, b)
         .map_err(|error| CoupledLevelPoolError::numerical(error.to_string()))
 }

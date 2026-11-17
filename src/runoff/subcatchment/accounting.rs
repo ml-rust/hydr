@@ -10,9 +10,9 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::{SubcatchmentError, SubcatchmentReceipt, SubcatchmentTransfer};
+use crate::numerics::outward::add_adjustment_charge;
 use crate::runoff::numerics::subcatchment::{TensorSubcatchmentStep, bounds};
 use crate::runoff::tensor::subcatchment::TensorSubcatchmentContext;
-use crate::soil::admission::add_adjustment_charge;
 
 /// Independent physical mass counters and separate numerical admission budgets.
 #[derive(Clone, Debug, PartialEq)]
@@ -245,7 +245,8 @@ impl SubcatchmentLedger {
             soil_water_adjustment_abs_bound_m3: add_adjustment_charge(
                 self.soil_water_adjustment_abs_bound_m3,
                 step.totals.adjustment_charge,
-            )?,
+            )
+            .map_err(SubcatchmentError::from_outward)?,
             internal_transfer_volume_m3: self.internal_transfer_volume_m3 + totals.internal,
             transfer_uncertainty_charge_m3: bounds::add_charge(
                 self.transfer_uncertainty_charge_m3,

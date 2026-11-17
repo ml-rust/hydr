@@ -10,9 +10,9 @@ fn setup() -> (CpuDevice, CpuClient) {
     (device, client)
 }
 
-fn integer_units(value: f64, unit_exponent: i32) -> Result<u128, SoilError> {
+fn integer_units(value: f64, unit_exponent: i32) -> Result<u128, OutwardError> {
     if !value.is_finite() || value < 0.0 {
-        return Err(SoilError::numerical(
+        return Err(OutwardError::numerical(
             "dyadic oracle requires finite nonnegative values",
         ));
     }
@@ -34,17 +34,17 @@ fn integer_units(value: f64, unit_exponent: i32) -> Result<u128, SoilError> {
     if shift >= 0 {
         let multiplier = 1u128
             .checked_shl(shift as u32)
-            .ok_or_else(|| SoilError::numerical("dyadic oracle shift exceeds u128"))?;
+            .ok_or_else(|| OutwardError::numerical("dyadic oracle shift exceeds u128"))?;
         significand
             .checked_mul(multiplier)
-            .ok_or_else(|| SoilError::numerical("dyadic oracle integer exceeds u128"))
+            .ok_or_else(|| OutwardError::numerical("dyadic oracle integer exceeds u128"))
     } else {
         let bits = (-shift) as u32;
         let divisor = 1u128
             .checked_shl(bits)
-            .ok_or_else(|| SoilError::numerical("dyadic oracle divisor exceeds u128"))?;
+            .ok_or_else(|| OutwardError::numerical("dyadic oracle divisor exceeds u128"))?;
         if significand % divisor != 0 {
-            return Err(SoilError::numerical(
+            return Err(OutwardError::numerical(
                 "reported sum is not an integer multiple of the oracle unit",
             ));
         }
@@ -56,7 +56,7 @@ fn check_case(
     units: &[u128],
     unit_exponent: i32,
     strided: bool,
-) -> Result<(u128, u128), SoilError> {
+) -> Result<(u128, u128), OutwardError> {
     let (device, client) = setup();
     let unit = if unit_exponent == -1074 {
         f64::from_bits(1)
@@ -65,7 +65,7 @@ fn check_case(
     };
     let exact = units.iter().try_fold(0u128, |sum, value| {
         sum.checked_add(*value)
-            .ok_or_else(|| SoilError::numerical("exact dyadic sum exceeds u128"))
+            .ok_or_else(|| OutwardError::numerical("exact dyadic sum exceeds u128"))
     })?;
     let values: Vec<_> = units.iter().map(|value| *value as f64 * unit).collect();
     for (value, expected) in values.iter().zip(units) {
@@ -96,7 +96,7 @@ fn check_case(
 }
 
 #[test]
-fn symmetric_bound_covers_both_directions_of_two_value_rounding() -> Result<(), SoilError> {
+fn symmetric_bound_covers_both_directions_of_two_value_rounding() -> Result<(), OutwardError> {
     for strided in [false, true] {
         let (reported, exact) = check_case(&[1u128 << 54, 3], -54, strided)?;
         assert!(reported > exact);
@@ -107,7 +107,7 @@ fn symmetric_bound_covers_both_directions_of_two_value_rounding() -> Result<(), 
 }
 
 #[test]
-fn long_and_strided_reductions_enclose_exact_dyadic_sums() -> Result<(), SoilError> {
+fn long_and_strided_reductions_enclose_exact_dyadic_sums() -> Result<(), OutwardError> {
     for count in [31, 32, 33, 127, 128, 129, 257, 513] {
         for seed in 0..5 {
             let mut units: Vec<_> = (0..count)
@@ -130,7 +130,7 @@ fn long_and_strided_reductions_enclose_exact_dyadic_sums() -> Result<(), SoilErr
 }
 
 #[test]
-fn subnormal_and_normal_transition_sums_keep_an_absolute_allowance() -> Result<(), SoilError> {
+fn subnormal_and_normal_transition_sums_keep_an_absolute_allowance() -> Result<(), OutwardError> {
     for count in [2, 31, 32, 33, 257] {
         for strided in [false, true] {
             check_case(&vec![1; count], -1074, strided)?;
@@ -144,7 +144,7 @@ fn subnormal_and_normal_transition_sums_keep_an_absolute_allowance() -> Result<(
 }
 
 #[test]
-fn exact_zero_and_single_values_require_no_reduction_error_charge() -> Result<(), SoilError> {
+fn exact_zero_and_single_values_require_no_reduction_error_charge() -> Result<(), OutwardError> {
     assert_eq!(AdjustmentReduction::new(0)?.unit_sum_error_bound(0.0)?, 0.0);
     assert!(
         AdjustmentReduction::new(0)?

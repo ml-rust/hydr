@@ -3,8 +3,8 @@
 use super::SnapshotData;
 use super::check::{nonnegative, rejected, require};
 use crate::contract::EngineError;
+use crate::numerics::outward::adjustment_volume_totals;
 use crate::soil::LandCell;
-use crate::soil::admission::adjustment_volume_totals;
 use crate::solver::{Solver, SourceReceipt, StepDiagnostics};
 use numr::dtype::DType;
 use numr::runtime::{Runtime, RuntimeClient};
