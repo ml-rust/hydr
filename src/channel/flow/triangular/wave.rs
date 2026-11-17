@@ -1,10 +1,6 @@
 use super::super::{
-    ChannelError, ChannelTensorBoundary,
-    admission::Fields,
-    boundary::assembly::{is_scalar, numerical_range},
-    context::Context,
-    geometry::TriangleGeometry,
-    reconstruction::CflSpeeds,
+    ChannelError, ChannelTensorBoundary, admission::Fields, boundary::assembly::numerical_range,
+    cfl_speeds::CflSpeeds, context::Context, geometry::TriangleGeometry,
 };
 use super::{
     envelope::{lower, upper},
@@ -57,12 +53,10 @@ where
         right: &ChannelTensorBoundary<R>,
     ) -> Result<CflSpeeds<R>, ChannelError> {
         let faces = self.triangular_faces(geometry, fields, left, right)?;
-        if is_scalar(left) || is_scalar(right) {
-            let frame = self.scalar_boundary_frame(
-                &self.triangular_endpoint_interior(&faces)?,
-                left,
-                right,
-            )?;
+        let frame =
+            self.scalar_boundary_frame(&self.triangular_endpoint_interior(&faces)?, left, right)?;
+        let fronts = self.triangular_fronts(geometry, &faces, frame.as_ref())?;
+        if frame.is_some() {
             let (start, len) = numerical_range(self.count(), left, right);
             let numerical = if len > 0 {
                 let (sl, sr) = self.triangular_bounds(
@@ -70,28 +64,21 @@ where
                     &narrow_face(&faces.left, start, len)?,
                     &narrow_face(&faces.right, start, len)?,
                 )?;
-                Some(
-                    self.client
-                        .maximum(&self.client.abs(&sl)?, &self.client.abs(&sr)?)?,
-                )
+                Some(self.directional_speeds(&sl, &sr)?)
             } else {
                 None
             };
             return Ok(CflSpeeds {
-                outer: self.assemble_boundary_faces(
-                    frame.as_ref(),
-                    numerical.as_ref(),
-                    frame.as_ref().map(|f| &f.traces.signal_speed_bound_m_per_s),
-                )?,
+                outer: self.assemble_face_speeds(frame.as_ref(), numerical.as_ref())?,
                 internal: faces.internal_speed,
+                fronts,
             });
         }
         let (sl, sr) = self.triangular_bounds(geometry, &faces.left, &faces.right)?;
         Ok(CflSpeeds {
-            outer: self
-                .client
-                .maximum(&self.client.abs(&sl)?, &self.client.abs(&sr)?)?,
+            outer: self.directional_speeds(&sl, &sr)?,
             internal: faces.internal_speed,
+            fronts,
         })
     }
 }

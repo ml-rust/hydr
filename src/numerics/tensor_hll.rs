@@ -9,10 +9,15 @@ use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
-/// Shared flux and signal magnitude without hydrostatic side corrections.
+/// Shared flux and signal bounds without hydrostatic side corrections.
 pub(crate) struct TensorHomogeneousFlux<R: Runtime<DType = DType>> {
     pub shared: [Tensor<R>; 3],
+    /// Signal magnitude `max(|lower|, |upper|)`.
     pub speed: Tensor<R>,
+    /// Signed lower signal bound.
+    pub lower: Tensor<R>,
+    /// Signed upper signal bound.
+    pub upper: Tensor<R>,
 }
 
 /// Calculate HLL fluxes without bed reconstruction or side-pressure corrections.
@@ -42,14 +47,14 @@ where
     Ok(result)
 }
 
-/// Calculate checked HLL signal magnitudes without calculating unused fluxes.
-pub(crate) fn homogeneous_wave_speed_tensor<R, C>(
+/// Calculate checked signed HLL signal bounds `(lower, upper)` without unused fluxes.
+pub(crate) fn homogeneous_wave_bounds_tensor<R, C>(
     client: &C,
     left: &TensorFaceState<R>,
     right: &TensorFaceState<R>,
     gravity: f64,
     config: &SolverConfig,
-) -> Result<Tensor<R>, EngineError>
+) -> Result<(Tensor<R>, Tensor<R>), EngineError>
 where
     R: Runtime<DType = DType>,
     C: RuntimeClient<R>
@@ -62,10 +67,10 @@ where
         + BatchedBisectionAlgorithms<R>,
 {
     check_inputs(client, left, right, gravity, config)?;
-    let (left_speed, right_speed) = tensor_wave::bounds(client, left, right, gravity, config)?;
-    let speed = client.maximum(&client.abs(&left_speed)?, &client.abs(&right_speed)?)?;
-    check_finite(client, &speed, "face speed")?;
-    Ok(speed)
+    let (lower, upper) = tensor_wave::bounds(client, left, right, gravity, config)?;
+    check_finite(client, &lower, "lower face speed")?;
+    check_finite(client, &upper, "upper face speed")?;
+    Ok((lower, upper))
 }
 
 pub(super) fn check_inputs<R, C>(
@@ -152,7 +157,12 @@ where
     };
     let shared = [component(0)?, component(1)?, component(2)?];
     let speed = client.maximum(&client.abs(&sl)?, &client.abs(&sr)?)?;
-    Ok(TensorHomogeneousFlux { shared, speed })
+    Ok(TensorHomogeneousFlux {
+        shared,
+        speed,
+        lower: sl,
+        upper: sr,
+    })
 }
 
 fn physical_flux<R, C>(

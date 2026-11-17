@@ -135,7 +135,11 @@ where
         // These depend only on the accepted state and the start forcing.
         let fields = context.fields(&self.accepted.volume, &self.accepted.momentum)?;
         let flux = context.flux(&fields, &forcing.left, &forcing.right)?;
-        let start_cfl = context.cfl_limit(&flux.speed, flux.internal_speed.as_ref())?;
+        let start_cfl = context.cfl_limit(
+            &flux.speed,
+            flux.internal_speed.as_ref(),
+            flux.dry_fronts.as_ref(),
+        )?;
         for retries in 0..=config.max_retries {
             let end = if retries == 0 {
                 endpoint
@@ -246,7 +250,11 @@ where
                         }
                         Err(error) => return Err(error),
                     };
-                let limit = context.cfl_limit(&speed.outer, speed.internal.as_ref())?;
+                let limit = context.cfl_limit(
+                    &speed.outer,
+                    speed.internal.as_ref(),
+                    speed.fronts.as_ref(),
+                )?;
                 if dt > limit {
                     reason = format!("prefriction candidate CFL={limit} is below duration={dt}");
                     dt = control.shorten(dt, 0.95 * limit, retries, reason.clone())?;
@@ -327,7 +335,11 @@ where
                         }
                         Err(error) => return Err(error),
                     };
-                let limit = context.cfl_limit(&speed.outer, speed.internal.as_ref())?;
+                let limit = context.cfl_limit(
+                    &speed.outer,
+                    speed.internal.as_ref(),
+                    speed.fronts.as_ref(),
+                )?;
                 if dt > limit {
                     reason =
                         format!("postfriction scalar boundary CFL={limit} is below duration={dt}");

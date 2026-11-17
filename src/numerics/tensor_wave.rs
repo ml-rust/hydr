@@ -83,6 +83,47 @@ where
     Ok((sl, sr))
 }
 
+/// Padded rarefaction-to-dry speeds `(u - 2c, u + 2c)` of each state, zero where `h = 0`.
+///
+/// `2c = 2 sqrt(g h)` is the rectangular dry-front invariant term `φ(h)`. The padding follows
+/// the face bounds: it enlarges each speed by `16 ε` of the local speed scale.
+pub(crate) fn dry_front_bounds<R, C>(
+    client: &C,
+    depth: &Tensor<R>,
+    velocity: &Tensor<R>,
+    gravity: f64,
+) -> Result<(Tensor<R>, Tensor<R>), EngineError>
+where
+    R: Runtime<DType = DType>,
+    C: RuntimeClient<R>
+        + BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + UnaryOps<R>,
+{
+    let zero = constant(depth, 0.0)?;
+    let wet = client.gt(depth, &zero)?;
+    let sound = client.mul_scalar(
+        &client.sqrt(&client.where_cond(&wet, depth, &zero)?)?,
+        gravity.sqrt(),
+    )?;
+    let front = client.mul_scalar(&sound, 2.0)?;
+    let lower = client.sub(velocity, &front)?;
+    let upper = client.add(velocity, &front)?;
+    let scale = client.maximum(
+        &client.abs(velocity)?,
+        &client.maximum(&client.abs(&lower)?, &client.abs(&upper)?)?,
+    )?;
+    let padding = client.mul_scalar(&scale, 16.0 * f64::EPSILON)?;
+    let lower = client.where_cond(&wet, &client.sub(&lower, &padding)?, &zero)?;
+    let upper = client.where_cond(&wet, &client.add(&upper, &padding)?, &zero)?;
+    check_finite(client, &lower, "lower dry-front speed")?;
+    check_finite(client, &upper, "upper dry-front speed")?;
+    Ok((lower, upper))
+}
+
 pub(crate) fn shock_speed<R, C>(
     client: &C,
     upper: &Tensor<R>,

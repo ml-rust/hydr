@@ -112,14 +112,14 @@ where
     }
     let lower = read(result.wave_speed_m_per_s().lower())?;
     let upper = read(result.wave_speed_m_per_s().upper())?;
-    let expected: Vec<u64> = lower
-        .iter()
-        .zip(&upper)
-        .map(|(l, u)| l.abs().max(u.abs()).to_bits())
-        .collect();
-    assert_eq!(bits(&flux.speed)?, expected);
+    // Each face splits its signed interval into the speeds entering its two cells.
+    let rightward: Vec<f64> = upper.iter().map(|u| u.max(0.0)).collect();
+    let leftward: Vec<f64> = lower.iter().map(|l| (-l).max(0.0)).collect();
+    assert_eq!(read(&flux.speed.rightward)?, rightward);
+    assert_eq!(read(&flux.speed.leftward)?, leftward);
     let speed = context.candidate_speed(&fields, &wall, &wall)?;
-    assert_eq!(bits(&speed.outer)?, expected);
+    assert_eq!(read(&speed.outer.rightward)?, rightward);
+    assert_eq!(read(&speed.outer.leftward)?, leftward);
     assert_eq!(riemann.surveyed_work, Some(result.work()));
     Ok(())
 }

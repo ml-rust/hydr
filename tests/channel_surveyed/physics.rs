@@ -14,8 +14,6 @@ const SPATIAL_STEP_S: f64 = 0.1;
 const TEMPORAL_CELLS: usize = 10;
 /// Mesh for the native advancement check on each runtime.
 const NATIVE_CELLS: usize = 20;
-/// Area fraction of the area scale below which a cell counts as dry.
-const WET_FRACTION: f64 = 1e-12;
 
 struct Measurement {
     errors: [f64; 2],
@@ -158,45 +156,65 @@ fn errors(case: Case, actual: &[[f64; 2]], reference: &[[f64; 4]]) -> TestResult
 
 /// Front observables of one run.
 struct Fronts {
-    /// Water in cells whose frozen 400-cell reference rows are all exactly zero, in m³.
+    /// Dry-support mismatch in m³. It sums run water where the 400-cell reference rows
+    /// are all zero, plus reference water where the run area is exactly zero.
     dry_volume: f64,
-    /// Distance from each observed front to its exact front, in metres.
+    /// Distance from each run threshold crossing to its exact crossing, in metres.
     distances: Vec<f64>,
 }
 
+/// Measures each dry front where the area crosses its frozen threshold.
+///
+/// The threshold sits inside the fan. The first-order support edge advances one cell per
+/// step, so it measures the step count, not the front. Next to the edge, first-order
+/// averages lag the exact fan, and a threshold there does not converge monotonically.
 fn fronts(case: Case, conserved: &[[f64; 2]]) -> TestResult<Fronts> {
     let count = conserved.len();
     let ratio = reference_ratio(case, count)?;
     let dx = 200.0 / count as f64;
-    let dry_volume = conserved
+    let reference = restricted_reference(case, count)?;
+    let mut dry_volume = 0.0;
+    for ((state, block), exact) in conserved
         .iter()
         .zip(case.grids[2].chunks_exact(ratio))
-        .filter(|(_, block)| block.iter().flatten().all(|&bits| bits == 0))
-        .map(|(state, _)| state[0] * dx)
-        .sum();
-    // A cell is wet above the frozen threshold. The observed front is a cell edge.
-    let threshold = f64::from_bits(case.scales[0]) * WET_FRACTION;
-    let wet: Vec<_> = conserved.iter().map(|state| state[0] > threshold).collect();
+        .zip(&reference)
+    {
+        if block.iter().flatten().all(|&bits| bits == 0) {
+            dry_volume += state[0] * dx;
+        } else if state[0] == 0.0 {
+            // The upper area bound encloses the exact reference water.
+            dry_volume += exact[1] * dx;
+        }
+    }
     let center = count / 2;
+    let midpoint = |index: usize| -100.0 + (index as f64 + 0.5) * dx;
     let mut distances = Vec::new();
     for front in case.fronts {
-        let index = match (case.classification, front.direction < 0) {
-            ("right_dry", _) => wet.iter().rposition(|&value| value).map(|index| index + 1),
-            ("left_dry", _) => wet.iter().position(|&value| value),
-            ("vacuum", true) => wet[..center]
-                .iter()
-                .rposition(|&value| value)
-                .map(|index| index + 1),
-            ("vacuum", false) => wet[center..]
-                .iter()
-                .position(|&value| value)
-                .map(|index| index + center),
+        let threshold = f64::from_bits(front.threshold);
+        // Vacuum searches the half that holds this front's water.
+        let mut range = match (case.classification, front.direction) {
+            ("right_dry", -1) | ("left_dry", 1) => 0..count,
+            ("vacuum", -1) => 0..center,
+            ("vacuum", 1) => center..count,
             _ => return Err(format!("{}: unsupported dry-front classification", case.id).into()),
+        };
+        let above = |index: &usize| conserved[*index][0] > threshold;
+        // The outermost cell above the threshold and its dry-side neighbour bracket the crossing.
+        let wet = if front.direction < 0 {
+            range.rfind(above)
+        } else {
+            range.find(above)
         }
         .ok_or_else(|| format!("{}: dry front absent", case.id))?;
-        let observed = -100.0 + index as f64 * dx;
+        let dry = wet
+            .checked_add_signed(-front.direction as isize)
+            .filter(|&index| index < count)
+            .ok_or_else(|| format!("{}: threshold crossing leaves the domain", case.id))?;
+        let (high, low) = (conserved[wet][0], conserved[dry][0]);
+        let observed =
+            midpoint(wet) - f64::from(front.direction) * (high - threshold) / (high - low) * dx;
         let distance = front
-            .position
+            .crossing
             .map(|bits| (observed - f64::from_bits(bits)).abs());
         distances.push(distance[0].max(distance[1]));
     }
@@ -206,7 +224,7 @@ fn fronts(case: Case, conserved: &[[f64; 2]]) -> TestResult<Fronts> {
     })
 }
 
-/// Requires dry-side water and every front distance to strictly decrease under refinement.
+/// Requires the dry-support mismatch and every crossing distance to strictly decrease.
 fn front_convergence(case: Case, measurements: &[Measurement]) -> TestResult {
     if case.fronts.is_empty() {
         return Ok(());
@@ -215,7 +233,7 @@ fn front_convergence(case: Case, measurements: &[Measurement]) -> TestResult {
     for measurement in measurements {
         let fronts = fronts(case, &measurement.conserved)?;
         println!(
-            "surveyed {}: cells={}, dry_volume_m3={}, front_distance_m={:?}",
+            "surveyed {}: cells={}, dry_volume_m3={}, crossing_distance_m={:?}",
             case.id,
             measurement.conserved.len(),
             fronts.dry_volume,

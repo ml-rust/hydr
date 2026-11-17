@@ -1,7 +1,9 @@
-use crate::channel::flow::{ChannelError, conserved_update::expanded, context::Context};
+use crate::channel::flow::{
+    ChannelError, cfl_speeds::FaceSpeeds, conserved_update::expanded, context::Context,
+};
 use numr::{
     dtype::DType,
-    ops::{BinaryOps, CompareOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps, UnaryOps},
+    ops::{CompareOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps},
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
@@ -25,15 +27,11 @@ where
         })
     }
 
-    pub(super) fn surveyed_wave_envelope(
+    /// Inward speeds from the complete wave interval: lower is left, upper is right.
+    pub(super) fn surveyed_face_speeds(
         &self,
         bounds: &Interval<R>,
-    ) -> Result<Tensor<R>, ChannelError> {
-        let speed = self.client.maximum(
-            &self.client.abs(bounds.lower())?,
-            &self.client.abs(bounds.upper())?,
-        )?;
-        self.finite(&speed, "surveyed complete wave envelope")?;
-        Ok(speed)
+    ) -> Result<FaceSpeeds<R>, ChannelError> {
+        self.directional_speeds(bounds.lower(), bounds.upper())
     }
 }

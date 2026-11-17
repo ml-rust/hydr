@@ -360,7 +360,7 @@ The production physical gates select `LimitedLinear`, the default reconstruction
 | Two-fan vacuum | Depth `1 m`, separating velocities `±5sqrt(g/2)`, time `1 s` | Independently integrated fans meet the same ceilings and strict spatial decrease |
 | Manning decay | Depth `1 m`, roughness `0.03`, velocity `±1 m/s`, interval `0.1 s` | Exact fixed-area decay within `1e-12 m³/s`, unchanged stored volume |
 | Bank asymmetry | Slopes `(0, 2)` and `(1, 1)` | Equal inviscid law, distinct independently calculated resistance |
-| Reference positive films | `FirstOrderReference`, right depth `10^-j m`, `j = 1..150`, beside depth-one water | CFL within 1% of `0.45 / (5cL - 3cR)`, retained positive water |
+| Reference positive films | `FirstOrderReference`, right depth `10^-j m`, `j = 1..150`, beside depth-one water | CFL within 1% of `2 × 0.45 / (5cL - 3cR)`, retained positive water |
 | Production positive films | `LimitedLinear`, the same 150 positive depths | Positive advancement respects reported reconstructed half-cell CFL limits |
 
 ### Separate spatial and temporal refinement

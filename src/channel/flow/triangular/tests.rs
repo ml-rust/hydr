@@ -133,7 +133,8 @@ fn reflected_wall_water_is_exact_zero_and_rest_pressure_uses_triangular_section(
         &ChannelBoundary::Wall,
         &ChannelBoundary::Wall,
     )?;
-    assert_eq!(flux.speed.try_to_vec::<f64>()?, [0.0, 0.0]);
+    assert_eq!(flux.speed.rightward.try_to_vec::<f64>()?, [0.0, 0.0]);
+    assert_eq!(flux.speed.leftward.try_to_vec::<f64>()?, [0.0, 0.0]);
     assert_eq!(flux.momentum.try_to_vec::<f64>()?, [0.0, 0.0]);
     Ok(())
 }
@@ -223,8 +224,11 @@ fn certified_vacuum_interface_selects_both_zero_fluxes_and_keeps_original_wave_b
     assert_eq!(flux.water.narrow(0, 0, 1)?.item::<f64>()?, 0.0);
     assert_eq!(flux.momentum.narrow(0, 0, 1)?.item::<f64>()?, 0.0);
     assert_eq!(flux.momentum_bound.narrow(0, 0, 1)?.item::<f64>()?, 0.0);
-    let speed = flux.speed.narrow(0, 0, 1)?.item::<f64>()?;
-    assert!(speed.is_finite() && speed >= velocity + 2.0);
+    // The left exterior moves away leftward and the cell moves away rightward.
+    for speed in [&flux.speed.leftward, &flux.speed.rightward] {
+        let speed = speed.narrow(0, 0, 1)?.item::<f64>()?;
+        assert!(speed.is_finite() && speed >= velocity + 2.0);
+    }
     let pressure = flux
         .left_reconstructed_pressure
         .narrow(0, 0, 1)?
@@ -461,8 +465,11 @@ fn finite_extreme_upwind_flux_skips_unselected_sonic_residuals() -> TestResult {
     for value in flux.momentum.try_to_vec::<f64>()? {
         assert_eq!(value, tiny);
     }
-    for value in flux.speed.try_to_vec::<f64>()? {
+    for value in flux.speed.rightward.try_to_vec::<f64>()? {
         assert!(value.is_finite() && value >= 1.0);
+    }
+    for value in flux.speed.leftward.try_to_vec::<f64>()? {
+        assert!(value.is_finite() && value >= 0.0);
     }
     Ok(())
 }

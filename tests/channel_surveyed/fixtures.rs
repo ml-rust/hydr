@@ -1,7 +1,10 @@
 #[derive(Clone, Copy)]
 pub struct Front {
     pub direction: i32,
-    pub position: [u64; 2],
+    /// Area threshold `A0 / 10`, rounded once.
+    pub threshold: u64,
+    /// Exact position where the fan area equals `threshold`, as outward F64 bounds.
+    pub crossing: [u64; 2],
 }
 
 #[derive(Clone, Copy)]
@@ -209,7 +212,8 @@ pub const CASES: &[Case] = &[
         ],
         fronts: &[Front {
             direction: -1,
-            position: [0x40389031f248697f, 0x40389031f2486980],
+            threshold: 0x3ff3333333333333,
+            crossing: [0x4021982c34c47a0c, 0x4021982c34c47a0d],
         }],
     },
     Case {
@@ -243,7 +247,8 @@ pub const CASES: &[Case] = &[
         ],
         fronts: &[Front {
             direction: 1,
-            position: [0xc0389031f2486980, 0xc0389031f248697f],
+            threshold: 0x3ff3333333333333,
+            crossing: [0xc021982c34c47a0d, 0xc021982c34c47a0c],
         }],
     },
     Case {
@@ -278,11 +283,13 @@ pub const CASES: &[Case] = &[
         fronts: &[
             Front {
                 direction: -1,
-                position: [0xc043b7e706dbcb41, 0xc043b7e706dbcb40],
+                threshold: 0x3ff3333333333333,
+                crossing: [0xc04b99f4f2cee17d, 0xc04b99f4f2cee17c],
             },
             Front {
                 direction: 1,
-                position: [0x4043b7e706dbcb40, 0x4043b7e706dbcb41],
+                threshold: 0x3ff3333333333333,
+                crossing: [0x404b99f4f2cee17c, 0x404b99f4f2cee17d],
             },
         ],
     },

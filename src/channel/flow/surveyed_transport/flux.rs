@@ -75,7 +75,7 @@ where
         let momentum_flux_width = self.surveyed_width(result.momentum_flux_bound_m4_per_s2())?;
         let water = self.surveyed_wall_water(&result, left, right)?;
         let momentum = parts(result.momentum_flux_m4_per_s2());
-        let speed = self.surveyed_wave_envelope(result.wave_speed_m_per_s())?;
+        let speed = self.surveyed_face_speeds(result.wave_speed_m_per_s())?;
         let zero = self.constant(&water.high, 0.0)?;
         Ok(Flux {
             boundary_traces: None,
@@ -85,6 +85,7 @@ where
             surveyed: Some(SurveyedRates { water, momentum }),
             speed,
             internal_speed: None,
+            dry_fronts: self.surveyed_fronts(geometry, fields, left, right)?,
             water_bound: zero.clone(),
             momentum_bound: zero.clone(),
             riemann: Some(RiemannDiagnosticState {

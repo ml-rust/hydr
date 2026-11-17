@@ -364,12 +364,54 @@ The solver uses finite volumes and forward Euler time integration. It represents
 | --- | --- | --- |
 | Pressure | [Roberts–Wilson reconstruction](https://journal.austms.org.au/ojs/index.php/ANZIAMJ/article/view/3948/1542) balances bed and width forces at rest | Hydrostatic pressure is `p = g A h / 3` on the common bed |
 | Interior transport | Width-aware HLL with bracketed wave bounds | Complete barotropic Godunov sampling at the stationary interface |
-| Step size | Width-aware wave limit | Reconstructed half-cell CFL for `LimitedLinear`, full-cell CFL for `FirstOrderReference` |
+| Step size | Width-weighted inward wave limit | Reconstructed half-cell CFL for `LimitedLinear`, full-cell CFL for `FirstOrderReference` |
 | Friction | Wetted perimeter includes the bed and both vertical sides | Wetted perimeter uses both declared bank slopes |
 
 Each face supplies one shared flux, including dry fronts. Every geometry uses a separate donor limit for outgoing water.
 
 The velocity profile is uniform across each section (`β = 1`). Split Manning resistance holds area fixed during decay.
+
+### Bound the channel timestep
+
+Each face carries a signed wave-speed interval `[lower, upper]`. Hydr splits it into two inward speeds.
+
+| Face speed | Enters | Value |
+| --- | --- | --- |
+| Rightward | The cell right of the face | `max(upper, 0)` |
+| Leftward | The cell left of the face | `max(-lower, 0)` |
+
+The interval need not contain zero. A supercritical face gives zero speed toward its upstream cell. A scalar boundary trace supplies one unsigned bound. Hydr uses that bound for both directions.
+
+Each cell frequency is `(s_in_left + s_in_right) / (2 L)`. `s_in_left` is the rightward speed at its left face. `s_in_right` is the leftward speed at its right face. A wave that leaves the cell adds nothing.
+
+Rectangular reaches multiply each speed by its face width. They divide the sum by `2 L` times the cell width.
+
+`LimitedLinear` triangular reaches split each cell at its centre into two half-cells. Each half-cell has length `L / 2` and uses the same rule. Its inner face supplies the internal reconstructed wave interval.
+
+A face with water on exactly one side borders a dry cell. A state is dry when `A = 0`. The face Riemann problem sees only the cell-averaged tip state. Its dry-front speed can fall below the true front speed. The true front carries the Riemann invariant `u + φ(A)` of the water behind it, with `φ(A) = ∫_0^A c(a)/a da`. Godunov-type updates keep every state inside the invariant region of its neighbourhood. Within one step the front therefore comes from the wet run beside the dry cell.
+
+Hydr raises the inward speed into each dry cell to the dry-front bound of that run:
+
+| Dry cell | Run | Bound |
+| --- | --- | --- |
+| Right of the face | Contiguous wet states that end at the face | Maximum of `u + φ(A)` |
+| Left of the face | Contiguous wet states that start at the face | Maximum of `-(u - φ(A))` |
+
+The run includes both face states of each cell and a wet exterior or scalar boundary trace. A scalar trace widens its velocity by its compatibility defect. A dry cell takes the larger of this bound and its face speed. Water beyond the nearest dry cell does not restrict the step.
+
+| Geometry | `φ(A)` | Enclosure |
+| --- | --- | --- |
+| Rectangular | `2 sqrt(g h)` | Face-bound padding of `16 ε` of the local speed scale |
+| Triangular | `4 sqrt(g h / 2)` | Directed rounding of the side signal bounds |
+| Surveyed | Certified potential integral | Interval velocity plus the certified potential at the upper area bound |
+
+Surveyed reaches evaluate one certified potential per state. `φ` increases with area, so its value at the upper area bound serves both directions. Hydr evaluates it only when some face has water on exactly one side.
+
+The run maximum uses a segmented scan on the device. Each pass doubles the scan reach, so a reach of `n` faces takes `ceil(log2 n)` passes.
+
+Lateral and friction sources act after transport within a step. They move no water between cells in that step. The accepted-start bound therefore covers the transport. A candidate check reads the fronts again from the post-source state. Without a candidate check, the next accepted start reads the changed state.
+
+The step limit is `cfl / max frequency`. Inward waves then cross at most `2 cfl` of a cell in one step. The `0.45` cap keeps that share at `0.9`. The first-order Godunov non-interaction limit is one cell. The surface solver uses the same share of its own limit.
 
 ### Set surveyed numerical controls
 
@@ -422,7 +464,7 @@ Gravity-wave speed is `c = sqrt(g h / 2)`. Hydr encloses wave speeds using invar
 
 These proved wave bounds determine CFL limits only. The Godunov sample determines the triangular flux.
 
-`LimitedLinear` checks actual reconstructed half-cell wave limits. Those limits can be stricter than the full-cell reference rule. Read the accepted interval's reported CFL limits when advancing either variant.
+`LimitedLinear` checks actual reconstructed half-cell wave limits under the [channel timestep rule](#bound-the-channel-timestep). Those limits can be stricter than the full-cell reference rule. Read the accepted interval's reported CFL limits when advancing either variant.
 
 The primary basis is [Jiang–Liu](https://faculty.sites.iastate.edu/hliu/files/inline-files/JL_JCP_v373_2018.pdf), Example 1 and section 3.1, for invariant regions. [Chen–Liu](https://faculty.sites.iastate.edu/hliu/files/inline-files/Chen-Liu_SIMA01.pdf), section 2.2, supplies barotropic shock and rarefaction curves. Hydr derives its triangular specialization and directed arithmetic from that basis.
 

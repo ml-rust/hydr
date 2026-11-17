@@ -180,13 +180,16 @@ fn strong_dry_injection_obeys_candidate_wave_speeds() -> TestResult {
             &forcing(0.0, 1.0, vec![inflow("in", rate(2.0), 20.0)], false),
         )?
         .next;
-    assert!(next.time() > 0.0 && next.time() < 0.02);
+    // The injected 20 m/s stream runs into the wall. The rightward signal speed at the left face is
+    // at least 20 m/s, so the cell frequency is at least 10 /s. The CFL limit stays below
+    // cfl / 10 = 0.045 s, far under max_step = 1.0 s.
+    assert!(next.time() > 0.0 && next.time() < 0.045);
     let receipt = next.last_step()?.ok_or("missing injection receipt")?;
     assert_eq!(receipt.accepted_start_cfl_limit_s, f64::INFINITY);
     let candidate_limit = receipt
         .candidate_cfl_limit_s
         .ok_or("missing candidate CFL")?;
-    assert!(candidate_limit.is_finite() && next.time() <= candidate_limit);
+    assert!(candidate_limit < 0.045 && next.time() <= candidate_limit);
     check_water(&next)?;
     let error = initial
         .step(

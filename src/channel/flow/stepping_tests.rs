@@ -247,7 +247,7 @@ fn positive_wave_speed_cannot_disappear_during_width_weighting()
         .context
         .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
     let flux = native_flux(&reach.context, &fields, &forcing.left, &forcing.right)?;
-    let speed = flux.speed.narrow(0, 0, 1)?.item::<f64>()?;
+    let speed = flux.speed.rightward.narrow(0, 0, 1)?.item::<f64>()?;
     assert!(speed > 0.0);
     assert_eq!(
         speed

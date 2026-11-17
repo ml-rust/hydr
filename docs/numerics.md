@@ -124,6 +124,7 @@ Read [the boundary contract](boundaries.md) for admissible regimes, critical mar
 | Check | Enforced behavior |
 | --- | --- |
 | Combined directional CFL | At most `0.45` |
+| Channel CFL | Inward face speeds over twice each cell length, at most `0.45`. See [the channel timestep](channels.md#bound-the-channel-timestep). |
 | Depletion | Reserve every outgoing shared-face and outward-port rate without crediting simultaneous inflow. |
 | Shortening | Recalculate sources, reconstruction, bounds, and fluxes. |
 | Complete flux | No pressure/transport scaling limiter changes the shared numerical flux. |

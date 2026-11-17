@@ -377,17 +377,18 @@ where
     let next = dry
         .step(1.0, &injection(WaterAmount::Rate { rate_m3_per_s: 2.0 }))?
         .next;
-    assert!(next.time() > 0.0 && next.time() < 0.02);
+    // The injected 20 m/s stream runs into the wall. The rightward signal speed at the left face is
+    // at least 20 m/s, so the cell frequency is at least 10 /s. The CFL limit stays below
+    // cfl / 10 = 0.045 s, far under max_step = 1.0 s.
+    assert!(next.time() > 0.0 && next.time() < 0.045);
     let receipt = next
         .last_step()?
         .ok_or("Missing candidate-CFL runtime receipt")?;
     assert_eq!(receipt.accepted_start_cfl_limit_s, f64::INFINITY);
-    assert!(
-        next.time()
-            <= receipt
-                .candidate_cfl_limit_s
-                .ok_or("Missing source-created wave limit")?
-    );
+    let candidate_limit = receipt
+        .candidate_cfl_limit_s
+        .ok_or("Missing source-created wave limit")?;
+    assert!(candidate_limit < 0.045 && next.time() <= candidate_limit);
     let error = dry
         .step(
             1.0,

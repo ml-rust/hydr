@@ -1,6 +1,7 @@
 use super::super::{
     ChannelError, ChannelTensorBoundary, ChannelTriangularReconstruction, admission::Fields,
-    boundary::EndpointInterior, context::Context, geometry::TriangleGeometry,
+    boundary::EndpointInterior, cfl_speeds::FaceSpeeds, context::Context,
+    geometry::TriangleGeometry,
 };
 use numr::{
     dtype::DType,
@@ -21,7 +22,8 @@ pub(super) struct Face<R: Runtime<DType = DType>> {
 pub(super) struct TriangularFaces<R: Runtime<DType = DType>> {
     pub left: Face<R>,
     pub right: Face<R>,
-    pub internal_speed: Option<Tensor<R>>,
+    /// Directional speeds at the face between the two half-cells of each cell.
+    pub internal_speed: Option<FaceSpeeds<R>>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -90,7 +92,7 @@ where
                 endpoints.right_discharge.clone(),
             )?;
             let (sl, sr) = self.triangular_bounds(geometry, &cell_left, &cell_right)?;
-            Some(c.maximum(&c.abs(&sl)?, &c.abs(&sr)?)?)
+            Some(self.directional_speeds(&sl, &sr)?)
         } else {
             None
         };

@@ -3,7 +3,6 @@ use super::{
     conserved_point::ConservedPoint,
     conserved_update::{ExpansionClient, lower_bound, outgoing_upper},
     context::Context,
-    geometry::TensorGeometry,
 };
 use crate::numerics::subcatchment::bounds::rounding_with_client;
 use numr::dtype::DType;
@@ -62,56 +61,6 @@ where
         + ScalarOps<R>
         + UnaryOps<R>,
 {
-    pub fn cfl_limit(
-        &self,
-        speed: &Tensor<R>,
-        internal_speed: Option<&Tensor<R>>,
-    ) -> Result<f64, ChannelError> {
-        let c = &self.client;
-        let count = self.count();
-        let frequency = match &self.geometry {
-            TensorGeometry::Rectangular(section) => {
-                let width = &section.width;
-                let face_width = &section.face_width;
-                let weighted_speed = c.mul(face_width, speed)?;
-                let moving_signal = c.gt(speed, &self.constant(speed, 0.0)?)?;
-                self.represented(&moving_signal, &weighted_speed, "width-weighted wave speed")?;
-                let frequency = c.div(
-                    &c.add(
-                        &weighted_speed.narrow(0, 0, count)?,
-                        &weighted_speed.narrow(0, 1, count)?,
-                    )?,
-                    &c.mul(width, &self.length)?,
-                )?;
-                self.finite(&frequency, "width-aware CFL frequency")?;
-                frequency
-            }
-            TensorGeometry::Triangular(_) | TensorGeometry::Surveyed(_) => {
-                let frequency = if let Some(internal) = internal_speed {
-                    let left = c.add(&speed.narrow(0, 0, count)?, internal)?;
-                    let right = c.add(internal, &speed.narrow(0, 1, count)?)?;
-                    c.div(
-                        &c.mul_scalar(&c.maximum(&left, &right)?, 2.0)?,
-                        &self.length,
-                    )?
-                } else {
-                    c.div(
-                        &c.add(&speed.narrow(0, 0, count)?, &speed.narrow(0, 1, count)?)?,
-                        &self.length,
-                    )?
-                };
-                self.finite(&frequency, "prismatic CFL frequency")?;
-                frequency
-            }
-        };
-        let frequency = c.max(&frequency, &[0], false)?.item::<f64>()?;
-        Ok(if frequency > 0.0 {
-            self.definition.config.cfl / frequency
-        } else {
-            f64::INFINITY
-        })
-    }
-
     pub fn outgoing_rate(&self, face_rate: &Tensor<R>) -> Result<Tensor<R>, ChannelError> {
         let c = &self.client;
         let zero = self.constant(&self.length, 0.0)?;

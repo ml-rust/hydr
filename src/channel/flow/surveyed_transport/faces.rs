@@ -49,20 +49,56 @@ where
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
     ) -> Result<Faces<R>, ChannelError> {
+        let (area, discharge) = self.surveyed_states(geometry, fields, left, right)?;
+        let faces = self.count() + 1;
+        let side = |point: &ConservedPoint<R>, start: usize| {
+            Ok::<_, ChannelError>(ConservedPoint {
+                high: point.high.narrow(0, start, faces)?,
+                low: point.low.narrow(0, start, faces)?,
+            })
+        };
+        self.surveyed_face_points(
+            &side(&area, 0)?,
+            &side(&discharge, 0)?,
+            &side(&area, 1)?,
+            &side(&discharge, 1)?,
+        )
+    }
+
+    /// Area and discharge of the left exterior, every cell, then the right exterior.
+    pub(super) fn surveyed_states(
+        &self,
+        geometry: &SurveyedGeometry<R>,
+        fields: &Fields<R>,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
+    ) -> Result<(ConservedPoint<R>, ConservedPoint<R>), ChannelError> {
         let (la, lq) = self.surveyed_exterior(geometry, fields, left, 0, 0)?;
         let (ra, rq) =
             self.surveyed_exterior(geometry, fields, right, self.count() - 1, self.count())?;
         let c = &self.client;
-        let join = |first: &ConservedPoint<R>, second: &ConservedPoint<R>| {
-            Ok::<_, ChannelError>(ConservedPoint {
-                high: c.cat(&[&first.high, &second.high], 0)?,
-                low: c.cat(&[&first.low, &second.low], 0)?,
-            })
-        };
-        let left_area = join(&la, &fields.area_point)?;
-        let left_discharge = join(&lq, &fields.discharge_point)?;
-        let right_area = join(&fields.area_point, &ra)?;
-        let right_discharge = join(&fields.discharge_point, &rq)?;
+        let join =
+            |first: &ConservedPoint<R>, cells: &ConservedPoint<R>, last: &ConservedPoint<R>| {
+                Ok::<_, ChannelError>(ConservedPoint {
+                    high: c.cat(&[&first.high, &cells.high, &last.high], 0)?,
+                    low: c.cat(&[&first.low, &cells.low, &last.low], 0)?,
+                })
+            };
+        Ok((
+            join(&la, &fields.area_point, &ra)?,
+            join(&lq, &fields.discharge_point, &rq)?,
+        ))
+    }
+
+    /// Zero-radius certified face points from two-part face states.
+    pub(super) fn surveyed_face_points(
+        &self,
+        left_area: &ConservedPoint<R>,
+        left_discharge: &ConservedPoint<R>,
+        right_area: &ConservedPoint<R>,
+        right_discharge: &ConservedPoint<R>,
+    ) -> Result<Faces<R>, ChannelError> {
+        let c = &self.client;
         expanded(c, "surveyed face points", |a| {
             let zero = Tensor::zeros(left_area.high.shape(), DType::F64, c.device())?;
             Ok(Faces {

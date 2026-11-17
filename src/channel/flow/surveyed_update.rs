@@ -93,6 +93,7 @@ pub(super) mod tests {
         ChannelInitialState, ChannelReach, ChannelReachDefinition, ChannelSnapshotData,
         ChannelSurveyedConfig, SurveyedChannelCell,
         accounting::Impulses,
+        cfl_speeds::FaceSpeeds,
         conserved_update::Parts,
         flux::{Flux, SurveyedRates},
         surveyed_residuals::ExpandedImpulses,
@@ -288,8 +289,12 @@ pub(super) mod tests {
             right_pressure_bound: zero.clone(),
             left_reconstructed_pressure_bound: zero.clone(),
             right_reconstructed_pressure_bound: zero.clone(),
-            speed: zero.clone(),
+            speed: FaceSpeeds {
+                rightward: zero.clone(),
+                leftward: zero.clone(),
+            },
             internal_speed: None,
+            dry_fronts: None,
         };
         let transport = context.integrate_transport(&flux, 1.0)?;
         let forcing = context.lateral.bind_host(c, &walls(0.0, 1.0))?;

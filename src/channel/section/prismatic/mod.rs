@@ -20,6 +20,7 @@ mod compilation;
 mod compilation_bounds;
 mod config;
 mod context;
+mod dry_front;
 mod evaluation;
 mod inputs;
 mod inverse_bands;

@@ -34,7 +34,6 @@ where
         left_boundary: &ChannelTensorBoundary<R>,
         right_boundary: &ChannelTensorBoundary<R>,
     ) -> Result<Flux<R>, ChannelError> {
-        let c = &self.client;
         let faces = self.triangular_faces(geometry, fields, left_boundary, right_boundary)?;
         let frame = self.scalar_boundary_frame(
             &self.triangular_endpoint_interior(&faces)?,
@@ -59,7 +58,7 @@ where
                     upper_signal: &sr,
                 },
             )?;
-            Some((sample, c.maximum(&c.abs(&sl)?, &c.abs(&sr)?)?))
+            Some((sample, self.directional_speeds(&sl, &sr)?))
         } else {
             None
         };
@@ -73,11 +72,9 @@ where
             numerical.as_ref().map(|(sample, _)| &sample.momentum),
             frame.as_ref().map(|f| &f.traces.momentum_flux_m4_per_s2),
         )?;
-        let speed = self.assemble_boundary_faces(
-            frame.as_ref(),
-            numerical.as_ref().map(|(_, speed)| speed),
-            frame.as_ref().map(|f| &f.traces.signal_speed_bound_m_per_s),
-        )?;
+        let speed =
+            self.assemble_face_speeds(frame.as_ref(), numerical.as_ref().map(|(_, speed)| speed))?;
+        let dry_fronts = self.triangular_fronts(geometry, &faces, frame.as_ref())?;
         let water_bound = self.assemble_boundary_faces(
             frame.as_ref(),
             numerical.as_ref().map(|(sample, _)| &sample.water_bound),
@@ -141,6 +138,7 @@ where
             momentum,
             speed,
             internal_speed: faces.internal_speed,
+            dry_fronts,
             momentum_bound,
             water_bound,
             riemann: Some(RiemannDiagnosticState {

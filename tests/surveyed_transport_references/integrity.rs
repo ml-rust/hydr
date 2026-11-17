@@ -56,8 +56,14 @@ fn check_metadata(case: &Case) {
     let mut previous_hi = -100.0;
     for (front, direction) in case.fronts.iter().zip(directions) {
         assert_eq!(front.direction, *direction, "{}", case.id);
-        let lo = finite(front.position[0], case.id, "front lower endpoint");
-        let hi = finite(front.position[1], case.id, "front upper endpoint");
+        let threshold = finite(front.threshold, case.id, "front threshold");
+        assert!(
+            0.0 < threshold && threshold < f64::from_bits(case.scales[0]),
+            "{}",
+            case.id
+        );
+        let lo = finite(front.crossing[0], case.id, "front crossing lower endpoint");
+        let hi = finite(front.crossing[1], case.id, "front crossing upper endpoint");
         assert!(previous_hi <= lo && lo <= hi && hi <= 100.0, "{}", case.id);
         previous_hi = hi;
     }
@@ -176,8 +182,12 @@ fn canonical_json(cases: &[&Case]) -> Result<String, std::fmt::Error> {
             if front_index != 0 {
                 output.push(',');
             }
-            write!(output, "{{\"direction\":{},\"position\":", front.direction)?;
-            write_bits(&mut output, &front.position)?;
+            write!(
+                output,
+                "{{\"direction\":{},\"threshold\":\"0x{:016x}\",\"crossing\":",
+                front.direction, front.threshold
+            )?;
+            write_bits(&mut output, &front.crossing)?;
             output.push('}');
         }
         output.push_str("]}");
@@ -214,8 +224,8 @@ fn frozen_transport_metadata_and_intervals_are_consistent() -> TestResult {
         (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
     });
     // Independently checked against the frozen two-second reference data.
-    assert_eq!(bytes.len(), 427_212);
-    assert_eq!(digest, 0xd0cb6726f8554811, "Transport fixture bits changed");
+    assert_eq!(bytes.len(), 427_344);
+    assert_eq!(digest, 0x3f33439128850330, "Transport fixture bits changed");
     if let Some(path) = std::env::var_os("HYDR_TRANSPORT_FIXTURE_EXPORT") {
         // Refuse existing paths, including frozen authority files and symlinks.
         let mut file = std::fs::OpenOptions::new()

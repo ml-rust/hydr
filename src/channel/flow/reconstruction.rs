@@ -5,10 +5,11 @@ use super::{
         EndpointInterior,
         assembly::{is_scalar, numerical_range},
     },
+    cfl_speeds::{CflSpeeds, FaceSpeeds},
     context::Context,
     geometry::TensorGeometry,
 };
-use crate::numerics::{TensorFaceState, homogeneous_wave_speed_tensor};
+use crate::numerics::{TensorFaceState, homogeneous_wave_bounds_tensor};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps,
@@ -24,11 +25,6 @@ use solvr::{
         roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
     },
 };
-
-pub(super) struct CflSpeeds<R: Runtime<DType = DType>> {
-    pub outer: Tensor<R>,
-    pub internal: Option<Tensor<R>>,
-}
 
 pub(super) struct ReconstructedFaces<R: Runtime<DType = DType>> {
     pub left: TensorFaceState<R>,
@@ -229,40 +225,41 @@ where
             return self.surveyed_speed(geometry, fields, left, right);
         }
         let reconstructed = self.reconstruct(fields, left, right)?;
-        if !is_scalar(left) && !is_scalar(right) {
-            return Ok(CflSpeeds {
-                outer: homogeneous_wave_speed_tensor(
-                    &self.client,
-                    &reconstructed.left,
-                    &reconstructed.right,
-                    self.definition.config.gravity,
-                    &self.definition.config.wave_config(),
-                )?,
-                internal: None,
-            });
-        }
-        let frame = self.scalar_boundary_frame(&reconstructed.endpoints, left, right)?;
-        let (start, len) = numerical_range(self.count(), left, right);
-        let numerical = if len > 0 {
-            Some(homogeneous_wave_speed_tensor(
+        let directional = |left_face: &TensorFaceState<R>,
+                           right_face: &TensorFaceState<R>|
+         -> Result<FaceSpeeds<R>, ChannelError> {
+            let (lower, upper) = homogeneous_wave_bounds_tensor(
                 &self.client,
-                &narrow_face(&reconstructed.left, start, len)?,
-                &narrow_face(&reconstructed.right, start, len)?,
+                left_face,
+                right_face,
                 self.definition.config.gravity,
                 &self.definition.config.wave_config(),
+            )?;
+            self.directional_speeds(&lower, &upper)
+        };
+        let frame = self.scalar_boundary_frame(&reconstructed.endpoints, left, right)?;
+        let fronts =
+            self.rectangular_fronts(&reconstructed.left, &reconstructed.right, frame.as_ref())?;
+        if frame.is_none() {
+            return Ok(CflSpeeds {
+                outer: directional(&reconstructed.left, &reconstructed.right)?,
+                internal: None,
+                fronts,
+            });
+        }
+        let (start, len) = numerical_range(self.count(), left, right);
+        let numerical = if len > 0 {
+            Some(directional(
+                &narrow_face(&reconstructed.left, start, len)?,
+                &narrow_face(&reconstructed.right, start, len)?,
             )?)
         } else {
             None
         };
         Ok(CflSpeeds {
-            outer: self.assemble_boundary_faces(
-                frame.as_ref(),
-                numerical.as_ref(),
-                frame
-                    .as_ref()
-                    .map(|frame| &frame.traces.signal_speed_bound_m_per_s),
-            )?,
+            outer: self.assemble_face_speeds(frame.as_ref(), numerical.as_ref())?,
             internal: None,
+            fronts,
         })
     }
 }

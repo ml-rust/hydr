@@ -4,6 +4,8 @@ use super::{
 };
 use super::{
     boundary::{NativeBoundaryTraces, assembly::numerical_range},
+    cfl_fronts::DryFronts,
+    cfl_speeds::FaceSpeeds,
     reconstruction::narrow_face,
 };
 use crate::numerics::homogeneous_hll_tensor;
@@ -54,8 +56,12 @@ pub(super) struct Flux<R: Runtime<DType = DType>> {
     pub right_pressure_bound: Tensor<R>,
     pub left_reconstructed_pressure_bound: Tensor<R>,
     pub right_reconstructed_pressure_bound: Tensor<R>,
-    pub speed: Tensor<R>,
-    pub internal_speed: Option<Tensor<R>>,
+    /// Directional signal speeds at the cell faces.
+    pub speed: FaceSpeeds<R>,
+    /// Directional signal speeds at each half-cell split face, when one exists.
+    pub internal_speed: Option<FaceSpeeds<R>>,
+    /// Dry-front states at the cell faces. `None` when no face is wet on exactly one side.
+    pub dry_fronts: Option<DryFronts<R>>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -138,11 +144,12 @@ where
             numerical_momentum.as_ref(),
             frame.as_ref().map(|f| &f.traces.momentum_flux_m4_per_s2),
         )?;
-        let speed = self.assemble_boundary_faces(
-            frame.as_ref(),
-            homogeneous.as_ref().map(|flux| &flux.speed),
-            frame.as_ref().map(|f| &f.traces.signal_speed_bound_m_per_s),
-        )?;
+        let numerical_speed = homogeneous
+            .as_ref()
+            .map(|flux| self.directional_speeds(&flux.lower, &flux.upper))
+            .transpose()?;
+        let speed = self.assemble_face_speeds(frame.as_ref(), numerical_speed.as_ref())?;
+        let dry_fronts = self.rectangular_fronts(&left, &right, frame.as_ref())?;
         let left_reconstructed = self.pressure(left_h, face_width)?;
         let right_reconstructed = self.pressure(right_h, face_width)?;
         let pressure_bound = c.maximum(
@@ -228,6 +235,7 @@ where
             right_reconstructed_pressure_bound: right_reconstructed.bound,
             speed,
             internal_speed: None,
+            dry_fronts,
         })
     }
 }

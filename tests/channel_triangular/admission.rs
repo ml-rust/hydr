@@ -131,7 +131,9 @@ fn first_order_positive_films_retain_finite_dry_front_scale_wave_limits() -> Tes
     for exponent in 1..=150 {
         let film_depth = 10.0_f64.powi(-exponent);
         let right_sound = (GRAVITY * film_depth / 2.0).sqrt();
-        let expected_limit = 0.45 / (5.0 * left_sound - 3.0 * right_sound);
+        // The deep cell takes `c_L` from its wall and `4 c_L - 3 c_R` from the film face.
+        // Its frequency is their sum over twice its unit length.
+        let expected_limit = 2.0 * 0.45 / (5.0 * left_sound - 3.0 * right_sound);
         let mut layout = definition(vec![cell(0, 1.0), cell(1, 1.0)], 1.0);
         layout.config.triangular_reconstruction =
             ChannelTriangularReconstruction::FirstOrderReference;
