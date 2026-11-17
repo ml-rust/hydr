@@ -15,11 +15,10 @@
 #[doc(inline)]
 pub use hydr_core::{error, forcing, grid, model};
 
-use hydr_core::numerics;
-
 #[doc(inline)]
 pub use hydr_channel::channel;
-pub mod coupling;
+#[doc(inline)]
+pub use hydr_coupling::coupling;
 #[doc(inline)]
 pub use hydr_runoff::runoff;
 #[doc(inline)]

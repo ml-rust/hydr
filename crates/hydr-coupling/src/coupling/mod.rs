@@ -1,6 +1,7 @@
 //! Conservative water exchange between hydraulic components.
 
 pub mod channel_pools;
+#[doc(no_inline)]
 pub use channel_pools::{
     ChannelPoolBatch, ChannelPoolConfig, ChannelPoolConnection, ChannelPoolConnectionLedger,
     ChannelPoolCounterData, ChannelPoolDonorCut, ChannelPoolEndpoint, ChannelPoolError,
@@ -16,6 +17,7 @@ pub mod level_pools;
 
 #[doc(no_inline)]
 pub use level_pools::CoupledPoolInflowValue;
+#[doc(no_inline)]
 pub use level_pools::{
     CoupledLevelPoolBatch, CoupledLevelPoolConfig, CoupledLevelPoolError,
     CoupledLevelPoolForcingInterval, CoupledLevelPoolInitialState, CoupledLevelPoolIterationData,
@@ -27,6 +29,7 @@ pub use level_pools::{
 };
 
 pub mod runoff_pools;
+#[doc(no_inline)]
 pub use runoff_pools::{
     RunoffPoolBatch, RunoffPoolConfig, RunoffPoolError, RunoffPoolForcingInterval,
     RunoffPoolInitialState, RunoffPoolMeteorology, RunoffPoolOutletBinding, RunoffPoolSetup,
