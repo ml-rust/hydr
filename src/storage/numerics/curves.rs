@@ -9,7 +9,7 @@ use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
 use crate::storage::LevelPoolError;
-use crate::tensor::level_pool::TensorPoolContext;
+use crate::storage::tensor::TensorPoolContext;
 use solvr::interpolate::{Interp1dAlgorithms, InterpMethod};
 
 pub(crate) struct PoolStage<R: Runtime<DType = DType>> {

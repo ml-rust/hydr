@@ -9,7 +9,7 @@ use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
 use super::LevelPoolError;
-use crate::tensor::level_pool::TensorPoolContext;
+use crate::storage::tensor::TensorPoolContext;
 
 pub(super) struct CutArithmetic<'a, R: Runtime<DType = DType>> {
     pub context: &'a TensorPoolContext<R>,
@@ -31,7 +31,7 @@ where
 {
     fn rounded(&self, value: &Tensor<R>, upper: bool) -> Result<Tensor<R>, LevelPoolError> {
         self.context.finite(value, "cut arithmetic operand")?;
-        let bound = crate::numerics::storage::bounds::rounding(self.context, value)?;
+        let bound = crate::storage::numerics::bounds::rounding(self.context, value)?;
         let c = &self.context.client;
         let result = if upper {
             c.add(value, &bound)?

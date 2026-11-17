@@ -9,7 +9,7 @@ use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
 use crate::storage::LevelPoolError;
-use crate::tensor::level_pool::{TensorPoolContext, TensorPoolSourceState, TensorPoolSourceStep};
+use crate::storage::tensor::{TensorPoolContext, TensorPoolSourceState, TensorPoolSourceStep};
 
 pub(super) fn check_state<R>(
     context: &TensorPoolContext<R>,

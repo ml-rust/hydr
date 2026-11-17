@@ -10,8 +10,8 @@ use solvr::interpolate::Interp1dAlgorithms;
 
 use super::demands::{CapVectors, CounterVectors};
 use crate::storage::accounting::read;
+use crate::storage::tensor::{TensorPoolContext, TensorPoolSourceStep};
 use crate::storage::{LevelPoolError, LevelPoolSourceCounterReceipt, LevelPoolSourceReceipt};
-use crate::tensor::level_pool::{TensorPoolContext, TensorPoolSourceStep};
 
 pub(crate) fn receipts<R>(
     context: &TensorPoolContext<R>,

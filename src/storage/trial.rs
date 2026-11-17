@@ -58,8 +58,8 @@ where
     ) -> Result<LevelPoolTrial<R>, LevelPoolError> {
         let (state, step) = if let Some(sources) = sources {
             let input =
-                crate::tensor::level_pool::TensorPoolSourceInput::<R>::new(&self.context, sources)?;
-            crate::numerics::storage::advance_with_sources(
+                crate::storage::tensor::TensorPoolSourceInput::<R>::new(&self.context, sources)?;
+            crate::storage::numerics::advance_with_sources(
                 &self.context,
                 &self.state,
                 incoming,
@@ -69,7 +69,7 @@ where
                 &input,
             )?
         } else {
-            crate::numerics::storage::advance(
+            crate::storage::numerics::advance(
                 &self.context,
                 &self.state,
                 incoming,
@@ -84,10 +84,10 @@ where
         &self,
         end: f64,
         steps: usize,
-        state: crate::tensor::level_pool::TensorPoolState<R>,
-        step: crate::tensor::level_pool::TensorPoolStep<R>,
+        state: crate::storage::tensor::TensorPoolState<R>,
+        step: crate::storage::tensor::TensorPoolStep<R>,
     ) -> Result<LevelPoolTrial<R>, LevelPoolError> {
-        crate::numerics::storage::check_step(&self.context, &step)?;
+        crate::storage::numerics::check_step(&self.context, &step)?;
         super::accounting::step_totals(&self.context, &step)?;
         super::accounting::totals(&self.context, &state)?;
         Ok(LevelPoolTrial {

@@ -9,8 +9,8 @@ use numr::runtime::Runtime;
 use solvr::interpolate::Interp1dAlgorithms;
 
 use crate::storage::accounting::{read, sum_bound};
+use crate::storage::tensor::{TensorPoolContext, TensorPoolSourceState, TensorPoolSourceStep};
 use crate::storage::{LevelPoolError, LevelPoolSourceLedger};
-use crate::tensor::level_pool::{TensorPoolContext, TensorPoolSourceState, TensorPoolSourceStep};
 
 pub(crate) fn ledgers<R>(
     context: &TensorPoolContext<R>,

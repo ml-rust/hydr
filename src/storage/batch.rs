@@ -12,7 +12,7 @@ use super::{
     LevelPoolConfig, LevelPoolElement, LevelPoolElementLedger, LevelPoolError, LevelPoolInput,
     LevelPoolOutput, LevelPoolState, LevelPoolStepDiagnostics, LevelPoolTotals,
 };
-use crate::tensor::level_pool::{TensorPoolContext, TensorPoolState, TensorPoolStep};
+use crate::storage::tensor::{TensorPoolContext, TensorPoolState, TensorPoolStep};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -125,8 +125,8 @@ where
             }
         });
         let state = TensorPoolState::<R>::new(&context, &states)?;
-        crate::numerics::storage::curves::evaluate(&context, &state.volume_m3)?;
-        crate::numerics::storage::accounting::check_state(&context, &state, 0)?;
+        crate::storage::numerics::curves::evaluate(&context, &state.volume_m3)?;
+        crate::storage::numerics::accounting::check_state(&context, &state, 0)?;
         super::accounting::totals(&context, &state)?;
         Ok(Self {
             context,

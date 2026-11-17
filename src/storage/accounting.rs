@@ -10,7 +10,7 @@ use numr::tensor::Tensor;
 use solvr::interpolate::Interp1dAlgorithms;
 
 use super::{LevelPoolError, LevelPoolTotals};
-use crate::tensor::level_pool::{TensorPoolContext, TensorPoolState, TensorPoolStep};
+use crate::storage::tensor::{TensorPoolContext, TensorPoolState, TensorPoolStep};
 
 pub(super) fn outward_add(a: f64, b: f64) -> Result<f64, LevelPoolError> {
     if a == 0.0 {

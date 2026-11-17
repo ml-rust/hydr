@@ -3,8 +3,8 @@ use solvr::interpolate::Interp1dAlgorithms;
 
 use super::{LevelPoolSnapshot, LevelPoolSnapshotData};
 use crate::storage::batch::StoredStep;
+use crate::storage::tensor::{TensorPoolContext, TensorPoolState};
 use crate::storage::{LevelPoolBatch, LevelPoolError};
-use crate::tensor::level_pool::{TensorPoolContext, TensorPoolState};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
@@ -85,8 +85,8 @@ where
             "accepted count and last interval presence disagree",
         )?;
         let state = import_state(context, data)?;
-        crate::numerics::storage::accounting::check_state(context, &state, data.accepted_steps)?;
-        crate::numerics::storage::curves::evaluate(context, &state.initial_volume_m3)?;
+        crate::storage::numerics::accounting::check_state(context, &state, data.accepted_steps)?;
+        crate::storage::numerics::curves::evaluate(context, &state.initial_volume_m3)?;
         crate::storage::accounting::totals(context, &state)?;
         let computed = crate::storage::projection::ledgers(context, &state)?;
         require(
@@ -146,17 +146,17 @@ where
                 incoming_roundoff_bound_m3: tensor(|r| r.incoming_bound_before_m3)?,
                 outgoing_roundoff_bound_m3: tensor(|r| r.outgoing_bound_before_m3)?,
             };
-            crate::numerics::storage::accounting::check_state(
+            crate::storage::numerics::accounting::check_state(
                 context,
                 &before,
                 data.accepted_steps - 1,
             )?;
-            crate::numerics::storage::curves::evaluate(context, &before.volume_m3)?;
+            crate::storage::numerics::curves::evaluate(context, &before.volume_m3)?;
             crate::storage::accounting::totals(context, &before)?;
             let incoming = tensor(|r| r.incoming_volume_m3)?;
             let outgoing = tensor(|r| r.outgoing_volume_m3)?;
             let (next, step) = if let Some(input) = super::sources::inputs(context, receipt)? {
-                crate::numerics::storage::advance_with_sources(
+                crate::storage::numerics::advance_with_sources(
                     context,
                     &before,
                     &incoming,
@@ -166,7 +166,7 @@ where
                     &input,
                 )?
             } else {
-                crate::numerics::storage::advance(
+                crate::storage::numerics::advance(
                     context,
                     &before,
                     &incoming,

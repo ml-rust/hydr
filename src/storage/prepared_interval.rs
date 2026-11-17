@@ -10,8 +10,8 @@ use numr::tensor::Tensor;
 use solvr::interpolate::Interp1dAlgorithms;
 
 use super::{LevelPoolBatch, LevelPoolError, LevelPoolSources, LevelPoolTrial};
-use crate::numerics::storage::sources::PreparedSources;
-use crate::tensor::level_pool::TensorPoolSourceInput;
+use crate::storage::numerics::sources::PreparedSources;
+use crate::storage::tensor::TensorPoolSourceInput;
 
 pub(crate) struct LevelPoolSourcePlan<'a, R: Runtime<DType = DType>> {
     accepted: &'a LevelPoolBatch<R>,
@@ -72,7 +72,7 @@ where
     ) -> Result<PreparedLevelPoolInterval<'a, R>, LevelPoolError> {
         let dt = super::trial::duration(self.accepted.time, end)?;
         let steps = super::trial::next_step_count(self.accepted.steps)?;
-        let sources = crate::numerics::storage::sources::prepare(
+        let sources = crate::storage::numerics::sources::prepare(
             &self.accepted.context,
             &self.accepted.state,
             dt,
@@ -118,7 +118,7 @@ where
         outgoing: &Tensor<R>,
     ) -> Result<LevelPoolTrial<R>, LevelPoolError> {
         self.accepted.check_exchange_tensors(incoming, outgoing)?;
-        let (state, step) = crate::numerics::storage::advance_prepared(
+        let (state, step) = crate::storage::numerics::advance_prepared(
             &self.accepted.context,
             &self.accepted.state,
             incoming,

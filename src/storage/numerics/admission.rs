@@ -9,7 +9,7 @@ use numr::runtime::Runtime;
 use solvr::interpolate::Interp1dAlgorithms;
 
 use crate::storage::LevelPoolError;
-use crate::tensor::level_pool::{TensorPoolContext, TensorPoolStep};
+use crate::storage::tensor::{TensorPoolContext, TensorPoolStep};
 
 pub(crate) fn check_step<R>(
     context: &TensorPoolContext<R>,

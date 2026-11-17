@@ -9,7 +9,7 @@ use numr::runtime::Runtime;
 use solvr::interpolate::Interp1dAlgorithms;
 
 use super::LevelPoolError;
-use crate::tensor::level_pool::{TensorPoolContext, TensorPoolSourceStep};
+use crate::storage::tensor::{TensorPoolContext, TensorPoolSourceStep};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct LevelPoolIntervalSources {

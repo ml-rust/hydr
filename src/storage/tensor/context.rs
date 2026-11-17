@@ -104,7 +104,7 @@ where
         drop(ids);
         drop(supports);
         let device = client.device().clone();
-        if let Some(error) = crate::tensor::arithmetic::probe_f64::<R, _>(&client)? {
+        if let Some(error) = crate::tensor::probe_f64::<R, _>(&client)? {
             return Err(LevelPoolError::input(error.message("level-pool")));
         }
         let tensor = |v: &[f64]| Tensor::<R>::from_slice(v, &[v.len()], &device);

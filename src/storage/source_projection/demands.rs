@@ -9,8 +9,8 @@ use numr::runtime::Runtime;
 use solvr::interpolate::Interp1dAlgorithms;
 
 use crate::storage::accounting::read;
+use crate::storage::tensor::{TensorPoolCap, TensorPoolCounter};
 use crate::storage::{LevelPoolCounterReceipt, LevelPoolDemandCapReceipt, LevelPoolError};
-use crate::tensor::level_pool::{TensorPoolCap, TensorPoolCounter};
 pub(super) struct CapVectors {
     potential_volume_m3: Vec<f64>,
     actual_volume_m3: Vec<f64>,

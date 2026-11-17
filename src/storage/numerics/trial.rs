@@ -10,7 +10,7 @@ use numr::tensor::Tensor;
 use solvr::interpolate::Interp1dAlgorithms;
 
 use crate::storage::LevelPoolError;
-use crate::tensor::level_pool::{
+use crate::storage::tensor::{
     TensorPoolContext, TensorPoolSourceInput, TensorPoolState, TensorPoolStep,
 };
 

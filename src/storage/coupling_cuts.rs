@@ -14,7 +14,7 @@ use solvr::interpolate::{Interp1dAlgorithms, InterpMethod};
 
 use super::coupling_cut_bounds::CutArithmetic;
 use super::{LevelPoolBatch, LevelPoolError};
-use crate::tensor::level_pool::TensorPoolContext;
+use crate::storage::tensor::TensorPoolContext;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LevelPoolCut {

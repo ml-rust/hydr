@@ -10,7 +10,7 @@ use numr::tensor::Tensor;
 use solvr::interpolate::Interp1dAlgorithms;
 
 use crate::storage::LevelPoolError;
-use crate::tensor::level_pool::{TensorPoolCap, TensorPoolContext, TensorPoolCounter};
+use crate::storage::tensor::{TensorPoolCap, TensorPoolContext, TensorPoolCounter};
 
 pub(super) type CappedDemand<R> = (TensorPoolCap<R>, Tensor<R>, Tensor<R>);
 

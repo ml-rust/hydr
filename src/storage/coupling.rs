@@ -83,7 +83,7 @@ where
         if let Some(last) = &self.last {
             return Ok(last.step.stage_m.clone());
         }
-        Ok(crate::numerics::storage::curves::evaluate(&self.context, &self.state.volume_m3)?.stage)
+        Ok(crate::storage::numerics::curves::evaluate(&self.context, &self.state.volume_m3)?.stage)
     }
 
     pub(crate) fn trial_to_tensors(

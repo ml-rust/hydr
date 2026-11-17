@@ -8,6 +8,7 @@ mod coupling_cuts;
 mod curve;
 pub(crate) mod definition;
 mod error;
+pub(crate) mod numerics;
 mod prepared_interval;
 mod projection;
 mod receipt;
@@ -16,6 +17,7 @@ mod source_policy;
 mod source_projection;
 mod source_receipt;
 mod source_summary;
+pub(crate) mod tensor;
 mod trial;
 
 pub use batch::{LevelPoolBatch, LevelPoolTrial};

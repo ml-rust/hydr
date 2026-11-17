@@ -9,8 +9,8 @@ use numr::runtime::Runtime;
 use solvr::interpolate::Interp1dAlgorithms;
 
 use super::LevelPoolSnapshotData;
+use crate::storage::tensor::{TensorPoolContext, TensorPoolSourceInput, TensorPoolSourceState};
 use crate::storage::{LevelPoolError, LevelPoolSourceLedger, LevelPoolStepDiagnostics};
-use crate::tensor::level_pool::{TensorPoolContext, TensorPoolSourceInput, TensorPoolSourceState};
 
 fn rows<'a, R>(
     context: &TensorPoolContext<R>,

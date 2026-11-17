@@ -14,7 +14,7 @@ use super::{
     LevelPoolElementLedger, LevelPoolError, LevelPoolOutput, LevelPoolReceipt,
     LevelPoolStepDiagnostics,
 };
-use crate::tensor::level_pool::{TensorPoolContext, TensorPoolState};
+use crate::storage::tensor::{TensorPoolContext, TensorPoolState};
 
 pub(crate) fn outputs<R>(
     context: &TensorPoolContext<R>,
@@ -35,7 +35,7 @@ where
         + SortingOps<R>
         + Interp1dAlgorithms<R>,
 {
-    let stage = crate::numerics::storage::curves::evaluate(context, &state.volume_m3)?;
+    let stage = crate::storage::numerics::curves::evaluate(context, &state.volume_m3)?;
     let n = context.elements.len();
     let volume = read(&state.volume_m3, n)?;
     let heights = read(&stage.stage, n)?;
@@ -80,7 +80,7 @@ where
     let incoming_roundoff_bound_m3 = read(&state.incoming_roundoff_bound_m3, n)?;
     let outgoing_roundoff_bound_m3 = read(&state.outgoing_roundoff_bound_m3, n)?;
     let residual = read(
-        &crate::numerics::storage::accounting::residual(context, state)?,
+        &crate::storage::numerics::accounting::residual(context, state)?,
         n,
     )?;
     Ok((0..n)
@@ -117,7 +117,7 @@ where
         + SortingOps<R>
         + Interp1dAlgorithms<R>,
 {
-    crate::numerics::storage::check_step(context, &stored.step)?;
+    crate::storage::numerics::check_step(context, &stored.step)?;
     let totals = super::accounting::step_totals(context, &stored.step)?;
     let source = super::source_projection::receipts(context, stored.step.source.as_ref())?;
     let source_totals =

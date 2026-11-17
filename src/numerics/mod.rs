@@ -4,7 +4,6 @@
 mod flux;
 pub(crate) mod reservoir;
 pub(crate) mod rounding;
-pub(crate) mod storage;
 pub(crate) mod structures;
 pub(crate) mod subcatchment;
 mod tensor_flux;
