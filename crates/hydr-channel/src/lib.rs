@@ -11,5 +11,7 @@ pub mod internal {
     pub use crate::channel::flow::coupling::{
         ChannelCouplingAccounting, ChannelCouplingEndpoints, ChannelCouplingExternalData,
         ChannelCouplingForcing, ChannelCouplingTrial, ChannelReservoirOperands,
+        SURFACE_EXCHANGE_BINDING_PREFIX,
     };
+    pub use crate::channel::flow::coupling_reservation::ChannelCouplingReservation;
 }

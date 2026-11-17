@@ -192,7 +192,8 @@ impl ChannelReachDefinition {
             && self.lateral_bindings == other.lateral_bindings
     }
 
-    pub(super) fn check(&self) -> Result<(), ChannelError> {
+    /// `coordinator_bindings` admits lateral identities with the reserved surface-exchange prefix.
+    pub(super) fn check(&self, coordinator_bindings: bool) -> Result<(), ChannelError> {
         self.config.check()?;
         for (name, value) in [
             ("vertical_datum", &self.vertical_datum),
@@ -259,6 +260,9 @@ impl ChannelReachDefinition {
         let mut boundaries = BTreeSet::new();
         for binding in &self.lateral_bindings {
             check_text("boundary_id", &binding.boundary_id)?;
+            if !coordinator_bindings {
+                super::coupling::reject_reserved_boundary(&binding.boundary_id)?;
+            }
             check_text("cell_id", &binding.cell_id)?;
             check_text("ownership_assertion", &binding.ownership_assertion)?;
             if !boundaries.insert(binding.boundary_id.as_str()) {

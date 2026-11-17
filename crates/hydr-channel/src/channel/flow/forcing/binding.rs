@@ -112,6 +112,10 @@ where
         inputs: Vec<ChannelTensorLateralInput<R>>,
     ) -> Result<BoundChannelForcing<R>, ChannelError> {
         self.check_endpoints(client, start_s, end_s, Some(&left), Some(&right))?;
+        // Only the coordinator binding path supplies surface-exchange inputs.
+        for input in &inputs {
+            super::super::coupling::reject_reserved_boundary(input.boundary_id())?;
+        }
         let lateral = self.bind_lateral_owned(client, inputs)?;
         Ok(BoundChannelForcing {
             definition: Arc::clone(&self.definition),

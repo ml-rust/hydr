@@ -42,6 +42,16 @@ where
         definition: ChannelReachDefinition,
         original_initial: ChannelInitialState,
     ) -> Result<Self, ChannelError> {
+        Self::with_binding_owner(client, definition, original_initial, false)
+    }
+
+    /// `coordinator_bindings` admits lateral identities with the reserved surface-exchange prefix.
+    pub fn with_binding_owner(
+        client: R::Client,
+        definition: ChannelReachDefinition,
+        original_initial: ChannelInitialState,
+        coordinator_bindings: bool,
+    ) -> Result<Self, ChannelError> {
         if matches!(
             &definition.geometry,
             super::ChannelGeometry::PrismaticTriangular { .. }
@@ -52,7 +62,7 @@ where
                 "triangular F64 square roots lack round-to-nearest guarantees: select an admitted runtime",
             ));
         }
-        definition.check()?;
+        definition.check(coordinator_bindings)?;
         if let Some(error) = crate::tensor::probe_f64::<R, _>(&client)? {
             return Err(ChannelError::input(error.message("channel reach")));
         }

@@ -16,15 +16,32 @@ use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use std::sync::Arc;
 
+/// Lateral boundary identity prefix reserved for coordinator surface exchange.
+///
+/// Caller definitions and caller forcing reject it. `ChannelReach::new_coordinated` admits it.
+#[doc(hidden)]
+pub const SURFACE_EXCHANGE_BINDING_PREFIX: &str = "surface-exchange:";
+
+/// Reject a caller-supplied lateral boundary identity that uses the reserved prefix.
+pub(super) fn reject_reserved_boundary(boundary_id: &str) -> Result<(), ChannelError> {
+    if boundary_id.starts_with(SURFACE_EXCHANGE_BINDING_PREFIX) {
+        return Err(ChannelError::input(format!(
+            "boundary_id={boundary_id:?} uses the reserved prefix {SURFACE_EXCHANGE_BINDING_PREFIX:?}: rename the lateral binding; surface exchange belongs to the surface-channel coordinator"
+        )));
+    }
+    Ok(())
+}
+
 /// External policies and lateral operands copied once from caller storage.
 #[derive(Debug)]
 #[doc(hidden)]
 pub struct ChannelCouplingForcing<R: Runtime<DType = DType>> {
-    start_s: f64,
-    end_s: f64,
-    left: Option<ChannelTensorBoundary<R>>,
-    right: Option<ChannelTensorBoundary<R>>,
-    lateral: BoundLateralInputs<R>,
+    pub(super) start_s: f64,
+    pub(super) end_s: f64,
+    /// `None` marks a coordinator-owned reservoir endpoint.
+    pub(super) left: Option<ChannelTensorBoundary<R>>,
+    pub(super) right: Option<ChannelTensorBoundary<R>>,
+    pub(super) lateral: BoundLateralInputs<R>,
 }
 
 /// Actual coordinator-owned midpoint reservoir operands. Neither operand is projected.

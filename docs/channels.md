@@ -159,7 +159,7 @@ The reservoir-head pair also requires a positive allowance. Its relative scale u
 
 Lateral inputs add or remove water at named channel cells. Declare each connection through `ChannelReachDefinition.lateral_bindings`.
 
-1. Assign each binding a unique `boundary_id` and an existing `cell_id`.
+1. Assign each binding a unique `boundary_id` and an existing `cell_id`. Hydr reserves the `surface-exchange:` prefix for surface exchange and rejects a `boundary_id` or lateral input that starts with it.
 2. Select its fixed direction, `Inflow` or `Withdrawal`.
 3. Supply an `ownership_assertion` explaining why this water does not duplicate another source.
 4. Include exactly one matching `ChannelLateralInput` per binding in every interval's `lateral_inputs`, including zeros.

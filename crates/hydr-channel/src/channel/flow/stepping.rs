@@ -2,7 +2,8 @@ use super::{
     ChannelError, ChannelForcingInterval, ChannelReach, ChannelStep, ChannelStepDiagnostics,
     ChannelTensorForcingInterval, accounting::Impulses, boundary::assembly::is_scalar,
     conserved_point::ConservedPoint, engine::Accepted, forcing::BoundChannelForcing,
-    interval::IntervalControl, receipt::LastInterval, surveyed_residuals::ExpandedImpulses,
+    interval::IntervalControl, interval_start::IntervalStart, receipt::LastInterval,
+    surveyed_residuals::ExpandedImpulses,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -131,14 +132,18 @@ where
         }
         let mut dt = endpoint - self.time();
         let mut reason = String::new();
-        let donor = context.donor_volume(&self.accepted.volume)?;
         // These depend only on the accepted state and the start forcing.
-        let fields = context.fields(&self.accepted.volume, &self.accepted.momentum)?;
-        let flux = context.flux(&fields, &forcing.left, &forcing.right)?;
-        let start_cfl = context.cfl_limit(
-            &flux.speed,
-            flux.internal_speed.as_ref(),
-            flux.dry_fronts.as_ref(),
+        let IntervalStart {
+            donor,
+            fields,
+            flux,
+            outgoing,
+            start_cfl,
+        } = context.interval_start(
+            &self.accepted.volume,
+            &self.accepted.momentum,
+            &forcing.left,
+            &forcing.right,
         )?;
         for retries in 0..=config.max_retries {
             let end = if retries == 0 {
@@ -162,7 +167,6 @@ where
                 &fields.velocity,
                 dt,
             )?;
-            let outgoing = context.outgoing_rate(&flux.water)?;
             let reservation = if prepared.has_nonzero_values {
                 Some(context.combined_depletion_limit(
                     &donor,
