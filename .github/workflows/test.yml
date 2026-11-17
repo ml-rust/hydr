@@ -97,6 +97,9 @@ jobs:
       - name: Run rain basin example
         run: cargo run --example rain_basin
 
+      - name: Run native worker example
+        run: cargo run --example native_worker
+
   # The MSRV comes from `rust-version` in Cargo.toml, so the manifest and this
   # job cannot drift apart.
   msrv:

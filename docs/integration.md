@@ -381,6 +381,18 @@ Start with an artificial test problem inside a native application worker:
 3. Pass accepted fields to the application's data adapter.
 4. Label these calculations numerical demonstrations.
 
+### Run the native worker example
+
+`cargo run --example native_worker` runs this milestone on the CPU reference runtime. It prints each step with a label:
+
+- Capabilities: The worker checks its walls, flux port, rain, and impervious land against `surface_solver_capabilities()`. It refuses to run on a mismatch.
+- Cancellation: The observer records accepted steps and sets a cancel flag. The worker resumes to the cycle boundary.
+- Checkpoint: The worker prints `schema`, `contract`, and the forcing prefix. Restored and resumed engines match the uninterrupted run bit for bit.
+- Forecast cycle: `continue_with_forcing` appends an interval at the boundary. Every continued engine matches a single spliced run bit for bit.
+- Water budget: The worker prints storage change, inputs, outputs, residual, residual bound, and adjustment budget.
+
+The shared lifecycle code is in `examples/native_worker/mod.rs`. `tests/native_worker.rs` asserts the same run.
+
 Real urban-event use still requires network/structure coupling and independent event evidence. Domains requiring unsupported boundary regimes remain excluded.
 
 Applications must reuse Hydr calculations instead of maintaining a competing numerical kernel.
