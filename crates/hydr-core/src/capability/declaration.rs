@@ -12,8 +12,9 @@ pub struct OptionSet {
     pub id: &'static str,
     /// Accepted values.
     pub values: &'static [&'static str],
-    /// Value used when the caller sets none. It is one of `values`.
-    pub default: &'static str,
+    /// Value used when the caller selects none, or `None` when the caller must choose.
+    /// A `Some` value is one of `values`.
+    pub default: Option<&'static str>,
 }
 
 /// Reason a component does not support a capability.
@@ -170,7 +171,7 @@ mod tests {
         options: &[OptionSet {
             id: "step",
             values: &["fixed", "adaptive"],
-            default: "fixed",
+            default: Some("fixed"),
         }],
         nested: &[],
         attachable_to: &[ComponentId::SurfaceSolver],
@@ -222,7 +223,7 @@ mod tests {
             Some(RuntimeStatus::Reference)
         );
         assert_eq!(SAMPLE.runtime(RuntimeKind::Wgpu), None);
-        assert_eq!(SAMPLE.option("step").map(|o| o.default), Some("fixed"));
+        assert_eq!(SAMPLE.option("step").and_then(|o| o.default), Some("fixed"));
         assert_eq!(SAMPLE.option("missing"), None);
         assert_eq!(
             SAMPLE.unsupported_by_id("seepage").map(|u| u.reason),

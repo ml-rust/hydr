@@ -345,7 +345,9 @@ fn channel_reach_options_are_admitted() -> TestResult {
         .ok_or("triangular reach declares no reconstruction option")?;
     assert_eq!(
         option.default,
-        reconstruction_id(ChannelConfig::default().triangular_reconstruction)
+        Some(reconstruction_id(
+            ChannelConfig::default().triangular_reconstruction
+        ))
     );
     assert_eq!(option.values.len(), RECONSTRUCTIONS.len());
     for value in option.values {

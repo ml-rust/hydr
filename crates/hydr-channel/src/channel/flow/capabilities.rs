@@ -304,7 +304,7 @@ static TRIANGULAR: ComponentCapabilities = ComponentCapabilities {
     options: &[OptionSet {
         id: "triangular-reconstruction",
         values: &["first-order-reference", "limited-linear"],
-        default: "limited-linear",
+        default: Some("limited-linear"),
     }],
     nested: &[],
     attachable_to: &[ComponentId::ChannelPools],
