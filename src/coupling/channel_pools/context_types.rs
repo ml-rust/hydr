@@ -2,7 +2,7 @@
 
 use super::{ChannelPoolInitialState, ChannelPoolSetup};
 use crate::numerics::water_transfers::TransferTree;
-use crate::storage::{LevelPoolCut, LevelPoolCutPlan};
+use hydr_storage::internal::{LevelPoolCut, LevelPoolCutPlan};
 use numr::{dtype::DType, runtime::Runtime, tensor::Tensor};
 use std::collections::BTreeMap;
 

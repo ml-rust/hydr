@@ -16,14 +16,16 @@ use super::coupling_cut_bounds::CutArithmetic;
 use super::{LevelPoolBatch, LevelPoolError};
 use crate::storage::tensor::TensorPoolContext;
 
+#[doc(hidden)]
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct LevelPoolCut {
+pub struct LevelPoolCut {
     pub pool_index: usize,
     pub elevation_m: f64,
 }
 
+#[doc(hidden)]
 #[derive(Debug)]
-pub(crate) struct LevelPoolCutPlan<R: Runtime<DType = DType>> {
+pub struct LevelPoolCutPlan<R: Runtime<DType = DType>> {
     context: Arc<TensorPoolContext<R>>,
     indices: Tensor<R>,
     #[cfg(test)]
@@ -33,7 +35,8 @@ pub(crate) struct LevelPoolCutPlan<R: Runtime<DType = DType>> {
     upper_m3: Tensor<R>,
 }
 
-pub(crate) struct LevelPoolCutAvailability<R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub struct LevelPoolCutAvailability<R: Runtime<DType = DType>> {
     pub available_lower_m3: Tensor<R>,
 }
 
@@ -48,7 +51,8 @@ impl<R: Runtime<DType = DType>> LevelPoolCutPlan<R> {
         &self.lower_m3
     }
 
-    pub(crate) fn upper_volume_m3(&self) -> &Tensor<R> {
+    #[doc(hidden)]
+    pub fn upper_volume_m3(&self) -> &Tensor<R> {
         &self.upper_m3
     }
 }
@@ -75,7 +79,8 @@ where
         + UnaryOps<R>
         + Interp1dAlgorithms<R>,
 {
-    pub(crate) fn bind_coupling_cuts(
+    #[doc(hidden)]
+    pub fn bind_coupling_cuts(
         &self,
         cuts: &[LevelPoolCut],
     ) -> Result<LevelPoolCutPlan<R>, LevelPoolError> {
@@ -219,7 +224,8 @@ where
         })
     }
 
-    pub(crate) fn coupling_cut_availability(
+    #[doc(hidden)]
+    pub fn coupling_cut_availability(
         &self,
         plan: &LevelPoolCutPlan<R>,
     ) -> Result<LevelPoolCutAvailability<R>, LevelPoolError> {

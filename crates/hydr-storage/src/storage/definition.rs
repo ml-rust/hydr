@@ -15,7 +15,8 @@ pub struct LevelPoolElement {
     pub storage_support_identity: String,
 }
 impl LevelPoolElement {
-    pub(crate) fn same_bits(&self, other: &Self) -> bool {
+    #[doc(hidden)]
+    pub fn same_bits(&self, other: &Self) -> bool {
         self.id == other.id
             && self.connected_pool_assertion == other.connected_pool_assertion
             && self.storage_support_identity == other.storage_support_identity
@@ -56,7 +57,8 @@ impl Default for LevelPoolConfig {
     }
 }
 impl LevelPoolConfig {
-    pub(crate) fn check(&self) -> Result<(), LevelPoolError> {
+    #[doc(hidden)]
+    pub fn check(&self) -> Result<(), LevelPoolError> {
         if !self.volume_absolute.is_finite()
             || self.volume_absolute < 0.0
             || !self.volume_relative.is_finite()
@@ -70,7 +72,8 @@ impl LevelPoolConfig {
         }
         Ok(())
     }
-    pub(crate) fn same_bits(&self, other: &Self) -> bool {
+    #[doc(hidden)]
+    pub fn same_bits(&self, other: &Self) -> bool {
         self.volume_absolute.to_bits() == other.volume_absolute.to_bits()
             && self.volume_relative.to_bits() == other.volume_relative.to_bits()
     }

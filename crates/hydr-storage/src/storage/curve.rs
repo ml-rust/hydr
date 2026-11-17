@@ -79,7 +79,8 @@ impl LevelPoolCurve {
     pub fn maximum_volume_m3(&self) -> f64 {
         self.knots[self.knots.len() - 1].volume_m3
     }
-    pub(crate) fn origin(&self) -> f64 {
+    #[doc(hidden)]
+    pub fn origin(&self) -> f64 {
         self.knots[0].stage_m
     }
     pub(crate) fn key(&self) -> CurveIdentity {

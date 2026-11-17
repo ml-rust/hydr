@@ -205,7 +205,8 @@ impl LevelPoolReceipt {
     }
 }
 impl LevelPoolStepDiagnostics {
-    pub(crate) fn same_bits(&self, other: &Self) -> bool {
+    #[doc(hidden)]
+    pub fn same_bits(&self, other: &Self) -> bool {
         self.rain_volume_m3.to_bits() == other.rain_volume_m3.to_bits()
             && self.evaporation_volume_m3.to_bits() == other.evaporation_volume_m3.to_bits()
             && self.bottom_loss_volume_m3.to_bits() == other.bottom_loss_volume_m3.to_bits()
@@ -235,7 +236,8 @@ impl LevelPoolStepDiagnostics {
 }
 
 impl LevelPoolElementLedger {
-    pub(crate) fn same_bits(&self, other: &Self) -> bool {
+    #[doc(hidden)]
+    pub fn same_bits(&self, other: &Self) -> bool {
         let sources = match (&self.sources, &other.sources) {
             (None, None) => true,
             (Some(a), Some(b)) => a.same_bits(b),

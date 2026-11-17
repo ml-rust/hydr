@@ -2,7 +2,7 @@ use super::context_types::{CutAggregation, Topology};
 use super::{ChannelPoolEndpoint, ChannelPoolError, ChannelPoolSetup};
 use crate::channel::ChannelGeometry;
 use crate::numerics::water_transfers::TransferTree;
-use crate::storage::LevelPoolCut;
+use hydr_storage::internal::LevelPoolCut;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,

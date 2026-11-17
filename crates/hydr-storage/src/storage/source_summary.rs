@@ -11,8 +11,9 @@ use solvr::interpolate::Interp1dAlgorithms;
 use super::LevelPoolError;
 use crate::storage::tensor::{TensorPoolContext, TensorPoolSourceStep};
 
+#[doc(hidden)]
 #[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct LevelPoolIntervalSources {
+pub struct LevelPoolIntervalSources {
     pub rain_volume_m3: f64,
     pub bottom_loss_volume_m3: f64,
     pub evaporation_volume_m3: f64,

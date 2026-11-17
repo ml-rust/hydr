@@ -13,12 +13,14 @@ use super::{LevelPoolBatch, LevelPoolError, LevelPoolSources, LevelPoolTrial};
 use crate::storage::numerics::sources::PreparedSources;
 use crate::storage::tensor::TensorPoolSourceInput;
 
-pub(crate) struct LevelPoolSourcePlan<'a, R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub struct LevelPoolSourcePlan<'a, R: Runtime<DType = DType>> {
     accepted: &'a LevelPoolBatch<R>,
     input: TensorPoolSourceInput<R>,
 }
 
-pub(crate) struct PreparedLevelPoolInterval<'a, R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub struct PreparedLevelPoolInterval<'a, R: Runtime<DType = DType>> {
     accepted: &'a LevelPoolBatch<R>,
     end: f64,
     steps: usize,
@@ -40,7 +42,8 @@ where
         + SortingOps<R>
         + Interp1dAlgorithms<R>,
 {
-    pub(crate) fn bind_source_rates(
+    #[doc(hidden)]
+    pub fn bind_source_rates(
         &self,
         sources: &[LevelPoolSources],
     ) -> Result<LevelPoolSourcePlan<'_, R>, LevelPoolError> {
@@ -66,10 +69,8 @@ where
         + SortingOps<R>
         + Interp1dAlgorithms<R>,
 {
-    pub(crate) fn prepare(
-        &self,
-        end: f64,
-    ) -> Result<PreparedLevelPoolInterval<'a, R>, LevelPoolError> {
+    #[doc(hidden)]
+    pub fn prepare(&self, end: f64) -> Result<PreparedLevelPoolInterval<'a, R>, LevelPoolError> {
         let dt = super::trial::duration(self.accepted.time, end)?;
         let steps = super::trial::next_step_count(self.accepted.steps)?;
         let sources = crate::storage::numerics::sources::prepare(
@@ -88,7 +89,8 @@ where
 }
 
 impl<R: Runtime<DType = DType>> PreparedLevelPoolInterval<'_, R> {
-    pub(crate) fn available_volume(&self) -> &Tensor<R> {
+    #[doc(hidden)]
+    pub fn available_volume(&self) -> &Tensor<R> {
         self.sources
             .as_ref()
             .map_or(&self.accepted.state.volume_m3, |(step, _)| {
@@ -112,7 +114,8 @@ where
         + SortingOps<R>
         + Interp1dAlgorithms<R>,
 {
-    pub(crate) fn trial_to_tensors(
+    #[doc(hidden)]
+    pub fn trial_to_tensors(
         &self,
         incoming: &Tensor<R>,
         outgoing: &Tensor<R>,
@@ -130,7 +133,10 @@ where
             .complete_trial(self.end, self.steps, state, step)
     }
 
-    pub(crate) fn source_totals(&self) -> Result<super::LevelPoolIntervalSources, LevelPoolError> {
+    #[doc(hidden)]
+    pub fn source_totals(
+        &self,
+    ) -> Result<super::source_summary::LevelPoolIntervalSources, LevelPoolError> {
         super::source_summary::interval(
             &self.accepted.context,
             self.sources.as_ref().map(|(s, _)| s),

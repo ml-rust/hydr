@@ -6,7 +6,8 @@ use super::{
     mass::{InflowMass, charge},
 };
 use crate::numerics::outward::AdjustmentReduction;
-use crate::storage::{LevelPoolIntervalSources, LevelPoolTotals};
+use crate::storage::LevelPoolTotals;
+use hydr_storage::internal::LevelPoolIntervalSources;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,

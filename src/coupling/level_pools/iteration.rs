@@ -2,7 +2,8 @@ use super::inflows::PreparedInflows;
 use super::{
     CoupledLevelPoolError, context::Context, exchange::Exchange, heads::Heads, topology::reject,
 };
-use crate::storage::{LevelPoolBatch, PreparedLevelPoolInterval};
+use crate::storage::LevelPoolBatch;
+use hydr_storage::internal::PreparedLevelPoolInterval;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,

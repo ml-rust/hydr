@@ -1,6 +1,7 @@
 use super::inflows::{InflowCumulativeSummary, InflowIntervalSummary};
 use super::{CoupledLevelPoolError, context::Context};
-use crate::storage::{LevelPoolBatch, LevelPoolIntervalSources, LevelPoolTotals};
+use crate::storage::{LevelPoolBatch, LevelPoolTotals};
+use hydr_storage::internal::LevelPoolIntervalSources;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,

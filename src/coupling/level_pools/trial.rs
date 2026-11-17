@@ -6,8 +6,9 @@ use super::{
     CoupledLevelPoolBatch, CoupledLevelPoolError, CoupledLevelPoolForcingInterval,
     CoupledLevelPoolStepDiagnostics, exchange::Exchange, heads::Heads,
 };
-use crate::storage::{LevelPoolBatch, LevelPoolError, LevelPoolSnapshot, LevelPoolSourcePlan};
+use crate::storage::{LevelPoolBatch, LevelPoolError, LevelPoolSnapshot};
 use crate::structures::{StructureError, StructureInputErrorKind};
+use hydr_storage::internal::LevelPoolSourcePlan;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,

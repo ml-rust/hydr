@@ -12,7 +12,8 @@ use solvr::interpolate::Interp1dAlgorithms;
 use super::{LevelPoolBatch, LevelPoolError, LevelPoolTrial};
 
 /// Borrowed native counters retain each pool's original arithmetic operands.
-pub(crate) struct LevelPoolNativeAccounting<'a, R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub struct LevelPoolNativeAccounting<'a, R: Runtime<DType = DType>> {
     pub volume_m3: &'a Tensor<R>,
     pub cumulative_incoming_volume_m3: &'a Tensor<R>,
     pub cumulative_outgoing_volume_m3: &'a Tensor<R>,
@@ -20,7 +21,8 @@ pub(crate) struct LevelPoolNativeAccounting<'a, R: Runtime<DType = DType>> {
     pub outgoing_roundoff_bound_m3: &'a Tensor<R>,
 }
 
-pub(crate) struct LevelPoolNativeInterval<'a, R: Runtime<DType = DType>> {
+#[doc(hidden)]
+pub struct LevelPoolNativeInterval<'a, R: Runtime<DType = DType>> {
     pub old_volume_m3: &'a Tensor<R>,
     pub volume_m3: &'a Tensor<R>,
     pub incoming_volume_m3: &'a Tensor<R>,
@@ -31,11 +33,13 @@ pub(crate) struct LevelPoolNativeInterval<'a, R: Runtime<DType = DType>> {
 }
 
 impl<R: Runtime<DType = DType>> LevelPoolBatch<R> {
-    pub(crate) fn volumes_tensor(&self) -> &Tensor<R> {
+    #[doc(hidden)]
+    pub fn volumes_tensor(&self) -> &Tensor<R> {
         &self.state.volume_m3
     }
 
-    pub(crate) fn coupling_native_accounting(&self) -> LevelPoolNativeAccounting<'_, R> {
+    #[doc(hidden)]
+    pub fn coupling_native_accounting(&self) -> LevelPoolNativeAccounting<'_, R> {
         let state = &self.state;
         LevelPoolNativeAccounting {
             volume_m3: &state.volume_m3,
@@ -46,7 +50,8 @@ impl<R: Runtime<DType = DType>> LevelPoolBatch<R> {
         }
     }
 
-    pub(crate) fn coupling_native_interval(&self) -> Option<LevelPoolNativeInterval<'_, R>> {
+    #[doc(hidden)]
+    pub fn coupling_native_interval(&self) -> Option<LevelPoolNativeInterval<'_, R>> {
         self.last.as_ref().map(|last| {
             let step = &last.step;
             LevelPoolNativeInterval {
@@ -79,14 +84,16 @@ where
         + Interp1dAlgorithms<R>,
 {
     /// Zero storage retains the numerical curve origin, not a physical water stage.
-    pub(crate) fn stages_tensor(&self) -> Result<Tensor<R>, LevelPoolError> {
+    #[doc(hidden)]
+    pub fn stages_tensor(&self) -> Result<Tensor<R>, LevelPoolError> {
         if let Some(last) = &self.last {
             return Ok(last.step.stage_m.clone());
         }
         Ok(crate::storage::numerics::curves::evaluate(&self.context, &self.state.volume_m3)?.stage)
     }
 
-    pub(crate) fn trial_to_tensors(
+    #[doc(hidden)]
+    pub fn trial_to_tensors(
         &self,
         end: f64,
         incoming: &Tensor<R>,

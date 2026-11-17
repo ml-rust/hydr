@@ -2,21 +2,21 @@
 
 mod accounting;
 mod batch;
-mod coupling;
+pub(crate) mod coupling;
 mod coupling_cut_bounds;
-mod coupling_cuts;
+pub(crate) mod coupling_cuts;
 mod curve;
 pub(crate) mod definition;
 mod error;
 pub(crate) mod numerics;
-mod prepared_interval;
+pub(crate) mod prepared_interval;
 mod projection;
 mod receipt;
 mod snapshot;
 mod source_policy;
 mod source_projection;
 mod source_receipt;
-mod source_summary;
+pub(crate) mod source_summary;
 pub(crate) mod tensor;
 mod trial;
 
@@ -34,8 +34,3 @@ pub use source_receipt::{
     LevelPoolCounterReceipt, LevelPoolDemandCapReceipt, LevelPoolSourceCounterReceipt,
     LevelPoolSourceLedger, LevelPoolSourceReceipt,
 };
-
-pub(crate) use prepared_interval::{LevelPoolSourcePlan, PreparedLevelPoolInterval};
-pub(crate) use source_summary::LevelPoolIntervalSources;
-
-pub(crate) use coupling_cuts::{LevelPoolCut, LevelPoolCutPlan};

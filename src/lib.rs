@@ -24,5 +24,7 @@ pub mod runoff;
 pub use hydr_soil::soil;
 
 pub mod solver;
-pub mod storage;
+#[doc(inline)]
+pub use hydr_storage::storage;
+
 pub mod structures;
