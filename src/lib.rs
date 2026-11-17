@@ -3,6 +3,7 @@
 //! Configured Numr runtimes advance full 2D shallow-water flow through atomic accepted steps.
 //! CPU F64 is the checked reference profile. Other runtimes must satisfy each algorithm's arithmetic requirements.
 //! Read [`solver::capabilities`] before selecting application boundaries and physical regimes.
+//! It returns a [`capability::ComponentCapabilities`] declaration.
 //!
 //! ```
 //! use hydr::grid::CartesianGrid;

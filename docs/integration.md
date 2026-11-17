@@ -32,7 +32,7 @@ An accepted step is a completed update that passes Hydr's numerical checks.
 
 | API | Application action |
 | --- | --- |
-| `capabilities()` | Read implemented methods, arithmetic requirements, sources, boundaries, and unsupported uses. |
+| `capabilities()` | Read the `ComponentCapabilities` declaration: precision, arithmetic requirements, runtimes, admitted boundaries and regimes, sources, unsupported uses, and limits. |
 | `Solver::<R>::new(client, setup, initial)` | Supply physical inputs and a configured client. Hydr checks them and allocates `Tensor<R>` state. |
 | `advance_to` | Request a target time, then read the accepted time and completion status. |
 | `advance_controlled` | Check cancellation between steps and receive accepted fields through an observer. |

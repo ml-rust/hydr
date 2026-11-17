@@ -51,7 +51,7 @@ pub struct Unsupported {
     pub reason: UnsupportedReason,
     /// One-line description.
     pub summary: &'static str,
-    /// Full explanation for users.
+    /// Repository-relative path of the doc that explains it.
     pub doc: &'static str,
 }
 
@@ -62,7 +62,7 @@ pub struct Limit {
     pub id: &'static str,
     /// One-line description.
     pub summary: &'static str,
-    /// Full explanation for users.
+    /// Repository-relative path of the doc that explains it.
     pub doc: &'static str,
 }
 

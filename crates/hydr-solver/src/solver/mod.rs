@@ -27,7 +27,10 @@ pub use accounting::{
     TransmissiveDiagnostics, WaterLedger,
 };
 pub use advance::{AdvanceReport, AdvanceStatus};
-pub use capabilities::{CONTRACT_VERSION, Capabilities, capabilities};
+pub use capabilities::{CONTRACT_VERSION, capabilities};
+
+/// Transitional name for the solver's capability declaration. Use `ComponentCapabilities`.
+pub type Capabilities = hydr_core::capability::ComponentCapabilities;
 pub use engine::Solver;
 pub use forcing_history::ForcingPrefix;
 pub use output::{CellResult, FaceTransfer};
