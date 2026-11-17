@@ -2,8 +2,11 @@ use numr::runtime::Device;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
 use super::super::batch::StoredStep;
-use super::{ReservoirSnapshot, ReservoirSnapshotData};
+use super::{
+    RESERVOIR_CONTRACT_VERSION, RESERVOIR_SNAPSHOT_SCHEMA, ReservoirSnapshot, ReservoirSnapshotData,
+};
 use crate::runoff::{ReservoirBatch, ReservoirConfig, ReservoirElement, ReservoirError};
+use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
@@ -46,6 +49,14 @@ where
     /// Import checks receipt algebra without replaying the numerical root solve.
     /// It establishes continuation consistency, not historical authenticity.
     pub fn restore_data(&mut self, data: &ReservoirSnapshotData) -> Result<(), ReservoirError> {
+        package_identity(
+            "reservoir",
+            &data.schema,
+            RESERVOIR_SNAPSHOT_SCHEMA,
+            &data.contract,
+            RESERVOIR_CONTRACT_VERSION,
+        )
+        .map_err(ReservoirError::input)?;
         self.check_snapshot_definition(&data.elements, &data.config)?;
         let mut candidate = Self::new(
             self.context.client.clone(),

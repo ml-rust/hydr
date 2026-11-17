@@ -124,7 +124,9 @@ Owned data retains:
 
 Import reuses numerical receipt checks without replaying roots. Aggregate interval and cumulative gates remain independent.
 
-Receipt consistency cannot authenticate historical input or export. Exact restart requires the same build/runtime, ordered batch layout, and accepted interval partition.
+Receipt consistency cannot authenticate historical input or export. Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `RESERVOIR_SNAPSHOT_SCHEMA` and `RESERVOIR_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with an input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+
+Exact restart requires the same build/runtime, ordered batch layout, and accepted interval partition.
 
 Different batch shapes carry no bitwise equality promise.
 

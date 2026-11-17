@@ -15,5 +15,7 @@ pub use config::ReservoirConfig;
 pub use error::ReservoirError;
 pub use output::ReservoirOutput;
 pub use parameters::ReservoirParameters;
-pub use snapshot::{ReservoirSnapshot, ReservoirSnapshotData};
+pub use snapshot::{
+    RESERVOIR_CONTRACT_VERSION, RESERVOIR_SNAPSHOT_SCHEMA, ReservoirSnapshot, ReservoirSnapshotData,
+};
 pub use state::{ReservoirElement, ReservoirInput, ReservoirState};

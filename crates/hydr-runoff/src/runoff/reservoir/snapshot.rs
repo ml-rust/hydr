@@ -4,4 +4,6 @@ mod package;
 mod receipts;
 mod restore;
 
-pub use package::{ReservoirSnapshot, ReservoirSnapshotData};
+pub use package::{
+    RESERVOIR_CONTRACT_VERSION, RESERVOIR_SNAPSHOT_SCHEMA, ReservoirSnapshot, ReservoirSnapshotData,
+};

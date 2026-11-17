@@ -9,12 +9,21 @@ use numr::ops::{
 use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
+/// Schema identity of the reservoir snapshot package.
+pub const RESERVOIR_SNAPSHOT_SCHEMA: &str = "hydr-reservoir-checkpoint-1";
+/// Numerical contract identity of the reservoir snapshot package.
+pub const RESERVOIR_CONTRACT_VERSION: &str = "hydr-reservoir-numr-cpu-1";
+
 /// Caller-owned complete reservoir continuation values.
 ///
 /// Preserve every F64 bit when encoding. Checks establish consistency, not historical authenticity.
 /// Exact continuation requires the same build, runtime, batch layout, and accepted interval partition.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReservoirSnapshotData {
+    /// Package schema identity.
+    pub schema: String,
+    /// Numerical contract identity.
+    pub contract: String,
     /// Ordered named elements and their complete checked physical parameters.
     pub elements: Vec<ReservoirElement>,
     /// Numerical controls and independent volume tolerances.
@@ -82,6 +91,8 @@ where
     /// Project complete values for caller-owned encoding and persistence.
     pub fn snapshot_data(&self) -> Result<ReservoirSnapshotData, ReservoirError> {
         Ok(ReservoirSnapshotData {
+            schema: RESERVOIR_SNAPSHOT_SCHEMA.into(),
+            contract: RESERVOIR_CONTRACT_VERSION.into(),
             elements: self.elements().to_vec(),
             config: self.config().clone(),
             time: self.time(),

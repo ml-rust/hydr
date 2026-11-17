@@ -8,7 +8,104 @@ mod runtime;
 mod fixture;
 
 use fixture::{Result, parameters, single};
-use hydr::runoff::{ReservoirConfig, ReservoirInput, ReservoirParameters, ReservoirSnapshotData};
+use hydr::channel::CHANNEL_SNAPSHOT_SCHEMA;
+use hydr::runoff::{
+    RESERVOIR_CONTRACT_VERSION, RESERVOIR_SNAPSHOT_SCHEMA, ReservoirConfig, ReservoirError,
+    ReservoirInput, ReservoirParameters, ReservoirSnapshotData,
+};
+
+fn identity_package() -> Result<ReservoirSnapshotData> {
+    let batch = single(parameters()?, 0.25 * 0.3048, ReservoirConfig::default())?;
+    Ok(batch
+        .trial_to(
+            1.0,
+            &[ReservoirInput {
+                incoming_rate_m_per_s: 0.002,
+            }],
+        )?
+        .into_next()
+        .snapshot_data()?)
+}
+
+fn reject_identity(changed: &ReservoirSnapshotData) -> Result<String> {
+    let mut destination = single(parameters()?, 0.25 * 0.3048, ReservoirConfig::default())?;
+    let before = destination.snapshot_data()?;
+    let Err(error) = destination.restore_data(changed) else {
+        return Err("foreign identity was accepted".into());
+    };
+    assert!(
+        matches!(error, ReservoirError::InvalidInput { .. }),
+        "unexpected kind: {error}"
+    );
+    assert_eq!(destination.snapshot_data()?, before);
+    Ok(error.to_string())
+}
+
+#[test]
+fn reservoir_package_carries_identity() -> Result {
+    assert_eq!(RESERVOIR_SNAPSHOT_SCHEMA, "hydr-reservoir-checkpoint-1");
+    assert_eq!(RESERVOIR_CONTRACT_VERSION, "hydr-reservoir-numr-cpu-1");
+    let package = identity_package()?;
+    assert_eq!(package.schema, RESERVOIR_SNAPSHOT_SCHEMA);
+    assert_eq!(package.contract, RESERVOIR_CONTRACT_VERSION);
+    Ok(())
+}
+
+#[test]
+fn reservoir_import_rejects_foreign_schema() -> Result {
+    let package = identity_package()?;
+    for found in ["hydr-reservoir-checkpoint-0", ""] {
+        let mut changed = package.clone();
+        changed.schema = found.into();
+        let message = reject_identity(&changed)?;
+        assert!(
+            message.contains(&format!("found \"{found}\"")),
+            "missing found value: {message}"
+        );
+        assert!(
+            message.contains(RESERVOIR_SNAPSHOT_SCHEMA),
+            "missing expected schema: {message}"
+        );
+        assert!(
+            message.contains("capture a new package"),
+            "missing action: {message}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn reservoir_import_rejects_foreign_contract() -> Result {
+    let mut changed = identity_package()?;
+    changed.contract = "hydr-reservoir-numr-gpu-1".into();
+    let message = reject_identity(&changed)?;
+    assert!(message.contains("contract"), "missing contract: {message}");
+    assert!(
+        message.contains("hydr-reservoir-numr-gpu-1"),
+        "missing found value: {message}"
+    );
+    assert!(
+        message.contains(RESERVOIR_CONTRACT_VERSION),
+        "missing expected contract: {message}"
+    );
+    Ok(())
+}
+
+#[test]
+fn reservoir_import_rejects_channel_schema() -> Result {
+    let mut changed = identity_package()?;
+    changed.schema = CHANNEL_SNAPSHOT_SCHEMA.into();
+    let message = reject_identity(&changed)?;
+    assert!(
+        message.contains(CHANNEL_SNAPSHOT_SCHEMA),
+        "missing found value: {message}"
+    );
+    assert!(
+        message.contains(RESERVOIR_SNAPSHOT_SCHEMA),
+        "missing expected schema: {message}"
+    );
+    Ok(())
+}
 
 #[test]
 fn trusted_and_owned_restart_reproduce_complete_accepted_continuation() -> Result {
