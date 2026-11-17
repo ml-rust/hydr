@@ -2,8 +2,12 @@
 
 use super::super::OperatingControlBatch;
 use super::compatibility::require;
-use super::{OperatingControlSnapshot, OperatingControlSnapshotData};
+use super::{
+    OPERATING_CONTROL_CONTRACT_VERSION, OPERATING_CONTROL_SNAPSHOT_SCHEMA,
+    OperatingControlSnapshot, OperatingControlSnapshotData,
+};
 use crate::structures::{StructureError, StructureInputErrorKind};
+use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use std::sync::Arc;
@@ -37,6 +41,14 @@ impl<R: Runtime<DType = DType>> OperatingControlBatch<R> {
             + numr::ops::TypeConversionOps<R>
             + numr::ops::UnaryOps<R>,
     {
+        package_identity(
+            "operating control",
+            &data.schema,
+            OPERATING_CONTROL_SNAPSHOT_SCHEMA,
+            &data.contract,
+            OPERATING_CONTROL_CONTRACT_VERSION,
+        )
+        .map_err(|message| StructureError::input(StructureInputErrorKind::Definition, message))?;
         super::compatibility::check(self, data)?;
         require(
             data.time_s.is_finite()

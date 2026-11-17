@@ -30,6 +30,8 @@ impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
     /// Explicitly project complete original inputs and bounded accepted receipts.
     pub fn snapshot_data(&self) -> Result<GateActuatorSnapshotData, StructureError> {
         Ok(GateActuatorSnapshotData {
+            schema: GATE_ACTUATOR_SNAPSHOT_SCHEMA.into(),
+            contract: GATE_ACTUATOR_CONTRACT_VERSION.into(),
             elements: self.elements().to_vec(),
             definitions: self.definitions().to_vec(),
             initial_states: self.initial_states().to_vec(),

@@ -79,6 +79,8 @@ For caller-owned packages:
 2. Encode every original F64 bit.
 3. Import through the response compatibility checks.
 
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `CONTROLLED_PUMP_SNAPSHOT_SCHEMA` and `CONTROLLED_PUMP_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with a definition input error. The nested `controls` package carries its own identity and is checked too, before the controller changes. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+
 Import replaces accepted continuation atomically. Rejection preserves the destination.
 
 Bounded receipt checks do not authenticate complete history. Bitwise continuation requires the same build, runtime, layout, accepted partition, and future causal samples.

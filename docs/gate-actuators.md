@@ -114,6 +114,8 @@ An earliest bound overlapping support with an unavailable upper rejects numerica
 
 Trusted restore checks the full bound context. Caller-owned encoding must preserve every original F64 bit, including signed zeros and repeated raw target packets.
 
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `GATE_ACTUATOR_SNAPSHOT_SCHEMA` and `GATE_ACTUATOR_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with a definition input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+
 ### What import checks
 
 Import recomputes arrival and forward proofs before accepting the package.

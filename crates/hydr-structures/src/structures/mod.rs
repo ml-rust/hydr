@@ -22,7 +22,8 @@ mod pump;
 pub(crate) mod tensor;
 
 pub use actuator::{
-    GateActuatorAccuracy, GateActuatorAnchor, GateActuatorArrivalCertificate, GateActuatorBatch,
+    GATE_ACTUATOR_CONTRACT_VERSION, GATE_ACTUATOR_SNAPSHOT_SCHEMA, GateActuatorAccuracy,
+    GateActuatorAnchor, GateActuatorArrivalCertificate, GateActuatorBatch,
     GateActuatorBinaryWitness, GateActuatorCompletionReceipt, GateActuatorDefinition,
     GateActuatorDirection, GateActuatorEndpointReceipt, GateActuatorEvent,
     GateActuatorFmaStageReceipt, GateActuatorForwardReceipt, GateActuatorInitialState,
@@ -61,9 +62,10 @@ pub use control::{
     ControlCommand, ControlCommandOutput, ControlDecisionReceipt, ControlDecisionSchedule,
     ControlEvent, ControlInitialState, ControlLatch, ControlPending, ControlSample,
     ControlStageSignal, ControlState, ControlStepDiagnostics, ControlTimeExpansion,
-    ControlTimerWitness, ControlTransitionReceipt, OperatingControlBatch,
-    OperatingControlDefinition, OperatingControlSnapshot, OperatingControlSnapshotData,
-    OperatingControlTrial, SampledControlTiming,
+    ControlTimerWitness, ControlTransitionReceipt, OPERATING_CONTROL_CONTRACT_VERSION,
+    OPERATING_CONTROL_SNAPSHOT_SCHEMA, OperatingControlBatch, OperatingControlDefinition,
+    OperatingControlSnapshot, OperatingControlSnapshotData, OperatingControlTrial,
+    SampledControlTiming,
 };
 
 mod operating_source;
@@ -79,14 +81,15 @@ pub(crate) use actuator::{
 
 mod controlled_gate;
 pub use controlled_gate::{
-    ControlledGateBatch, ControlledGateEvent, ControlledGateSnapshot, ControlledGateSnapshotData,
-    ControlledGateTrial,
+    CONTROLLED_GATE_CONTRACT_VERSION, CONTROLLED_GATE_SNAPSHOT_SCHEMA, ControlledGateBatch,
+    ControlledGateEvent, ControlledGateSnapshot, ControlledGateSnapshotData, ControlledGateTrial,
 };
 
 mod controlled_pump;
 pub(crate) use control::same_control_context;
 pub(crate) use controlled_pump::same_controlled_pump_context;
 pub use controlled_pump::{
-    ControlledPumpBatch, ControlledPumpOutput, ControlledPumpSnapshot, ControlledPumpSnapshotData,
-    ControlledPumpTrial, PumpResponseDefinition, PumpResponseModel,
+    CONTROLLED_PUMP_CONTRACT_VERSION, CONTROLLED_PUMP_SNAPSHOT_SCHEMA, ControlledPumpBatch,
+    ControlledPumpOutput, ControlledPumpSnapshot, ControlledPumpSnapshotData, ControlledPumpTrial,
+    PumpResponseDefinition, PumpResponseModel,
 };

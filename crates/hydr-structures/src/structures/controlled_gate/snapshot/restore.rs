@@ -1,8 +1,12 @@
 //! Atomic restoration preserves both destination child contexts.
 
 use super::super::ControlledGateBatch;
-use super::{ControlledGateSnapshot, ControlledGateSnapshotData};
-use crate::structures::StructureError;
+use super::{
+    CONTROLLED_GATE_CONTRACT_VERSION, CONTROLLED_GATE_SNAPSHOT_SCHEMA, ControlledGateSnapshot,
+    ControlledGateSnapshotData,
+};
+use crate::structures::{StructureError, StructureInputErrorKind};
+use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 
@@ -32,6 +36,14 @@ impl<R: Runtime<DType = DType>> ControlledGateBatch<R> {
             + numr::ops::TypeConversionOps<R>
             + numr::ops::UnaryOps<R>,
     {
+        package_identity(
+            "controlled gate",
+            &data.schema,
+            CONTROLLED_GATE_SNAPSHOT_SCHEMA,
+            &data.contract,
+            CONTROLLED_GATE_CONTRACT_VERSION,
+        )
+        .map_err(|message| StructureError::input(StructureInputErrorKind::Definition, message))?;
         let mut controls = self.controls.clone();
         let mut actuators = self.actuators.clone();
         controls.restore_data(&data.controls)?;

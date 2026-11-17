@@ -11,7 +11,9 @@ pub use definition::{
     GateTargetUpdate,
 };
 pub use event::GateActuatorEvent;
-pub use package::GateActuatorSnapshotData;
+pub use package::{
+    GATE_ACTUATOR_CONTRACT_VERSION, GATE_ACTUATOR_SNAPSHOT_SCHEMA, GateActuatorSnapshotData,
+};
 pub use position::{
     GateActuatorAnchor, GateActuatorOutput, GateActuatorPhase, GateActuatorPosition,
     GateActuatorSupport, GateActuatorTimeExpansion,

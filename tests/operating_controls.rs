@@ -12,6 +12,8 @@ mod check;
 mod fixture;
 #[path = "operating_controls/histories.rs"]
 mod histories;
+#[path = "operating_controls/identity.rs"]
+mod identity;
 #[path = "operating_controls/layouts.rs"]
 mod layouts;
 #[path = "operating_controls/lifecycle.rs"]

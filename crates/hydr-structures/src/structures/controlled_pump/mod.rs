@@ -12,5 +12,8 @@ pub use batch::ControlledPumpBatch;
 pub(crate) use compatibility::same_context as same_controlled_pump_context;
 pub use definition::{PumpResponseDefinition, PumpResponseModel};
 pub use output::ControlledPumpOutput;
-pub use snapshot::{ControlledPumpSnapshot, ControlledPumpSnapshotData};
+pub use snapshot::{
+    CONTROLLED_PUMP_CONTRACT_VERSION, CONTROLLED_PUMP_SNAPSHOT_SCHEMA, ControlledPumpSnapshot,
+    ControlledPumpSnapshotData,
+};
 pub use trial::ControlledPumpTrial;

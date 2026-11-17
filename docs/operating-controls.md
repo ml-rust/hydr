@@ -94,6 +94,8 @@ Caller-owned packages must preserve:
 | Initial antecedents and future decisions | Bounded final diagnostics |
 | Timing policy | Every original F64 bit, including signed zero |
 
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `OPERATING_CONTROL_SNAPSHOT_SCHEMA` and `OPERATING_CONTROL_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with a definition input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+
 ### Check an imported package
 
 Import checks schedule position, sample causality, timer chronology, transition-count parity, and complete retained receipts.

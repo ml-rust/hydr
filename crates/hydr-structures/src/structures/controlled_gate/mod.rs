@@ -7,5 +7,8 @@ mod trial;
 
 pub use batch::ControlledGateBatch;
 pub use event::ControlledGateEvent;
-pub use snapshot::{ControlledGateSnapshot, ControlledGateSnapshotData};
+pub use snapshot::{
+    CONTROLLED_GATE_CONTRACT_VERSION, CONTROLLED_GATE_SNAPSHOT_SCHEMA, ControlledGateSnapshot,
+    ControlledGateSnapshotData,
+};
 pub use trial::ControlledGateTrial;

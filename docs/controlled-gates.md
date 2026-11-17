@@ -84,6 +84,8 @@ Trusted snapshots retain both complete child continuations without copying deriv
 
 Preserve both complete child packages and every original F64 bit during encoding.
 
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `CONTROLLED_GATE_SNAPSHOT_SCHEMA` and `CONTROLLED_GATE_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with a definition input error. The nested `controls` and `actuators` packages carry their own identity and are checked too, before either child changes. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+
 Import checks each child's receipt arithmetic before checking their relationship:
 
 | Cross-child check | Required agreement |

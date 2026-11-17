@@ -3,7 +3,8 @@
 use super::super::*;
 use super::compatibility::{as_definition, require};
 use super::receipt_bits::ReceiptBits;
-use crate::structures::StructureError;
+use crate::structures::{StructureError, StructureInputErrorKind};
+use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use std::sync::Arc;
@@ -31,6 +32,14 @@ impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
             + numr::ops::TypeConversionOps<R>
             + numr::ops::UnaryOps<R>,
     {
+        package_identity(
+            "gate actuator",
+            &data.schema,
+            GATE_ACTUATOR_SNAPSHOT_SCHEMA,
+            &data.contract,
+            GATE_ACTUATOR_CONTRACT_VERSION,
+        )
+        .map_err(|message| StructureError::input(StructureInputErrorKind::Definition, message))?;
         self.restore_checked(data).map_err(as_definition)
     }
     fn restore_checked(&mut self, data: &GateActuatorSnapshotData) -> Result<(), StructureError>

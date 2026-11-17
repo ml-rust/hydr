@@ -12,6 +12,8 @@ mod fixture;
 mod historical_completions;
 #[path = "gate_actuators/histories.rs"]
 mod histories;
+#[path = "gate_actuators/identity.rs"]
+mod identity;
 #[path = "../examples/support/gate_actuators/inputs.rs"]
 mod inputs;
 #[path = "gate_actuators/layouts.rs"]

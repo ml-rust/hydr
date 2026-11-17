@@ -21,7 +21,10 @@ pub use receipts::{
 };
 pub use schedule::{ControlDecisionSchedule, ControlEvent, SampledControlTiming};
 pub use signal::{ControlSample, ControlStageSignal};
-pub use snapshot::{OperatingControlSnapshot, OperatingControlSnapshotData};
+pub use snapshot::{
+    OPERATING_CONTROL_CONTRACT_VERSION, OPERATING_CONTROL_SNAPSHOT_SCHEMA,
+    OperatingControlSnapshot, OperatingControlSnapshotData,
+};
 pub use state::{ControlInitialState, ControlPending, ControlState};
 pub use trial::OperatingControlTrial;
 

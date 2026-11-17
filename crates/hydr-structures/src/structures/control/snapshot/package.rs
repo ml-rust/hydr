@@ -8,9 +8,18 @@ use crate::structures::{StructureElement, StructureError};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 
+/// Schema identity of the operating control snapshot package.
+pub const OPERATING_CONTROL_SNAPSHOT_SCHEMA: &str = "hydr-operating-control-checkpoint-1";
+/// Numerical contract identity of the operating control snapshot package.
+pub const OPERATING_CONTROL_CONTRACT_VERSION: &str = "hydr-operating-control-numr-cpu-1";
+
 /// Complete caller-owned control continuation. Preserve every original F64 bit when encoding.
 #[derive(Clone, Debug, PartialEq)]
 pub struct OperatingControlSnapshotData {
+    /// Package schema identity.
+    pub schema: String,
+    /// Numerical contract identity.
+    pub contract: String,
     /// Complete immutable actual structure definitions.
     pub elements: Vec<StructureElement>,
     /// Original ordered controller definitions.
@@ -57,6 +66,8 @@ impl<R: Runtime<DType = DType>> OperatingControlBatch<R> {
     /// Explicitly project every value required for equivalent future continuation.
     pub fn snapshot_data(&self) -> Result<OperatingControlSnapshotData, StructureError> {
         Ok(OperatingControlSnapshotData {
+            schema: OPERATING_CONTROL_SNAPSHOT_SCHEMA.into(),
+            contract: OPERATING_CONTROL_CONTRACT_VERSION.into(),
             elements: self.elements().to_vec(),
             definitions: self.definitions().to_vec(),
             initial_states: self.initial_states().to_vec(),

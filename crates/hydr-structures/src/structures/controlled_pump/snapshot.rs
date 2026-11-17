@@ -2,14 +2,24 @@
 
 use super::{ControlledPumpBatch, PumpResponseDefinition};
 use crate::structures::{OperatingControlSnapshotData, StructureError, StructureInputErrorKind};
+use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
+
+/// Schema identity of the controlled pump snapshot package.
+pub const CONTROLLED_PUMP_SNAPSHOT_SCHEMA: &str = "hydr-controlled-pump-checkpoint-1";
+/// Numerical contract identity of the controlled pump snapshot package.
+pub const CONTROLLED_PUMP_CONTRACT_VERSION: &str = "hydr-controlled-pump-numr-cpu-1";
 
 /// Complete caller-owned response assumptions and the existing controller continuation.
 ///
 /// Preserve every original control F64 bit during encoding. No independent response state exists.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ControlledPumpSnapshotData {
+    /// Package schema identity.
+    pub schema: String,
+    /// Numerical contract identity.
+    pub contract: String,
     /// Complete ordered original response models and explicit applicability evidence.
     pub definitions: Vec<PumpResponseDefinition>,
     /// Complete original controller model, accepted memory, calendar, and bounded receipts.
@@ -50,6 +60,8 @@ impl<R: Runtime<DType = DType>> ControlledPumpBatch<R> {
     /// Explicitly project response assumptions and complete original control continuation.
     pub fn snapshot_data(&self) -> Result<ControlledPumpSnapshotData, StructureError> {
         Ok(ControlledPumpSnapshotData {
+            schema: CONTROLLED_PUMP_SNAPSHOT_SCHEMA.into(),
+            contract: CONTROLLED_PUMP_CONTRACT_VERSION.into(),
             definitions: self.definitions().to_vec(),
             controls: self.controls.snapshot_data()?,
         })
@@ -79,6 +91,14 @@ impl<R: Runtime<DType = DType>> ControlledPumpBatch<R> {
             + numr::ops::TypeConversionOps<R>
             + numr::ops::UnaryOps<R>,
     {
+        package_identity(
+            "controlled pump",
+            &data.schema,
+            CONTROLLED_PUMP_SNAPSHOT_SCHEMA,
+            &data.contract,
+            CONTROLLED_PUMP_CONTRACT_VERSION,
+        )
+        .map_err(|message| StructureError::input(StructureInputErrorKind::Definition, message))?;
         require(
             self.definitions() == data.definitions.as_slice(),
             "controlled pump snapshot original response assumptions differ",

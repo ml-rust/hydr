@@ -10,6 +10,8 @@ mod admission;
 mod fixture;
 #[path = "controlled_pump_support/frames.rs"]
 mod frames;
+#[path = "controlled_pump_support/identity.rs"]
+mod identity;
 #[path = "controlled_pump_support/lifecycle.rs"]
 mod lifecycle;
 #[path = "controlled_pump_support/mixed.rs"]
