@@ -292,7 +292,7 @@ where
         if owned {
             let a = routed.try_to_vec::<f64>()?;
             let b = inflows.try_to_vec::<f64>()?;
-            if !crate::structures::identity::bits(&a, &b) {
+            if !hydr_structures::internal::bits(&a, &b) {
                 return Err(RunoffPoolError::input(
                     "retained receiving inputs differ from original native outlet bits",
                 ));

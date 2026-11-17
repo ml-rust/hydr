@@ -3,10 +3,11 @@ use numr::{dtype::DType, runtime::Runtime};
 
 use numr::tensor::Tensor;
 
+#[doc(hidden)]
 #[derive(Debug)]
-pub(crate) struct TensorStructureResult<R: Runtime<DType = DType>> {
-    pub gate: Option<super::gate::TensorGateResult<R>>,
-    pub pump: Option<super::pump::TensorPumpResult<R>>,
+pub struct TensorStructureResult<R: Runtime<DType = DType>> {
+    pub(crate) gate: Option<super::gate::TensorGateResult<R>>,
+    pub(crate) pump: Option<super::pump::TensorPumpResult<R>>,
     pub discharge: Tensor<R>,
     pub regime: Tensor<R>,
     pub status: Tensor<R>,

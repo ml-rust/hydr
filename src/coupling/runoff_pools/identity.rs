@@ -1,6 +1,6 @@
 use super::{RunoffPoolBatch, RunoffPoolSetup, RunoffPoolWaterBalance};
 use crate::storage::LevelPoolSources;
-use crate::structures::identity::bits;
+use hydr_structures::internal::bits;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,

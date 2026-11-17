@@ -5,7 +5,7 @@ use super::snapshot::{
 use super::{ChannelPoolForcingInterval, ChannelPoolInitialState, ChannelPoolSetup};
 use crate::channel::{ChannelBoundary, ChannelSnapshotData};
 use crate::storage::LevelPoolSnapshotData;
-use crate::structures::identity::bits;
+use hydr_structures::internal::bits;
 
 pub(super) fn same_setup(a: &ChannelPoolSetup, b: &ChannelPoolSetup) -> bool {
     a.vertical_datum == b.vertical_datum

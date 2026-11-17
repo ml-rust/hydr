@@ -1,7 +1,8 @@
 use super::inflows::InflowContext;
 use super::topology::TransferTree;
 use super::{CoupledLevelPoolError, CoupledLevelPoolSetup};
-use crate::structures::{CouplingStructures, DirectionPolicy, StructureLaw};
+use crate::structures::{DirectionPolicy, StructureLaw};
+use hydr_structures::internal::CouplingStructures;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,

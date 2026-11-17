@@ -12,8 +12,9 @@ use crate::structures::tensor::{
     check_structure_tensor,
 };
 
+#[doc(hidden)]
 #[derive(Debug)]
-pub(crate) struct CouplingStructures<R: Runtime<DType = DType>> {
+pub struct CouplingStructures<R: Runtime<DType = DType>> {
     batch: StructureBatch<R>,
     tensors: TensorStaticOperations<R>,
 }
@@ -22,7 +23,8 @@ pub(crate) struct CouplingStructures<R: Runtime<DType = DType>> {
 mod tests;
 
 impl<R: Runtime<DType = DType>> CouplingStructures<R> {
-    pub(crate) fn new(
+    #[doc(hidden)]
+    pub fn new(
         client: R::Client,
         elements: Vec<StructureElement>,
         operations: Vec<StructureOperation>,
@@ -41,7 +43,8 @@ impl<R: Runtime<DType = DType>> CouplingStructures<R> {
         Ok(Self { batch, tensors })
     }
 
-    pub(crate) fn evaluate_heads(
+    #[doc(hidden)]
+    pub fn evaluate_heads(
         &self,
         stage_a: &Tensor<R>,
         stage_b: &Tensor<R>,
@@ -72,7 +75,8 @@ impl<R: Runtime<DType = DType>> CouplingStructures<R> {
         crate::structures::numerics::proposal(context, &input)
     }
 
-    pub(crate) fn held_volumes(
+    #[doc(hidden)]
+    pub fn held_volumes(
         &self,
         result: &TensorStructureResult<R>,
         dt_s: f64,

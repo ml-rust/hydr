@@ -27,4 +27,5 @@ pub mod solver;
 #[doc(inline)]
 pub use hydr_storage::storage;
 
-pub mod structures;
+#[doc(inline)]
+pub use hydr_structures::structures;

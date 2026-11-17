@@ -15,7 +15,7 @@ pub(crate) use context::TensorStructureContext;
 pub(crate) use input::{
     TensorStructureHeads, TensorStructureInput, check_tensor as check_structure_tensor,
 };
-pub(crate) use proposal::TensorStructureResult;
+pub use proposal::TensorStructureResult;
 pub(crate) use static_operations::TensorStaticOperations;
 
 pub(crate) mod actuator;

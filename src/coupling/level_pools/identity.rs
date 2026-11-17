@@ -1,9 +1,7 @@
 use super::{CoupledLevelPoolSetup, CoupledLevelPoolStepDiagnostics};
 use crate::storage::LevelPoolSnapshotData;
-use crate::structures::{
-    StructureOperatingPoint,
-    identity::{bits, same_elements},
-};
+use crate::structures::StructureOperatingPoint;
+use hydr_structures::internal::{bits, same_elements};
 
 pub(super) fn same_setup(a: &CoupledLevelPoolSetup, b: &CoupledLevelPoolSetup) -> bool {
     let ac = &a.config;

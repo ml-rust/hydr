@@ -2,7 +2,9 @@
 
 use super::{PumpSpeedPolicy, StructureElement, StructureLaw};
 
-pub(crate) fn same_elements(a: &[StructureElement], b: &[StructureElement]) -> bool {
+#[doc(hidden)]
+#[inline]
+pub fn same_elements(a: &[StructureElement], b: &[StructureElement]) -> bool {
     a.len() == b.len()
         && a.iter().zip(b).all(|(a, b)| {
             a.id == b.id
@@ -90,6 +92,8 @@ fn same_law(a: &StructureLaw, b: &StructureLaw) -> bool {
         _ => false,
     }
 }
-pub(crate) fn bits(a: &[f64], b: &[f64]) -> bool {
+#[doc(hidden)]
+#[inline]
+pub fn bits(a: &[f64], b: &[f64]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.to_bits() == b.to_bits())
 }

@@ -43,7 +43,7 @@ impl CoupledLevelPoolForcingInterval {
             (Some(a), Some(b)) => {
                 a.len() == b.len()
                     && a.iter().zip(b).all(|(a, b)| {
-                        crate::structures::identity::bits(
+                        hydr_structures::internal::bits(
                             &[
                                 a.rain_rate_m_per_s,
                                 a.potential_evaporation_rate_m_per_s,

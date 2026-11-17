@@ -4,7 +4,7 @@ mod actuator;
 mod applicability;
 mod batch;
 mod control;
-mod coupling;
+pub(crate) mod coupling;
 pub(crate) mod definition;
 mod error;
 mod gate;
@@ -19,7 +19,7 @@ mod parameters;
 mod projection;
 mod proposal;
 mod pump;
-mod tensor;
+pub(crate) mod tensor;
 
 pub use actuator::{
     GateActuatorAccuracy, GateActuatorAnchor, GateActuatorArrivalCertificate, GateActuatorBatch,
@@ -34,7 +34,6 @@ pub use actuator::{
 };
 pub use applicability::{OrificeApplicability, WeirApplicability};
 pub use batch::StructureBatch;
-pub(crate) use coupling::CouplingStructures;
 pub use definition::{DirectionPolicy, FlowDirection, StructureElement, StructureLaw};
 pub use error::{StructureError, StructureInputErrorKind};
 pub(crate) use gate::GateTrajectoryEvaluationData;
