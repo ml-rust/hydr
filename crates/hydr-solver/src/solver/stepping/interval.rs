@@ -267,4 +267,57 @@ mod tests {
         assert_eq!(actual, expected);
         Ok(())
     }
+
+    #[test]
+    fn coupling_complete_none_matches_standalone_trial() -> TestResult<()> {
+        use crate::solver::coupling::{CouplingCompletion, CouplingPreparation};
+        let mut reference = engine()?;
+        let mut plan = Vec::new();
+        reference.advance_controlled(
+            0.1,
+            10_000,
+            || false,
+            |step, _| plan.push((step.start, step.end, step.retries)),
+        )?;
+        assert!(plan.iter().any(|step| step.2 > 0));
+        let mut coupled = engine()?;
+        let links = coupled.coupling_links(&[1])?;
+        for (start, end, retry) in plan {
+            assert_eq!(coupled.time().to_bits(), start.to_bits());
+            let CouplingPreparation::Ready(stage) = coupled.coupling_prepare(end, retry, &links)?
+            else {
+                return Err("an accepted step must prepare without retry".into());
+            };
+            assert!(stage.dt() <= stage.limit());
+            let before = coupled.snapshot().data()?;
+            let CouplingCompletion::Accepted(next) = coupled.coupling_complete(&stage, None)?
+            else {
+                return Err("an accepted step must complete without retry".into());
+            };
+            // The calling engine keeps its accepted state.
+            assert_eq!(
+                format!("{:?}", coupled.snapshot().data()?),
+                format!("{before:?}")
+            );
+            coupled = *next;
+        }
+        let expected = reference.snapshot().data()?;
+        let actual = coupled.snapshot().data()?;
+        assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+        assert_eq!(actual, expected);
+        let ledger = coupled.ledger();
+        assert_eq!(ledger.exchange_in_m3.to_bits(), 0.0_f64.to_bits());
+        assert_eq!(ledger.exchange_out_m3.to_bits(), 0.0_f64.to_bits());
+        let step = coupled
+            .last_step()?
+            .ok_or("coupled run must record a step")?;
+        for value in [
+            step.exchange_in_volume,
+            step.exchange_out_volume,
+            step.exchange_representation_error,
+        ] {
+            assert_eq!(value.to_bits(), 0.0_f64.to_bits());
+        }
+        Ok(())
+    }
 }

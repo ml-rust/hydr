@@ -248,7 +248,7 @@ Each row names a component that also declares [capabilities](#read-component-cap
 
 | Component | Package type | Schema constant (value) | Contract constant (value) | Import call | Nested packages |
 | --- | --- | --- | --- | --- | --- |
-| Surface solver | `SnapshotData` | `SNAPSHOT_SCHEMA` (`hydr-checkpoint-2`) | `CONTRACT_VERSION` (`hydr-swe-numr-cpu-1`) | `Solver::restore_data` | none |
+| Surface solver | `SnapshotData` | `SNAPSHOT_SCHEMA` (`hydr-checkpoint-3`) | `CONTRACT_VERSION` (`hydr-swe-numr-cpu-1`) | `Solver::restore_data` | none |
 | [Channel](channels.md) | `ChannelSnapshotData` | `CHANNEL_SNAPSHOT_SCHEMA` (`hydr-channel-checkpoint-1`) | `CHANNEL_CONTRACT_VERSION` (`hydr-channel-1d-numr-cpu-1`) | `ChannelReach::import_snapshot` | none |
 | [Level pool](level-pool.md) | `LevelPoolSnapshotData` | `LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-level-pool-checkpoint-1`) | `LEVEL_POOL_CONTRACT_VERSION` (`hydr-level-pool-numr-cpu-1`) | `LevelPoolBatch::restore_data` | none |
 | [Subcatchment](subcatchment.md) | `SubcatchmentSnapshotData` | `SUBCATCHMENT_SNAPSHOT_SCHEMA` (`hydr-subcatchment-checkpoint-1`) | `SUBCATCHMENT_CONTRACT_VERSION` (`hydr-subcatchment-numr-cpu-1`) | `SubcatchmentBatch::restore_data` | none |
@@ -273,7 +273,7 @@ Import follows these rules:
 
 | Component | Restart responsibility |
 | --- | --- |
-| Surface solver | Its checkpoint excludes network and operating-control state. Coordinated restoration with those components remains unsupported. |
+| Surface solver | Its checkpoint excludes network and operating-control state. Coordinated restoration with those components remains unsupported. Surface exchange with a channel is coordinator-only: `restore_data`, `restore`, and `resume` reject a package that carries exchange water. |
 | [Sampled controls](operating-controls.md) and [gate actuators](gate-actuators.md) | Each exposes a separate complete snapshot. |
 | [Operating-source bindings](operating-sources.md) | Reconstruct immutable bindings from original definitions. Restore each actuator before supplying fresh point-query frames. |
 

@@ -55,7 +55,9 @@ where
         )?);
         if !domain.active()[cell] {
             require(
-                receipt.ponded_depth_m == 0.0,
+                receipt.ponded_depth_m == 0.0
+                    && receipt.exchange_inflow_depth_m == 0.0
+                    && receipt.exchange_withdrawal_depth_m == 0.0,
                 "inactive source receipt",
                 format!("cell={cell}: inactive cells require zero represented water"),
             )?;
@@ -129,7 +131,19 @@ where
             step.water_adjustment_abs_charge
         ),
     )?;
-    check_local_depths(data, step, &post_source)?;
+    let mut exchange = [0.0; 2];
+    for (total, select) in exchange.iter_mut().zip([
+        (|r: &SourceReceipt| r.exchange_inflow_depth_m) as fn(&SourceReceipt) -> f64,
+        |r: &SourceReceipt| r.exchange_withdrawal_depth_m,
+    ]) {
+        let depth = tensor::<R>(solver.context.client.device(), &step.sources, select)?;
+        *total = crate::solver::tensor::land_sources::checked_volume(
+            &solver.context.client,
+            &depth,
+            area,
+        )?;
+    }
+    check_local_depths(data, step, &post_source, exchange)?;
     Ok(())
 }
 
@@ -149,6 +163,8 @@ fn check_cell(
             receipt.evaporation_depth_m,
             receipt.withdrawal_depth_m,
             receipt.water_adjustment_depth_m,
+            receipt.exchange_inflow_depth_m,
+            receipt.exchange_withdrawal_depth_m,
         ],
         "source receipt depths",
     )?;
@@ -224,17 +240,21 @@ fn check_cell(
     Ok(post_evaporation - withdrawal)
 }
 
+/// Replays each cell's post-source depth, face volumes, and exchange depths against accepted depth.
+///
+/// `exchange` holds the receipt inflow and withdrawal depths summed as volumes in m³.
 fn check_local_depths(
     data: &SnapshotData,
     step: &StepDiagnostics,
     post_source: &[f64],
+    exchange: [f64; 2],
 ) -> Result<(), EngineError> {
     let area = data.setup.domain.grid().cell_area();
-    let mut exchange = vec![0.0; post_source.len()];
+    let mut transfer = vec![0.0; post_source.len()];
     for face in &step.faces {
         for (cell, sign) in [(face.left, -1.0), (face.right, 1.0)] {
             if let Some(cell) = cell {
-                let volume = exchange.get_mut(cell).ok_or_else(|| {
+                let volume = transfer.get_mut(cell).ok_or_else(|| {
                     rejected(
                         "source face support",
                         format!("cell={cell}: outside the domain"),
@@ -253,6 +273,8 @@ fn check_local_depths(
         step.withdrawal_volume,
         step.boundary_in,
         step.boundary_out,
+        step.exchange_in_volume,
+        step.exchange_out_volume,
         step.water_adjustment_volume.abs(),
     ]
     .into_iter()
@@ -263,13 +285,25 @@ fn check_local_depths(
         "source local tolerance",
         format!("scale={scale}"),
     )?;
-    for (cell, ((post, exchange), accepted)) in post_source
+    for (name, last, receipts) in [
+        ("exchange inflow", step.exchange_in_volume, exchange[0]),
+        ("exchange withdrawal", step.exchange_out_volume, exchange[1]),
+    ] {
+        require(
+            (last == 0.0) == (receipts == 0.0) && (last - receipts).abs() <= tolerance,
+            "source exchange volume",
+            format!("{name}: last={last}, receipts={receipts}, tolerance={tolerance}"),
+        )?;
+    }
+    for (cell, ((post, transfer), (accepted, receipt))) in post_source
         .iter()
-        .zip(exchange)
-        .zip(data.accepted.flow.cells())
+        .zip(transfer)
+        .zip(data.accepted.flow.cells().iter().zip(&step.sources))
         .enumerate()
     {
-        let residual = (accepted.h - post) * area - exchange;
+        let exchanged =
+            (receipt.exchange_inflow_depth_m - receipt.exchange_withdrawal_depth_m) * area;
+        let residual = (accepted.h - post) * area - transfer - exchanged;
         require(
             residual.is_finite() && residual.abs() <= tolerance,
             "source local water balance",

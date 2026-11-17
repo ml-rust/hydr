@@ -4,6 +4,7 @@ use super::compatibility::same_interval;
 use super::definition::{Definition, retained_index};
 use super::forcing_history::{self, ForcingPrefix};
 use super::receipts::{StepReceipt, rebase_forcing_index};
+use super::snapshot::{Exchange, reject_exchange};
 use super::tensor::TensorDomain;
 use super::{SnapshotData, Solver};
 use crate::contract::{EngineError, ForcingInterval, ForcingSchedule};
@@ -79,20 +80,49 @@ where
     /// `data.setup.forcing.clone()` as `forcing` is a plain restart.
     /// See [`Solver::continue_with_forcing`] for the splice rule.
     ///
+    /// A package with coordinator exchange water resumes only through its coordinator.
+    ///
     /// # Errors
-    /// Returns construction, import, and continuation errors.
+    /// Returns construction, import, coordinator exchange, and continuation errors.
     pub fn resume(
         client: R::Client,
         data: &SnapshotData,
         forcing: ForcingSchedule,
     ) -> Result<Self, EngineError> {
+        Self::resume_with(client, data, forcing, Exchange::Reject)
+    }
+
+    /// Resumes a package that can carry coordinator exchange water.
+    ///
+    /// Runs every [`Solver::resume`] check except the standalone exchange rejection.
+    ///
+    /// # Errors
+    /// Returns construction, import, and continuation errors.
+    #[doc(hidden)]
+    pub fn coupling_resume(
+        client: R::Client,
+        data: &SnapshotData,
+        forcing: ForcingSchedule,
+    ) -> Result<Self, EngineError> {
+        Self::resume_with(client, data, forcing, Exchange::Admit)
+    }
+
+    fn resume_with(
+        client: R::Client,
+        data: &SnapshotData,
+        forcing: ForcingSchedule,
+        exchange: Exchange,
+    ) -> Result<Self, EngineError> {
+        if exchange == Exchange::Reject {
+            reject_exchange(&data.ledger, data.last_step.as_ref())?;
+        }
         let mut engine = Self::with_prefix(
             client,
             data.setup.clone(),
             Some(data.forcing_prefix.clone()),
             data.accepted.clone(),
         )?;
-        engine.restore_data(data)?;
+        engine.import_data(data, exchange)?;
         engine.continue_with_forcing(forcing)?;
         Ok(engine)
     }

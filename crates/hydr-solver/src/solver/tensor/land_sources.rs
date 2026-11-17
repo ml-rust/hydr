@@ -176,12 +176,18 @@ where
         + IndexingOps<R>
         + BatchedNewtonAlgorithms<R>,
 {
+    /// Projects full-grid receipts. `exchange` holds inflow and withdrawal depths, absent standalone.
     pub(crate) fn receipts(
         &self,
         land: &TensorLand<R>,
         original: &Tensor<R>,
+        exchange: Option<[&Tensor<R>; 2]>,
     ) -> Result<Vec<SourceReceipt>, EngineError> {
         let original = original.try_to_vec::<f64>()?;
+        let [exchange_in, exchange_out] = match exchange {
+            Some([inflow, withdrawal]) => [inflow.try_to_vec::<f64>()?, withdrawal.try_to_vec()?],
+            None => [vec![0.0; original.len()], vec![0.0; original.len()]],
+        };
         let tensors = [
             &self.rain,
             &self.infiltration,
@@ -194,7 +200,12 @@ where
             .map(|x| x.try_to_vec::<f64>())
             .collect::<Result<Vec<_>, _>>()?;
         let native = land.receipts(self.soil.native.as_ref())?;
-        if arrays.iter().any(|x| x.len() != original.len()) || native.len() != original.len() {
+        if arrays
+            .iter()
+            .chain([&exchange_in, &exchange_out])
+            .any(|x| x.len() != original.len())
+            || native.len() != original.len()
+        {
             return Err(EngineError::rejected(
                 "source receipts",
                 "array lengths differ from full-grid support",
@@ -211,6 +222,8 @@ where
                 evaporation_depth_m: arrays[2][cell],
                 withdrawal_depth_m: arrays[3][cell],
                 water_adjustment_depth_m: arrays[4][cell],
+                exchange_inflow_depth_m: exchange_in[cell],
+                exchange_withdrawal_depth_m: exchange_out[cell],
                 soil: native[cell].clone(),
             })
             .collect())

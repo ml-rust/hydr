@@ -9,7 +9,7 @@ use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Typed checkpoint schema identity.
-pub const SNAPSHOT_SCHEMA: &str = "hydr-checkpoint-2";
+pub const SNAPSHOT_SCHEMA: &str = "hydr-checkpoint-3";
 
 /// Caller-owned checkpoint values for same-build restart.
 ///

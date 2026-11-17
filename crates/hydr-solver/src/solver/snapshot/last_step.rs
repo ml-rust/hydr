@@ -76,9 +76,14 @@ where
             step.withdrawal_volume,
             step.boundary_in,
             step.boundary_out,
+            step.exchange_in_volume,
+            step.exchange_out_volume,
         ];
         nonnegative(&volumes, "last volumes")?;
-        nonnegative(&[step.max_local_residual], "local residual")?;
+        nonnegative(
+            &[step.max_local_residual, step.exchange_representation_error],
+            "local residual",
+        )?;
         finite(
             &[
                 step.soil_water_adjustment_volume,
@@ -111,12 +116,14 @@ where
                 - step.withdrawal_volume
                 + step.boundary_in
                 - step.boundary_out
-                + step.water_adjustment_volume);
+                + step.water_adjustment_volume)
+            - (step.exchange_in_volume - step.exchange_out_volume);
         require(
             residual.is_finite()
                 && residual.abs() <= tolerance
                 && step.residual.abs() <= tolerance
                 && step.max_local_residual <= tolerance
+                && step.exchange_representation_error <= tolerance
                 && (step.residual - residual).abs() <= tolerance
                 && (step.normalized_residual - step.residual / scale).abs() <= tolerance / scale,
             "last residual",
@@ -125,6 +132,24 @@ where
                 step.residual, step.normalized_residual
             ),
         )?;
+        for (name, last, total) in [
+            (
+                "exchange in",
+                step.exchange_in_volume,
+                data.ledger.exchange_in_m3,
+            ),
+            (
+                "exchange out",
+                step.exchange_out_volume,
+                data.ledger.exchange_out_m3,
+            ),
+        ] {
+            require(
+                total >= last,
+                name,
+                format!("last={last}, cumulative={total}"),
+            )?;
+        }
         super::sources::check(self, data, step, index)?;
         let mut boundary_in: f64 = 0.0;
         let mut boundary_out: f64 = 0.0;

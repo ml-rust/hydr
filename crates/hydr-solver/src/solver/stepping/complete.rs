@@ -1,8 +1,8 @@
 //! Completion phase of one accepted-interval trial: transport update through the receipt.
 
+use super::super::coupling::ExchangeSource;
 use super::super::engine::Accepted;
 use super::super::receipts::{DeviceStepReceipt, StepReceipt};
-use super::super::tensor::TensorState;
 use super::super::tensor::land_sources::checked_volume;
 use super::super::{Solver, StepDiagnostics};
 use super::prepare::{IntervalTrial, PreparedInterval};
@@ -14,11 +14,6 @@ use numr::ops::{
 };
 use numr::runtime::Runtime;
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedNewtonAlgorithms};
-
-/// Exchange source applied between transport and friction.
-///
-/// Uninhabited until a coupled coordinator supplies exchange rates, so `None` is the only value.
-pub(in crate::solver) enum ExchangeSource {}
 
 /// Completion-phase outcome.
 pub(in crate::solver) enum Completion<R: Runtime<DType = DType>> {
@@ -53,7 +48,7 @@ where
     pub(in crate::solver) fn complete_interval(
         &self,
         prepared: PreparedInterval<R>,
-        exchange: Option<&ExchangeSource>,
+        exchange: Option<&ExchangeSource<R>>,
     ) -> Result<Completion<R>, EngineError> {
         let PreparedInterval {
             trial:
@@ -77,43 +72,45 @@ where
         let trial = &sources.state;
         let rain = &sources.rain;
         let loss = &sources.withdrawal;
-        let next_h = client.add(&trial.h, &client.mul_scalar(&flux.derivative.h, dt)?)?;
-        let next_qx = client.add(&trial.qx, &client.mul_scalar(&flux.derivative.qx, dt)?)?;
-        let next_qy = client.add(&trial.qy, &client.mul_scalar(&flux.derivative.qy, dt)?)?;
-        self.finite(&next_h, "transport depth")?;
+        let transported = self.transported(trial, &flux, dt)?;
+        let next_h = &transported.h;
+        self.finite(next_h, "transport depth")?;
         let dry_momentum = client.mul(
-            &client.eq(&next_h, zero)?,
+            &client.eq(next_h, zero)?,
             &client.gt(
-                &client.add(&client.abs(&next_qx)?, &client.abs(&next_qy)?)?,
+                &client.add(&client.abs(&transported.qx)?, &client.abs(&transported.qy)?)?,
                 zero,
             )?,
         )?;
-        if self.any(&client.maximum(&client.lt(&next_h, zero)?, &dry_momentum)?)? {
+        if self.any(&client.maximum(&client.lt(next_h, zero)?, &dry_momentum)?)? {
             return Ok(Completion::Retry(format!(
                 "time={time}, dt={dt}: transport creates negative depth or momentum without water"
             )));
         }
-        if let Some(exchange) = exchange {
-            // The exchange source adds its depth change here and to both water balances below.
-            match *exchange {}
-        }
-        let local = client.sub(&next_h, &original.h)?;
+        let (exchanged, exchange) = match exchange {
+            Some(exchange) => {
+                let (state, outcome) = self.apply_exchange(transported, exchange)?;
+                (state, Some(outcome))
+            }
+            None => (transported, None),
+        };
+        let next_h = &exchanged.h;
+        let local = client.sub(next_h, &original.h)?;
         let local = client.sub(&local, rain)?;
         let local = client.add(&local, loss)?;
         let local = client.add(&local, &sources.infiltration)?;
         let local = client.add(&local, &sources.evaporation)?;
         let local = client.sub(&local, &sources.adjustment)?;
         let local = client.sub(&local, &client.mul_scalar(&flux.derivative.h, dt)?)?;
-        let local = client.abs(&client.mul_scalar(&local, area)?)?;
+        let local = client.mul_scalar(&local, area)?;
+        // Exchange enters as volume, so the applied depth rounding counts against the local tolerance.
+        let local = match &exchange {
+            Some(outcome) => client.sub(&local, &outcome.net_volume)?,
+            None => local,
+        };
+        let local = client.abs(&local)?;
         let max_local_residual = client.max(&local, &[0], false)?.item::<f64>()?;
-        let mut next = self.friction(
-            TensorState {
-                h: next_h,
-                qx: next_qx,
-                qy: next_qy,
-            },
-            dt,
-        )?;
+        let mut next = self.friction(exchanged, dt)?;
         let reset = client.mul(
             &client.gt(&next.h, zero)?,
             &client.lt(
@@ -140,11 +137,22 @@ where
         let water_adjustment_volume = sources.adjustment_volume;
         let boundary_in = flux.boundary_in_rate * dt;
         let boundary_out = flux.boundary_out_rate * dt;
+        let (exchange_in_volume, exchange_out_volume, exchange_representation_error) =
+            match &exchange {
+                Some(outcome) => (
+                    outcome.inflow_volume,
+                    outcome.withdrawal_volume,
+                    outcome.representation_error,
+                ),
+                None => (0.0, 0.0, 0.0),
+            };
+        // Exchange enters as a separate final term, so a `+0.0` exchange keeps the standalone bits.
         let residual = (storage_after - storage_before)
             - (rain_volume - infiltration_volume - evaporation_volume - withdrawal_volume
                 + boundary_in
                 - boundary_out
-                + water_adjustment_volume);
+                + water_adjustment_volume)
+            - (exchange_in_volume - exchange_out_volume);
         let scale = storage_before
             .max(storage_after)
             .max(rain_volume)
@@ -154,9 +162,14 @@ where
             .max(water_adjustment_volume.abs())
             .max(boundary_in)
             .max(boundary_out)
+            .max(exchange_in_volume)
+            .max(exchange_out_volume)
             .max(1.0);
         let tolerance = config.volume_absolute + config.volume_relative * scale;
         if ![
+            exchange_in_volume,
+            exchange_out_volume,
+            exchange_representation_error,
             storage_after,
             rain_volume,
             withdrawal_volume,
@@ -175,6 +188,7 @@ where
         .all(|value| value.is_finite())
             || residual.abs() > tolerance
             || max_local_residual > tolerance
+            || exchange_representation_error > tolerance
         {
             return Err(EngineError::rejected(
                 "water accounting",
@@ -202,6 +216,9 @@ where
             sources: Vec::new(),
             boundary_in,
             boundary_out,
+            exchange_in_volume,
+            exchange_out_volume,
+            exchange_representation_error,
             residual,
             normalized_residual: residual / scale,
             max_local_residual,
@@ -221,6 +238,8 @@ where
             .max(ledger.water_adjustment.abs())
             .max(ledger.boundary_in)
             .max(ledger.boundary_out)
+            .max(ledger.exchange_in_m3)
+            .max(ledger.exchange_out_m3)
             .max(1.0);
         let cumulative_tolerance =
             config.volume_absolute + config.volume_relative * cumulative_scale;
@@ -241,6 +260,7 @@ where
             flux,
             sources,
             start_depth: original.h.clone(),
+            exchange: exchange.map(|outcome| outcome.depths),
         }));
         let steps = self.accepted.steps.checked_add(1).ok_or_else(|| {
             EngineError::rejected(

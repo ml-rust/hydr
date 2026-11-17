@@ -6,6 +6,7 @@ mod advance;
 mod capabilities;
 mod compatibility;
 mod continuation;
+pub(crate) mod coupling;
 mod definition;
 mod engine;
 mod forcing_history;

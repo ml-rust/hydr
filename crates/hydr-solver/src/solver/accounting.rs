@@ -21,6 +21,10 @@ pub struct WaterLedger {
     pub boundary_in: f64,
     /// Integrated outward port water.
     pub boundary_out: f64,
+    /// Integrated coordinator exchange water added to linked cells. Standalone runs keep `+0.0`.
+    pub exchange_in_m3: f64,
+    /// Integrated coordinator exchange water withdrawn from linked cells. Standalone runs keep `+0.0`.
+    pub exchange_out_m3: f64,
     /// Signed reported numerical water adjustments.
     pub water_adjustment: f64,
     /// Conservative cumulative absolute adjustment budget consumption.
@@ -42,6 +46,8 @@ impl WaterLedger {
             evaporation: 0.0,
             boundary_in: 0.0,
             boundary_out: 0.0,
+            exchange_in_m3: 0.0,
+            exchange_out_m3: 0.0,
             water_adjustment: 0.0,
             water_adjustment_abs_bound: 0.0,
             momentum_removed: [0.0; 2],
@@ -64,17 +70,15 @@ impl WaterLedger {
         .map_err(super::tensor::land::static_outward_error)?;
         result.boundary_in += step.boundary_in;
         result.boundary_out += step.boundary_out;
+        result.exchange_in_m3 += step.exchange_in_volume;
+        result.exchange_out_m3 += step.exchange_out_volume;
         for axis in 0..2 {
             result.momentum_removed[axis] += step.momentum_removed[axis];
         }
-        result.residual = (result.storage - result.initial_storage)
-            - (result.rain + result.boundary_in
-                - result.boundary_out
-                - result.withdrawal
-                - result.infiltration
-                - result.evaporation
-                + result.water_adjustment);
+        result.residual = result.balance_residual();
         if [
+            result.exchange_in_m3,
+            result.exchange_out_m3,
             result.rain,
             result.withdrawal,
             result.infiltration,
@@ -96,6 +100,25 @@ impl WaterLedger {
             ));
         }
         Ok(result)
+    }
+
+    /// Returns storage change minus every cumulative external volume.
+    ///
+    /// Exchange enters as a separate final term. A `+0.0` exchange leaves the standalone bits unchanged.
+    pub(super) fn balance_residual(&self) -> f64 {
+        (self.storage - self.initial_storage)
+            - (self.rain + self.boundary_in
+                - self.boundary_out
+                - self.withdrawal
+                - self.infiltration
+                - self.evaporation
+                + self.water_adjustment)
+            - (self.exchange_in_m3 - self.exchange_out_m3)
+    }
+
+    /// Returns true when any coordinator exchange water entered or left the surface.
+    pub(super) fn has_exchange(&self) -> bool {
+        self.exchange_in_m3 != 0.0 || self.exchange_out_m3 != 0.0
     }
 }
 
@@ -170,6 +193,14 @@ pub struct StepDiagnostics {
     pub boundary_in: f64,
     /// Outward boundary water in m³.
     pub boundary_out: f64,
+    /// Coordinator exchange water added after transport in m³. Standalone steps record `+0.0`.
+    pub exchange_in_volume: f64,
+    /// Coordinator exchange water withdrawn after transport in m³. Standalone steps record `+0.0`.
+    pub exchange_out_volume: f64,
+    /// Largest per-cell gap between applied exchange depth times area and the exchange volume, in m³.
+    ///
+    /// The local residual tolerance bounds this rounding. Standalone steps record `+0.0`.
+    pub exchange_representation_error: f64,
     /// Signed water residual in m³.
     pub residual: f64,
     /// Residual divided by max(storage, external volumes, 1 m³).
@@ -205,6 +236,10 @@ pub struct SourceReceipt {
     pub withdrawal_depth_m: f64,
     /// Explicit soil numerical correction, distinct from rainfall.
     pub water_adjustment_depth_m: f64,
+    /// Coordinator exchange inflow volume over cell area, added after transport.
+    pub exchange_inflow_depth_m: f64,
+    /// Coordinator exchange withdrawal volume over cell area, removed after transport.
+    pub exchange_withdrawal_depth_m: f64,
     /// Native model and bound evidence for pervious cells only.
     pub soil: Option<SoilSourceReceipt>,
 }

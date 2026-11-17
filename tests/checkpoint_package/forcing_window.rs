@@ -176,8 +176,8 @@ fn package_rejects_forged_forcing_prefix() -> TestResult {
 #[test]
 fn old_schema_package_rejects() -> TestResult {
     let mut old = at_interval_40_end()?.snapshot().data()?;
-    assert_eq!(SNAPSHOT_SCHEMA, "hydr-checkpoint-2");
-    old.schema = "hydr-checkpoint-1".into();
+    assert_eq!(SNAPSHOT_SCHEMA, "hydr-checkpoint-3");
+    old.schema = "hydr-checkpoint-2".into();
     let mut destination = create(0.2)?;
     let message = destination
         .restore_data(&old)
@@ -185,7 +185,7 @@ fn old_schema_package_rejects() -> TestResult {
         .map(|error| error.to_string())
         .unwrap_or_default();
     assert!(
-        message.contains("found \"hydr-checkpoint-1\", expected \"hydr-checkpoint-2\""),
+        message.contains("found \"hydr-checkpoint-2\", expected \"hydr-checkpoint-3\""),
         "{message}"
     );
     assert_rejected(&[old])

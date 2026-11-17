@@ -2,6 +2,7 @@
 
 use super::compatibility::Candidate;
 use super::receipts::{StepReceipt, rebase_forcing_index};
+use super::snapshot::reject_exchange;
 use super::{CONTRACT_VERSION, Snapshot, Solver};
 use crate::contract::EngineError;
 use numr::dtype::DType;
@@ -34,9 +35,29 @@ where
     /// Both histories fold to the later prefix, then the folded prefixes and remaining intervals compare bitwise.
     /// This engine's window must hold the interval of the snapshot's last step.
     ///
+    /// A snapshot with coordinator exchange water restores only through its coordinator.
+    ///
+    /// # Errors
+    /// Rejects different devices, geometry, parameters, boundaries, forcing, contracts, an uncovered
+    /// window, or coordinator exchange before mutation.
+    pub fn restore(&mut self, snapshot: &Snapshot<R>) -> Result<(), EngineError> {
+        // Cumulative exchange covers the last step, so the ledger alone decides.
+        reject_exchange(&snapshot.accepted.ledger, None)?;
+        self.restore_snapshot(snapshot)
+    }
+
+    /// Restores a snapshot that can carry coordinator exchange water.
+    ///
+    /// Runs every [`Solver::restore`] check except the standalone exchange rejection.
+    ///
     /// # Errors
     /// Rejects different devices, geometry, parameters, boundaries, forcing, contracts, or an uncovered window before mutation.
-    pub fn restore(&mut self, snapshot: &Snapshot<R>) -> Result<(), EngineError> {
+    #[doc(hidden)]
+    pub fn coupling_restore(&mut self, snapshot: &Snapshot<R>) -> Result<(), EngineError> {
+        self.restore_snapshot(snapshot)
+    }
+
+    fn restore_snapshot(&mut self, snapshot: &Snapshot<R>) -> Result<(), EngineError> {
         let source = &snapshot.definition;
         let retained = source.retained_from(
             snapshot.accepted.time,

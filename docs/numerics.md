@@ -33,8 +33,25 @@ Each candidate interval follows this order:
 6. Apply side-specific hydrostatic pressure corrections once, without a centred bed source.
 7. Bound the interval by combined directional CFL and every proposed outgoing face/port rate.
 8. Recalculate from accepted tensors whenever the interval shortens.
-9. Advance transport, then apply exact fixed-depth Manning vector decay.
-10. Check state and ledgers before atomic acceptance.
+9. Advance transport. Retry the interval on negative depth or momentum without water.
+10. Apply a coordinator exchange at its linked cells, if one is present.
+11. Apply exact fixed-depth Manning vector decay.
+12. Check state and ledgers before atomic acceptance.
+
+### Coordinator exchange
+
+A surface-channel coordinator supplies per-linked-cell inflow and withdrawal volumes in m³. Standalone runs apply no exchange and record `+0.0` exchange volumes.
+
+| Quantity | Rule |
+| --- | --- |
+| Depth | `h + (inflow - withdrawal) / A`, floored at zero |
+| Donor momentum | Withdrawal keeps `(h - withdrawal / A) / h` of the post-transport discharge |
+| Inflow momentum | Inflow adds `inflow / A` times the supplied inflow velocity |
+| Donor limit | Withdrawal above the post-transport volume times `1 + 4ε` rejects the interval |
+| Rounding | The local residual compares depth change times area with the exchange volume |
+| Ledger | `exchange_in_m3` and `exchange_out_m3` enter the water residual as `+in - out` |
+
+Each linked cell is unique, so every indexed write is order-independent.
 
 The method remains first order. The retained reference uses the same candidate equations and source order.
 
@@ -134,7 +151,7 @@ Read [the boundary contract](boundaries.md) for admissible regimes, critical mar
 
 ### Water budgets
 
-Water residual: Storage change minus rain, boundary exchange, infiltration, evaporation, prescribed withdrawal, and signed numerical adjustments.
+Water residual: Storage change minus rain, boundary exchange, infiltration, evaporation, prescribed withdrawal, signed numerical adjustments, and coordinator exchange.
 
 `SolverConfig` records dimensional root, step, film, and water-ledger tolerances.
 

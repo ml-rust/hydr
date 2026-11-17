@@ -10,4 +10,5 @@ mod soil_receipt;
 mod sources;
 mod transmissive;
 
+pub(in crate::solver) use check::{Exchange, reject_exchange};
 pub use package::{SNAPSHOT_SCHEMA, Snapshot, SnapshotData};

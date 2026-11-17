@@ -25,6 +25,15 @@ pub(super) struct DeviceStepReceipt<R: Runtime<DType = DType>> {
     pub flux: TensorTransport<R>,
     pub sources: SourceTrial<R>,
     pub start_depth: Tensor<R>,
+    /// Full-grid coordinator exchange depths. Standalone steps hold none.
+    pub exchange: Option<ExchangeDepths<R>>,
+}
+
+/// Full-grid exchange volumes over cell area, zero outside the linked cells.
+#[derive(Clone)]
+pub(super) struct ExchangeDepths<R: Runtime<DType = DType>> {
+    pub inflow: Tensor<R>,
+    pub withdrawal: Tensor<R>,
 }
 
 impl<R: Runtime<DType = DType>> StepReceipt<R>
@@ -61,7 +70,13 @@ where
             Some(trace) => source.characteristic.results(context, trace)?,
             None => Vec::new(),
         };
-        step.sources = receipt.sources.receipts(land, &receipt.start_depth)?;
+        let exchange = receipt
+            .exchange
+            .as_ref()
+            .map(|depths| [&depths.inflow, &depths.withdrawal]);
+        step.sources = receipt
+            .sources
+            .receipts(land, &receipt.start_depth, exchange)?;
         Ok(step)
     }
 }

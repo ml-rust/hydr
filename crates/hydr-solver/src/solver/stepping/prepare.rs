@@ -28,6 +28,7 @@ pub(in crate::solver) struct IntervalTrial {
 }
 
 /// Trial state after sources and face fluxes, before the transport update.
+#[derive(Clone)]
 pub(in crate::solver) struct PreparedInterval<R: Runtime<DType = DType>> {
     pub(in crate::solver) trial: IntervalTrial,
     /// Soil and land sources with the post-source state.
