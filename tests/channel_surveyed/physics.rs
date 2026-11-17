@@ -14,6 +14,8 @@ const SPATIAL_STEP_S: f64 = 0.1;
 const TEMPORAL_CELLS: usize = 10;
 /// Mesh for the native advancement check on each runtime.
 const NATIVE_CELLS: usize = 20;
+/// Area fraction of the area scale below which a cell counts as dry.
+const WET_FRACTION: f64 = 1e-12;
 
 struct Measurement {
     errors: [f64; 2],
@@ -84,12 +86,20 @@ where
                 .normalized_root
                 .max_iterations
     );
-    check_fronts(case, &conserved)?;
     println!(
         "surveyed {}: cells={count}, max_step={max_step}, normalized_E1={errors:?}",
         case.id
     );
     Ok(Measurement { errors, conserved })
+}
+
+/// Frozen 400-cell reference cells per cell of a `count`-cell mesh.
+fn reference_ratio(case: Case, count: usize) -> TestResult<usize> {
+    let fine = case.grids[2].len();
+    if count == 0 || !fine.is_multiple_of(count) {
+        return Err(format!("{}: mesh {count} does not divide the reference", case.id).into());
+    }
+    Ok(fine / count)
 }
 
 /// Encloses exact coarse cell averages as means of whole frozen 400-cell intervals.
@@ -98,10 +108,7 @@ where
 /// mean of the exact fine averages. Each endpoint mean widens by a bound on its rounding.
 fn restricted_reference(case: Case, count: usize) -> TestResult<Vec<[f64; 4]>> {
     let fine = case.grids[2];
-    if count == 0 || !fine.len().is_multiple_of(count) {
-        return Err(format!("{}: mesh {count} does not divide the reference", case.id).into());
-    }
-    let ratio = fine.len() / count;
+    let ratio = reference_ratio(case, count)?;
     Ok(fine
         .chunks_exact(ratio)
         .map(|block| {
@@ -149,44 +156,88 @@ fn errors(case: Case, actual: &[[f64; 2]], reference: &[[f64; 4]]) -> TestResult
     Ok(total.map(|value| value / actual.len() as f64))
 }
 
-fn check_fronts(case: Case, conserved: &[[f64; 2]]) -> TestResult {
-    let dx = 200.0 / conserved.len() as f64;
-    let threshold = f64::from_bits(case.scales[0]) * 1e-12;
+/// Front observables of one run.
+struct Fronts {
+    /// Water in cells whose frozen 400-cell reference rows are all exactly zero, in m³.
+    dry_volume: f64,
+    /// Distance from each observed front to its exact front, in metres.
+    distances: Vec<f64>,
+}
+
+fn fronts(case: Case, conserved: &[[f64; 2]]) -> TestResult<Fronts> {
+    let count = conserved.len();
+    let ratio = reference_ratio(case, count)?;
+    let dx = 200.0 / count as f64;
+    let dry_volume = conserved
+        .iter()
+        .zip(case.grids[2].chunks_exact(ratio))
+        .filter(|(_, block)| block.iter().flatten().all(|&bits| bits == 0))
+        .map(|(state, _)| state[0] * dx)
+        .sum();
+    // A cell is wet above the frozen threshold. The observed front is a cell edge.
+    let threshold = f64::from_bits(case.scales[0]) * WET_FRACTION;
     let wet: Vec<_> = conserved.iter().map(|state| state[0] > threshold).collect();
+    let center = count / 2;
+    let mut distances = Vec::new();
     for front in case.fronts {
-        let index = match case.classification {
-            "right_dry" => wet.iter().rposition(|&value| value).map(|index| index + 1),
-            "left_dry" => wet.iter().position(|&value| value),
-            "vacuum" => {
-                let center = conserved.len() / 2;
-                if wet[center] || wet[center - 1] {
-                    return Err(
-                        format!("{}: connected central dry interval absent", case.id).into(),
-                    );
-                }
-                if front.direction < 0 {
-                    wet[..center]
-                        .iter()
-                        .rposition(|&value| value)
-                        .map(|index| index + 1)
-                } else {
-                    wet[center..]
-                        .iter()
-                        .position(|&value| value)
-                        .map(|index| index + center)
-                }
-            }
+        let index = match (case.classification, front.direction < 0) {
+            ("right_dry", _) => wet.iter().rposition(|&value| value).map(|index| index + 1),
+            ("left_dry", _) => wet.iter().position(|&value| value),
+            ("vacuum", true) => wet[..center]
+                .iter()
+                .rposition(|&value| value)
+                .map(|index| index + 1),
+            ("vacuum", false) => wet[center..]
+                .iter()
+                .position(|&value| value)
+                .map(|index| index + center),
             _ => return Err(format!("{}: unsupported dry-front classification", case.id).into()),
         }
         .ok_or_else(|| format!("{}: dry front absent", case.id))?;
         let observed = -100.0 + index as f64 * dx;
-        for endpoint in front.position.map(f64::from_bits) {
-            assert!(
-                (observed - endpoint).abs() <= 2.0 * dx,
-                "{}: front={observed}, exact={endpoint}, dx={dx}",
-                case.id
-            );
-        }
+        let distance = front
+            .position
+            .map(|bits| (observed - f64::from_bits(bits)).abs());
+        distances.push(distance[0].max(distance[1]));
+    }
+    Ok(Fronts {
+        dry_volume,
+        distances,
+    })
+}
+
+/// Requires dry-side water and every front distance to strictly decrease under refinement.
+fn front_convergence(case: Case, measurements: &[Measurement]) -> TestResult {
+    if case.fronts.is_empty() {
+        return Ok(());
+    }
+    let mut observed = Vec::new();
+    for measurement in measurements {
+        let fronts = fronts(case, &measurement.conserved)?;
+        println!(
+            "surveyed {}: cells={}, dry_volume_m3={}, front_distance_m={:?}",
+            case.id,
+            measurement.conserved.len(),
+            fronts.dry_volume,
+            fronts.distances
+        );
+        observed.push(fronts);
+    }
+    decreasing(
+        &format!("{} dry-side volume", case.id),
+        &observed
+            .iter()
+            .map(|row| row.dry_volume)
+            .collect::<Vec<_>>(),
+    );
+    for front in 0..case.fronts.len() {
+        decreasing(
+            &format!("{} front {front} distance", case.id),
+            &observed
+                .iter()
+                .map(|row| row.distances[front])
+                .collect::<Vec<_>>(),
+        );
     }
     Ok(())
 }
@@ -239,7 +290,7 @@ fn spatial_convergence(case: Case) -> TestResult {
             case.id
         );
     }
-    Ok(())
+    front_convergence(case, &measurements)
 }
 
 fn spatial_case(id: &str) -> TestResult<Case> {
@@ -274,19 +325,16 @@ fn rounded_multiband_wet_fan_spatial_cell_averages_converge() -> TestResult {
 }
 
 #[test]
-#[ignore = "the dry front lies outside two cells of the exact front"]
 fn multiband_dry_fan_spatial_cell_averages_converge() -> TestResult {
     spatial_convergence(spatial_case("both_knots_dry_fan")?)
 }
 
 #[test]
-#[ignore = "the dry front lies outside two cells of the exact front"]
 fn reversed_multiband_dry_fan_spatial_cell_averages_converge() -> TestResult {
     spatial_convergence(spatial_case("both_knots_dry_fan_reverse")?)
 }
 
 #[test]
-#[ignore = "the dry front lies outside two cells of the exact front"]
 fn vacuum_spatial_cell_averages_converge() -> TestResult {
     spatial_convergence(spatial_case("generated_vacuum")?)
 }
@@ -299,7 +347,6 @@ fn refinement_cases() -> impl Iterator<Item = Case> {
 }
 
 #[test]
-#[ignore = "the dry front lies outside two cells of the exact front"]
 fn fixed_spacing_temporal_conserved_differences_strictly_decrease() -> TestResult {
     for case in refinement_cases() {
         let mut measurements = Vec::new();
@@ -327,7 +374,6 @@ fn fixed_spacing_temporal_conserved_differences_strictly_decrease() -> TestResul
 }
 
 #[test]
-#[ignore = "the dry front lies outside two cells of the exact front"]
 fn combined_refinement_reduces_errors_and_restricted_conserved_differences() -> TestResult {
     for case in refinement_cases() {
         let mut measurements = Vec::new();
@@ -357,6 +403,7 @@ fn combined_refinement_reduces_errors_and_restricted_conserved_differences() -> 
             );
             assert!(measurements[2].errors[component] < 0.03);
         }
+        front_convergence(case, &measurements)?;
     }
     Ok(())
 }

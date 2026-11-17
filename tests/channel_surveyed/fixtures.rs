@@ -13,6 +13,8 @@ pub struct Case {
     pub gravity: u64,
     pub initial: [[u64; 2]; 2],
     pub exterior: [[u64; 2]; 2],
+    // scales[1] is A_max * max(|Q / A| + sqrt(g h(A))) over the two initial states.
+    // A dry state adds 0. Gravity speed alone understates a supercritical release.
     pub scales: [u64; 2],
     pub grids: [&'static [[u64; 4]]; 3],
     pub fronts: &'static [Front],
@@ -168,7 +170,7 @@ pub const CASES: &[Case] = &[
             [0x4008000000000000, 0x0000000000000000],
             [0x3fda827999fcef32, 0x400451bec8c475f1],
         ],
-        scales: [0x402c000000000000, 0x40383fab8b4d4315],
+        scales: [0x402c000000000000, 0x404648d91640c3ab],
         grids: [
             original_rounded_wet_fan_100::CELLS,
             original_rounded_wet_fan_200::CELLS,
@@ -267,7 +269,7 @@ pub const CASES: &[Case] = &[
             [0x400572fc8ab73db7, 0xc040000000000000],
             [0x400572fc8ab73db7, 0x4040000000000000],
         ],
-        scales: [0x4028000000000000, 0x404ec5747acf848e],
+        scales: [0x4028000000000000, 0x407bd8ae8f59f092],
         grids: [
             generated_vacuum_100::CELLS,
             generated_vacuum_200::CELLS,
