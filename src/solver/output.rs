@@ -1,4 +1,4 @@
-use super::BoundaryFace;
+use crate::contract::BoundaryFace;
 
 /// Cell-supported physical output at the solver's accepted time.
 #[derive(Clone, Copy, Debug, PartialEq)]

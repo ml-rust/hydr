@@ -16,7 +16,7 @@ fn engine(client: CpuClient) -> Result<Solver<CpuRuntime>, Box<dyn std::error::E
     let forcing = ForcingSchedule::new(
         &domain,
         &boundaries,
-        vec![super::super::ForcingInterval {
+        vec![crate::contract::ForcingInterval {
             start: 0.0,
             end: 1.0,
             rain: vec![1e-6],
@@ -99,7 +99,7 @@ fn windowed(
     )?;
     let boundaries = BoundaryConditions::impermeable_walls();
     let intervals: Vec<_> = (0..3)
-        .map(|k| super::super::ForcingInterval {
+        .map(|k| crate::contract::ForcingInterval {
             start: k as f64,
             end: (k + 1) as f64,
             rain: vec![1e-6 * (k + 1) as f64],

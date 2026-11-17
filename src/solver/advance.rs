@@ -1,6 +1,7 @@
 //! Bounded advancement of accepted solver state.
 
-use super::{EngineError, Solver, StepDiagnostics};
+use super::{Solver, StepDiagnostics};
+use crate::contract::EngineError;
 use crate::model::CellState;
 use numr::dtype::DType;
 use numr::ops::{

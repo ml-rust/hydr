@@ -1,9 +1,9 @@
 //! Explicit contributing-support declarations and immutable compiled ownership.
 
 use super::SupportError;
+use crate::contract::{BoundaryConditions, BoundaryFace};
 use crate::model::Domain;
 use crate::runoff::SubcatchmentDefinition;
-use crate::solver::{BoundaryConditions, BoundaryFace};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

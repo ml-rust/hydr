@@ -1,8 +1,9 @@
 //! Surface adapter for the shared native/SI soil receipt checks.
 
 use super::check::rejected;
+use crate::contract::EngineError;
 use crate::soil::{SoilReceiptInput, check_source_receipt};
-use crate::solver::{EngineError, SoilSourceReceipt, SourceReceipt};
+use crate::solver::{SoilSourceReceipt, SourceReceipt};
 
 pub(super) fn check(
     receipt: &SourceReceipt,

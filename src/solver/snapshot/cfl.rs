@@ -1,5 +1,6 @@
 use super::check::rejected;
-use crate::solver::{Axis, EngineError, SnapshotData, StepDiagnostics};
+use crate::contract::{Axis, EngineError};
+use crate::solver::{SnapshotData, StepDiagnostics};
 
 pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), EngineError> {
     let mut speeds = [0.0_f64; 2];

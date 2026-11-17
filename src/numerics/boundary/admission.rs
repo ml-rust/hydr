@@ -1,6 +1,6 @@
 use super::types::TensorBoundaryRequest;
+use crate::contract::{BoundaryFace, EngineError};
 use crate::numerics::tensor_types::{TensorFaceState, any, check_finite, check_state, constant};
-use crate::solver::{BoundaryFace, EngineError};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ReduceOps, ScalarOps, UnaryOps};
 use numr::runtime::{Device, Runtime, RuntimeClient};

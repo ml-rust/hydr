@@ -1,6 +1,6 @@
 //! Explicit immutable physical setup and accepted initial state.
 
-use super::{BoundaryConditions, ForcingSchedule, SolverConfig};
+use crate::contract::{BoundaryConditions, ForcingSchedule, SolverConfig};
 use crate::model::{Domain, FlowState};
 use crate::soil::{LandModel, SoilState};
 

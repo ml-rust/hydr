@@ -1,8 +1,9 @@
 use super::{SNAPSHOT_SCHEMA, SnapshotData};
+use crate::contract::EngineError;
 use crate::model::FlowState;
 use crate::soil::SoilState;
 use crate::solver::engine::Accepted;
-use crate::solver::{CONTRACT_VERSION, EngineError, Solver};
+use crate::solver::{CONTRACT_VERSION, Solver};
 use crate::tensor::TensorState;
 use crate::tensor::land::{TensorLand, static_error};
 use numr::dtype::DType;

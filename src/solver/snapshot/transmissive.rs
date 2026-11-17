@@ -1,5 +1,6 @@
 use super::check::rejected;
-use crate::solver::{Axis, EngineError, FaceTransfer, SolverConfig, TransmissiveDiagnostics};
+use crate::contract::{Axis, EngineError, SolverConfig};
+use crate::solver::{FaceTransfer, TransmissiveDiagnostics};
 
 pub(super) fn flux(
     state: &TransmissiveDiagnostics,

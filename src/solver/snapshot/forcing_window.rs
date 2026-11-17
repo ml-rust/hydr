@@ -2,7 +2,7 @@
 
 use super::SnapshotData;
 use super::check::require;
-use crate::solver::EngineError;
+use crate::contract::EngineError;
 use crate::solver::compatibility::Candidate;
 use crate::solver::definition::Definition;
 

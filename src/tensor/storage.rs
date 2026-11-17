@@ -1,8 +1,8 @@
 use super::TensorTopology;
 use super::boundary::TensorBoundaries;
 use super::exterior::TensorExterior;
+use crate::contract::{Axis, BoundaryForcing, EngineError, ForcingInterval, ForcingSchedule};
 use crate::model::{CellState, Domain, FlowState};
-use crate::solver::{Axis, BoundaryForcing, EngineError, ForcingInterval, ForcingSchedule};
 use numr::dtype::DType;
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -194,9 +194,9 @@ impl<R: Runtime<DType = DType>> TensorSources<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contract::{BoundaryConditions, BoundaryFace, FluxPort};
     use crate::grid::CartesianGrid;
     use crate::model::SpatialReference;
-    use crate::solver::{BoundaryConditions, BoundaryFace, FluxPort};
     use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 
     #[test]

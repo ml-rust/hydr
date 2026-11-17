@@ -13,6 +13,7 @@
 //! ```
 
 pub mod channel;
+mod contract;
 pub mod coupling;
 pub mod error;
 pub mod forcing;

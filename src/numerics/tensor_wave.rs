@@ -1,7 +1,7 @@
 //! Batched normal Riemann brackets with outward floating-point margins.
 
 use super::tensor_types::{TensorFaceState, any, check_finite, constant};
-use crate::solver::{EngineError, SolverConfig};
+use crate::contract::{EngineError, SolverConfig};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
 use numr::runtime::{Runtime, RuntimeClient};

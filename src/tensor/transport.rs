@@ -1,6 +1,7 @@
 use super::{TensorDomain, TensorSources, TensorState};
+use crate::contract::{EngineError, SolverConfig};
 use crate::numerics::{TensorFaceState, hydrostatic_hll_tensor};
-use crate::solver::{EngineError, FaceTransfer, SolverConfig};
+use crate::solver::FaceTransfer;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ScatterReduceOp,

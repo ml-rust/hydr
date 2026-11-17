@@ -1,4 +1,5 @@
-use super::{EngineError, StepDiagnostics};
+use super::StepDiagnostics;
+use crate::contract::EngineError;
 use crate::tensor::{
     TensorDomain, land::TensorLand, land_sources::SourceTrial, transport::TensorTransport,
 };

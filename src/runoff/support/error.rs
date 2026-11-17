@@ -1,7 +1,7 @@
 //! Structured ownership errors preserving concrete numerical consumer causes.
 
+use crate::contract::EngineError;
 use crate::runoff::SubcatchmentError;
-use crate::solver::EngineError;
 use std::fmt;
 
 /// Explicit ownership admission category.

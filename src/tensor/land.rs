@@ -10,10 +10,11 @@ use numr::tensor::Tensor;
 use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::TensorDomain;
+use crate::contract::EngineError;
 use crate::soil::{
     LandCell, LandModel, ModifiedGreenAmptBatch, SoilCellState, SoilError, SoilState,
 };
-use crate::solver::{EngineError, SoilSourceReceipt};
+use crate::solver::SoilSourceReceipt;
 use std::sync::Arc;
 
 #[derive(Debug)]

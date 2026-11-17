@@ -1,4 +1,5 @@
-use super::{EngineError, Solver};
+use super::Solver;
+use crate::contract::EngineError;
 use crate::tensor::TensorState;
 use numr::dtype::DType;
 use numr::ops::{
@@ -78,13 +79,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contract::{BoundaryConditions, ForcingInterval, ForcingSchedule, SolverConfig};
     use crate::grid::CartesianGrid;
     use crate::model::{CellState, Domain, FlowState, SpatialReference};
     use crate::soil::{LandModel, SoilState};
-    use crate::solver::{
-        BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, SolverConfig,
-        SolverSetup,
-    };
+    use crate::solver::{InitialState, SolverSetup};
     use numr::runtime::RuntimeClient;
     use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
     use numr::tensor::Tensor;

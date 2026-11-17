@@ -4,7 +4,7 @@ use super::{
     AdmittedInterval, CellRainAssignment, RainSuppressionReceipt, SupportError, SupportErrorKind,
     SupportIntervalInput, SupportPlan,
 };
-use crate::solver::{BoundaryForcing, ForcingInterval, ForcingSchedule};
+use crate::contract::{BoundaryForcing, ForcingInterval, ForcingSchedule};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

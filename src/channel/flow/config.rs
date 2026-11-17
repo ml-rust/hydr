@@ -1,5 +1,5 @@
 use super::ChannelError;
-use crate::solver::SolverConfig;
+use crate::contract::SolverConfig;
 
 /// Spatial reconstruction for triangular channel cells.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

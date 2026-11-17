@@ -4,7 +4,8 @@ use super::compatibility::same_interval;
 use super::definition::{Definition, retained_index};
 use super::forcing_history::{self, ForcingPrefix};
 use super::receipts::{StepReceipt, rebase_forcing_index};
-use super::{EngineError, ForcingInterval, ForcingSchedule, SnapshotData, Solver};
+use super::{SnapshotData, Solver};
+use crate::contract::{EngineError, ForcingInterval, ForcingSchedule};
 use crate::tensor::TensorDomain;
 use numr::dtype::DType;
 use numr::ops::{
@@ -218,12 +219,11 @@ fn after_prefix<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contract::{BoundaryConditions, SolverConfig};
     use crate::grid::CartesianGrid;
     use crate::model::{CellState, Domain, FlowState, SpatialReference};
     use crate::soil::{LandModel, SoilState};
-    use crate::solver::{
-        BoundaryConditions, InitialState, SolverConfig, SolverSetup, StepDiagnostics,
-    };
+    use crate::solver::{InitialState, SolverSetup, StepDiagnostics};
     use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime};
 
     fn intervals(count: usize) -> Vec<ForcingInterval> {

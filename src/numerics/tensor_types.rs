@@ -1,6 +1,6 @@
 //! Runtime tensor face inputs and scalar error reductions.
 
-use crate::solver::EngineError;
+use crate::contract::EngineError;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ReduceOps, UnaryOps};
 use numr::runtime::{Device, Runtime, RuntimeClient};

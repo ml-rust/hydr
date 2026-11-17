@@ -1,5 +1,5 @@
+use crate::contract::{Axis, BoundaryFace, EngineError};
 use crate::model::Domain;
-use crate::solver::{Axis, BoundaryFace, EngineError};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;

@@ -1,7 +1,9 @@
 //! Immutable numerical definition with its folded forcing history.
 
 use super::forcing_history::{self, ForcingPrefix};
-use super::{BoundaryConditions, EngineError, ForcingInterval, ForcingSchedule, SolverConfig};
+use crate::contract::{
+    BoundaryConditions, EngineError, ForcingInterval, ForcingSchedule, SolverConfig,
+};
 use crate::model::Domain;
 use crate::soil::LandModel;
 

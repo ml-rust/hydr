@@ -76,7 +76,7 @@ impl Default for SolverConfig {
 }
 
 impl SolverConfig {
-    pub(super) fn check(&self) -> Result<(), EngineError> {
+    pub(crate) fn check(&self) -> Result<(), EngineError> {
         for (field, value) in [
             ("gravity", self.gravity),
             ("cfl", self.cfl),

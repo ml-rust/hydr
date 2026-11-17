@@ -1,7 +1,7 @@
 //! Real surface forcing construction with immutable plan-instance checks.
 
 use super::{AdmittedInterval, SupportError, SupportPlan};
-use crate::solver::ForcingSchedule;
+use crate::contract::ForcingSchedule;
 use std::sync::Arc;
 
 impl SupportPlan {

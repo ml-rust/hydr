@@ -10,7 +10,8 @@ use solvr::optimize::roots::BatchedNewtonAlgorithms;
 
 use super::land::{LandTrial, TensorLand};
 use super::{TensorDomain, TensorSources, TensorState};
-use crate::solver::{EngineError, SolverConfig, SourceReceipt};
+use crate::contract::{EngineError, SolverConfig};
+use crate::solver::SourceReceipt;
 use numr::dtype::DType;
 
 #[derive(Clone)]

@@ -2,7 +2,7 @@
 
 use super::tensor_types::{TensorFaceState, check_finite, check_state, constant};
 use super::tensor_wave;
-use crate::solver::{EngineError, SolverConfig};
+use crate::contract::{EngineError, SolverConfig};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
 use numr::runtime::{Runtime, RuntimeClient};

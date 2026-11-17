@@ -1,8 +1,8 @@
 //! Exact immutable admitted packets and explicit rain suppression evidence.
 
 use super::definition::CompiledPlan;
+use crate::contract::{BoundaryForcing, ForcingInterval};
 use crate::runoff::SubcatchmentInput;
-use crate::solver::{BoundaryForcing, ForcingInterval};
 use std::sync::Arc;
 
 /// Complete physical input packet for one exact original interval.

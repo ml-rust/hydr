@@ -1,5 +1,6 @@
 use super::engine::Accepted;
-use super::{EngineError, Solver, StepDiagnostics};
+use super::{Solver, StepDiagnostics};
+use crate::contract::EngineError;
 use crate::tensor::land_sources::{SourceInputs, calculate as calculate_sources, checked_volume};
 use crate::tensor::{TensorState, transport};
 use numr::dtype::DType;
@@ -409,9 +410,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contract::{BoundaryConditions, ForcingInterval, ForcingSchedule, SolverConfig};
     use crate::grid::CartesianGrid;
     use crate::model::{CellState, Domain, FlowState, SpatialReference};
-    use crate::solver::{BoundaryConditions, ForcingInterval, ForcingSchedule, SolverConfig};
     use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 
     #[test]

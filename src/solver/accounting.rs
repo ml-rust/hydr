@@ -1,4 +1,5 @@
-use super::{BoundaryFace, EngineError, FaceTransfer};
+use super::FaceTransfer;
+use crate::contract::{BoundaryFace, EngineError};
 pub use crate::soil::SoilSourceReceipt;
 
 /// Cumulative component water accounting from the original initial state, in m³.

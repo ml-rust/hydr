@@ -140,8 +140,8 @@ impl From<numr::error::Error> for ChannelError {
     }
 }
 
-impl From<crate::solver::EngineError> for ChannelError {
-    fn from(error: crate::solver::EngineError) -> Self {
+impl From<crate::contract::EngineError> for ChannelError {
+    fn from(error: crate::contract::EngineError) -> Self {
         Self::numerical(error.to_string())
     }
 }

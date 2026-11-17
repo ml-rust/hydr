@@ -2,7 +2,8 @@
 
 use super::compatibility::Candidate;
 use super::receipts::{StepReceipt, rebase_forcing_index};
-use super::{CONTRACT_VERSION, EngineError, Snapshot, Solver};
+use super::{CONTRACT_VERSION, Snapshot, Solver};
+use crate::contract::EngineError;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, ReduceOps, ScalarOps,

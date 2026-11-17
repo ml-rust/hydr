@@ -2,7 +2,7 @@ use super::super::definition::Definition;
 use super::super::engine::Accepted;
 use super::super::receipts::StepReceipt;
 use super::super::{ForcingPrefix, InitialState, SolverSetup, StepDiagnostics, WaterLedger};
-use crate::solver::EngineError;
+use crate::contract::EngineError;
 use crate::tensor::TensorDomain;
 use numr::dtype::DType;
 use numr::runtime::Runtime;

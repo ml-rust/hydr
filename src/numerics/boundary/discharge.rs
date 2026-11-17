@@ -1,8 +1,8 @@
 use super::admission::reject_mask;
 use super::types::TensorBoundaryRequest;
+use crate::contract::{BoundaryFace, EngineError, SolverConfig};
 use crate::numerics::tensor_types::{any, check_finite, constant};
 use crate::numerics::tensor_wave::curve;
-use crate::solver::{BoundaryFace, EngineError, SolverConfig};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
 use numr::runtime::{Runtime, RuntimeClient};

@@ -1,6 +1,6 @@
 use super::{TensorBoundaryRequest, TensorBoundaryTrace, characteristic_trace};
+use crate::contract::{Axis, BoundaryFace, EngineError, SolverConfig};
 use crate::numerics::TensorFaceState;
-use crate::solver::{Axis, BoundaryFace, EngineError, SolverConfig};
 use numr::ops::BinaryOps;
 use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
 use numr::tensor::Tensor;

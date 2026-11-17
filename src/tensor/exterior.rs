@@ -1,10 +1,10 @@
 use super::{TensorDomain, TensorState, TensorTopology};
+use crate::contract::{
+    Axis, BoundaryFace, BoundaryForcing, EngineError, ForcingInterval, SolverConfig,
+};
 use crate::model::Domain;
 use crate::numerics::{TensorFaceState, check_transmissive};
-use crate::solver::{
-    Axis, BoundaryFace, BoundaryForcing, EngineError, ForcingInterval, SolverConfig,
-    TransmissiveDiagnostics,
-};
+use crate::solver::TransmissiveDiagnostics;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, ConditionalOps, IndexingOps};
 use numr::runtime::Runtime;

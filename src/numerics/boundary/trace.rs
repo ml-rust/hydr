@@ -1,9 +1,9 @@
 use super::admission::{check_inputs, reject_mask};
 use super::discharge;
 use super::types::{TensorBoundaryRequest, TensorBoundaryTrace};
+use crate::contract::{BoundaryFace, EngineError, SolverConfig};
 use crate::numerics::tensor_types::{TensorFaceState, check_finite, constant};
 use crate::numerics::tensor_wave::{bounds, curve, shock_speed};
-use crate::solver::{BoundaryFace, EngineError, SolverConfig};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
 use numr::runtime::{Runtime, RuntimeClient};

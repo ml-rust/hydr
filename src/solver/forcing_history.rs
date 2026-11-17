@@ -1,6 +1,6 @@
 //! Chained identity of forcing intervals that precede a retained forcing window.
 
-use super::{Axis, BoundaryFace, BoundaryForcing, ExteriorState, ForcingInterval};
+use crate::contract::{Axis, BoundaryFace, BoundaryForcing, ExteriorState, ForcingInterval};
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 
@@ -192,7 +192,7 @@ fn face(hasher: &mut Sha256, value: BoundaryFace) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::FluxPort;
+    use crate::contract::FluxPort;
 
     fn interval(start: f64, rain: f64) -> ForcingInterval {
         ForcingInterval {

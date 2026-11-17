@@ -2,9 +2,9 @@
 
 use super::definition::{CompiledPlan, text};
 use super::{ContributionKind, SupportError, SupportErrorKind, SupportPlan, SupportPlanInput};
+use crate::contract::BoundaryConditions;
 use crate::model::Domain;
 use crate::runoff::SubcatchmentDefinition;
-use crate::solver::BoundaryConditions;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 

@@ -2,7 +2,8 @@
 
 use super::SnapshotData;
 use super::check::{finite, nonnegative, rejected, require};
-use crate::solver::{Axis, EngineError, Solver, StepDiagnostics};
+use crate::contract::{Axis, EngineError};
+use crate::solver::{Solver, StepDiagnostics};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use std::collections::BTreeSet;

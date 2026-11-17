@@ -210,7 +210,7 @@ impl BoundaryConditions {
     }
 }
 
-pub(super) fn exterior_cell(domain: &Domain, face: BoundaryFace) -> Result<usize, EngineError> {
+pub(crate) fn exterior_cell(domain: &Domain, face: BoundaryFace) -> Result<usize, EngineError> {
     let (nx, ny) = domain.grid().dimensions();
     let cell = match face.axis {
         Axis::X if face.row < ny && (face.column == 0 || face.column == nx) => {

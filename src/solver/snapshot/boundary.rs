@@ -1,7 +1,8 @@
 use super::SnapshotData;
 use super::cfl::bounded;
 use super::check::rejected;
-use crate::solver::{Axis, BoundaryForcing, EngineError, StepDiagnostics};
+use crate::contract::{Axis, BoundaryForcing, EngineError};
+use crate::solver::StepDiagnostics;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), EngineError> {
@@ -154,8 +155,7 @@ pub(super) fn check(data: &SnapshotData, step: &StepDiagnostics) -> Result<(), E
                 }
                 let incoming = match value {
                     BoundaryForcing::Stage(stage) => {
-                        let cell =
-                            crate::solver::boundary::exterior_cell(&data.setup.domain, stage.face)?;
+                        let cell = crate::contract::exterior_cell(&data.setup.domain, stage.face)?;
                         if trace.depth != stage.elevation - data.setup.domain.bed()[cell]
                             || trace.discharge_residual_per_width != 0.0
                         {
