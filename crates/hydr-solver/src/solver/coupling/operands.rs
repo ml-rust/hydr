@@ -111,6 +111,59 @@ impl<R: Runtime<DType = DType>> ExchangeSource<R> {
 }
 
 impl<R: Runtime<DType = DType>> Solver<R> {
+    /// Returns the forcing window this engine holds, after every continuation.
+    ///
+    /// The window starts at the interval a checkpoint retains and ends at the schedule end.
+    #[doc(hidden)]
+    pub fn coupling_forcing(&self) -> &crate::contract::ForcingSchedule {
+        &self.definition.forcing
+    }
+
+    /// Returns an engine with this accepted state that shares the definition and device context.
+    ///
+    /// A coordinator keeps it as the start frame of its last interval.
+    #[doc(hidden)]
+    pub fn coupling_clone(&self) -> Self {
+        Self {
+            definition: Arc::clone(&self.definition),
+            accepted: self.accepted.clone(),
+            context: Arc::clone(&self.context),
+        }
+    }
+
+    /// Returns the represented storage of `initial` in m³, as construction from it records it.
+    ///
+    /// Checks the flow against this engine's domain and the soil against its land first.
+    /// A coordinator compares the result with a package's `ledger.initial_storage`.
+    ///
+    /// # Errors
+    /// Rejects flow or soil support that differs from this engine, and invalid depths.
+    #[doc(hidden)]
+    pub fn coupling_epoch_storage(
+        &self,
+        initial: &crate::solver::InitialState,
+    ) -> Result<f64, EngineError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
+        let domain = &self.definition.domain;
+        let flow = crate::model::FlowState::new(domain, initial.flow.cells().to_vec())?;
+        crate::soil::SoilState::new(&self.definition.land, initial.soil.cells().to_vec())
+            .map_err(super::super::tensor::land::static_error)?;
+        let state =
+            super::super::tensor::TensorState::<R>::from_flow(self.context.client.device(), &flow)?;
+        super::super::tensor::land_sources::checked_volume(
+            &self.context.client,
+            &state.h,
+            domain.grid().cell_area(),
+        )
+    }
+
     /// Builds a link set over `cells` for this engine's grid.
     ///
     /// # Errors
