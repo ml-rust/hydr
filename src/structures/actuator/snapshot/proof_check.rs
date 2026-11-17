@@ -3,11 +3,11 @@
 use super::super::*;
 use super::compatibility::{as_definition, require};
 use super::receipt_bits::ReceiptBits;
-use crate::numerics::structures::actuator as math;
-use crate::structures::{StructureError, StructureLaw};
-use crate::tensor::structures::actuator::{
+use crate::structures::numerics::actuator as math;
+use crate::structures::tensor::actuator::{
     TensorActuatorContext, TensorActuatorState, import_values, record::TensorRecord,
 };
+use crate::structures::{StructureError, StructureLaw};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use std::sync::Arc;

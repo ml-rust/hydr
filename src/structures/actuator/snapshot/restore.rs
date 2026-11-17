@@ -142,7 +142,7 @@ impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
             )?;
             candidate.last = trial.into_next().last;
         } else {
-            let initial = crate::numerics::structures::actuator::initial(&candidate.context)
+            let initial = crate::structures::numerics::actuator::initial(&candidate.context)
                 .map_err(as_definition)?;
             require(
                 super::super::projection::states(&candidate.context, &initial)?

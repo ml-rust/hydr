@@ -2,7 +2,7 @@
 
 use super::{ControlSample, ControlTimeExpansion, ControlTimerWitness};
 use crate::structures::StructureError;
-use crate::tensor::structures::control::{
+use crate::structures::tensor::control::{
     MAX_EXACT_COUNT, TensorControlContext, TensorControlSample, TensorControlTimer,
 };
 use numr::dtype::DType;

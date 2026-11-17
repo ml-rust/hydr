@@ -3,7 +3,7 @@ use numr::tensor::Tensor;
 use numr::{dtype::DType, runtime::Runtime};
 
 use super::{StructureError, StructureHeads, StructureOutput};
-use crate::tensor::structures::{TensorStructureContext, TensorStructureResult};
+use crate::structures::tensor::{TensorStructureContext, TensorStructureResult};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -60,7 +60,7 @@ impl<R: Runtime<DType = DType>> StructureProposal<R> {
         manual: Vec<super::StructureOperation>,
         derived_slots: Vec<usize>,
         opening: Tensor<R>,
-        pumps: Option<crate::tensor::structures::DerivedPumpOperationData<R>>,
+        pumps: Option<crate::structures::tensor::DerivedPumpOperationData<R>>,
         result: TensorStructureResult<R>,
     ) -> Self {
         Self {

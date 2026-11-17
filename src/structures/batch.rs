@@ -2,7 +2,7 @@
 use numr::{dtype::DType, runtime::Runtime};
 
 use super::{StructureElement, StructureError, StructureHeads, StructureProposal};
-use crate::tensor::structures::{TensorStructureContext, TensorStructureInput};
+use crate::structures::tensor::{TensorStructureContext, TensorStructureInput};
 use std::sync::Arc;
 
 /// Persistent checked law definitions without evolving component storage.
@@ -87,7 +87,7 @@ impl<R: Runtime<DType = DType>> StructureBatch<R> {
             + solvr::interpolate::Interp1dAlgorithms<R>,
     {
         let input = TensorStructureInput::with_operations(&self.context, heads, operations)?;
-        let result = crate::numerics::structures::proposal(&self.context, &input)?;
+        let result = crate::structures::numerics::proposal(&self.context, &input)?;
         Ok(StructureProposal::new(
             Arc::clone(&self.context),
             heads.to_vec(),

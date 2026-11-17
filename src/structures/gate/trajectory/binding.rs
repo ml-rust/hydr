@@ -2,10 +2,10 @@
 use numr::{dtype::DType, runtime::Runtime};
 
 use super::{GateOpeningTrajectory, GateTrajectoryEvent, GateTrajectorySupport};
-use crate::structures::{StructureError, StructureInputErrorKind, StructureLaw};
-use crate::tensor::structures::{
+use crate::structures::tensor::{
     TensorStructureContext, gate::trajectory::TensorTrajectoryContext,
 };
+use crate::structures::{StructureError, StructureInputErrorKind, StructureLaw};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

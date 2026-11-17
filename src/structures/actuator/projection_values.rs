@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::structures::StructureError;
-use crate::tensor::structures::actuator::*;
+use crate::structures::tensor::actuator::*;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 

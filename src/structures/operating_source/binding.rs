@@ -1,14 +1,14 @@
 //! Exhaustive unique actual-element writer admission and closed support intersection.
 
 use super::{OperatingSourceBinding, OperatingSourceSupport};
-use crate::structures::{StructureBatch, StructureError, StructureInputErrorKind};
-use crate::tensor::structures::{
+use crate::structures::tensor::{
     TensorStructureContext,
     operating_source::{
         TensorOperatingSourceContext, TensorOperatingSourceGroup, TensorOperatingSourceKind,
         TensorPrescribedSource,
     },
 };
+use crate::structures::{StructureBatch, StructureError, StructureInputErrorKind};
 use numr::dtype::DType;
 use numr::runtime::{Device, Runtime};
 use std::{

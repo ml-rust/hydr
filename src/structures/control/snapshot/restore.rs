@@ -141,7 +141,7 @@ impl<R: Runtime<DType = DType>> OperatingControlBatch<R> {
             )?;
             candidate.last = trial.into_next().last;
         } else {
-            let expected = crate::tensor::structures::control::TensorControlState::initial(
+            let expected = crate::structures::tensor::control::TensorControlState::initial(
                 &candidate.context,
             )?;
             require(

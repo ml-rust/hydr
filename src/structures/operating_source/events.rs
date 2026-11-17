@@ -5,7 +5,7 @@ use super::{
     OperatingSourceEventOrigin, OperatingSourceFrame,
 };
 use crate::structures::StructureError;
-use crate::tensor::structures::operating_source::{TensorOperatingSourceKind, frames};
+use crate::structures::tensor::operating_source::{TensorOperatingSourceKind, frames};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 

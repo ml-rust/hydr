@@ -1,6 +1,6 @@
 //! Complete immutable control and response-model identity without state projection.
 
-use crate::tensor::structures::controlled_pump::TensorControlledPumpContext;
+use crate::structures::tensor::controlled_pump::TensorControlledPumpContext;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use std::sync::Arc;

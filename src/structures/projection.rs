@@ -6,7 +6,7 @@ use super::{
     FlowDirection, StructureError, StructureHydraulicOperands, StructureLaw, StructureLawKind,
     StructureOutput, StructureRegime, StructureStatus,
 };
-use crate::tensor::structures::codes;
+use crate::structures::tensor::codes;
 use numr::tensor::Tensor;
 
 pub(super) fn read<R: Runtime<DType = DType>>(

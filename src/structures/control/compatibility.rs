@@ -4,11 +4,11 @@ use super::{
     ControlCommand, ControlDecisionSchedule, ControlInitialState, ControlSample,
     OperatingControlDefinition, SampledControlTiming,
 };
+use crate::structures::tensor::control::TensorControlContext;
 use crate::structures::{
     StructureElement,
     identity::{bits, same_elements},
 };
-use crate::tensor::structures::control::TensorControlContext;
 use numr::dtype::DType;
 use numr::runtime::{Device, Runtime};
 use std::sync::Arc;

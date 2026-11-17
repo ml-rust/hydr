@@ -3,8 +3,8 @@ use numr::{dtype::DType, runtime::Runtime};
 
 use super::PumpHydraulicOperands;
 use crate::structures::projection::read;
+use crate::structures::tensor::pump::TensorPumpResult;
 use crate::structures::{StructureError, StructureOperatingPoint};
-use crate::tensor::structures::pump::TensorPumpResult;
 
 pub(crate) struct PumpOperandProjection {
     head_high: Vec<f64>,

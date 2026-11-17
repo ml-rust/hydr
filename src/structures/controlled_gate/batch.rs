@@ -1,11 +1,11 @@
 //! Owning atomic sampled-controller and actual gate-response candidates.
 
 use super::{ControlledGateEvent, ControlledGateTrial};
+use crate::structures::tensor::controlled_gate::TensorControlledGateContext;
 use crate::structures::{
     ControlSample, GateActuatorBatch, OperatingControlBatch, StructureError,
     StructureInputErrorKind,
 };
-use crate::tensor::structures::controlled_gate::TensorControlledGateContext;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use std::sync::Arc;

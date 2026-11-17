@@ -4,7 +4,7 @@ use numr::{dtype::DType, runtime::Runtime};
 use super::{
     GateTrajectoryEvaluationData, StructureError, StructureOperatingPoint, StructureOperation,
 };
-use crate::tensor::structures::{DerivedPumpOperationData, TensorStructureContext};
+use crate::structures::tensor::{DerivedPumpOperationData, TensorStructureContext};
 use numr::tensor::Tensor;
 use std::sync::Arc;
 

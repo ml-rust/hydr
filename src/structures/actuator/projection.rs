@@ -3,7 +3,7 @@
 use super::projection_values as values;
 use super::*;
 use crate::structures::StructureError;
-use crate::tensor::structures::actuator::{
+use crate::structures::tensor::actuator::{
     TensorActuatorContext, TensorActuatorState, TensorActuatorStep, record::TensorRecord,
 };
 use numr::dtype::DType;

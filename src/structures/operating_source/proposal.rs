@@ -1,16 +1,16 @@
 //! Immutable point-only hydraulic/source pairing without integrated-transfer APIs.
 
 use super::{OperatingSourceDetail, OperatingSourceOutput, OperatingSourceReceipt};
-use crate::structures::{
-    ControlLatch, GateActuatorSupport, StructureError, StructureOperatingPoint, StructureOperation,
-    StructureProposal,
-};
-use crate::tensor::structures::{
+use crate::structures::tensor::{
     actuator::record::TensorRecord,
     operating_source::{
         TensorOperatingSourceContext, TensorOperatingSourceKind, TensorOperatingSourcePoint,
         TensorOperatingSourceValue,
     },
+};
+use crate::structures::{
+    ControlLatch, GateActuatorSupport, StructureError, StructureOperatingPoint, StructureOperation,
+    StructureProposal,
 };
 use numr::dtype::DType;
 use numr::runtime::Runtime;

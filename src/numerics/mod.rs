@@ -3,7 +3,6 @@
 #[cfg(test)]
 mod flux;
 pub(crate) mod rounding;
-pub(crate) mod structures;
 mod tensor_flux;
 mod tensor_hll;
 pub(crate) mod tensor_types;

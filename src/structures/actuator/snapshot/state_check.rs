@@ -3,9 +3,9 @@
 use super::super::*;
 use super::compatibility::{as_definition, require};
 use super::receipt_bits::ReceiptBits;
-use crate::numerics::structures::actuator as math;
+use crate::structures::numerics::actuator as math;
+use crate::structures::tensor::actuator::{TensorActuatorState, import_values};
 use crate::structures::{StructureError, StructureLaw};
-use crate::tensor::structures::actuator::{TensorActuatorState, import_values};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 

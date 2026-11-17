@@ -1,6 +1,6 @@
 //! Immutable accepted ideal-actuator batches and positive-duration trials.
 
-use crate::tensor::structures::actuator::{
+use crate::structures::tensor::actuator::{
     TensorActuatorContext, TensorActuatorState, TensorActuatorStep, TensorActuatorUpdate,
     record::TensorRecord,
 };
@@ -51,7 +51,7 @@ impl<R: Runtime<DType = DType>> StructureBatch<R> {
             initial_states,
             schedule,
         )?);
-        let state = crate::numerics::structures::actuator::initial(&context)?;
+        let state = crate::structures::numerics::actuator::initial(&context)?;
         Ok(GateActuatorBatch {
             time: context.schedule.initial_time_s,
             context,
@@ -95,7 +95,7 @@ impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
             + numr::ops::ConditionalOps<R>
             + numr::ops::ReduceOps<R>,
     {
-        crate::numerics::structures::actuator::next_event(
+        crate::structures::numerics::actuator::next_event(
             &self.context,
             &self.state,
             self.time,
@@ -119,7 +119,7 @@ impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
             + numr::ops::UnaryOps<R>,
     {
         self.trial_admitting(end_s, |context, expected| {
-            crate::numerics::structures::actuator::admit_update(
+            crate::structures::numerics::actuator::admit_update(
                 context,
                 target_updates,
                 end_s,
@@ -213,7 +213,7 @@ impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
             self.next_target
         };
         let update = admit(&self.context, target_index.is_some())?;
-        let step = crate::numerics::structures::actuator::step(
+        let step = crate::structures::numerics::actuator::step(
             &self.context,
             &self.state,
             self.time,

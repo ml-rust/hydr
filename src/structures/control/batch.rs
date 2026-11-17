@@ -5,11 +5,11 @@ use super::{
     ControlSample, ControlState, ControlStepDiagnostics, OperatingControlDefinition,
     OperatingControlTrial, SampledControlTiming,
 };
+use crate::structures::tensor::control::{
+    TensorControlContext, TensorControlState, TensorControlStep, TensorControlTimer,
+};
 use crate::structures::{
     StructureBatch, StructureElement, StructureError, StructureInputErrorKind,
-};
-use crate::tensor::structures::control::{
-    TensorControlContext, TensorControlState, TensorControlStep, TensorControlTimer,
 };
 use numr::dtype::DType;
 use numr::runtime::Runtime;
@@ -169,12 +169,12 @@ impl<R: Runtime<DType = DType>> OperatingControlBatch<R> {
         };
         let step = match decision {
             Some(index) => {
-                let input = crate::tensor::structures::control::input::decision_samples(
+                let input = crate::structures::tensor::control::input::decision_samples(
                     &self.context,
                     decision_samples,
                     end_s,
                 )?;
-                crate::numerics::structures::control::decide(
+                crate::structures::numerics::control::decide(
                     &self.context,
                     &self.state,
                     self.time,

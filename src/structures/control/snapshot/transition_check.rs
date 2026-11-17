@@ -32,7 +32,7 @@ where
     for (lane, (state, definition)) in states.iter().zip(batch.definitions()).enumerate() {
         if let Some(receipt) = &state.last_transition {
             let result = (|| {
-                crate::tensor::structures::control::input::check_sample(
+                crate::structures::tensor::control::input::check_sample(
                     definition,
                     &receipt.sample,
                 )?;
@@ -111,7 +111,7 @@ where
         Some(crate::structures::StructureInputErrorKind::Definition),
         "retained transition sample does not qualify its prior latch",
     )?;
-    let timer = crate::numerics::structures::control::timers::evaluate(
+    let timer = crate::structures::numerics::control::timers::evaluate(
         context,
         &active,
         &context.tensor(&starts)?,

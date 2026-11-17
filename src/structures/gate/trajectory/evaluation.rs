@@ -2,8 +2,8 @@
 use numr::{dtype::DType, runtime::Runtime};
 
 use super::binding::GateTrajectoryData;
+use crate::structures::tensor::gate::trajectory::TrajectoryPointMetadata;
 use crate::structures::{StructureError, StructureOperatingPoint, StructureOperation};
-use crate::tensor::structures::gate::trajectory::TrajectoryPointMetadata;
 use numr::tensor::Tensor;
 use std::sync::Arc;
 

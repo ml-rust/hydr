@@ -7,7 +7,7 @@ use numr::tensor::Tensor;
 use super::{
     StructureBatch, StructureElement, StructureError, StructureInputErrorKind, StructureOperation,
 };
-use crate::tensor::structures::{
+use crate::structures::tensor::{
     TensorStaticOperations, TensorStructureHeads, TensorStructureInput, TensorStructureResult,
     check_structure_tensor,
 };
@@ -69,7 +69,7 @@ impl<R: Runtime<DType = DType>> CouplingStructures<R> {
             context, stage_a, stage_b, bed_a, bed_b, wet_a, wet_b,
         )?;
         let input = TensorStructureInput::with_static_operations(context, heads, &self.tensors)?;
-        crate::numerics::structures::proposal(context, &input)
+        crate::structures::numerics::proposal(context, &input)
     }
 
     pub(crate) fn held_volumes(
@@ -92,6 +92,6 @@ impl<R: Runtime<DType = DType>> CouplingStructures<R> {
             ));
         }
         check_structure_tensor(&self.batch.context, &result.discharge, "discharge")?;
-        crate::numerics::structures::held::volumes(&self.batch.context, &result.discharge, dt_s)
+        crate::structures::numerics::held::volumes(&self.batch.context, &result.discharge, dt_s)
     }
 }

@@ -2,8 +2,8 @@
 use numr::{dtype::DType, runtime::Runtime};
 
 use super::GateHydraulicOperands;
+use crate::structures::tensor::gate::TensorGateResult;
 use crate::structures::{StructureError, StructureOperatingPoint, projection::read};
-use crate::tensor::structures::gate::TensorGateResult;
 
 pub(crate) struct GateOperandProjection {
     opening: Vec<f64>,

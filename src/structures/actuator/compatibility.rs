@@ -1,10 +1,10 @@
 //! Exact immutable actuator identity shared by snapshots and source frames.
 
 use crate::structures::identity::{bits, same_elements};
+use crate::structures::tensor::actuator::TensorActuatorContext;
 use crate::structures::{
     GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule, StructureElement,
 };
-use crate::tensor::structures::actuator::TensorActuatorContext;
 use numr::dtype::DType;
 use numr::runtime::{Device, Runtime};
 use std::sync::Arc;

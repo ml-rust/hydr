@@ -1,11 +1,11 @@
 //! Owning sampled control continuation with explicitly assumed instantaneous pump response.
 
 use super::{ControlledPumpOutput, ControlledPumpTrial, PumpResponseDefinition};
+use crate::structures::tensor::controlled_pump::{
+    TensorControlledPumpContext, TensorControlledPumpSelection,
+};
 use crate::structures::{
     ControlEvent, ControlSample, OperatingControlBatch, StructureError, StructureOperation,
-};
-use crate::tensor::structures::controlled_pump::{
-    TensorControlledPumpContext, TensorControlledPumpSelection,
 };
 use numr::dtype::DType;
 use numr::runtime::Runtime;

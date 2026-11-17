@@ -2,8 +2,8 @@
 
 use super::super::{ControlLatch, ControlState, OperatingControlBatch};
 use super::compatibility::{option_time, require, sample};
+use crate::structures::tensor::control::{MAX_EXACT_COUNT, TensorControlState};
 use crate::structures::{StructureError, StructureInputErrorKind};
-use crate::tensor::structures::control::{MAX_EXACT_COUNT, TensorControlState};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 
@@ -54,7 +54,7 @@ where
                 "imported latch disagrees with initial latch and transition-count parity",
             )?;
             if let Some(sample) = &state.last_sample {
-                crate::tensor::structures::control::input::check_sample(definition, sample)?;
+                crate::structures::tensor::control::input::check_sample(definition, sample)?;
                 require(
                     sample.observed_at_s <= time,
                     "imported control observation follows accepted time",
@@ -173,7 +173,7 @@ where
             .map_err(|error: StructureError| as_definition(error).at(batch.context.slots[lane]))?;
     }
     let state = TensorControlState::from_values(&batch.context, states)?;
-    crate::numerics::structures::control::check_initial(&batch.context, &state)
+    crate::structures::numerics::control::check_initial(&batch.context, &state)
         .map_err(as_definition)?;
     super::transition_check::check(batch, states)?;
     Ok(state)

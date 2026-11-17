@@ -3,13 +3,13 @@
 use super::{
     OperatingSourceBinding, OperatingSourceFrame, OperatingSourceProposal, OperatingSourceSupport,
 };
+use crate::structures::tensor::{
+    DerivedGateOperations, DerivedPumpOperationData, DerivedPumpOperations, TensorStructureInput,
+    operating_source::{TensorOperatingSourceContext, assemble},
+};
 use crate::structures::{
     StructureBatch, StructureElement, StructureError, StructureHeads, StructureInputErrorKind,
     StructureOperation, StructureProposal,
-};
-use crate::tensor::structures::{
-    DerivedGateOperations, DerivedPumpOperationData, DerivedPumpOperations, TensorStructureInput,
-    operating_source::{TensorOperatingSourceContext, assemble},
 };
 use numr::dtype::DType;
 use numr::runtime::Runtime;
@@ -123,7 +123,7 @@ impl<R: Runtime<DType = DType>> OperatingSourceBatch<R> {
                 power_of_two: &point.pump_power_of_two,
             }),
         )?;
-        let result = crate::numerics::structures::proposal(context, &input)?;
+        let result = crate::structures::numerics::proposal(context, &input)?;
         let hydraulic = StructureProposal::from_derived(
             Arc::clone(context),
             heads.to_vec(),

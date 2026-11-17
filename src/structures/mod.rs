@@ -11,6 +11,7 @@ mod gate;
 mod heads;
 mod held;
 pub(crate) mod identity;
+mod numerics;
 mod operation;
 mod operation_projection;
 mod output;
@@ -18,6 +19,7 @@ mod parameters;
 mod projection;
 mod proposal;
 mod pump;
+mod tensor;
 
 pub use actuator::{
     GateActuatorAccuracy, GateActuatorAnchor, GateActuatorArrivalCertificate, GateActuatorBatch,

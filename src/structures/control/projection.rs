@@ -6,7 +6,7 @@ use super::{
     ControlStepDiagnostics, ControlTransitionReceipt,
 };
 use crate::structures::StructureError;
-use crate::tensor::structures::control::{
+use crate::structures::tensor::control::{
     TensorControlContext, TensorControlState, TensorControlStep,
 };
 use numr::dtype::DType;

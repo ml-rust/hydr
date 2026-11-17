@@ -43,7 +43,7 @@ impl<R: Runtime<DType = DType>> StructureProposal<R> {
                 ),
             ));
         }
-        let volumes = crate::numerics::structures::held::volumes(
+        let volumes = crate::structures::numerics::held::volumes(
             &self.inner.context,
             &self.inner.result.discharge,
             dt,

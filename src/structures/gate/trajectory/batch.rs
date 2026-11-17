@@ -6,11 +6,11 @@ use super::{
     GateTrajectoryInterval, GateTrajectorySupport,
 };
 use super::{binding::GateTrajectoryData, evaluation::GateTrajectoryEvaluationData};
+use crate::structures::tensor::TensorStructureInput;
 use crate::structures::{
     StructureBatch, StructureElement, StructureError, StructureHeads, StructureInputErrorKind,
     StructureOperation, StructureProposal,
 };
-use crate::tensor::structures::TensorStructureInput;
 use std::sync::Arc;
 
 /// Persistent prescribed trajectories bound to complete original structure definitions.
@@ -97,7 +97,7 @@ impl<R: Runtime<DType = DType>> GateTrajectoryBatch<R> {
     {
         super::events::check_query(self.inner.support, time_s)?;
         let (opening, absolute_error, input) =
-            crate::numerics::structures::gate::trajectory::evaluate(
+            crate::structures::numerics::gate::trajectory::evaluate(
                 &self.inner.context,
                 &self.inner.tensors,
                 &self.inner.assignments,
@@ -146,7 +146,7 @@ impl<R: Runtime<DType = DType>> GateTrajectoryBatch<R> {
             &evaluation.inner,
             other_operations,
         )?;
-        let result = crate::numerics::structures::proposal(&self.inner.context, &input)?;
+        let result = crate::structures::numerics::proposal(&self.inner.context, &input)?;
         Ok(StructureProposal::from_trajectory(
             Arc::clone(&self.inner.context),
             heads.to_vec(),
