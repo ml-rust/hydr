@@ -166,12 +166,6 @@ const STRUCTURES: Unsupported = unsupported(
     STANDALONE,
     "docs/structures.md",
 );
-const SURFACE_SOLVER: Unsupported = unsupported(
-    "surface-solver",
-    UnsupportedReason::NotAttached,
-    STANDALONE,
-    "docs/integration.md",
-);
 const VARYING_GEOMETRY: Unsupported = unsupported(
     "varying-geometry",
     UnsupportedReason::OutsideModel,
@@ -345,7 +339,7 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
     sources: SOURCES,
     options: &[],
     nested: &[],
-    attachable_to: &[],
+    attachable_to: &[ComponentId::SurfaceChannels],
     unsupported: &[
         unsupported(
             "surveyed-scalar-boundaries",
@@ -359,16 +353,9 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
             "Channel-to-pool connections reject surveyed reaches.",
             "docs/channel-pools.md",
         ),
-        unsupported(
-            "surveyed-surface-channel-link",
-            UnsupportedReason::RejectedByAdmission,
-            "Surface/channel links reject surveyed reaches.",
-            "docs/surface-channels.md",
-        ),
         TRANSMISSIVE_ENDPOINTS,
         JUNCTIONS,
         STRUCTURES,
-        SURFACE_SOLVER,
         VARYING_GEOMETRY,
         LOCAL_LOSSES,
         DRAINAGE,

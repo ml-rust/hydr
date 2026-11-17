@@ -32,6 +32,42 @@ pub(super) fn reject_reserved_boundary(boundary_id: &str) -> Result<(), ChannelE
     Ok(())
 }
 
+/// Endpoint name for coordinator endpoint errors. `None` is a coordinator-owned connection.
+fn endpoint_name<R: Runtime<DType = DType>>(endpoint: Option<&ChannelTensorBoundary<R>>) -> &str {
+    match endpoint {
+        None => "connected",
+        Some(ChannelTensorBoundary::Wall) => "Wall",
+        Some(ChannelTensorBoundary::Exterior { .. }) => "Exterior",
+        Some(ChannelTensorBoundary::Stage { .. }) => "Stage",
+        Some(ChannelTensorBoundary::QuiescentReservoir { .. }) => "QuiescentReservoir",
+        Some(ChannelTensorBoundary::Discharge { .. }) => "Discharge",
+    }
+}
+
+/// Admit a surveyed reach into a coordinator only through lateral bindings.
+///
+/// Both endpoints must hold an external `Wall` or `Exterior` policy.
+/// A connected endpoint or a scalar policy rejects.
+fn check_lateral_only<R: Runtime<DType = DType>>(
+    left: Option<&ChannelTensorBoundary<R>>,
+    right: Option<&ChannelTensorBoundary<R>>,
+) -> Result<(), ChannelError> {
+    let admitted = |endpoint: Option<&ChannelTensorBoundary<R>>| {
+        matches!(
+            endpoint,
+            Some(ChannelTensorBoundary::Wall | ChannelTensorBoundary::Exterior { .. })
+        )
+    };
+    if admitted(left) && admitted(right) {
+        return Ok(());
+    }
+    Err(ChannelError::input(format!(
+        "surveyed coordinator endpoints left={}, right={}: surveyed reaches join a coordinator through lateral bindings only; supply Wall or complete Exterior at both endpoints",
+        endpoint_name(left),
+        endpoint_name(right)
+    )))
+}
+
 /// External policies and lateral operands copied once from caller storage.
 #[derive(Debug)]
 #[doc(hidden)]
@@ -295,13 +331,8 @@ where
         right: Option<ChannelTensorBoundary<R>>,
         lateral: Vec<ChannelTensorLateralInput<R>>,
     ) -> Result<ChannelCouplingForcing<R>, ChannelError> {
-        if matches!(
-            &self.definition().geometry,
-            super::ChannelGeometry::PrismaticSurveyed { .. }
-        ) {
-            return Err(ChannelError::input(
-                "surveyed coordinator attachment is unsupported: advance the reach with Wall or complete Exterior boundaries",
-            ));
+        if self.context.surveyed() {
+            check_lateral_only(left.as_ref(), right.as_ref())?;
         }
         super::definition::check_forcing_interval(self.time(), end_s, start_s, end_s)?;
         self.context.lateral.check_endpoints(
@@ -425,3 +456,7 @@ where
 #[cfg(test)]
 #[path = "coupling_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "coupling_surveyed_tests.rs"]
+mod surveyed_tests;

@@ -6,28 +6,33 @@ use crate::channel::{
 };
 use hydr_channel::internal::SURFACE_EXCHANGE_BINDING_PREFIX;
 
-/// Ordered cell identities and bed elevations of a rectangular or triangular reach.
+/// Ordered cell identities and bed elevations of a reach.
 ///
-/// Returns `None` for surveyed geometry, which links do not support yet.
-pub(super) fn prismatic_cells(definition: &ChannelReachDefinition) -> Option<Vec<(&str, f64)>> {
+/// A surveyed cell's bed is the minimum elevation of the reach's surveyed section.
+/// The reach reports stage above that elevation, so links compare crests against it.
+pub(super) fn channel_cells(definition: &ChannelReachDefinition) -> Vec<(&str, f64)> {
     match &definition.geometry {
-        ChannelGeometry::Rectangular { cells } => Some(
-            cells
-                .iter()
-                .map(|cell| (cell.id.as_str(), cell.bed_elevation_m))
-                .collect(),
-        ),
+        ChannelGeometry::Rectangular { cells } => cells
+            .iter()
+            .map(|cell| (cell.id.as_str(), cell.bed_elevation_m))
+            .collect(),
         ChannelGeometry::PrismaticTriangular {
             bed_elevation_m,
             cells,
             ..
-        } => Some(
-            cells
+        } => cells
+            .iter()
+            .map(|cell| (cell.id.as_str(), *bed_elevation_m))
+            .collect(),
+        ChannelGeometry::PrismaticSurveyed { profile, cells, .. } => {
+            let bed = profile
+                .points
                 .iter()
-                .map(|cell| (cell.id.as_str(), *bed_elevation_m))
-                .collect(),
-        ),
-        ChannelGeometry::PrismaticSurveyed { .. } => None,
+                .map(|point| point.elevation_m)
+                .reduce(f64::min)
+                .unwrap_or(profile.maximum_stage_m);
+            cells.iter().map(|cell| (cell.id.as_str(), bed)).collect()
+        }
     }
 }
 

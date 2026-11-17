@@ -443,7 +443,7 @@ This bound covers radius selection only. It excludes native power arithmetic and
 
 Unresolved geometry, capacity, fluxes, or exhausted work limits return errors without exposing partial face results. Inspect the error before changing inputs or work limits. A shorter interval cannot resolve every geometry or work error.
 
-Surveyed reaches use the same lateral rate, exact-volume, immutable-step, and restart interfaces described above. Functional CPU/CUDA source and restart checks establish no reach convergence or measured-event accuracy. Spatial, temporal, and wet/dry-front acceptance remain incomplete.
+Surveyed reaches use the same lateral rate, exact-volume, immutable-step, and restart interfaces described above. The [surface/channel coordinator](surface-channels.md#couple-a-surveyed-reach) attaches surveyed reaches through these lateral bindings, with `Wall` or complete `Exterior` endpoints only. Functional CPU/CUDA source and restart checks establish no reach convergence or measured-event accuracy. Spatial, temporal, and wet/dry-front acceptance remain incomplete.
 
 ### Select triangular reconstruction
 

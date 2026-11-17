@@ -1,15 +1,15 @@
 //! Surface/channel declaration checked against its admission code.
 
 use crate::surface_channel_support::fixture::{
-    self, INACTIVE_CELL, Result, SURFACE_BED, link, reach_definition,
+    INACTIVE_CELL, Result, SURFACE_BED, link, reach_definition,
 };
 use crate::surface_channel_support::scenario::{Batch, ReachSpec, Spec, forcing, weir};
 use crate::surface_channels_fixture::{
     CREST, Outcome, REACH, STEP, accept, construction_outcome, edited, green_ampt, pair,
-    surveyed_link, trial_outcome, triangular, with_rates,
+    surveyed_pair_outcome, trial_outcome, triangular, with_rates,
 };
 use crate::surface_channels_variants::{
-    Variant, WEIR_REGIMES, assert_refused, geometry_component, lateral_kind, weir_regime,
+    Variant, WEIR_REGIMES, geometry_component, lateral_kind, weir_regime,
 };
 use hydr::capability::{
     BoundaryKind, ComponentId, EndpointId, Regime, RegimeScope, SourceKind, UnsupportedReason,
@@ -211,16 +211,21 @@ fn surface_channels_nest_and_attach_declared_components() -> Result {
     if let Some((variant, reason)) = construction_outcome(setup, initial)? {
         return Err(format!("triangular link: {variant:?} {reason}").into());
     }
+    // A surveyed reach with Wall endpoints spills through the same bank weir.
+    let surveyed = Spec::new(1, 1, SURFACE_BED, 0.5)
+        .reach(ReachSpec::new(REACH, 0.0, &[0.5; 2]).surveyed())
+        .link(weir("bank", 0, REACH, 0, CREST, 2.0));
+    let (surveyed_setup, _) = surveyed.parts()?;
+    let (_, spill) = one_interval(&surveyed)?;
+    assert!(spill.links[0].signed_volume_m3 > 0.0, "{spill:?}");
     let (setup, _) = rectangular.parts()?;
     for geometry in [
         setup.reaches[0].definition.geometry.clone(),
         triangle,
-        crate::pools_fixture::surveyed_geometry(fixture::DATUM),
+        surveyed_setup.reaches[0].definition.geometry.clone(),
     ] {
-        match geometry_component(&geometry) {
-            Ok(component) => assert!(declared.nested.contains(&component), "{component:?}"),
-            Err(id) => assert_refused(id)?,
-        }
+        let component = geometry_component(&geometry);
+        assert!(declared.nested.contains(&component), "{component:?}");
     }
     assert!(declared.nested.contains(&ComponentId::SurfaceSolver));
     assert!(declared.attachable_to.is_empty());
@@ -230,25 +235,13 @@ fn surface_channels_nest_and_attach_declared_components() -> Result {
             ComponentId::Soil => hydr::soil::soil_capabilities(),
             ComponentId::ChannelReachRectangular => hydr::channel::rectangular_reach_capabilities(),
             ComponentId::ChannelReachTriangular => hydr::channel::triangular_reach_capabilities(),
+            ComponentId::ChannelReachSurveyed => hydr::channel::surveyed_reach_capabilities(),
             other => return Err(format!("surface/channel: no case for {other:?}").into()),
         };
         assert!(child.attachable_to.contains(&ComponentId::SurfaceChannels));
         assert!(child.unsupported_by_id("surface-solver").is_none());
         assert!(child.unsupported_by_id("channel-reaches").is_none());
     }
-    // The surveyed reach keeps its standalone surface entry and declares the link rejection.
-    let surveyed = hydr::channel::surveyed_reach_capabilities();
-    assert!(
-        !surveyed
-            .attachable_to
-            .contains(&ComponentId::SurfaceChannels)
-    );
-    assert_eq!(
-        surveyed
-            .unsupported_by_id("surveyed-surface-channel-link")
-            .map(|u| u.reason),
-        Some(UnsupportedReason::RejectedByAdmission)
-    );
     assert_eq!(WEIR_REGIMES.len(), 4);
     Ok(())
 }
@@ -312,7 +305,20 @@ fn rejection_cases(id: &str) -> Option<Vec<Rejection>> {
                 "an unobstructed connection is unsupported",
             ),
         ],
-        "surveyed-reach-link" => vec![(surveyed_link(), Input, "has surveyed geometry")],
+        "surveyed-connected-endpoint" => [
+            ChannelBoundary::Stage { elevation_m: 0.5 },
+            ChannelBoundary::Discharge {
+                discharge_m3_per_s: 0.0,
+            },
+        ]
+        .map(|boundary| {
+            (
+                surveyed_pair_outcome(1.5, 0.5, ChannelBoundary::Wall, boundary),
+                Variant::Channel,
+                "surveyed coordinator endpoints left=Wall",
+            )
+        })
+        .into(),
         "duplicate-links" => vec![
             (
                 edited(|s| s.links[1].id = "link-b".into()),

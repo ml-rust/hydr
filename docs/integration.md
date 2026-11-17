@@ -66,7 +66,7 @@ Use [coupled level pools](coupled-level-pools.md) for declared pool-to-pool tran
 
 Use [runoff-to-pool connections](runoff-pools.md) to generate upstream inflows and accept both engines over one common interval. Every runoff outlet must drain without receiving-pool feedback.
 
-Rectangular and triangular reaches attach to the surface solver through the [surface/channel coordinator](surface-channels.md). Pools, structures, and reach-end ports do not attach to the surface solver.
+Rectangular, triangular, and surveyed reaches attach to the surface solver through the [surface/channel coordinator](surface-channels.md). Surveyed reaches attach through lateral links only. Pools, structures, and reach-end ports do not attach to the surface solver.
 
 ### Channel flow and geometry
 
@@ -76,7 +76,7 @@ Use [certified section bounds](prismatic-sections.md) for native depth queries o
 
 Use [channel flow](channels.md) to advance an unbranched rectangular, triangular, or fixed surveyed reach with explicit endpoint conditions.
 
-For surveyed reaches, supply one profile meeting [prismatic certification requirements](prismatic-sections.md#check-whether-the-profile-qualifies). Supply ordered cell lengths and roughness, initial volumes and momenta, and `ChannelSurveyedConfig`. Choose `Wall` or complete `Exterior` endpoints. Scalar endpoints and finite-pool attachments remain unsupported.
+For surveyed reaches, supply one profile meeting [prismatic certification requirements](prismatic-sections.md#check-whether-the-profile-qualifies). Supply ordered cell lengths and roughness, initial volumes and momenta, and `ChannelSurveyedConfig`. Choose `Wall` or complete `Exterior` endpoints. Scalar endpoints and finite-pool attachments remain unsupported. Surface links attach through the [surface/channel coordinator](surface-channels.md#couple-a-surveyed-reach).
 
 Surveyed advancement supports lateral rates, exact interval volumes, diagnostics, and complete restart through the same channel API. Supply a CPU or CUDA F64 client. Read [surveyed numerical controls and limits](channels.md#set-surveyed-numerical-controls) before selecting tolerances or interpreting accuracy.
 

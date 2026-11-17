@@ -11,10 +11,21 @@ Read capabilities with `surface_channel_capabilities()`. It returns a `Component
 | Part | Supplied as | Notes |
 | --- | --- | --- |
 | Surface | `SolverSetup` and `InitialState` | Exterior faces, land model, and surface forcing keep their surface rules. |
-| Reaches | `SurfaceChannelReach` entries | Rectangular or triangular geometry. A linked surveyed reach rejects. |
+| Reaches | `SurfaceChannelReach` entries | Rectangular, triangular, or surveyed geometry. |
 | Links | `SurfaceChannelLink` entries | One bank weir between one active surface cell and one channel cell. |
 
 Reach ends take the nested reach's endpoint policies. No reach end exchanges water with the surface.
+
+### Couple a surveyed reach
+
+A surveyed reach joins the coordinator through lateral links only.
+
+- Endpoints: supply `Wall` or complete `Exterior` at both ends of every interval. Any other endpoint rejects the trial with `SurfaceChannelError::Channel`.
+- Bed: a surveyed cell's bed is the minimum elevation of the reach's surveyed section. The crest check and the reported stage use this bed.
+- Stage: the bed plus the depth from the reach's certified area-to-stage recovery.
+- Donor water: the lower bound of the two-part stored volume, as the reach's own step uses.
+
+Surveyed reaches keep the [surveyed limits](channels.md#set-surveyed-numerical-controls). Surveyed links run in the CPU checks only. The CUDA runtime evidence covers rectangular reaches.
 
 A reach without links advances on the same common interval with its own forcing.
 
@@ -41,8 +52,7 @@ Import the coordinator types from `hydr::coupling`.
 
 `SurfaceChannelDefinition::new` and `SurfaceChannelBatch::new` return `SurfaceChannelError::Input` for each case:
 
-- Crest below the surface bed or the channel bed. An unobstructed connection is unsupported.
-- Linked reach with surveyed geometry.
+- Crest below the surface bed or the channel bed. An unobstructed connection is unsupported. A surveyed channel bed is the section minimum.
 - Repeated link identity, or a repeated `(surface_cell, reach_id, channel_cell)` triple.
 - Surface cell outside the grid or inactive.
 - Nonfinite reach tangent, or a tangent off unit length.
@@ -201,7 +211,8 @@ Preserve every package field and floating-point value exactly. Follow the [persi
 
 | Supported | Excluded |
 | --- | --- |
-| Bank weirs between active surface cells and rectangular or triangular reach cells | Unobstructed connections, surveyed reaches, and reach-end ports |
+| Bank weirs between active surface cells and rectangular, triangular, or surveyed reach cells | Unobstructed connections and reach-end ports |
+| Surveyed reaches with `Wall` or complete `Exterior` endpoints | Surveyed reaches with any other endpoint |
 | Reversal through one link between intervals | Normal momentum exchange and child subcycling |
 | Surface rain, impervious land, Modified Green-Ampt soil, evaporation, and withdrawal | Level pools, structures, and device-resident forcing |
 | Caller lateral inflow and withdrawal on reaches | |

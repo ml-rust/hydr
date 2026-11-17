@@ -91,6 +91,7 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         ComponentId::Soil,
         ComponentId::ChannelReachRectangular,
         ComponentId::ChannelReachTriangular,
+        ComponentId::ChannelReachSurveyed,
     ],
     attachable_to: &[],
     unsupported: &[
@@ -101,9 +102,9 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
             SURFACE_CHANNELS_DOC,
         ),
         unsupported(
-            "surveyed-reach-link",
+            "surveyed-connected-endpoint",
             UnsupportedReason::RejectedByAdmission,
-            "A link to a surveyed reach rejects.",
+            "A surveyed reach endpoint other than Wall or Exterior rejects; surveyed reaches couple laterally only.",
             SURFACE_CHANNELS_DOC,
         ),
         unsupported(
@@ -201,6 +202,12 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
             UnsupportedReason::Unqualified,
             "CUDA runs execute, but no test qualifies their numerical accuracy.",
             "docs/integration.md",
+        ),
+        unsupported(
+            "surveyed-gpu-execution",
+            UnsupportedReason::Unqualified,
+            "Surveyed links run on CPU evidence only; no CUDA test executes a coupled surveyed reach.",
+            SURFACE_CHANNELS_DOC,
         ),
         unsupported(
             "measured-event-accuracy",

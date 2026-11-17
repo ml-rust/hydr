@@ -37,16 +37,6 @@ fn one_cell(
     step_outcome(reach(kind, &[h], &[u]), &interval(left, right))
 }
 
-/// Links a surveyed reach to the surface and returns the coordinator's input rejection.
-fn surveyed_surface_link() -> Outcome {
-    use crate::surface_channels_variants::Variant as Coordinator;
-    match crate::surface_channels_fixture::surveyed_link()? {
-        None => Ok(None),
-        Some((Coordinator::Input, reason)) => Ok(Some((Variant::Input, reason))),
-        Some((other, reason)) => Err(format!("surveyed surface link: {other:?} {reason}").into()),
-    }
-}
-
 /// Outward velocity sign at `endpoint`.
 fn outward(endpoint: EndpointId) -> f64 {
     if endpoint == EndpointId::ReachLeft {
@@ -207,11 +197,6 @@ fn rejection_cases(kind: Kind, id: &str) -> Option<Vec<(Outcome, Variant, &'stat
             pool_outcome(kind),
             Variant::Input,
             "surveyed coordinator attachment is unsupported",
-        )],
-        "surveyed-surface-channel-link" => vec![(
-            surveyed_surface_link(),
-            Variant::Input,
-            "has surveyed geometry",
         )],
         _ => return None,
     })

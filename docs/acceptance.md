@@ -608,6 +608,7 @@ Use the [surface/channel guide](surface-channels.md) to declare bank links and t
 | Order | Link and reach declaration order change no bit |
 | Recalculation | Nonconvergence halves the interval. Regime flips and head crossings shorten it. Integrated inputs request recomputation. |
 | Continuation | Snapshot, restore, import, resume, and forecast continuation match the uninterrupted run bit for bit. Forged packages reject. A standalone surface restore of a coupled package rejects. |
+| Surveyed reaches | Flood then recession through one link pairs and balances each interval. Restart matches the uninterrupted run bit for bit. Non-`Wall`/`Exterior` endpoints and a crest below the section minimum reject. CPU only. |
 
 These cases establish no weir-coefficient accuracy, bank-mapping proof, or measured-event accuracy.
 

@@ -280,42 +280,6 @@ fn rejects_reserved_caller_binding() -> Result {
 }
 
 #[test]
-fn rejects_linked_surveyed_reach() -> Result {
-    let message = reject(|s| {
-        s.reaches[0].definition.geometry = ChannelGeometry::PrismaticSurveyed {
-            profile: CrossSectionDefinition {
-                id: "surveyed-rectangle".into(),
-                vertical_datum: DATUM.into(),
-                points: [(0.0, 4.0), (0.0, 0.0), (1.0, 0.0), (1.0, 4.0)]
-                    .into_iter()
-                    .map(|(station_m, elevation_m)| CrossSectionPoint {
-                        station_m,
-                        elevation_m,
-                    })
-                    .collect(),
-                maximum_stage_m: 4.0,
-                profile_provenance: "Explicit analytical rectangular survey".into(),
-            },
-            cells: (0..4)
-                .map(|i| SurveyedChannelCell {
-                    id: format!("cell-{i}"),
-                    length_m: 2.0,
-                    manning_n: 0.0,
-                })
-                .collect(),
-            numerical: ChannelSurveyedConfig::default(),
-        };
-    })?;
-    contains(
-        &message,
-        &[
-            "reach=\"reach\" has surveyed geometry",
-            "rectangular and triangular",
-        ],
-    )
-}
-
-#[test]
 fn rejects_empty_evidence_and_collections() -> Result {
     let message = reject(|s| s.storage_exclusion_evidence = String::new())?;
     contains(&message, &["storage_exclusion_evidence=\"\""])?;

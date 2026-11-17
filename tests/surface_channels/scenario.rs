@@ -18,7 +18,7 @@ pub const DX: f64 = 2.0;
 /// Channel cell length, in metres. Every channel cell is 1 m wide.
 pub const CELL_LENGTH: f64 = 2.0;
 
-/// One rectangular reach of 2 m by 1 m cells on a flat bed.
+/// One reach of 2 m cells, 1 m wide, on a flat bed.
 #[derive(Clone)]
 pub struct ReachSpec {
     pub id: String,
@@ -27,6 +27,8 @@ pub struct ReachSpec {
     pub depths: Vec<f64>,
     /// Caller lateral bindings: identity, cell index, direction.
     pub bindings: Vec<(String, usize, ChannelLateralDirection)>,
+    /// A surveyed 1 m rectangular section replaces the rectangular cells.
+    pub surveyed: bool,
 }
 
 impl ReachSpec {
@@ -36,7 +38,14 @@ impl ReachSpec {
             bed,
             depths: depths.to_vec(),
             bindings: Vec::new(),
+            surveyed: false,
         }
+    }
+
+    /// The same reach as one surveyed 1 m rectangular section. Stored volumes stay equal.
+    pub fn surveyed(mut self) -> Self {
+        self.surveyed = true;
+        self
     }
 
     pub fn binding(mut self, id: &str, cell: usize, direction: ChannelLateralDirection) -> Self {
@@ -178,12 +187,40 @@ impl Spec {
     }
 }
 
+/// One surveyed 1 m rectangular section from `bed` to 4 m above it, over `count` cells.
+pub fn surveyed_geometry(bed: f64, count: usize) -> ChannelGeometry {
+    ChannelGeometry::PrismaticSurveyed {
+        profile: CrossSectionDefinition {
+            id: "surveyed-bank-section".into(),
+            vertical_datum: DATUM.into(),
+            points: [(0.0, bed + 4.0), (0.0, bed), (1.0, bed), (1.0, bed + 4.0)]
+                .into_iter()
+                .map(|(station_m, elevation_m)| CrossSectionPoint {
+                    station_m,
+                    elevation_m,
+                })
+                .collect(),
+            maximum_stage_m: bed + 4.0,
+            profile_provenance: "Explicit analytical rectangular survey".into(),
+        },
+        cells: (0..count)
+            .map(|i| SurveyedChannelCell {
+                id: format!("cell-{i}"),
+                length_m: CELL_LENGTH,
+                manning_n: 0.0,
+            })
+            .collect(),
+        numerical: ChannelSurveyedConfig::default(),
+    }
+}
+
 fn reach_definition(reach: &ReachSpec) -> ChannelReachDefinition {
-    ChannelReachDefinition {
-        vertical_datum: DATUM.into(),
-        provenance: "Explicit rectangular reach beside the surface grid".into(),
-        geometry: ChannelGeometry::Rectangular {
-            cells: (0..reach.depths.len())
+    let count = reach.depths.len();
+    let geometry = if reach.surveyed {
+        surveyed_geometry(reach.bed, count)
+    } else {
+        ChannelGeometry::Rectangular {
+            cells: (0..count)
                 .map(|i| RectangularChannelCell {
                     id: format!("cell-{i}"),
                     length_m: CELL_LENGTH,
@@ -193,7 +230,12 @@ fn reach_definition(reach: &ReachSpec) -> ChannelReachDefinition {
                     manning_n: 0.0,
                 })
                 .collect(),
-        },
+        }
+    };
+    ChannelReachDefinition {
+        vertical_datum: DATUM.into(),
+        provenance: "Explicit reach beside the surface grid".into(),
+        geometry,
         lateral_bindings: reach
             .bindings
             .iter()

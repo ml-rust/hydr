@@ -1,6 +1,6 @@
 //! Construction checks that turn a setup into a checked surface/channel definition.
 
-use super::bindings::{binding_ids, coordinated_definition, prismatic_cells};
+use super::bindings::{binding_ids, channel_cells, coordinated_definition};
 use super::{
     SURFACE_CHANNEL_TANGENT_TOLERANCE, SurfaceChannelError, SurfaceChannelLink, SurfaceChannelSetup,
 };
@@ -60,11 +60,11 @@ impl SurfaceChannelDefinition {
     /// - a repeated `(surface_cell, reach_id, channel_cell)` triple
     /// - a surface cell outside the grid or inactive
     /// - an unknown reach identity or a channel cell out of range
-    /// - a linked reach with surveyed geometry
     /// - a nonfinite or nonpositive crest length or weir coefficient, or a nonfinite crest
     /// - incomplete weir applicability evidence, or a coefficient without symmetric reversal
     /// - a reach tangent that is nonfinite or not unit length
-    /// - a crest below the surface bed or the channel bed
+    /// - a crest below the surface bed or the channel bed; a surveyed channel bed is the
+    ///   minimum elevation of its section
     /// - gravity or vertical datum differing between the surface and a reach
     /// - a caller lateral binding using the `surface-exchange:` prefix
     /// - `maximum_step_s` above the surface or a reach `max_step`
@@ -250,20 +250,6 @@ fn check_reaches(
     Ok(index)
 }
 
-/// Ordered cells of a linked reach. Rejects surveyed geometry.
-fn linked_cells(
-    setup: &SurfaceChannelSetup,
-    reach: usize,
-) -> Result<Vec<(&str, f64)>, SurfaceChannelError> {
-    let reach = &setup.reaches[reach];
-    prismatic_cells(&reach.definition).ok_or_else(|| {
-        SurfaceChannelError::input(format!(
-            "reach={:?} has surveyed geometry: surface links support rectangular and triangular reaches only; use a rectangular or triangular reach",
-            reach.id
-        ))
-    })
-}
-
 /// One link after its checks, with resolved reach, channel cell identity, and weir law.
 struct Resolved<'a> {
     setup_index: usize,
@@ -315,7 +301,7 @@ fn check_links<'a>(
                 link.reach_id
             )));
         };
-        let cells = linked_cells(setup, reach)?;
+        let cells = channel_cells(&setup.reaches[reach].definition);
         let Some(&(cell_id, channel_bed)) = cells.get(link.channel_cell) else {
             return Err(SurfaceChannelError::input(format!(
                 "link={id:?} channel_cell={}, reach={:?} cells={}: link an existing reach cell",

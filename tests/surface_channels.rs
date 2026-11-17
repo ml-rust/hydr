@@ -18,3 +18,5 @@ mod restoration;
 mod runtime;
 #[path = "surface_channels/scenario.rs"]
 mod scenario;
+#[path = "surface_channels/surveyed.rs"]
+mod surveyed;

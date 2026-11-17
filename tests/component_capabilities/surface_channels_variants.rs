@@ -3,7 +3,7 @@
 //! Each mapping is an exhaustive `match`, so a new public variant fails to compile until it is
 //! classified.
 
-use hydr::capability::{ComponentId, Regime, SourceKind, UnsupportedReason};
+use hydr::capability::{ComponentId, Regime, SourceKind};
 use hydr::channel::{ChannelGeometry, ChannelLateralDirection};
 use hydr::coupling::{SurfaceChannelError, SurfaceChannelWeirRegime, surface_channel_capabilities};
 
@@ -53,12 +53,12 @@ pub const WEIR_REGIMES: [SurfaceChannelWeirRegime; 4] = [
     SurfaceChannelWeirRegime::EqualHeads,
 ];
 
-/// Nested reach of a linked geometry, or the declared rejection id.
-pub fn geometry_component(geometry: &ChannelGeometry) -> Result<ComponentId, &'static str> {
+/// Nested reach of a linked geometry.
+pub fn geometry_component(geometry: &ChannelGeometry) -> ComponentId {
     match geometry {
-        ChannelGeometry::Rectangular { .. } => Ok(ComponentId::ChannelReachRectangular),
-        ChannelGeometry::PrismaticTriangular { .. } => Ok(ComponentId::ChannelReachTriangular),
-        ChannelGeometry::PrismaticSurveyed { .. } => Err("surveyed-reach-link"),
+        ChannelGeometry::Rectangular { .. } => ComponentId::ChannelReachRectangular,
+        ChannelGeometry::PrismaticTriangular { .. } => ComponentId::ChannelReachTriangular,
+        ChannelGeometry::PrismaticSurveyed { .. } => ComponentId::ChannelReachSurveyed,
     }
 }
 
@@ -68,17 +68,6 @@ pub fn lateral_kind(direction: ChannelLateralDirection) -> SourceKind {
         ChannelLateralDirection::Inflow => SourceKind::LateralInflow,
         ChannelLateralDirection::Withdrawal => SourceKind::LateralWithdrawal,
     }
-}
-
-/// Fails unless `id` names a declared `RejectedByAdmission` entry.
-pub fn assert_refused(id: &str) -> Result<(), String> {
-    let entry = surface_channel_capabilities()
-        .unsupported_by_id(id)
-        .ok_or(format!("surface/channel: `{id}` is undeclared"))?;
-    if entry.reason != UnsupportedReason::RejectedByAdmission {
-        return Err(format!("surface/channel `{id}`: {:?}", entry.reason));
-    }
-    Ok(())
 }
 
 #[test]

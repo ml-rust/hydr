@@ -1,6 +1,6 @@
 //! Static coordinator topology: weir laws, donor trees, surface lanes, and channel slots.
 
-use super::bindings::prismatic_cells;
+use super::bindings::channel_cells;
 use super::state::LinkCounters;
 use super::{SurfaceChannelDefinition, SurfaceChannelError};
 use crate::channel::ChannelLateralDirection;
@@ -201,12 +201,7 @@ where
                 continue;
             };
             let caller = &setup.reaches[reach].definition;
-            let geometry = prismatic_cells(caller).ok_or_else(|| {
-                SurfaceChannelError::input(format!(
-                    "reach={:?} has surveyed geometry: use a rectangular or triangular reach",
-                    setup.reaches[reach].id
-                ))
-            })?;
+            let geometry = channel_cells(caller);
             let first_slot = slot_beds.len();
             let mut reach_links = Vec::new();
             for (offset, (&cell, positions)) in cells.iter().enumerate() {
