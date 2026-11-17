@@ -14,6 +14,7 @@ pub use flow::{
     ChannelSurveyedConfig, ChannelTensorBoundary, ChannelTensorForcingInterval,
     ChannelTensorLateralInput, ChannelTensorWaterAmount, ChannelTriangularReconstruction,
     ChannelWaterLedger, RectangularChannelCell, SurveyedChannelCell, TriangularChannelCell,
+    rectangular_reach_capabilities, surveyed_reach_capabilities, triangular_reach_capabilities,
 };
 pub use section::{
     CrossSectionBatch, CrossSectionDefinition, CrossSectionError, CrossSectionPoint,

@@ -5,6 +5,7 @@ mod admission;
 mod boundary;
 mod boundary_config;
 mod boundary_trace;
+mod capabilities;
 mod cfl_front_states;
 mod cfl_fronts;
 mod cfl_speeds;
@@ -42,6 +43,9 @@ mod triangular;
 
 pub use boundary_config::ChannelBoundaryConfig;
 pub use boundary_trace::{ChannelBoundaryTrace, ChannelReservoirTrace};
+pub use capabilities::{
+    rectangular_reach_capabilities, surveyed_reach_capabilities, triangular_reach_capabilities,
+};
 pub use config::{ChannelConfig, ChannelTriangularReconstruction};
 pub use definition::{
     ChannelBoundary, ChannelForcingInterval, ChannelGeometry, ChannelInitialState,

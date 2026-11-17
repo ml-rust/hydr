@@ -5,8 +5,9 @@
 //! where its scope ends. The types hold `&'static` data only and carry no behavior beyond lookup.
 //!
 //! Each component crate declares its own capabilities next to its admission checks.
-//! A private `static` holds the declaration. A public `capabilities()` function returns it
-//! as `&'static ComponentCapabilities`. Each `doc` path is relative to the repository root.
+//! A private `static` holds the declaration. A public function returns it as
+//! `&'static ComponentCapabilities`. The function is `capabilities()` when its module holds one
+//! component, and `<component>_capabilities()` when it holds several. Each `doc` path is relative to the repository root.
 //! A test in `tests/component_capabilities` backs every claim a declaration makes.
 //!
 //! Every enum has a stable kebab-case `id`. Persisted decisions store these ids, so an id

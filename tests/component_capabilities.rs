@@ -14,6 +14,15 @@ mod fixture;
 #[path = "component_capabilities/solver.rs"]
 mod solver;
 
+#[path = "component_capabilities/channel_fixture.rs"]
+mod channel_fixture;
+
+#[path = "component_capabilities/channel_variants.rs"]
+mod channel_variants;
+
+#[path = "component_capabilities/channel.rs"]
+mod channel;
+
 use hydr::capability::{ComponentCapabilities, RegimeScope};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -26,11 +35,21 @@ struct Declared {
 }
 
 fn declarations() -> Vec<Declared> {
-    vec![Declared {
-        capabilities: hydr::solver::capabilities(),
-        contract: Some(hydr::solver::CONTRACT_VERSION),
-        snapshot_schema: Some(hydr::solver::SNAPSHOT_SCHEMA),
-    }]
+    let channel = |capabilities| Declared {
+        capabilities,
+        contract: Some(hydr::channel::CHANNEL_CONTRACT_VERSION),
+        snapshot_schema: Some(hydr::channel::CHANNEL_SNAPSHOT_SCHEMA),
+    };
+    vec![
+        Declared {
+            capabilities: hydr::solver::capabilities(),
+            contract: Some(hydr::solver::CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::solver::SNAPSHOT_SCHEMA),
+        },
+        channel(hydr::channel::rectangular_reach_capabilities()),
+        channel(hydr::channel::triangular_reach_capabilities()),
+        channel(hydr::channel::surveyed_reach_capabilities()),
+    ]
 }
 
 fn root() -> &'static Path {

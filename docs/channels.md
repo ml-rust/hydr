@@ -2,6 +2,8 @@
 
 Use `ChannelReach<R>` to advance an unbranched reach with explicit geometry and endpoint conditions.
 
+Read capabilities per geometry with `rectangular_reach_capabilities()`, `triangular_reach_capabilities()`, and `surveyed_reach_capabilities()`. Each returns a `ComponentCapabilities` declaration: runtimes, endpoint policies, regimes, sources, options, unsupported uses, and limits.
+
 ## Construct a reach
 
 Import these types from `hydr::channel`.
@@ -64,7 +66,7 @@ Supply both endpoints through `ChannelForcingInterval`. Keep the supplied values
 
 A boundary trace gives the depth and velocity used to calculate flow across an endpoint.
 
-Scalar policies prescribe one hydraulic quantity and solve for the remaining trace state.
+Scalar policies prescribe one hydraulic quantity and solve for the remaining trace state. They require a runtime that declares correctly rounded F64 square roots. Unsupported arithmetic rejects the interval without fallback.
 
 Surveyed reaches accept only `Wall` or complete `Exterior` data at both endpoints. `Stage`, `Discharge`, and `QuiescentReservoir` remain unsupported for surveyed geometry. The scalar-policy sections below apply to rectangular and triangular reaches.
 
