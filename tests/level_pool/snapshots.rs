@@ -1,5 +1,8 @@
 use super::fixture::{Result, constant, curve, input, rejection, single, unit};
-use hydr::storage::{LevelPoolBatch, LevelPoolCurve, LevelPoolSnapshotData};
+use hydr::storage::{
+    LEVEL_POOL_CONTRACT_VERSION, LEVEL_POOL_SNAPSHOT_SCHEMA, LevelPoolBatch, LevelPoolCurve,
+    LevelPoolError, LevelPoolSnapshotData,
+};
 
 fn history() -> Result<LevelPoolBatch<crate::runtime::Runtime>> {
     let mut batch = single(constant()?, 1.0)?;
@@ -231,5 +234,83 @@ fn imported_previous_storage_requires_a_resolvable_wet_stage() -> Result {
         "unexpected rejection: {error}"
     );
     assert_eq!(target.snapshot_data()?, before);
+    Ok(())
+}
+
+#[test]
+fn level_pool_package_carries_identity() -> Result {
+    assert_eq!(LEVEL_POOL_SNAPSHOT_SCHEMA, "hydr-level-pool-checkpoint-1");
+    assert_eq!(LEVEL_POOL_CONTRACT_VERSION, "hydr-level-pool-numr-cpu-1");
+    let package = history()?.snapshot_data()?;
+    assert_eq!(package.schema, LEVEL_POOL_SNAPSHOT_SCHEMA);
+    assert_eq!(package.contract, LEVEL_POOL_CONTRACT_VERSION);
+    Ok(())
+}
+
+#[test]
+fn level_pool_import_rejects_foreign_schema() -> Result {
+    let package = history()?.snapshot_data()?;
+    let mut destination = single(constant()?, 0.0)?;
+    let before = destination.snapshot_data()?;
+    for found in ["hydr-level-pool-checkpoint-0", ""] {
+        let mut changed = package.clone();
+        changed.schema = found.into();
+        let error = rejection(destination.restore_data(&changed))?;
+        assert!(
+            matches!(error, LevelPoolError::InvalidInput { .. }),
+            "unexpected kind: {error}"
+        );
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!("found \"{found}\"")),
+            "missing found value: {message}"
+        );
+        assert!(
+            message.contains(LEVEL_POOL_SNAPSHOT_SCHEMA),
+            "missing expected schema: {message}"
+        );
+        assert!(
+            message.contains("capture a new package"),
+            "missing action: {message}"
+        );
+        assert_eq!(destination.snapshot_data()?, before);
+    }
+    Ok(())
+}
+
+#[test]
+fn level_pool_import_rejects_foreign_contract() -> Result {
+    let mut changed = history()?.snapshot_data()?;
+    changed.contract = "hydr-level-pool-numr-gpu-1".into();
+    let mut destination = single(constant()?, 0.0)?;
+    let before = destination.snapshot_data()?;
+    let error = rejection(destination.restore_data(&changed))?;
+    assert!(
+        matches!(error, LevelPoolError::InvalidInput { .. }),
+        "unexpected kind: {error}"
+    );
+    let message = error.to_string();
+    assert!(message.contains("contract"), "missing contract: {message}");
+    assert!(
+        message.contains("hydr-level-pool-numr-gpu-1"),
+        "missing found value: {message}"
+    );
+    assert_eq!(destination.snapshot_data()?, before);
+    Ok(())
+}
+
+#[test]
+fn level_pool_import_rejects_channel_schema() -> Result {
+    let mut changed = history()?.snapshot_data()?;
+    changed.schema = "hydr-channel-checkpoint-1".into();
+    let mut destination = single(constant()?, 0.0)?;
+    let before = destination.snapshot_data()?;
+    let error = rejection(destination.restore_data(&changed))?;
+    let message = error.to_string();
+    assert!(
+        message.contains("hydr-channel-checkpoint-1"),
+        "missing found value: {message}"
+    );
+    assert_eq!(destination.snapshot_data()?, before);
     Ok(())
 }

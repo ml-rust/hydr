@@ -83,7 +83,9 @@ pub(super) fn same_reaches(a: &[ChannelSnapshotData], b: &[ChannelSnapshotData])
 }
 
 pub(super) fn same_pools(a: &LevelPoolSnapshotData, b: &LevelPoolSnapshotData) -> bool {
-    a.source_policies.is_none()
+    a.schema == b.schema
+        && a.contract == b.contract
+        && a.source_policies.is_none()
         && b.source_policies.is_none()
         && a.config.same_bits(&b.config)
         && a.elements.len() == b.elements.len()

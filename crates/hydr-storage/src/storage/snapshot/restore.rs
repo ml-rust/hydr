@@ -1,10 +1,14 @@
 use numr::runtime::Device;
 use solvr::interpolate::Interp1dAlgorithms;
 
-use super::{LevelPoolSnapshot, LevelPoolSnapshotData};
+use super::{
+    LEVEL_POOL_CONTRACT_VERSION, LEVEL_POOL_SNAPSHOT_SCHEMA, LevelPoolSnapshot,
+    LevelPoolSnapshotData,
+};
 use crate::storage::batch::StoredStep;
 use crate::storage::tensor::{TensorPoolContext, TensorPoolState};
 use crate::storage::{LevelPoolBatch, LevelPoolError};
+use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
@@ -51,6 +55,14 @@ where
     }
     /// Check complete caller-owned state before atomic replacement, without replaying historical intervals.
     pub fn restore_data(&mut self, data: &LevelPoolSnapshotData) -> Result<(), LevelPoolError> {
+        package_identity(
+            "level pool",
+            &data.schema,
+            LEVEL_POOL_SNAPSHOT_SCHEMA,
+            &data.contract,
+            LEVEL_POOL_CONTRACT_VERSION,
+        )
+        .map_err(LevelPoolError::input)?;
         self.compatible(
             &data.elements,
             &data.config,

@@ -74,7 +74,9 @@ pub(super) fn same_setup(a: &CoupledLevelPoolSetup, b: &CoupledLevelPoolSetup) -
         })
 }
 pub(super) fn same_pools(a: &LevelPoolSnapshotData, b: &LevelPoolSnapshotData) -> bool {
-    a.source_policies == b.source_policies
+    a.schema == b.schema
+        && a.contract == b.contract
+        && a.source_policies == b.source_policies
         && a.config.same_bits(&b.config)
         && a.time.to_bits() == b.time.to_bits()
         && a.accepted_steps == b.accepted_steps

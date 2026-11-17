@@ -28,7 +28,10 @@ pub use receipt::{
     LevelPoolElementLedger, LevelPoolOutput, LevelPoolReceipt, LevelPoolStepDiagnostics,
     LevelPoolTotals,
 };
-pub use snapshot::{LevelPoolSnapshot, LevelPoolSnapshotData};
+pub use snapshot::{
+    LEVEL_POOL_CONTRACT_VERSION, LEVEL_POOL_SNAPSHOT_SCHEMA, LevelPoolSnapshot,
+    LevelPoolSnapshotData,
+};
 pub use source_policy::{LevelPoolSourcePolicy, LevelPoolSources};
 pub use source_receipt::{
     LevelPoolCounterReceipt, LevelPoolDemandCapReceipt, LevelPoolSourceCounterReceipt,

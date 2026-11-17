@@ -162,6 +162,8 @@ Source-enabled packages retain all source counters, bounds, and final nested rec
 
 ### Understand import checks
 
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `LEVEL_POOL_SNAPSHOT_SCHEMA` and `LEVEL_POOL_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with an input error. The error names the found and expected values. Capture a new package to recover.
+
 1. Check initial/current storage and per-element accounting before aggregate cancellation.
 2. Recompute final-interval TwoSum operations from original operands.
 3. Check exact continuity of final counters and bounds into accepted ledgers.

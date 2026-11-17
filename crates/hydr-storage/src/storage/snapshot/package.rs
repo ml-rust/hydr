@@ -10,9 +10,18 @@ use numr::ops::{
 use numr::runtime::Runtime;
 use solvr::interpolate::Interp1dAlgorithms;
 
+/// Schema identity of the level-pool snapshot package.
+pub const LEVEL_POOL_SNAPSHOT_SCHEMA: &str = "hydr-level-pool-checkpoint-1";
+/// Numerical contract identity of the level-pool snapshot package.
+pub const LEVEL_POOL_CONTRACT_VERSION: &str = "hydr-level-pool-numr-cpu-1";
+
 /// Complete caller-owned values. Preserve every F64 bit when encoding.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LevelPoolSnapshotData {
+    /// Package schema identity.
+    pub schema: String,
+    /// Numerical contract identity.
+    pub contract: String,
     /// Complete immutable source-enabling evidence, absent for exchange-only state.
     pub source_policies: Option<Vec<crate::storage::LevelPoolSourcePolicy>>,
     /// Immutable ordered curves, physical assertions, and identities.
@@ -86,6 +95,8 @@ where
     /// Project complete continuation values on explicit request.
     pub fn snapshot_data(&self) -> Result<LevelPoolSnapshotData, LevelPoolError> {
         Ok(LevelPoolSnapshotData {
+            schema: LEVEL_POOL_SNAPSHOT_SCHEMA.into(),
+            contract: LEVEL_POOL_CONTRACT_VERSION.into(),
             source_policies: self.source_policies().map(<[_]>::to_vec),
             elements: self.elements().to_vec(),
             config: self.config().clone(),
