@@ -64,3 +64,52 @@ where
         Ok(step)
     }
 }
+
+impl<R: Runtime<DType = DType>> StepReceipt<R> {
+    /// Returns the accepted step's start time in seconds.
+    pub(super) fn start(&self) -> f64 {
+        match self {
+            Self::Device(receipt) => receipt.scalar.start,
+            Self::Imported(step) => step.start,
+        }
+    }
+}
+
+/// Moves a local forcing index between engines whose windows follow different prefixes.
+///
+/// # Errors
+/// Rejects an index outside the destination window of `len` intervals.
+pub(super) fn rebase_forcing_index(
+    index: usize,
+    from_prefix: usize,
+    to_prefix: usize,
+    len: usize,
+) -> Result<usize, EngineError> {
+    index
+        .checked_add(from_prefix)
+        .and_then(|absolute| absolute.checked_sub(to_prefix))
+        .filter(|local| *local < len)
+        .ok_or_else(|| {
+            EngineError::rejected(
+                "step receipt",
+                format!(
+                    "forcing_index={index}, source prefix={from_prefix}, destination prefix={to_prefix}, destination intervals={len}: restore into an engine whose forcing window holds the receipt interval"
+                ),
+            )
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rebase_forcing_index;
+
+    #[test]
+    fn rebase_moves_index_by_prefix_difference() {
+        assert_eq!(rebase_forcing_index(2, 0, 0, 5).ok(), Some(2));
+        assert_eq!(rebase_forcing_index(0, 39, 0, 50).ok(), Some(39));
+        assert_eq!(rebase_forcing_index(3, 10, 12, 5).ok(), Some(1));
+        assert!(rebase_forcing_index(1, 10, 12, 5).is_err());
+        assert!(rebase_forcing_index(4, 39, 0, 43).is_err());
+        assert!(rebase_forcing_index(usize::MAX, 1, 0, 5).is_err());
+    }
+}

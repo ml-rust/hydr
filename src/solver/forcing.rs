@@ -116,6 +116,14 @@ impl ForcingSchedule {
         &self.intervals
     }
 
+    /// Returns the checked contiguous tail from interval `from`, or `None` when it is empty.
+    pub(super) fn window(&self, from: usize) -> Option<Self> {
+        let intervals = self.intervals.get(from..)?;
+        (!intervals.is_empty()).then(|| Self {
+            intervals: intervals.to_vec(),
+        })
+    }
+
     pub(super) fn at(&self, time: f64) -> Option<&ForcingInterval> {
         self.intervals
             .iter()

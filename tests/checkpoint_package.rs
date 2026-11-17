@@ -7,6 +7,9 @@ mod runtime;
 #[path = "support/impervious.rs"]
 mod impervious;
 
+#[path = "checkpoint_package/forcing_window.rs"]
+mod forcing_window;
+
 use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{

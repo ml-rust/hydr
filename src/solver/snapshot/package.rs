@@ -1,5 +1,7 @@
-use super::super::engine::{Accepted, Definition};
-use super::super::{InitialState, SolverSetup, StepDiagnostics, WaterLedger};
+use super::super::definition::Definition;
+use super::super::engine::Accepted;
+use super::super::receipts::StepReceipt;
+use super::super::{ForcingPrefix, InitialState, SolverSetup, StepDiagnostics, WaterLedger};
 use crate::solver::EngineError;
 use crate::tensor::TensorDomain;
 use numr::dtype::DType;
@@ -7,20 +9,27 @@ use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Typed checkpoint schema identity.
-pub const SNAPSHOT_SCHEMA: &str = "hydr-checkpoint-1";
+pub const SNAPSHOT_SCHEMA: &str = "hydr-checkpoint-2";
 
 /// Caller-owned checkpoint values for same-build restart.
 ///
 /// Adapters must preserve every f64 bit, including positive infinity in timestep bounds.
 /// Callers own encoding, persistence, and checksums. Import checks consistency, not historical authenticity.
+///
+/// `setup.forcing` holds a bounded window, never the complete forcing schedule.
+/// The window starts at the interval containing the last step start.
+/// Without a last step it starts at the interval containing the accepted time, or the final interval.
+/// `forcing_prefix` folds every earlier interval.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SnapshotData {
     /// Package schema identity.
     pub schema: String,
     /// Numerical contract identity.
     pub contract: String,
-    /// Complete immutable numerical definition, including land and forcing.
+    /// Immutable numerical definition, including land and the retained forcing window.
     pub setup: SolverSetup,
+    /// Folded identity of every forcing interval before `setup.forcing`.
+    pub forcing_prefix: ForcingPrefix,
     /// Accepted elapsed time, hydraulic fields, and complete native soil memory.
     pub accepted: InitialState,
     /// Cumulative water accounting.
@@ -34,8 +43,8 @@ pub struct SnapshotData {
 /// Complete immutable in-memory continuation state for one numerical contract.
 ///
 /// Includes accepted tensors, time, cumulative ledgers, and bounded last-step receipts.
-/// Retains immutable geometry, parameters, boundaries, and the complete forcing schedule.
-/// Caller adapters own file encoding and persistence.
+/// Retains immutable geometry, parameters, boundaries, and the engine's forcing window with its prefix.
+/// [`Snapshot::data`] projects a bounded forcing window. Caller adapters own file encoding and persistence.
 #[derive(Clone)]
 pub struct Snapshot<R: Runtime<DType = DType>> {
     pub(in crate::solver) context: Arc<TensorDomain<R>>,
@@ -61,19 +70,36 @@ where
 {
     /// Projects complete checkpoint values for caller-owned encoding and persistence.
     ///
+    /// Forcing is bounded to the retained window plus a folded prefix. See [`SnapshotData`].
+    ///
     /// # Errors
     /// Returns runtime transfer, physical state, or receipt shape errors.
     pub fn data(&self) -> Result<SnapshotData, EngineError> {
+        let definition = &self.definition;
+        let retained = definition.retained_from(
+            self.accepted.time,
+            self.accepted.last.as_ref().map(StepReceipt::start),
+        );
+        let window = || {
+            EngineError::rejected(
+                "snapshot forcing window",
+                format!(
+                    "first retained interval {retained} of {}: capture the snapshot from a checked engine",
+                    definition.forcing.intervals().len()
+                ),
+            )
+        };
         Ok(SnapshotData {
             schema: SNAPSHOT_SCHEMA.into(),
             contract: self.contract.into(),
             setup: SolverSetup {
-                domain: self.definition.domain.clone(),
-                land: self.definition.land.clone(),
-                boundaries: self.definition.boundaries.clone(),
-                forcing: self.definition.forcing.clone(),
-                config: self.definition.config.clone(),
+                domain: definition.domain.clone(),
+                land: definition.land.clone(),
+                boundaries: definition.boundaries.clone(),
+                forcing: definition.forcing.window(retained).ok_or_else(window)?,
+                config: definition.config.clone(),
             },
+            forcing_prefix: definition.folded(retained).ok_or_else(window)?,
             accepted: InitialState {
                 time: self.accepted.time,
                 flow: self.accepted.flow.to_flow(&self.definition.domain)?,
@@ -89,6 +115,7 @@ where
                 .transpose()?,
         })
     }
+
     /// Returns the snapshot's accepted elapsed time in seconds.
     pub fn time(&self) -> f64 {
         self.accepted.time

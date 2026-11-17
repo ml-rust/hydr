@@ -191,10 +191,21 @@ The application defines threshold crossings and episode semantics from accepted 
 
 ### Save complete restart data
 
-1. Save the complete package, including `setup: SolverSetup` and `accepted: InitialState`.
+1. Save the complete package, including `setup: SolverSetup`, `forcing_prefix`, and `accepted: InitialState`.
 2. Preserve every package field and floating-point value exactly.
-3. Restore into a compatible physical definition and numerical contract.
+3. Restore into an engine built from the same definition and the same forcing schedule.
 4. Handle import errors before using the restored state.
+
+The package holds a bounded forcing window, not the complete forcing schedule:
+
+| Field | Contents |
+| --- | --- |
+| `setup.forcing` | Intervals from the one that contains the last step start. Before the first step, intervals from the one that contains the accepted time. |
+| `forcing_prefix` | Count, start, end, and chained SHA-256 digest of every earlier interval. |
+
+The digest checks that the package and the engine agree on earlier forcing. It proves no authenticity.
+
+The destination engine can hold the complete schedule. Its forcing must start at or before the package window.
 
 The package includes full native soil memory and accepted per-cell source records. It retains independent infiltration/evaporation ledgers, signed adjustments, and conservative budget charges.
 
@@ -203,6 +214,8 @@ Compatibility checks cover geometry, parameters, forcing, boundaries, controls, 
 ### Know each checkpoint's scope
 
 Checkpoint compatibility includes the numerical contract `hydr-swe-numr-cpu-1`.
+
+Surface packages use the schema `hydr-checkpoint-2`. Import rejects `hydr-checkpoint-1` packages. Capture a new package from a running engine.
 
 | Component | Restart responsibility |
 | --- | --- |
@@ -238,6 +251,9 @@ Import recalculates this limit from the recorded largest face wave speed along e
 | Combined timestep safety limit | Stored and recalculated values must agree within 64 times `f64::EPSILON` in relative rounding. No fixed absolute tolerance applies. |
 | Transmissive states | Check the admitted flow regime and physical flux. |
 | Exterior fluxes | These remain numerical Riemann fluxes calculated by the boundary solver. |
+| Forcing prefix | The prefix end must equal the first window start bit for bit. An empty prefix has equal start and end and the initial digest. |
+| Forcing history | The engine folds its own earlier intervals to the package prefix. Count, start, end, and digest must match. Window intervals must match bit for bit. |
+| Window coverage | The window must contain the last step's interval. The engine forcing must start at or before the window start. |
 
 ### Reproduce a run
 
