@@ -1,7 +1,9 @@
 use super::check::{self, require};
 use super::{
-    CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelSnapshot, ChannelSnapshotData,
+    CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelIntervalSnapshotData,
+    ChannelSnapshot, ChannelSnapshotData,
 };
+use crate::channel::flow::coupling::ChannelCouplingTrial;
 use crate::channel::flow::{
     ChannelError, ChannelInitialState, ChannelReach, conserved_point::check_parts,
 };
@@ -21,6 +23,15 @@ use solvr::{
     },
 };
 use std::sync::Arc;
+
+/// Binding path that replays the final interval of an imported package.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Replay {
+    /// Standalone stepping: caller forcing rejects `surface-exchange:` inputs.
+    Standalone,
+    /// Coordinator binding at the exact recorded endpoint.
+    Coordinator,
+}
 
 impl<R> ChannelReach<R>
 where
@@ -64,6 +75,35 @@ where
     ///
     /// Historical authenticity requires application-owned hashes or authenticated history.
     pub fn import_snapshot(&self, data: &ChannelSnapshotData) -> Result<Self, ChannelError>
+    where
+        R::Client: TensorOps<R>
+            + NextRepresentableOps<R>
+            + CertifiedSimpsonAlgorithms<R>
+            + CertifiedBisectionAlgorithms<R>
+            + CertifiedMappedBisectionAlgorithms<R>
+            + CertifiedUpperBracketAlgorithms<R>,
+    {
+        self.import_with(data, Replay::Standalone)
+    }
+
+    /// Imports a package whose final interval a coordinator calculated.
+    ///
+    /// Runs every [`ChannelReach::import_snapshot`] check. The final interval replays through
+    /// the coordinator binding path at its exact endpoint, so `surface-exchange:` inputs bind.
+    #[doc(hidden)]
+    pub fn coupling_import_snapshot(&self, data: &ChannelSnapshotData) -> Result<Self, ChannelError>
+    where
+        R::Client: TensorOps<R>
+            + NextRepresentableOps<R>
+            + CertifiedSimpsonAlgorithms<R>
+            + CertifiedBisectionAlgorithms<R>
+            + CertifiedMappedBisectionAlgorithms<R>
+            + CertifiedUpperBracketAlgorithms<R>,
+    {
+        self.import_with(data, Replay::Coordinator)
+    }
+
+    fn import_with(&self, data: &ChannelSnapshotData, replay: Replay) -> Result<Self, ChannelError>
     where
         R::Client: TensorOps<R>
             + NextRepresentableOps<R>
@@ -205,9 +245,14 @@ where
         }
         previous.accepted.steps = interval.previous_accepted_steps;
         previous.accepted.ledger = interval.previous_ledger.clone();
-        let replayed = previous
-            .step(interval.requested_end_s, &interval.forcing)?
-            .next;
+        let replayed = match replay {
+            Replay::Standalone => {
+                previous
+                    .step(interval.requested_end_s, &interval.forcing)?
+                    .next
+            }
+            Replay::Coordinator => previous.replay_coupled(interval)?,
+        };
         require(
             replayed.accepted.time.to_bits() == data.time_s.to_bits()
                 && replayed.accepted.steps == data.accepted_steps
@@ -262,6 +307,35 @@ where
             "final receipt operands or numerical bounds differ from the replayed interval",
         )?;
         Ok(replayed)
+    }
+
+    /// Recalculates a coordinator interval from this start state at its exact endpoint.
+    fn replay_coupled(&self, interval: &ChannelIntervalSnapshotData) -> Result<Self, ChannelError>
+    where
+        R::Client: TensorOps<R>
+            + NextRepresentableOps<R>
+            + CertifiedSimpsonAlgorithms<R>
+            + CertifiedBisectionAlgorithms<R>
+            + CertifiedMappedBisectionAlgorithms<R>
+            + CertifiedUpperBracketAlgorithms<R>,
+    {
+        let forcing = &interval.forcing;
+        let bound = self.bind_coupling_host(
+            forcing.start_s,
+            forcing.end_s,
+            Some(&forcing.left),
+            Some(&forcing.right),
+            &forcing.lateral_inputs,
+        )?;
+        match self.trial_coupled(interval.requested_end_s, &bound, None, None)? {
+            ChannelCouplingTrial::Accepted(next) => Ok(*next),
+            ChannelCouplingTrial::Shorter {
+                suggested_end_s,
+                reason,
+            } => Err(ChannelError::input(format!(
+                "replayed coordinator interval needs end={suggested_end_s}: {reason}: supply an unchanged complete same-build package"
+            ))),
+        }
     }
 
     fn checked_start(
