@@ -44,8 +44,10 @@ fn main() -> Result<(), hydr::error::GridError> {
 ```sh
 cargo run --example grid
 cargo run --example rain_basin
-cargo test --all-targets
+cargo test --workspace --all-targets
 ```
+
+Run the tests of one crate with `cargo test -p <crate>`.
 
 Grid spacing uses metres. Construction checks geometry without allocating cell storage.
 

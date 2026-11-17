@@ -288,6 +288,7 @@ fn references(stripped: &str) -> Vec<(usize, String)> {
 }
 
 /// Returns one message per forbidden or unknown reference in one source file.
+/// `rel` is the file path relative to the package root, used to label messages.
 fn violations(
     table: &[(&'static str, &'static [&'static str])],
     rel: &str,
@@ -296,7 +297,7 @@ fn violations(
 ) -> Vec<String> {
     let Some(deps) = allowed(table, module) else {
         return vec![format!(
-            "src/{rel}: module `{module}` is not in the layering table in tests/layering.rs. \
+            "{rel}: module `{module}` is not in the layering table in tests/layering.rs. \
              Add it with its allowed layer."
         )];
     };
@@ -311,7 +312,7 @@ fn violations(
             "not a module in the layering table"
         };
         out.push(format!(
-            "src/{rel}:{line}: `{module}` references `crate::{target}` ({why}). \
+            "{rel}:{line}: `{module}` references `crate::{target}` ({why}). \
              Allowed modules for `{module}`: {deps:?}"
         ));
     }
@@ -385,23 +386,46 @@ fn find_cycle(
 
 #[test]
 fn source_modules_respect_layers() -> Result<(), String> {
-    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut files = Vec::new();
-    rust_files(&src, &mut files)?;
-    files.sort();
-    let mut errors = Vec::new();
-    for file in files {
-        let rel = file
-            .strip_prefix(&src)
-            .map_err(|e| format!("{}: {e}", file.display()))?;
-        if rel == Path::new("lib.rs") {
-            continue;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut src_dirs = vec![root.join("src")];
+    let crates = root.join("crates");
+    if crates.is_dir() {
+        let entries = fs::read_dir(&crates)
+            .map_err(|e| format!("read directory {}: {e}", crates.display()))?;
+        for entry in entries {
+            let path = entry
+                .map_err(|e| format!("read entry in {}: {e}", crates.display()))?
+                .path();
+            let src = path.join("src");
+            if src.is_dir() {
+                src_dirs.push(src);
+            }
         }
-        let module =
-            module_of(rel).ok_or_else(|| format!("no module name for {}", file.display()))?;
-        let text =
-            fs::read_to_string(&file).map_err(|e| format!("read {}: {e}", file.display()))?;
-        errors.extend(violations(TABLE, &rel.to_string_lossy(), &module, &text));
+    }
+    src_dirs.sort();
+    let mut errors = Vec::new();
+    for src in src_dirs {
+        let mut files = Vec::new();
+        rust_files(&src, &mut files)?;
+        files.sort();
+        for file in files {
+            let rel = file
+                .strip_prefix(&src)
+                .map_err(|e| format!("{}: {e}", file.display()))?;
+            if rel == Path::new("lib.rs") {
+                continue;
+            }
+            let module =
+                module_of(rel).ok_or_else(|| format!("no module name for {}", file.display()))?;
+            let label = file
+                .strip_prefix(root)
+                .map_err(|e| format!("{}: {e}", file.display()))?
+                .to_string_lossy()
+                .replace('\\', "/");
+            let text =
+                fs::read_to_string(&file).map_err(|e| format!("read {}: {e}", file.display()))?;
+            errors.extend(violations(TABLE, &label, &module, &text));
+        }
     }
     if errors.is_empty() {
         Ok(())
@@ -449,7 +473,7 @@ fn table_rows_name_only_table_modules() {
 #[test]
 fn checker_rejects_upward_reference() {
     let src = "use crate::error::E;\nfn f() {\n    let _ = crate::solver::run();\n}\n";
-    let found = violations(TABLE, "grid/mod.rs", "grid", src);
+    let found = violations(TABLE, "src/grid/mod.rs", "grid", src);
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(found[0].starts_with("src/grid/mod.rs:3:"), "{}", found[0]);
     assert!(
@@ -496,4 +520,15 @@ fn checker_names_unlisted_module() {
 fn module_name_comes_from_first_component_or_stem() {
     assert_eq!(module_of(Path::new("error.rs")).as_deref(), Some("error"));
     assert_eq!(module_of(Path::new("soil/a/b.rs")).as_deref(), Some("soil"));
+}
+
+#[test]
+fn crate_module_name_is_relative_to_its_src() {
+    let file = Path::new("crates/x/src/soil/a.rs");
+    let rel = file.strip_prefix("crates/x/src").ok();
+    assert_eq!(rel.and_then(module_of).as_deref(), Some("soil"), "{rel:?}");
+    let stem = Path::new("crates/x/src/error.rs")
+        .strip_prefix("crates/x/src")
+        .ok();
+    assert_eq!(stem.and_then(module_of).as_deref(), Some("error"));
 }

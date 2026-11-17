@@ -1,34 +1,55 @@
-[package]
-name = "hydr"
+[workspace]
+members = []
+default-members = ["."]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-description = "Hydrology and hydraulic simulation on numr runtimes"
 license = "Apache-2.0"
 repository = "https://github.com/ml-rust/hydr"
+publish = false
+
+[workspace.dependencies]
+numr = { version = "0.15.2", default-features = false }
+solvr = { version = "0.3.1", default-features = false }
+sha2 = { version = "0.11.1", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[package]
+name = "hydr"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Hydrology and hydraulic simulation on numr runtimes"
+license.workspace = true
+repository.workspace = true
 readme = "README.md"
 keywords = ["hydraulics", "shallow-water", "flood", "simulation"]
 categories = ["science", "simulation"]
-publish = false
-exclude = [".agents/", "resource/", ".github/"]
+publish.workspace = true
+exclude = [".agents/", "resource/", ".github/", "crates/"]
 
 [features]
 cuda = ["numr/cuda", "solvr/cuda"]
 wgpu = ["numr/wgpu", "solvr/wgpu"]
 
 [dependencies]
-numr = { version = "0.15.2", default-features = false }
-solvr = { version = "0.3.1", default-features = false }
-sha2 = { version = "0.11.1", default-features = false }
+numr = { workspace = true }
+solvr = { workspace = true }
+sha2 = { workspace = true }
 
-[lints.rust]
-unsafe_code = "forbid"
-missing_docs = "warn"
-
-[lints.clippy]
-unwrap_used = "deny"
-expect_used = "deny"
-panic = "deny"
+[lints]
+workspace = true
 
 [profile.dev]
 opt-level = 1

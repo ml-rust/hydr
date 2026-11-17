@@ -12,21 +12,23 @@ Run these checks before submitting a code change:
 
 ```sh
 cargo fmt --all
-cargo clippy --all-targets -- -D warnings
-cargo test --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-targets
 cargo run --example grid
 cargo run --example rain_basin
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
+
+Run the tests of one crate with `cargo test -p <crate>`.
 
 ### Optional backends
 
 All-feature compilation and strict linting require the CUDA toolkit and backend build dependencies:
 
 ```sh
-cargo check --all-targets --all-features
-cargo clippy --all-targets --all-features -- -D warnings
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
+cargo check --workspace --all-targets --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 ```
 
 Actual backend tests require a working CUDA device and driver, plus a Vulkan adapter and driver for WGPU. These tests use actual backend clients without CPU fallback or skipped execution.
