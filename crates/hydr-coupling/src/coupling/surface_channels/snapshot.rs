@@ -1,6 +1,7 @@
 //! Owned surface/channel checkpoint packages and the trusted in-memory snapshot.
 
 use super::context::Context;
+use super::pools::PoolChild;
 use super::state::{LinkCounters, StoredStep};
 use super::{
     SurfaceChannelConfig, SurfaceChannelDefinition, SurfaceChannelForcingInterval,
@@ -196,6 +197,8 @@ pub struct SurfaceChannelSnapshot<R: Runtime<DType = DType>> {
     pub(super) accepted_steps: usize,
     pub(super) counters: LinkCounters<R>,
     pub(super) last: Option<Arc<StoredStep<R>>>,
+    /// Accepted pools, or `None` without pools.
+    pub(super) pools: Option<PoolChild<R>>,
 }
 
 impl<R: Runtime<DType = DType>> SurfaceChannelSnapshot<R> {

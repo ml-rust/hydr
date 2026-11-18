@@ -164,8 +164,7 @@ where
     pub fn ledger(&self) -> Result<SurfaceChannelWaterBalance, SurfaceChannelError> {
         self.context.balance(
             &self.definition.setup().config,
-            &self.surface,
-            &self.reaches,
+            (&self.surface, &self.reaches, self.pools.as_ref()),
             &self.counters,
         )
     }

@@ -1,12 +1,14 @@
 //! Common surface/channel trials: duration control, retries, and the owned candidate.
 
-use super::accounting::within;
+use super::accounting::{PoolInflowStep, within};
 use super::batch::SurfaceChannelBatch;
 use super::context::Context;
-use super::evaluate::advanced;
+use super::evaluate::{Accepted, advanced};
 use super::exchange::Exchange;
 use super::forcing::BoundForcing;
 use super::iteration::Stall;
+use super::pools::{PoolChild, SurfaceChannelPoolForcing};
+use super::retry::{recompute, shortening};
 use super::start::Start;
 use super::state::{PreviousFrame, StoredStep};
 use super::{SurfaceChannelError, SurfaceChannelForcingInterval, SurfaceChannelStepDiagnostics};
@@ -106,12 +108,37 @@ where
         requested_end_s: f64,
         forcing: &SurfaceChannelForcingInterval,
     ) -> Result<SurfaceChannelTrial<R>, SurfaceChannelError> {
+        self.trial_with_pools_to(requested_end_s, forcing, &SurfaceChannelPoolForcing::none())
+    }
+
+    /// Calculates one common interval toward `requested_end_s` with pool forcing `pools`.
+    ///
+    /// Pool sources hold one rate set per pool exactly when the pools declare source policies.
+    /// Pool inflows hold one input per declared binding. An integrated pool inflow fixes the
+    /// interval to the requested span, as a caller integrated lateral volume does.
+    ///
+    /// # Errors
+    /// Returns every [`Self::trial_to`] rejection. Returns [`SurfaceChannelError::Input`] for pool
+    /// forcing that differs from the declared pools, and `pool-capacity-exceeded` for a pool
+    /// that fills past its top curve knot. Neither retries.
+    pub(crate) fn trial_with_pools_to(
+        &self,
+        requested_end_s: f64,
+        forcing: &SurfaceChannelForcingInterval,
+        pools: &SurfaceChannelPoolForcing,
+    ) -> Result<SurfaceChannelTrial<R>, SurfaceChannelError> {
         let setup = self.definition.setup();
         let config = &setup.config;
         let reach_ids: Vec<&str> = setup.reaches.iter().map(|r| r.id.as_str()).collect();
         let start = self.time_s;
         let requested = requested_end_s;
-        let bound = BoundForcing::bind(&self.context, &reach_ids, (start, requested), forcing)?;
+        let mut bound = BoundForcing::bind(&self.context, &reach_ids, (start, requested), forcing)?;
+        let pool_start = self
+            .context
+            .pool_start(pools, self.definition.pools.as_ref())?;
+        if let Some(pool_start) = &pool_start {
+            bound.requires_exact_span |= pool_start.inflows.has_interval_volumes();
+        }
         let intervals = self.surface.coupling_forcing().intervals();
         let surface_end = intervals
             .get(intervals.partition_point(|interval| interval.end <= start))
@@ -136,9 +163,17 @@ where
                     .into(),
             ));
         }
-        let operands = self
-            .context
-            .start(&self.surface, &self.reaches, &reach_ids, end, bound)?;
+        let pool_operands = match (&self.pools, pool_start) {
+            (Some(child), Some(pool_start)) => Some((child, pool_start)),
+            (None, None) => None,
+            _ => {
+                return Err(SurfaceChannelError::Numerical(
+                    "the accepted pools differ from the pool forcing".into(),
+                ));
+            }
+        };
+        let children = (&self.surface, &self.reaches[..], pool_operands);
+        let operands = self.context.start(children, &reach_ids, end, bound)?;
         let mut retries = 0;
         let stalled = Cell::new(None);
         loop {
@@ -157,7 +192,7 @@ where
                 retries,
                 (&operands, &stalled),
                 &reach_ids,
-                forcing,
+                (forcing, pools),
             );
             let error = match attempted {
                 Ok(next) => return Ok(SurfaceChannelTrial { next }),
@@ -219,7 +254,7 @@ where
         retries: usize,
         (operands, stalled): (&Start<R>, &Cell<Option<Stall>>),
         reach_ids: &[&str],
-        forcing: &SurfaceChannelForcingInterval,
+        (forcing, pool_forcing): (&SurfaceChannelForcingInterval, &SurfaceChannelPoolForcing),
     ) -> Result<Self, SurfaceChannelError> {
         let context = &self.context;
         let config = &self.definition.setup().config;
@@ -262,23 +297,38 @@ where
             });
         }
         let dt = stage.dt();
+        let steps = self.accepted_steps + 1;
         let mut slots: Vec<Option<ChannelReach<R>>> =
             (0..self.reaches.len()).map(|_| None).collect();
         let (surface, outcome, ports) = if context.link_count == 0 {
             let surface = context.complete_alone(&self.surface, &stage)?;
             (surface, LinkOutcome::empty(context)?, ports)
         } else {
-            let attempt = context.attempt(operands, stage, ports)?;
-            let solved = context.solve(
-                config,
-                &self.surface,
-                &self.reaches,
-                reach_ids,
-                operands,
-                &attempt,
-                stalled,
-            )?;
+            let pool_child = self.pools.as_ref().map(|child| (child, steps));
+            let attempt = context.attempt(operands, stage, ports, pool_child)?;
+            let accepted = Accepted {
+                surface: &self.surface,
+                reaches: &self.reaches,
+                pools: self.pools.as_ref(),
+            };
+            let solved = context.solve(config, accepted, reach_ids, operands, &attempt, stalled)?;
             let evaluation = solved.evaluation;
+            let pools = match (evaluation.pools, &attempt.pools) {
+                (Some(batch), Some(pool_attempt)) => {
+                    let summary = &pool_attempt.external.summary;
+                    Some((
+                        PoolChild {
+                            batch,
+                            external: pool_attempt.external.next.clone(),
+                        },
+                        PoolInflowStep {
+                            volume_m3: summary.volume_m3,
+                            bound_m3: summary.reduction_bound_m3 + summary.assembly_bound_m3,
+                        },
+                    ))
+                }
+                _ => None,
+            };
             for (entry, next) in context.linked.iter().zip(evaluation.linked) {
                 slots[entry.reach] = Some(next);
             }
@@ -292,6 +342,7 @@ where
                 midpoint_channel_m: c.index_select(&evaluation.midpoint, 0, &context.link_b)?,
                 regime: evaluation.regime,
                 exchange: evaluation.exchange,
+                pools,
             };
             (evaluation.surface, outcome, attempt.ports)
         };
@@ -315,11 +366,22 @@ where
             .into_iter()
             .collect::<Option<Vec<_>>>()
             .ok_or_else(|| SurfaceChannelError::Numerical("a reach lacks its candidate".into()))?;
-        let steps = self.accepted_steps + 1;
+        let (pools, pool_inflow) = match outcome.pools {
+            Some((child, inflow)) => (Some(child), inflow),
+            None => (None, PoolInflowStep::default()),
+        };
+        if pools.is_some() != self.pools.is_some() {
+            return Err(SurfaceChannelError::Numerical(
+                "the candidate lacks its pools".into(),
+            ));
+        }
         if surface.time().to_bits() != end.to_bits()
             || reaches
                 .iter()
                 .any(|r| r.time().to_bits() != end.to_bits() || r.accepted_steps() != steps)
+            || pools.as_ref().is_some_and(|p| {
+                p.batch.time().to_bits() != end.to_bits() || p.batch.accepted_steps() != steps
+            })
         {
             return Err(SurfaceChannelError::Numerical(format!(
                 "candidate children disagree on end={end} or accepted step {steps}"
@@ -330,12 +392,15 @@ where
         let counters = context.advance_counters(&self.counters, &exchange.signed, &interval)?;
         let totals = context.step_totals(
             config,
-            (&self.surface, &self.reaches),
-            (&surface, &reaches),
+            (
+                (&self.surface, &self.reaches, self.pools.as_ref()),
+                (&surface, &reaches, pools.as_ref()),
+            ),
             &exchange,
             (&self.counters.ports, &counters.ports, &interval),
+            pool_inflow,
         )?;
-        let balance = context.balance(config, &surface, &reaches, &counters)?;
+        let balance = context.balance(config, (&surface, &reaches, pools.as_ref()), &counters)?;
         if !within(balance.residual_m3, balance.bound_m3) {
             return Err(SurfaceChannelError::Numerical(format!(
                 "lifetime composite water residual={}, bound={}: inspect child accounting",
@@ -347,8 +412,10 @@ where
                 surface: self.surface.coupling_clone(),
                 reaches: self.reaches.clone(),
                 counters: self.counters.clone(),
+                pools: self.pools.clone(),
             },
             forcing: forcing.clone(),
+            pool_forcing: self.pools.as_ref().map(|_| pool_forcing.clone()),
             start_s: start,
             end_s: end,
             requested_end_s: requested,
@@ -377,6 +444,7 @@ where
             accepted_steps: steps,
             counters,
             last: Some(Arc::new(step)),
+            pools,
         })
     }
 }
@@ -391,6 +459,8 @@ struct LinkOutcome<R: Runtime<DType = DType>> {
     midpoint_channel_m: Tensor<R>,
     regime: Tensor<R>,
     exchange: Exchange<R>,
+    /// Candidate pools with the external inflow of the interval, or `None` without pools.
+    pools: Option<(PoolChild<R>, PoolInflowStep)>,
 }
 
 impl<R: Runtime<DType = DType>> LinkOutcome<R> {
@@ -406,64 +476,7 @@ impl<R: Runtime<DType = DType>> LinkOutcome<R> {
             midpoint_channel_m: empty.clone(),
             regime: empty.clone(),
             exchange: Exchange::empty(&empty),
+            pools: None,
         })
-    }
-}
-
-/// Smallest fraction of a stalled duration the next attempt keeps.
-const STALL_FLOOR: f64 = 0.125;
-
-/// Fraction of a stalled duration the next attempt keeps.
-///
-/// The largest of `1/2`, `1/4`, `1/8` whose product with `contraction` is at most `target`,
-/// else `1/8`. Powers of two keep the rule exact.
-fn shortening(contraction: f64, target: f64) -> f64 {
-    let mut fraction = 0.5;
-    while fraction > STALL_FLOOR && contraction * fraction > target {
-        fraction *= 0.5;
-    }
-    fraction
-}
-
-/// Recompute request for a shorter integrated span, or `Unresolved` when none is admissible.
-fn recompute(
-    start: f64,
-    requested: f64,
-    suggested: f64,
-    minimum: f64,
-    retries: usize,
-    reason: String,
-) -> SurfaceChannelError {
-    if !suggested.is_finite()
-        || suggested <= start
-        || suggested >= requested
-        || suggested - start < minimum
-    {
-        SurfaceChannelError::Unresolved {
-            dt_s: suggested - start,
-            retries,
-            reason,
-        }
-    } else {
-        SurfaceChannelError::RecomputeInterval {
-            start_s: start,
-            requested_end_s: requested,
-            suggested_end_s: suggested,
-            reason,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn shortening_keeps_the_largest_power_of_two_under_the_target() {
-        assert_eq!(shortening(0.9, 0.5), 0.5);
-        assert_eq!(shortening(1.0, 0.5), 0.5);
-        assert_eq!(shortening(1.2, 0.5), 0.25);
-        assert_eq!(shortening(3.0, 0.5), 0.125);
-        assert_eq!(shortening(100.0, 0.5), 0.125);
     }
 }

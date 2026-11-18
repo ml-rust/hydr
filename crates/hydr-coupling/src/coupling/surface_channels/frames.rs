@@ -236,6 +236,7 @@ where
             accepted_steps: steps,
             counters: import_counters(&parts.context, counters, prefix)?,
             last: None,
+            pools: None,
         };
         let balance = batch.ledger()?;
         require(

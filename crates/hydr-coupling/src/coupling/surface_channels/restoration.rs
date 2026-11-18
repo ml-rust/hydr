@@ -90,6 +90,9 @@ where
                 "differs from the destination structure links",
             ));
         }
+        if snapshot.definition.pools != self.definition.pools {
+            return Err(rejected("pools", "differs from the destination pools"));
+        }
         checked(
             identity::initial(&snapshot.initial, &self.initial),
             "differs from the destination original state",
@@ -120,6 +123,7 @@ where
             accepted_steps: snapshot.accepted_steps,
             counters: snapshot.counters.clone(),
             last: snapshot.last.as_ref().map(Arc::clone),
+            pools: snapshot.pools.clone(),
         })
     }
 
@@ -200,7 +204,7 @@ where
         .children(prefix, surface, reaches)?;
         check_epoch(&frame.0, data)?;
         let parts = Parts {
-            context: Arc::new(Context::new(client.clone(), &definition, &frame.0)?),
+            context: Arc::new(Context::new(client.clone(), &definition, &frame.0, None)?),
             definition: Arc::clone(&definition),
             initial: Arc::new(initial.clone()),
         };

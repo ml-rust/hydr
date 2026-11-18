@@ -4,10 +4,12 @@
 //! own rejection texts where the coordinators word them differently.
 
 pub(crate) mod cutoffs;
+pub(crate) mod cuts;
 pub(crate) mod donors;
 pub(crate) mod error;
 pub(crate) mod pool_ends;
 pub(crate) mod pool_heads;
+pub(crate) mod pool_plan;
 
 pub(crate) use error::LinkError;
 

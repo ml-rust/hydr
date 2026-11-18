@@ -3,9 +3,12 @@
 //! Each rejection names its capability entry first.
 
 use super::{
-    CheckedStructure, SurfaceChannelNode, SurfaceChannelOperationOwner, SurfaceChannelStructure,
+    CheckedNode, CheckedStructure, SurfaceChannelAttachment, SurfaceChannelNode,
+    SurfaceChannelOperationOwner, SurfaceChannelStructure,
 };
+use crate::coupling::links::cutoffs::pool_attachment_admitted;
 use crate::coupling::surface_channels::bindings::{channel_cells, structure_binding_ids};
+use crate::coupling::surface_channels::pools::CheckedPools;
 use crate::coupling::surface_channels::validation::text;
 use crate::coupling::surface_channels::{SurfaceChannelError, SurfaceChannelSetup};
 use crate::structures::{DirectionPolicy, StructureLaw, StructureOperatingPoint};
@@ -18,11 +21,12 @@ fn rejected(entry: &str, id: &str, detail: String) -> SurfaceChannelError {
 
 /// Checks every structure of `structures`. Returns them in ascending identity order.
 ///
-/// `reach_index` maps each checked reach identity to its setup index. `taken` holds every link
-/// and port identity.
+/// `reach_index` maps each checked reach identity to its setup index. `pools` holds the checked
+/// pools. `taken` holds every link, port, and pool identity.
 pub(in super::super) fn check_structures(
     setup: &SurfaceChannelSetup,
     reach_index: &BTreeMap<&str, usize>,
+    pools: Option<&CheckedPools>,
     taken: &BTreeSet<&str>,
     structures: Vec<SurfaceChannelStructure>,
 ) -> Result<Vec<CheckedStructure>, SurfaceChannelError> {
@@ -41,7 +45,7 @@ pub(in super::super) fn check_structures(
             return Err(rejected(
                 "duplicate-links",
                 &id,
-                "repeats a structure, link, or port identity: give each one a unique identity"
+                "repeats a structure, link, port, or pool identity: give each one a unique identity"
                     .into(),
             ));
         }
@@ -66,19 +70,24 @@ pub(in super::super) fn check_structures(
                 &attachment.physical_connection_assertion,
             )?;
         }
-        let resolved = resolve(setup, reach_index, &structure)?;
-        check_law(&structure, resolved.beds, setup.surface.config.gravity)?;
+        let nodes = [
+            resolve(setup, reach_index, pools, "endpoint_a", &structure)?,
+            resolve(setup, reach_index, pools, "endpoint_b", &structure)?,
+        ];
+        check_pair(&structure, &nodes)?;
+        let beds = [
+            structure.endpoint_a.bed_elevation_m,
+            structure.endpoint_b.bed_elevation_m,
+        ];
+        check_law(&structure, beds, setup.surface.config.gravity)?;
         let operating_point = operation(&structure)?;
         let (inflow_binding, withdrawal_binding) = structure_binding_ids(&id);
         checked.insert(
             id,
             CheckedStructure {
                 structure,
-                surface_cell: resolved.surface_cell,
-                reach_index: resolved.reach_index,
-                channel_cell: resolved.channel_cell,
-                cell_id: resolved.cell_id,
-                beds: resolved.beds,
+                nodes,
+                beds,
                 operating_point,
                 inflow_binding,
                 withdrawal_binding,
@@ -88,71 +97,29 @@ pub(in super::super) fn check_structures(
     Ok(checked.into_values().collect())
 }
 
-/// Node indices and attachment beds of one structure.
-struct Resolved {
-    surface_cell: usize,
-    reach_index: usize,
-    channel_cell: usize,
-    cell_id: String,
-    beds: [f64; 2],
-}
-
-/// Resolves both endpoints and checks their identities, datum, and beds.
+/// Resolves endpoint `name` of `structure` and checks its identity, datum, and bed.
 fn resolve(
     setup: &SurfaceChannelSetup,
     reach_index: &BTreeMap<&str, usize>,
+    pools: Option<&CheckedPools>,
+    name: &str,
     structure: &SurfaceChannelStructure,
-) -> Result<Resolved, SurfaceChannelError> {
+) -> Result<CheckedNode, SurfaceChannelError> {
     let element = &structure.element;
     let id = element.id.as_str();
     let identity = |detail: String| rejected("structure-endpoint-identity", id, detail);
-    let (
-        SurfaceChannelNode::SurfaceCell(surface_cell),
-        SurfaceChannelNode::ChannelCell { reach_id, cell },
-    ) = (&structure.endpoint_a.node, &structure.endpoint_b.node)
-    else {
-        return Err(identity(
-            "joins no surface cell at endpoint A and channel cell at endpoint B: attach A to a surface cell and B to a channel cell; set the direction policy for one-way flow".into(),
-        ));
+    let (attachment, endpoint): (&SurfaceChannelAttachment, &str) = if name == "endpoint_a" {
+        (&structure.endpoint_a, &element.endpoint_a)
+    } else {
+        (&structure.endpoint_b, &element.endpoint_b)
     };
-    for (name, node, endpoint) in [
-        (
-            "endpoint_a",
-            &structure.endpoint_a.node,
-            &element.endpoint_a,
-        ),
-        (
-            "endpoint_b",
-            &structure.endpoint_b.node,
-            &element.endpoint_b,
-        ),
-    ] {
-        let expected = node.identity();
-        if *endpoint != expected {
-            return Err(identity(format!(
-                "element {name}={endpoint:?} differs from node identity {expected:?}: name the node identity in the element"
-            )));
-        }
+    let expected = attachment.node.identity();
+    if endpoint != expected {
+        return Err(identity(format!(
+            "element {name}={endpoint:?} differs from node identity {expected:?}: name the node identity in the element"
+        )));
     }
     let domain = &setup.surface.domain;
-    let cell_count = domain.grid().cell_count();
-    if *surface_cell >= cell_count || !domain.active()[*surface_cell] {
-        return Err(identity(format!(
-            "surface_cell={surface_cell}, cells={cell_count}: attach an active cell inside the grid"
-        )));
-    }
-    let Some(&reach) = reach_index.get(reach_id.as_str()) else {
-        return Err(identity(format!(
-            "reach_id={reach_id:?} names no setup reach: use a declared reach identity"
-        )));
-    };
-    let cells = channel_cells(&setup.reaches[reach].definition);
-    let Some(&(cell_id, channel_bed)) = cells.get(*cell) else {
-        return Err(identity(format!(
-            "channel cell={cell}, reach={reach_id:?} cells={}: attach an existing reach cell",
-            cells.len()
-        )));
-    };
     let datum = domain.reference().vertical_datum();
     if element.datum != datum {
         return Err(rejected(
@@ -164,32 +131,103 @@ fn resolve(
             ),
         ));
     }
-    let beds = [
-        structure.endpoint_a.bed_elevation_m,
-        structure.endpoint_b.bed_elevation_m,
-    ];
-    let node_beds = [domain.bed()[*surface_cell], channel_bed];
-    for (name, (bed, node)) in ["endpoint_a", "endpoint_b"]
-        .iter()
-        .zip(beds.iter().zip(node_beds))
-    {
-        if !bed.is_finite() || *bed < node {
-            return Err(rejected(
-                "unobstructed-pool-connection",
-                id,
-                format!(
-                    "{name} bed_elevation_m={bed} lies below its node bed={node} or is nonfinite: raise the attachment bed to at least the node bed"
-                ),
-            ));
+    let bed = attachment.bed_elevation_m;
+    let below = |what: &str, floor: f64| {
+        rejected(
+            "unobstructed-pool-connection",
+            id,
+            format!(
+                "{name} bed_elevation_m={bed} lies below its {what}={floor} or is nonfinite: raise the attachment bed to at least the {what}"
+            ),
+        )
+    };
+    match &attachment.node {
+        SurfaceChannelNode::SurfaceCell(cell) => {
+            let cell_count = domain.grid().cell_count();
+            if *cell >= cell_count || !domain.active()[*cell] {
+                return Err(identity(format!(
+                    "{name} surface_cell={cell}, cells={cell_count}: attach an active cell inside the grid"
+                )));
+            }
+            let node_bed = domain.bed()[*cell];
+            if !bed.is_finite() || bed < node_bed {
+                return Err(below("node bed", node_bed));
+            }
+            Ok(CheckedNode::Surface(*cell))
+        }
+        SurfaceChannelNode::ChannelCell { reach_id, cell } => {
+            let Some(&reach) = reach_index.get(reach_id.as_str()) else {
+                return Err(identity(format!(
+                    "{name} reach_id={reach_id:?} names no setup reach: use a declared reach identity"
+                )));
+            };
+            let cells = channel_cells(&setup.reaches[reach].definition);
+            let Some(&(cell_id, channel_bed)) = cells.get(*cell) else {
+                return Err(identity(format!(
+                    "{name} channel cell={cell}, reach={reach_id:?} cells={}: attach an existing reach cell",
+                    cells.len()
+                )));
+            };
+            if !bed.is_finite() || bed < channel_bed {
+                return Err(below("node bed", channel_bed));
+            }
+            Ok(CheckedNode::Channel {
+                reach_index: reach,
+                cell: *cell,
+                cell_id: cell_id.to_string(),
+            })
+        }
+        SurfaceChannelNode::Pool(pool_id) => {
+            let Some((position, pool)) = pools.and_then(|pools| pools.find(pool_id)) else {
+                return Err(identity(format!(
+                    "{name} pool={pool_id:?} names no declared pool: use a declared pool identity"
+                )));
+            };
+            let origin = pool.curve.origin();
+            if !pool_attachment_admitted(
+                &element.datum,
+                pool.curve.vertical_reference(),
+                bed,
+                origin,
+            ) {
+                return Err(below("pool origin", origin));
+            }
+            Ok(CheckedNode::Pool(position))
         }
     }
-    Ok(Resolved {
-        surface_cell: *surface_cell,
-        reach_index: reach,
-        channel_cell: *cell,
-        cell_id: cell_id.to_string(),
-        beds,
-    })
+}
+
+/// Checks that the two endpoints join distinct nodes of an admitted pair.
+///
+/// Admitted pairs join a surface cell and a channel cell, a surface cell and a pool, a channel cell
+/// and a pool, or two pools.
+fn check_pair(
+    structure: &SurfaceChannelStructure,
+    nodes: &[CheckedNode; 2],
+) -> Result<(), SurfaceChannelError> {
+    let id = structure.element.id.as_str();
+    if structure.endpoint_a.node == structure.endpoint_b.node {
+        return Err(rejected(
+            "structure-endpoint-identity",
+            id,
+            "joins one node at both endpoints: attach the endpoints to two distinct nodes".into(),
+        ));
+    }
+    let same = match nodes {
+        [CheckedNode::Surface(_), CheckedNode::Surface(_)] => Some("surface cells"),
+        [CheckedNode::Channel { .. }, CheckedNode::Channel { .. }] => Some("channel cells"),
+        _ => None,
+    };
+    if let Some(kind) = same {
+        return Err(rejected(
+            "structure-endpoint-identity",
+            id,
+            format!(
+                "joins two {kind}: join a surface cell and a channel cell, a surface cell or a channel cell and a pool, or two pools"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// Checks the law's gravity, its control elevation against both attachment beds, and its

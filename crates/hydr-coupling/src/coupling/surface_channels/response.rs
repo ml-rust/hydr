@@ -103,7 +103,7 @@ where
         evaluation: &Evaluation<R>,
     ) -> Result<Tensor<R>, SurfaceChannelError> {
         let c = &self.client;
-        let n = self.surface_count + self.slot_count;
+        let n = self.group_count();
         let l = self.link_count;
         let response = &levelling.response;
         let packet = &evaluation.packet;
@@ -197,7 +197,8 @@ where
 
     /// Change one rounding of the midpoint heads can cause in each link volume and end stage.
     ///
-    /// `law` holds the weir at `midpoint`, `[S + C]`, and `signed` the accepted volumes, `[L]`.
+    /// `law` holds the link laws at `midpoint`, `[S + C + P]`, and `signed` the accepted volumes,
+    /// `[L]`.
     /// A link volume `W` changes with a midpoint head by at most `|W| s` per metre, with `s` the
     /// law's head sensitivity. For a weir `s = 1.5 / h_u + 0.385 / gap`: `h_u` is the upstream
     /// head above the crest and `gap` the head difference of submerged flow. One rounding moves

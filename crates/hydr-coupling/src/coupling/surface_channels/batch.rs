@@ -1,17 +1,20 @@
 use super::context::Context;
+use super::pools::{PoolChild, PoolParts, inflow_error};
 use super::state::{LinkCounters, StoredStep};
 use super::{
     SurfaceChannelDefinition, SurfaceChannelError, SurfaceChannelInitialState, SurfaceChannelSetup,
 };
 use crate::channel::{ChannelInitialState, ChannelReach};
 use crate::solver::Solver;
+use crate::storage::LevelPoolState;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, HypotOps,
-    IndexingOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps,
-    TwoSumOps, TypeConversionOps, UnaryOps,
+    IndexingOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TensorOps, TwoSumOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::Runtime;
+use solvr::interpolate::Interp1dAlgorithms;
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedNewtonAlgorithms};
 use std::sync::Arc;
 
@@ -31,6 +34,8 @@ pub struct SurfaceChannelBatch<R: Runtime<DType = DType>> {
     pub(super) accepted_steps: usize,
     pub(super) counters: LinkCounters<R>,
     pub(super) last: Option<Arc<StoredStep<R>>>,
+    /// Accepted pools, or `None` without pools.
+    pub(super) pools: Option<PoolChild<R>>,
 }
 
 impl<R: Runtime<DType = DType>> std::fmt::Debug for SurfaceChannelBatch<R> {
@@ -131,14 +136,31 @@ where
         Self::from_definition(client, SurfaceChannelDefinition::new(setup)?, initial)
     }
 
-    /// Checks `initial` against a checked `definition`, then builds every child on `client`.
+    /// Checks `initial` against a checked `definition` without pools, then builds every child on
+    /// `client`.
     ///
     /// # Errors
-    /// Returns every [`Self::new`] rejection after the definition checks.
+    /// Returns every [`Self::new`] rejection after the definition checks, and
+    /// [`SurfaceChannelError::Input`] for a definition with pools.
     pub(super) fn from_definition(
         client: R::Client,
         definition: SurfaceChannelDefinition,
         initial: SurfaceChannelInitialState,
+    ) -> Result<Self, SurfaceChannelError> {
+        if definition.pools.is_some() {
+            return Err(SurfaceChannelError::input(
+                "pool states: build a coordinator with pools through its pool constructor",
+            ));
+        }
+        Self::build(client, definition, initial, None)
+    }
+
+    /// Builds every child of `definition` at `initial` on `client`, with the pool child `pools`.
+    fn build(
+        client: R::Client,
+        definition: SurfaceChannelDefinition,
+        initial: SurfaceChannelInitialState,
+        pools: Option<PoolParts<R>>,
     ) -> Result<Self, SurfaceChannelError> {
         let original = Arc::new(initial.clone());
         let SurfaceChannelInitialState {
@@ -174,8 +196,19 @@ where
                     })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let context = Context::new(client, &definition, &surface)?;
+        let context = Context::new(client, &definition, &surface, pools.as_ref())?;
         let counters = context.zero_counters()?;
+        let pools = match pools {
+            Some(parts) => Some(PoolChild {
+                external: context
+                    .pool_topology()?
+                    .inflows
+                    .zero_state(&context.client)
+                    .map_err(inflow_error)?,
+                batch: parts.batch,
+            }),
+            None => None,
+        };
         Ok(Self {
             definition: Arc::new(definition),
             context: Arc::new(context),
@@ -186,7 +219,69 @@ where
             accepted_steps: 0,
             counters,
             last: None,
+            pools,
         })
+    }
+}
+
+impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
+        + CumulativeOps<R>
+        + HypotOps<R>
+        + IndexingOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + ShapeOps<R>
+        + SortingOps<R>
+        + TensorOps<R>
+        + TwoSumOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>
+        + BatchedNewtonAlgorithms<R>
+        + Interp1dAlgorithms<R>,
+{
+    /// Checks `initial` and the pool `states` against a checked `definition`, then builds every
+    /// child on `client`.
+    ///
+    /// `states` holds one accepted volume per declared pool, in declaration order. A definition
+    /// without pools takes none.
+    ///
+    /// # Errors
+    /// Returns every [`Self::from_definition`] rejection, every pool child rejection, and
+    /// [`SurfaceChannelError::Input`] for a state count that differs from the pool count.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "in-crate callers construct pool coordinators")
+    )]
+    pub(crate) fn with_pools(
+        client: R::Client,
+        definition: SurfaceChannelDefinition,
+        initial: SurfaceChannelInitialState,
+        states: &[LevelPoolState],
+    ) -> Result<Self, SurfaceChannelError> {
+        let parts = match &definition.pools {
+            Some(pools) => Some(PoolParts::new(
+                client.clone(),
+                pools,
+                states,
+                initial.time_s,
+            )?),
+            None if states.is_empty() => None,
+            None => {
+                return Err(SurfaceChannelError::input(format!(
+                    "initial pool state count={}, pools=0: supply no pool states without pools",
+                    states.len()
+                )));
+            }
+        };
+        Self::build(client, definition, initial, parts)
     }
 }
 

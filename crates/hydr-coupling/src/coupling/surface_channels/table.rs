@@ -2,18 +2,45 @@
 //!
 //! A bank link is a bidirectional passive weir between its surface cell and channel cell, on the
 //! cell beds, with tangent momentum closure. A structure link carries its own law on its
-//! attachment beds, and its water enters either side without velocity.
+//! attachment beds between any admitted node pair, and its water enters either side without
+//! velocity.
 
 use super::SurfaceChannelDefinition;
+use super::structures::CheckedNode;
 use crate::structures::{DirectionPolicy, StructureElement, StructureLaw, StructureOperatingPoint};
 use std::collections::BTreeMap;
+
+/// One endpoint of a table link.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum TableEnd {
+    /// Active global row-major surface cell index.
+    Surface(usize),
+    /// Ordered cell of a setup reach.
+    Channel { reach_index: usize, cell: usize },
+    /// Position of the pool in ascending pool identity.
+    Pool(usize),
+}
+
+impl TableEnd {
+    fn of(node: &CheckedNode) -> Self {
+        match node {
+            CheckedNode::Surface(cell) => Self::Surface(*cell),
+            CheckedNode::Channel {
+                reach_index, cell, ..
+            } => Self::Channel {
+                reach_index: *reach_index,
+                cell: *cell,
+            },
+            CheckedNode::Pool(position) => Self::Pool(*position),
+        }
+    }
+}
 
 /// One entry of the link table: a bank link or a structure link.
 pub(super) struct TableLink<'a> {
     pub id: &'a str,
-    pub reach_index: usize,
-    pub surface_lane: usize,
-    pub channel_cell: usize,
+    /// Endpoints `[A, B]`.
+    pub ends: [TableEnd; 2],
     pub element: StructureElement,
     pub operation: StructureOperatingPoint,
     /// Attachment beds `[A, B]`, or `None` for a bank link on the cell beds.
@@ -22,6 +49,15 @@ pub(super) struct TableLink<'a> {
     /// Synthesized `(inflow, withdrawal)` channel binding identities.
     pub bindings: (&'a str, &'a str),
     pub bank: bool,
+}
+
+impl TableLink<'_> {
+    /// Side `0` (A) or `1` (B) of the channel endpoint, if any.
+    pub fn channel_side(&self) -> Option<usize> {
+        self.ends
+            .iter()
+            .position(|end| matches!(end, TableEnd::Channel { .. }))
+    }
 }
 
 /// Bank and structure links of `definition` in ascending identity.
@@ -35,9 +71,13 @@ pub(super) fn table(definition: &SurfaceChannelDefinition) -> Vec<TableLink<'_>>
             declared.id.as_str(),
             TableLink {
                 id: declared.id.as_str(),
-                reach_index: link.reach_index,
-                surface_lane: link.surface_lane,
-                channel_cell: link.channel_cell,
+                ends: [
+                    TableEnd::Surface(declared.surface_cell),
+                    TableEnd::Channel {
+                        reach_index: link.reach_index,
+                        cell: link.channel_cell,
+                    },
+                ],
                 element: StructureElement {
                     id: declared.id.clone(),
                     endpoint_a: format!("surface-cell:{}", declared.surface_cell),
@@ -57,15 +97,12 @@ pub(super) fn table(definition: &SurfaceChannelDefinition) -> Vec<TableLink<'_>>
             },
         );
     }
-    let cells = definition.surface_cells();
     for structure in &definition.structures {
         table.insert(
             structure.id(),
             TableLink {
                 id: structure.id(),
-                reach_index: structure.reach_index,
-                surface_lane: cells.partition_point(|&cell| cell < structure.surface_cell),
-                channel_cell: structure.channel_cell,
+                ends: structure.nodes.each_ref().map(TableEnd::of),
                 element: structure.structure.element.clone(),
                 operation: structure.operating_point,
                 beds: Some(structure.beds),

@@ -1,6 +1,7 @@
 //! Device-resident link counters and the receipt of the last accepted common interval.
 
 use super::SurfaceChannelForcingInterval;
+use super::pools::{PoolChild, SurfaceChannelPoolForcing};
 use super::ports::{PortCounters, PortInterval};
 use crate::channel::ChannelReach;
 use crate::solver::Solver;
@@ -41,6 +42,8 @@ pub(super) struct PreviousFrame<R: Runtime<DType = DType>> {
     /// Reaches in setup order.
     pub reaches: Vec<ChannelReach<R>>,
     pub counters: LinkCounters<R>,
+    /// Accepted pools, or `None` without pools.
+    pub pools: Option<PoolChild<R>>,
 }
 
 /// Receipt of the last accepted interval. Link tensors are `[L]` in identity order.
@@ -48,6 +51,8 @@ pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub previous: PreviousFrame<R>,
     /// Caller channel forcing exactly as the trial received it.
     pub forcing: SurfaceChannelForcingInterval,
+    /// Pool forcing exactly as the trial received it, or `None` without pools.
+    pub pool_forcing: Option<SurfaceChannelPoolForcing>,
     pub start_s: f64,
     pub end_s: f64,
     pub requested_end_s: f64,

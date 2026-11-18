@@ -38,6 +38,8 @@ pub use trial::CoupledLevelPoolTrial;
 
 pub use forcing::CoupledLevelPoolForcingInterval;
 
+pub(crate) use inflows::{BoundInflows, InflowContext, InflowState, PreparedInflows};
+
 pub use inflows::{
     CoupledPoolInflow, CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolInflowReceipt,
     CoupledPoolInflowValue,

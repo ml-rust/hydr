@@ -31,6 +31,7 @@
 //! [`surface_channel_capabilities`] returns the declared scope.
 
 mod accounting;
+mod bank_links;
 mod batch;
 mod bindings;
 mod capabilities;
@@ -46,13 +47,17 @@ mod identity;
 mod iteration;
 mod levelling;
 mod memo;
+mod ops;
 mod output;
+mod pools;
 mod ports;
 mod projection;
 mod response;
 mod restoration;
+mod retry;
 mod slot_plan;
 mod snapshot;
+mod stages;
 mod start;
 mod state;
 mod structures;

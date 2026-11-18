@@ -1,8 +1,9 @@
 use super::context_types::{CutAggregation, Topology};
 use super::{ChannelPoolEndpoint, ChannelPoolError, ChannelPoolSetup};
 use crate::channel::ChannelGeometry;
+use crate::coupling::links::LinkError;
+use crate::coupling::links::cuts::{CutAttachment, CutCover, cut_cover};
 use crate::numerics::water_transfers::TransferTree;
-use hydr_storage::internal::LevelPoolCut;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
@@ -78,7 +79,6 @@ where
         let mut beds = Vec::new();
         let mut losses = Vec::new();
         let mut pool_targets = Vec::new();
-        let mut connections_by_pool = vec![Vec::new(); setup.pools.len()];
         for (index, connection) in setup.connections.iter().enumerate() {
             text(&connection.id, "connection_id")?;
             text(
@@ -136,7 +136,6 @@ where
             )?);
             losses.push(connection.entrance_loss_coefficient);
             pool_targets.push((pool, index, connection.id.as_str()));
-            connections_by_pool[pool].push(index);
         }
         let external_endpoints = endpoint_connections
             .iter()
@@ -154,90 +153,23 @@ where
             .iter()
             .map(|&(reach, side)| reach * 2 + side)
             .collect::<Vec<_>>();
-        let mut cuts = Vec::new();
-        let mut connection_cuts = vec![0usize; setup.connections.len()];
-        let mut blocks = Vec::new();
-        let mut covers = Vec::new();
-        let mut block_count = 0usize;
-        for (pool, mut connections) in connections_by_pool.into_iter().enumerate() {
-            connections.sort_by(|&a, &b| {
-                beds[a]
-                    .total_cmp(&beds[b])
-                    .then_with(|| setup.connections[a].id.cmp(&setup.connections[b].id))
-            });
-            let mut block_ids = BTreeMap::new();
-            let mut width = 1usize;
-            while width <= connections.len() {
-                for start in (0..connections.len()).step_by(width) {
-                    if start + width > connections.len() {
-                        continue;
-                    }
-                    let group = block_count;
-                    block_count = block_count
-                        .checked_add(1)
-                        .ok_or_else(|| ChannelPoolError::input("cut block count overflows"))?;
-                    block_ids.insert((start, width), group);
-                    for &connection in &connections[start..start + width] {
-                        blocks.push((group, connection, setup.connections[connection].id.clone()));
-                    }
-                }
-                match width.checked_mul(2) {
-                    Some(next) => width = next,
-                    None => break,
-                }
-            }
-            let mut first = 0usize;
-            while first < connections.len() {
-                let elevation = beds[connections[first]];
-                let cut = cuts.len();
-                cuts.push(LevelPoolCut {
-                    pool_index: pool,
-                    elevation_m: elevation,
-                });
-                let mut cursor = first;
-                while cursor < connections.len() {
-                    let mut size = 1usize;
-                    while let Some(next) = size.checked_mul(2) {
-                        if !cursor.is_multiple_of(next) || next > connections.len() - cursor {
-                            break;
-                        }
-                        size = next;
-                    }
-                    let block = *block_ids.get(&(cursor, size)).ok_or_else(|| {
-                        ChannelPoolError::input("cut cover lacks its cached dyadic block")
-                    })?;
-                    covers.push((cut, block, format!("{cursor:020}")));
-                    cursor += size;
-                }
-                let mut next = first + 1;
-                while next < connections.len() && beds[connections[next]] == elevation {
-                    next += 1;
-                }
-                for &connection in &connections[first..next] {
-                    connection_cuts[connection] = cut;
-                }
-                first = next;
-            }
-        }
-        let borrowed_blocks = blocks
+        let attachments: Vec<CutAttachment<'_>> = setup
+            .connections
             .iter()
-            .map(|(a, b, id)| (*a, *b, id.as_str()))
-            .collect::<Vec<_>>();
-        let borrowed_covers = covers
-            .iter()
-            .map(|(a, b, id)| (*a, *b, id.as_str()))
-            .collect::<Vec<_>>();
-        let cut_aggregation = CutAggregation {
-            blocks: TransferTree::new_grouped(
-                client,
-                block_count,
-                setup.connections.len(),
-                &borrowed_blocks,
-            )
-            .map_err(ChannelPoolError::from_transfer)?,
-            covers: TransferTree::new_grouped(client, cuts.len(), block_count, &borrowed_covers)
-                .map_err(ChannelPoolError::from_transfer)?,
-        };
+            .zip(pool_indices.iter().zip(&beds))
+            .map(|(connection, (&pool, &bed_m))| CutAttachment {
+                pool,
+                bed_m,
+                id: connection.id.as_str(),
+            })
+            .collect();
+        let CutCover {
+            cuts,
+            attachment_cuts: connection_cuts,
+            blocks,
+            covers,
+        } = cut_cover(client, setup.pools.len(), &attachments).map_err(LinkError::channel_pool)?;
+        let cut_aggregation = CutAggregation { blocks, covers };
         let values = |v: &[f64]| -> Result<Tensor<R>, ChannelPoolError> {
             Ok(Tensor::from_slice(v, &[v.len()], client.device())?)
         };

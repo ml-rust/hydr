@@ -1,11 +1,9 @@
 //! Fixed-point iteration over end stages and signed link volumes, with separate budgets.
 
 use super::context::{Context, Ops};
-use super::evaluate::{Attempt, Evaluation, Trials};
+use super::evaluate::{Accepted, Attempt, Evaluation, Trials};
 use super::start::Start;
 use super::{SurfaceChannelConfig, SurfaceChannelError};
-use crate::channel::ChannelReach;
-use crate::solver::Solver;
 use numr::algorithm::correctly_rounded;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, UnaryOps};
@@ -52,7 +50,7 @@ where
         evaluation: &Evaluation<R>,
     ) -> Result<Residuals, SurfaceChannelError> {
         let c = &self.client;
-        let n = self.surface_count + self.slot_count;
+        let n = self.group_count();
         let l = self.link_count;
         let gx = &evaluation.packet;
         let change = c.abs(&c.sub(gx, x)?)?;
@@ -121,12 +119,16 @@ where
     /// - An iterate that repeats the one two updates earlier: the update-limit rejection it
     ///   would reach, with contraction one.
     /// - A residual forecast past the update limit: see [`stall`].
-    #[allow(clippy::too_many_arguments)]
+    ///
+    /// An iterate whose pools overfill takes saturated pool stages and iterates on. A converged
+    /// candidate above a top curve knot rejects with `pool-capacity-exceeded`, and no shorter
+    /// interval retries it. The converged candidate then passes the link crossing check, the
+    /// raised-cutoff crossing check at pool attachments, and the pool cut check. Each of those
+    /// rejections is retryable.
     pub fn solve(
         &self,
         config: &SurfaceChannelConfig,
-        surface: &Solver<R>,
-        reaches: &[ChannelReach<R>],
+        accepted: Accepted<'_, R>,
         reach_ids: &[&str],
         start: &Start<R>,
         attempt: &Attempt<R>,
@@ -134,7 +136,7 @@ where
     ) -> Result<Solved<R>, SurfaceChannelError> {
         // Kept trials never outlive this attempt, so none crosses an accepted step or a retry.
         let trials = Trials::new(self.linked.len());
-        let levelling = self.levelling(surface, reaches, reach_ids, start, attempt, &trials)?;
+        let levelling = self.levelling(accepted, reach_ids, start, attempt, &trials)?;
         let error = RefCell::new(None);
         let record = |e: SurfaceChannelError| -> numr::error::Error {
             if let Ok(mut slot) = error.try_borrow_mut()
@@ -160,9 +162,7 @@ where
         // step, so a converged evaluation computes no step.
         let map = |x: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
             let evaluation = self
-                .evaluate(
-                    surface, reaches, reach_ids, start, attempt, &levelling, x, &trials,
-                )
+                .evaluate(accepted, reach_ids, start, attempt, &levelling, x, &trials)
                 .map_err(record)?;
             let earlier = before.replace(Some(x.clone()));
             let residuals = self.residuals(config, x, &evaluation).map_err(record)?;
@@ -239,7 +239,7 @@ where
             }
             _ => {
                 let evaluation = self.evaluate(
-                    surface, reaches, reach_ids, start, attempt, &levelling, &root.x, &trials,
+                    accepted, reach_ids, start, attempt, &levelling, &root.x, &trials,
                 )?;
                 let residuals = self.residuals(config, &root.x, &evaluation)?;
                 (evaluation, residuals)
@@ -253,7 +253,22 @@ where
                 "final reevaluation exceeds head or transfer budgets, or changes support or regime: shorten the common interval".into(),
             ));
         }
+        if let Some(message) = &evaluation.pool_overflow {
+            return Err(SurfaceChannelError::Input(message.clone()));
+        }
         self.check_crossing(config, &evaluation)?;
+        if let Some(pools) = &attempt.pools {
+            let n = self.group_count();
+            let l = self.link_count;
+            let packet = &evaluation.packet;
+            let signed = &evaluation.exchange.signed;
+            self.check_pool_crossing(
+                &packet.narrow(0, 0, n)?,
+                &packet.narrow(0, n + l, n)?,
+                signed,
+            )?;
+            self.check_pool_cuts(&pools.available, signed)?;
+        }
         let norms = norms.into_inner();
         let contraction = match norms.as_slice() {
             [.., earlier, _, latest] if *earlier > 0.0 => (latest / earlier).sqrt(),
@@ -277,7 +292,7 @@ where
         evaluation: &Evaluation<R>,
     ) -> Result<(), SurfaceChannelError> {
         let c = &self.client;
-        let n = self.surface_count + self.slot_count;
+        let n = self.group_count();
         let end = evaluation.packet.narrow(0, 0, n)?;
         let head = |index: &Tensor<R>, cut: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
             Ok(c.maximum(&c.index_select(&end, 0, index)?, cut)?)

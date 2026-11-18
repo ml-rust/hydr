@@ -7,6 +7,8 @@
 //! - A linked reach: the inflow and withdrawal volume of each of its links.
 //! - The surface: the inflow and withdrawal of every lane, and the withdrawal of every link.
 //!   The link withdrawals carry the fixed channel velocity into the lane momentum.
+//! - The pools: the incoming volume of every pool, external inflows included, and its outgoing
+//!   volume.
 //!
 //! A trial whose operands match a kept entry in every bit takes that entry's result.
 //! A converged reach repeats its last trial. A dry attempt repeats its zero-exchange trial.
@@ -24,6 +26,22 @@ const CAPACITY: usize = 2;
 /// Exact operand bits of one child trial.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(super) struct TrialKey(Vec<u64>);
+
+impl TrialKey {
+    /// The key of every bit of `operands`, read in one copy.
+    pub fn of<R: Runtime<DType = DType>>(
+        operands: &Tensor<R>,
+    ) -> Result<Self, SurfaceChannelError> {
+        Ok(Self(
+            operands
+                .contiguous()?
+                .try_to_vec::<f64>()?
+                .iter()
+                .map(|v| v.to_bits())
+                .collect(),
+        ))
+    }
+}
 
 /// Operand bits of every child of one evaluation.
 #[derive(Debug)]
@@ -106,19 +124,31 @@ impl<T: Clone> Kept<T> {
     }
 }
 
-/// Kept surface results `S` and linked reach results `C` of one attempt.
-pub(super) struct TrialMemo<S, C> {
+/// Kept surface results `S`, linked reach results `C`, and pool results `P` of one attempt.
+pub(super) struct TrialMemo<S, C, P = ()> {
     surface: RefCell<Kept<S>>,
     linked: RefCell<Vec<Kept<C>>>,
+    pools: RefCell<Kept<P>>,
 }
 
-impl<S: Clone, C: Clone> TrialMemo<S, C> {
+impl<S: Clone, C: Clone, P: Clone> TrialMemo<S, C, P> {
     /// An empty memo for `linked` reaches.
     pub fn new(linked: usize) -> Self {
         Self {
             surface: RefCell::new(Kept::new()),
             linked: RefCell::new((0..linked).map(|_| Kept::new()).collect()),
+            pools: RefCell::new(Kept::new()),
         }
+    }
+
+    /// The kept pool result of `key`, or a fresh `trial` kept under it.
+    pub fn pool<E>(&self, key: &TrialKey, trial: impl FnOnce() -> Result<P, E>) -> Result<P, E> {
+        if let Some(found) = self.pools.borrow_mut().find(key) {
+            return Ok(found);
+        }
+        let value = trial()?;
+        self.pools.borrow_mut().keep(key.clone(), value.clone());
+        Ok(value)
     }
 
     /// The kept surface result of `key`, or a fresh `trial` kept under it.
@@ -242,6 +272,34 @@ mod tests {
         assert_eq!(other.linked[0], keys.linked[0]);
         assert_ne!(other.linked[1], keys.linked[1]);
         assert_ne!(other.surface, keys.surface);
+        Ok(())
+    }
+
+    /// Frozen criteria, fixed before the first run:
+    /// - Bit-identical pool operands reuse the kept trial.
+    /// - A one-ulp change in an incoming volume, and a signed zero outgoing volume, each miss.
+    #[test]
+    fn a_pool_key_reuses_only_on_exact_bits() -> Result {
+        let memo = TrialMemo::<u32, u32, u32>::new(0);
+        let runs = Cell::new(0);
+        let device = CpuDevice::new();
+        let pool = |values: &[f64], value: u32| -> Result<u32> {
+            let operands = Tensor::<CpuRuntime>::from_slice(values, &[values.len()], &device)?;
+            let key = TrialKey::of(&operands)?;
+            Ok(memo
+                .pool(&key, || {
+                    runs.set(runs.get() + 1);
+                    Ok::<_, ()>(value)
+                })
+                .unwrap_or(u32::MAX))
+        };
+        // Incoming then outgoing volume of one pool.
+        assert_eq!(pool(&[0.5, 0.0], 1)?, 1);
+        assert_eq!(pool(&[0.5, 0.0], 2)?, 1);
+        let next = f64::from_bits(0.5f64.to_bits() + 1);
+        assert_eq!(pool(&[next, 0.0], 3)?, 3);
+        assert_eq!(pool(&[0.5, -0.0], 4)?, 4);
+        assert_eq!(runs.get(), 3);
         Ok(())
     }
 

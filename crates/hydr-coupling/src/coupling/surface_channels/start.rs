@@ -1,8 +1,9 @@
 //! Accepted-start operands shared by every attempt of one common trial.
 
 use super::SurfaceChannelError;
-use super::context::{Context, Ops};
+use super::context::{Context, NodeEnd, Ops};
 use super::forcing::BoundForcing;
+use super::pools::{PoolChild, PoolStart};
 use super::ports::PortStart;
 use crate::channel::{ChannelReach, ChannelTensorLateralInput, ChannelTensorWaterAmount};
 use crate::solver::Solver;
@@ -27,12 +28,19 @@ const SUBMERGED_CODES: [f64; 4] = [1.0, 3.0, 11.0, 12.0];
 /// Structures regime code of equal heads above the crest.
 const EQUAL_HEADS_CODE: f64 = 5.0;
 
+/// Accepted surface, reaches in setup order, and the pool child with its bound trial forcing.
+pub(super) type StartChildren<'a, R> = (
+    &'a Solver<R>,
+    &'a [ChannelReach<R>],
+    Option<(&'a PoolChild<R>, PoolStart<R>)>,
+);
+
 /// Operands that depend only on the accepted state and the caller forcing.
 pub(super) struct Start<R: Runtime<DType = DType>> {
     pub time: f64,
-    /// Accepted stage at every donor group, `[S + C]`.
+    /// Accepted stage at every donor group, `[S + C + P]`.
     pub stage: Tensor<R>,
-    /// Accepted wet mask at every donor group, `[S + C]`.
+    /// Accepted wet mask at every donor group, `[S + C + P]`.
     pub wet: Tensor<R>,
     /// First fixed-point iterate: accepted stages, zero volumes, accepted support and regimes.
     pub initial: Tensor<R>,
@@ -50,6 +58,8 @@ pub(super) struct Start<R: Runtime<DType = DType>> {
     pub forcing: BoundForcing<R>,
     /// Ghost states of every port from the accepted reach ends, or `None` without ports.
     pub ports: Option<PortStart<R>>,
+    /// Pool forcing of this trial, or `None` without pools.
+    pub pools: Option<PoolStart<R>>,
 }
 
 /// Donor operands of every channel slot.
@@ -68,70 +78,54 @@ where
     R::Client: Ops<R>,
 {
     /// Exchange inputs for every link of linked reach `linked`, from per-link volume tensors.
+    ///
+    /// `to_b` holds each link's volume from A to B and `to_a` from B to A. The channel endpoint
+    /// takes the volume toward it as inflow and the volume away from it as withdrawal.
     pub fn exchange_inputs(
         &self,
         linked: usize,
-        to_channel: &Tensor<R>,
-        to_surface: &Tensor<R>,
+        to_b: &Tensor<R>,
+        to_a: &Tensor<R>,
         velocity: &Tensor<R>,
     ) -> Result<Vec<ChannelTensorLateralInput<R>>, SurfaceChannelError> {
         let mut inputs = Vec::new();
         for &link in self.linked.get(linked).map_or(&[][..], |r| &r.links) {
             let (inflow, withdrawal) = &self.link_bindings[link];
+            let (into, from) = match self.link_ends.get(link) {
+                Some([NodeEnd::Channel(_), _]) => (to_a, to_b),
+                _ => (to_b, to_a),
+            };
             inputs.push(ChannelTensorLateralInput::Inflow {
                 boundary_id: inflow.clone(),
                 amount: ChannelTensorWaterAmount::IntervalVolume {
-                    volume_m3: to_channel.narrow(0, link, 1)?,
+                    volume_m3: into.narrow(0, link, 1)?,
                 },
                 longitudinal_velocity_m_per_s: velocity.narrow(0, link, 1)?,
             });
             inputs.push(ChannelTensorLateralInput::Withdrawal {
                 boundary_id: withdrawal.clone(),
                 amount: ChannelTensorWaterAmount::IntervalVolume {
-                    volume_m3: to_surface.narrow(0, link, 1)?,
+                    volume_m3: from.narrow(0, link, 1)?,
                 },
             });
         }
         Ok(inputs)
     }
 
-    /// Accepted stages and wet masks: surface lanes, then slots.
-    pub fn stages(
-        &self,
-        surface: &Solver<R>,
-        linked: &[&ChannelReach<R>],
-        reach_ids: &[&str],
-    ) -> Result<(Tensor<R>, Tensor<R>), SurfaceChannelError> {
-        let links = self.surface_links()?;
-        let (stage, wet) = surface.coupling_cell_stages(links)?;
-        let mut stages = vec![stage];
-        let mut wets = vec![wet];
-        for (entry, reach) in self.linked.iter().zip(linked) {
-            let (stage, wet) = reach.coupling_cell_stages(&entry.cells).map_err(|source| {
-                SurfaceChannelError::Channel {
-                    reach_id: reach_ids[entry.reach].to_string(),
-                    source,
-                }
-            })?;
-            stages.push(stage);
-            wets.push(wet);
-        }
-        let c = &self.client;
-        Ok((
-            c.cat(&stages.iter().collect::<Vec<_>>(), 0)?,
-            c.cat(&wets.iter().collect::<Vec<_>>(), 0)?,
-        ))
-    }
-
     /// Builds the start operands from the accepted children and the bound forcing.
+    ///
+    /// `pools` holds the accepted pool child with its bound trial forcing.
     pub fn start(
         &self,
-        surface: &Solver<R>,
-        reaches: &[ChannelReach<R>],
+        (surface, reaches, pools): StartChildren<'_, R>,
         reach_ids: &[&str],
         end: f64,
         forcing: BoundForcing<R>,
     ) -> Result<Start<R>, SurfaceChannelError> {
+        let (pool_child, pool_start) = match pools {
+            Some((child, start)) => (Some(child), Some(start)),
+            None => (None, None),
+        };
         let c = &self.client;
         let time = surface.time();
         let zeros = Tensor::<R>::zeros(&[self.link_count], DType::F64, c.device())?;
@@ -185,7 +179,8 @@ where
         } else {
             let linked: Vec<&ChannelReach<R>> =
                 self.linked.iter().map(|r| &reaches[r.reach]).collect();
-            let (stage, wet) = self.stages(surface, &linked, reach_ids)?;
+            let pool_batch = pool_child.map(|child| &child.batch);
+            let (stage, wet) = self.node_stages(surface, &linked, pool_batch, reach_ids)?;
             self.check_pumps(&stage, &wet)?;
             let regime = self.weir(&stage, &wet, &self.level_heads(&stage)?)?.regime;
             let initial = c.cat(&[&stage, &zeros, &wet, &regime], 0)?;
@@ -202,6 +197,7 @@ where
             reservations,
             forcing,
             ports,
+            pools: pool_start,
         })
     }
 
@@ -226,10 +222,7 @@ where
             let Some(pump) = law.pump().filter(|p| p.running) else {
                 continue;
             };
-            let groups = [
-                *self.link_lane.get(link).ok_or_else(missing)?,
-                self.surface_count + *self.link_slot.get(link).ok_or_else(missing)?,
-            ];
+            let groups = *self.link_groups.get(link).ok_or_else(missing)?;
             let side = |index: usize| -> Result<(f64, bool), SurfaceChannelError> {
                 let group = groups[index];
                 let h = *stage.get(group).ok_or_else(missing)?;
@@ -286,6 +279,13 @@ where
         let surface_zero = Tensor::<R>::zeros(&[self.surface_count], DType::F64, c.device())?;
         let mut group_velocity = vec![surface_zero];
         group_velocity.extend(velocities);
+        if self.pool_count > 0 {
+            group_velocity.push(Tensor::<R>::zeros(
+                &[self.pool_count],
+                DType::F64,
+                c.device(),
+            )?);
+        }
         let link_velocity = c.index_select(&join(&group_velocity)?, 0, &self.link_b)?;
         Ok(SlotOperands {
             donor: join(&donors)?,
@@ -297,7 +297,7 @@ where
         })
     }
 
-    /// Weir law of every link at group `stage` with support `wet`, both `[S + C]`.
+    /// Law of every link at group `stage` with support `wet`, both `[S + C + P]`.
     ///
     /// A submerged link where `level` is one counts as equal heads and carries no water.
     pub fn weir(
@@ -315,7 +315,7 @@ where
         )
     }
 
-    /// One where a link's surface and channel `stage`, `[S + C]`, differ by at most the head
+    /// One where a link's endpoint stages in `stage`, `[S + C + P]`, differ by at most the head
     /// allowance, `[L]`.
     ///
     /// The allowance is `head_absolute_m + head_relative * max(|H_s|, |H_c|)`.

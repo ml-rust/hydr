@@ -20,9 +20,9 @@ pub(super) struct Exchange<R: Runtime<DType = DType>> {
     pub signed: Tensor<R>,
     /// Donor factor applied to each link, `[L]`.
     pub factor: Tensor<R>,
-    /// Water each donor group receives, `[S + C]`.
+    /// Water each donor group receives, `[S + C + P]`.
     pub incoming: Tensor<R>,
-    /// Water each donor group gives, `[S + C]`.
+    /// Water each donor group gives, `[S + C + P]`.
     pub outgoing: Tensor<R>,
     /// Largest aggregation rounding over every group, times the group count, in m³.
     pub aggregation_bound: f64,
@@ -67,7 +67,7 @@ where
             tree: &self.donors,
             a: &self.link_a,
             b: &self.link_b,
-            groups: self.surface_count + self.slot_count,
+            groups: self.group_count(),
         };
         let limit = donors::limit(c, &donors, &proposed, available, &zero, &one, &TEXTS)
             .map_err(LinkError::surface_channel)?;

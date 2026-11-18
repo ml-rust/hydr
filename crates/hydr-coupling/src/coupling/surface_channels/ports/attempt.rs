@@ -102,7 +102,8 @@ mod tests {
         let dt = 0.05;
         let held = forcing(&batch.setup().ports, 0.0, dt);
         let bound = BoundForcing::bind(context, &ids, (0.0, dt), &held)?;
-        let start = context.start(&batch.surface, &batch.reaches, &ids, dt, bound)?;
+        let children = (&batch.surface, &batch.reaches[..], None);
+        let start = context.start(children, &ids, dt, bound)?;
         // The linked reach is ported, so each attempt builds its slot operands.
         assert!(start.slots.is_none() && start.reservations[0].is_none());
         let topology = context.ports.as_ref().ok_or("ports")?;
@@ -124,7 +125,7 @@ mod tests {
         // The still interior face exports nothing, so the end cell exports its port water only.
         let outgoing = reservation.outgoing_rate_m3_per_s.try_to_vec::<f64>()?[0];
         assert_eq!(outgoing.to_bits(), export.to_bits());
-        let attempt = context.attempt(&start, *stage, ports)?;
+        let attempt = context.attempt(&start, *stage, ports, None)?;
         let available = attempt.available.try_to_vec::<f64>()?[context.surface_count];
         let margin = 4.0 * f64::EPSILON * (context.slot_withdrawals[0] as f64 + 8.0);
         let expected = (donor * (1.0 - margin) - (outgoing * dt) * (margin + 1.0)).max(0.0);

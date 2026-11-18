@@ -7,6 +7,8 @@
 //! - Surface lane: the cell area. Stage is linear in water.
 //! - Channel slot: cell length times water-surface width at the lowest stage the bound covers.
 //!   See [`super::slot_plan`].
+//! - Pool: its smallest curve segment area over both link heads, both cutoffs, and a pump's
+//!   suction stop. See [`crate::coupling::links::pool_plan`].
 //!
 //! For a link from donor `d` to receiver `r`, `O_d` is the donor's summed outgoing law volume
 //! and `I_r` the receiver's summed incoming law volume. Heads `H` are pre-exchange end stages,
@@ -26,15 +28,16 @@
 //! every cell therefore stays within each link's bound.
 
 use super::SurfaceChannelError;
-use super::context::{Context, Ops};
-use super::evaluate::{Attempt, Trials};
+use super::context::{Context, NodeEnd, Ops};
+use super::evaluate::{Accepted, Attempt, Trials};
 use super::exchange::Exchange;
 use super::response::Response;
+use super::slot_plan::SlotPlan;
 use super::start::Start;
+use super::structures::LinkLaw;
 use crate::channel::ChannelReach;
 use crate::coupling::links::LinkError;
 use crate::coupling::links::donors::split;
-use crate::solver::Solver;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps, ScatterReduceOp, ShapeOps,
@@ -45,21 +48,37 @@ use numr::tensor::Tensor;
 /// Relative shrink of a binding levelling factor, in units of `f64::EPSILON`.
 const LEVEL_MARGIN_ULPS: f64 = 16.0;
 
+/// Plan area of one link endpoint as a function of its stage.
+#[derive(Clone, Copy)]
+enum SideArea<'a> {
+    /// One area at every stage: a surface lane, or a pool's smallest covered segment.
+    Fixed(f64),
+    /// A channel slot's width at the stage.
+    Slot(&'a SlotPlan),
+}
+
+impl SideArea<'_> {
+    fn at(self, stage: f64) -> f64 {
+        match self {
+            Self::Fixed(area) => area,
+            Self::Slot(plan) => plan.area(stage),
+        }
+    }
+}
+
 /// Pre-exchange end stages and plan areas of one attempt.
+///
+/// Each area pair holds the direction from A to B, then from B to A, each `[L]`.
 pub(super) struct Levelling<R: Runtime<DType = DType>> {
-    /// End stage of every group with zero exchange, `[S + C]`.
+    /// End stage of every group with zero exchange, `[S + C + P]`.
     pub stage: Tensor<R>,
-    /// Surface lane area of every link, `[L]`.
-    surface_area: Tensor<R>,
-    /// Channel area at its pre-exchange stage, `[L]`. It bounds a channel receiver below its
-    /// cutoff.
-    channel_start_area: Tensor<R>,
-    /// Channel area at `max(channel stage, channel cutoff)`, `[L]`. It bounds a channel receiver
-    /// above it.
-    channel_receiver_area: Tensor<R>,
-    /// Channel area at `max(surface stage, surface cutoff)`, `[L]`. It bounds a channel donor
-    /// above the surface receiver.
-    channel_donor_area: Tensor<R>,
+    /// Donor area at `B = max(receiver stage, receiver cutoff)`. It bounds a donor above the
+    /// receiver.
+    donor_area: [Tensor<R>; 2],
+    /// Receiver area at its pre-exchange stage. It bounds a receiver below its cutoff.
+    below_area: [Tensor<R>; 2],
+    /// Receiver area at `B`. It bounds a receiver above its cutoff.
+    receiver_area: [Tensor<R>; 2],
     /// Stage response at the pre-exchange end stages, for the fixed-point response step.
     pub response: Response<R>,
     /// One where the start heads and the pre-exchange end heads of a link each sit within the
@@ -72,10 +91,12 @@ where
     R::Client: Ops<R>,
 {
     /// Completes every child with zero exchange and reads the plan areas at its end stages.
+    ///
+    /// Pools take their post-source water plus external inflow at the curve stage, without a
+    /// pool trial, so a pool that only links can drain never rejects here.
     pub fn levelling(
         &self,
-        surface: &Solver<R>,
-        reaches: &[ChannelReach<R>],
+        accepted: Accepted<'_, R>,
         reach_ids: &[&str],
         start: &Start<R>,
         attempt: &Attempt<R>,
@@ -83,7 +104,7 @@ where
     ) -> Result<Levelling<R>, SurfaceChannelError> {
         let c = &self.client;
         let device = c.device();
-        let n = self.surface_count + self.slot_count;
+        let n = self.group_count();
         let links = Tensor::<R>::zeros(&[self.link_count], DType::F64, device)?;
         let groups = Tensor::<R>::zeros(&[n], DType::F64, device)?;
         let ones = Tensor::<R>::ones(&[self.link_count], DType::F64, device)?;
@@ -96,57 +117,77 @@ where
             outgoing: groups,
             aggregation_bound: 0.0,
         };
-        let (next, linked) =
-            self.complete(surface, reaches, reach_ids, start, attempt, &zero, trials)?;
-        let borrowed: Vec<&ChannelReach<R>> = linked.iter().collect();
-        let (stage, _) = self.stages(&next, &borrowed, reach_ids)?;
+        let without_pools = Accepted {
+            pools: None,
+            ..accepted
+        };
+        let completed = self.complete(without_pools, reach_ids, start, attempt, &zero, trials)?;
+        let borrowed: Vec<&ChannelReach<R>> = completed.linked.iter().collect();
+        let (stage, _) = self.stages(&completed.surface, &borrowed, reach_ids)?;
+        let stage = match &attempt.pools {
+            Some(pools) => c.cat(&[&stage, &self.levelling_pool_stages(pools)?], 0)?,
+            None => stage,
+        };
         let host = stage.try_to_vec::<f64>()?;
         let available = attempt.available.try_to_vec::<f64>()?;
-        let count = |cells: &[usize]| -> Vec<usize> {
-            cells
+        let mut per_group = vec![0usize; n];
+        for groups in &self.link_groups {
+            for &group in groups {
+                if let Some(count) = per_group.get_mut(group) {
+                    *count += 1;
+                }
+            }
+        }
+        let counts: [Vec<usize>; 2] = [0, 1].map(|side| {
+            self.link_groups
                 .iter()
-                .map(|cell| cells.iter().filter(|&other| other == cell).count())
+                .map(|groups| per_group.get(groups[side]).copied().unwrap_or(0))
                 .collect()
-        };
-        let counts = [count(&self.link_lane), count(&self.link_slot)];
-        let mut areas = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
+        });
+        let mut areas = [Vec::new(), Vec::new()];
+        let mut donor = [Vec::new(), Vec::new()];
+        let mut below = [Vec::new(), Vec::new()];
+        let mut receiver = [Vec::new(), Vec::new()];
         let mut bounds = [Vec::new(), Vec::new()];
         let topology = || SurfaceChannelError::Numerical("levelling topology lacks a link".into());
-        for (link, (&lane, &slot)) in self.link_lane.iter().zip(&self.link_slot).enumerate() {
-            let read = |values: &[f64], index: usize| {
-                values.get(index).copied().ok_or_else(|| {
-                    SurfaceChannelError::Numerical("pre-exchange stages lack a group".into())
-                })
-            };
-            let surface_stage = read(&host, lane)?;
-            let channel_stage = read(&host, self.surface_count + slot)?;
+        let read = |values: &[f64], index: usize| {
+            values.get(index).copied().ok_or_else(|| {
+                SurfaceChannelError::Numerical("pre-exchange stages lack a group".into())
+            })
+        };
+        for (link, (groups, ends)) in self.link_groups.iter().zip(&self.link_ends).enumerate() {
+            let heads = [read(&host, groups[0])?, read(&host, groups[1])?];
             let law = self.laws.get(link).ok_or_else(topology)?;
-            let [surface_cut, channel_cut] = law.cut;
-            let plan = self.slot_plans.get(slot).ok_or_else(topology)?;
-            let lane_area = *self.lane_area_m2.get(lane).ok_or_else(topology)?;
+            let cut = law.cut;
+            let side_areas = [0, 1].map(|side| self.side_area(ends[side], heads, law));
+            let [area_a, area_b] = side_areas;
+            let area_a = area_a.ok_or_else(topology)?;
+            let area_b = area_b.ok_or_else(topology)?;
+            let area = |side: usize, stage: f64| {
+                if side == 0 {
+                    area_a.at(stage)
+                } else {
+                    area_b.at(stage)
+                }
+            };
             // The largest volume each direction keeps under the cap and the donor limit, with
-            // every shared cell split evenly among its links.
+            // every shared node split evenly among its links.
             let [forward, backward] = law.bounds(
-                [surface_stage, channel_stage],
-                |side, stage| {
-                    if side == 0 {
-                        lane_area
-                    } else {
-                        plan.area(stage)
-                    }
-                },
+                heads,
+                area,
                 [counts[0][link] as f64, counts[1][link] as f64],
-                [
-                    read(&available, lane)?,
-                    read(&available, self.surface_count + slot)?,
-                ],
+                [read(&available, groups[0])?, read(&available, groups[1])?],
             );
             bounds[0].push(forward);
             bounds[1].push(backward);
-            areas[0].push(lane_area);
-            areas[1].push(plan.area(channel_stage));
-            areas[2].push(plan.area(channel_stage.max(channel_cut)));
-            areas[3].push(plan.area(surface_stage.max(surface_cut)));
+            areas[0].push(area(0, heads[0]));
+            areas[1].push(area(1, heads[1]));
+            for (direction, (d, r)) in [(0usize, 1usize), (1, 0)].into_iter().enumerate() {
+                let floor = heads[r].max(cut[r]);
+                donor[direction].push(area(d, floor));
+                below[direction].push(area(r, heads[r]));
+                receiver[direction].push(area(r, floor));
+            }
         }
         let response = Response::new(
             [&areas[0], &areas[1]],
@@ -154,17 +195,42 @@ where
             [&bounds[0], &bounds[1]],
             device,
         )?;
-        let [surface_area, start_area, receiver_area, donor_area] =
-            areas.map(|values| Tensor::<R>::from_slice(&values, &[values.len()], device));
+        let tensors = |values: &[Vec<f64>; 2]| -> Result<[Tensor<R>; 2], SurfaceChannelError> {
+            Ok([
+                Tensor::<R>::from_slice(&values[0], &[values[0].len()], device)?,
+                Tensor::<R>::from_slice(&values[1], &[values[1].len()], device)?,
+            ])
+        };
         let level = c.mul(&self.level_heads(&start.stage)?, &self.level_heads(&stage)?)?;
         Ok(Levelling {
             level,
             stage,
-            surface_area: surface_area?,
-            channel_start_area: start_area?,
-            channel_receiver_area: receiver_area?,
-            channel_donor_area: donor_area?,
+            donor_area: tensors(&donor)?,
+            below_area: tensors(&below)?,
+            receiver_area: tensors(&receiver)?,
             response,
+        })
+    }
+
+    /// Plan area model of one link endpoint at pre-exchange link `heads`.
+    ///
+    /// A pool takes its smallest segment area over every stage the link's bounds cover: both
+    /// heads, both cutoffs, and a pump's suction stop.
+    fn side_area(&self, end: NodeEnd, heads: [f64; 2], law: &LinkLaw) -> Option<SideArea<'_>> {
+        Some(match end {
+            NodeEnd::Surface(lane) => SideArea::Fixed(*self.lane_area_m2.get(lane)?),
+            NodeEnd::Channel(slot) => SideArea::Slot(self.slot_plans.get(slot)?),
+            NodeEnd::Pool(pool) => {
+                let plan = self.pools.as_ref()?.plans.get(pool)?;
+                let stop = law.pump().map_or(f64::INFINITY, |p| p.stop_m);
+                let low = heads[0]
+                    .min(heads[1])
+                    .min(law.cut[0])
+                    .min(law.cut[1])
+                    .min(stop);
+                let high = heads[0].max(heads[1]).max(law.cut[0]).max(law.cut[1]);
+                SideArea::Fixed(plan.smallest(low, high))
+            }
         })
     }
 
@@ -196,10 +262,9 @@ where
         let given = c.where_cond(&active, &given, &one)?;
         let taken = c.where_cond(&active, &taken, &one)?;
         let cut = pick(&self.cut[1], &self.cut[0])?;
-        let surface_area = &levelling.surface_area;
-        let donor_area = pick(surface_area, &levelling.channel_donor_area)?;
-        let start_area = pick(&levelling.channel_start_area, surface_area)?;
-        let receiver_area = pick(&levelling.channel_receiver_area, surface_area)?;
+        let donor_area = pick(&levelling.donor_area[0], &levelling.donor_area[1])?;
+        let start_area = pick(&levelling.below_area[0], &levelling.below_area[1])?;
+        let receiver_area = pick(&levelling.receiver_area[0], &levelling.receiver_area[1])?;
         let below = c.div(&c.mul(&c.sub(&cut, &receiver)?, &start_area)?, &taken)?;
         let floor = c.maximum(&receiver, &cut)?;
         let response = c.add(
@@ -219,11 +284,7 @@ where
         let theta = c.where_cond(&c.lt(&theta, &one)?, &shrunk, &theta)?;
         let theta = c.where_cond(&active, &theta, &one)?;
         // Each group keeps the smallest factor among links that give from it or take into it.
-        let groups = Tensor::<R>::ones(
-            &[self.surface_count + self.slot_count],
-            DType::F64,
-            c.device(),
-        )?;
+        let groups = Tensor::<R>::ones(&[self.group_count()], DType::F64, c.device())?;
         let from_surface = c.where_cond(&forward, &theta, &one)?;
         let from_channel = c.where_cond(&backward, &theta, &one)?;
         let least = |index: &Tensor<R>, values: &Tensor<R>| {

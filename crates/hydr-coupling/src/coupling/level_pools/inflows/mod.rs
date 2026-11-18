@@ -7,14 +7,14 @@ mod preparation;
 mod projection;
 mod state;
 
-pub(super) use accounting::{InflowCumulativeSummary, InflowIntervalSummary};
-pub(super) use context::{BoundInflows, InflowContext};
+pub(crate) use accounting::{InflowCumulativeSummary, InflowIntervalSummary};
+pub(crate) use context::{BoundInflows, InflowContext};
 pub use definition::{
     CoupledPoolInflow, CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolInflowReceipt,
     CoupledPoolInflowValue,
 };
-pub(super) use preparation::{InflowStep, PreparedInflows};
-pub(super) use state::InflowState;
+pub(crate) use preparation::{InflowStep, PreparedInflows};
+pub(crate) use state::InflowState;
 
 #[cfg(test)]
 mod tests;

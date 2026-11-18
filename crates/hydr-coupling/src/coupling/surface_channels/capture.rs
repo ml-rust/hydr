@@ -54,6 +54,7 @@ where
             accepted_steps: self.accepted_steps,
             counters: self.counters.clone(),
             last: self.last.as_ref().map(Arc::clone),
+            pools: self.pools.clone(),
         }
     }
 
@@ -100,6 +101,7 @@ where
             accepted_steps: self.accepted_steps,
             counters: self.counters.clone(),
             last,
+            pools: self.pools.clone(),
         })
     }
 }
@@ -112,8 +114,10 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
                 surface,
                 reaches: self.previous.reaches.clone(),
                 counters: self.previous.counters.clone(),
+                pools: self.previous.pools.clone(),
             },
             forcing: self.forcing.clone(),
+            pool_forcing: self.pool_forcing.clone(),
             start_s: self.start_s,
             end_s: self.end_s,
             requested_end_s: self.requested_end_s,
