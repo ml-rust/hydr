@@ -4,10 +4,10 @@ use super::{
 use crate::storage::{LevelPoolCurve, LevelPoolElement, LevelPoolKnot};
 use numr::runtime::cpu::{CpuClient, CpuDevice, ParallelismConfig};
 
-pub(super) fn client() -> CpuClient {
+pub(in super::super) fn client() -> CpuClient {
     CpuClient::new(CpuDevice::new()).with_parallelism(ParallelismConfig::new(Some(1), Some(64)))
 }
-pub(super) fn pools(
+pub(in super::super) fn pools(
     capacity: f64,
 ) -> Result<Vec<LevelPoolElement>, crate::storage::LevelPoolError> {
     (0..2)
@@ -34,7 +34,7 @@ pub(super) fn pools(
         })
         .collect()
 }
-pub(super) fn binding(boundary: &str) -> CoupledPoolInflowBinding {
+pub(in super::super) fn binding(boundary: &str) -> CoupledPoolInflowBinding {
     CoupledPoolInflowBinding {
         boundary_id: boundary.into(),
         pool_id: "pool-0".into(),
@@ -44,6 +44,12 @@ pub(super) fn binding(boundary: &str) -> CoupledPoolInflowBinding {
         ownership_assertion:
             "independent selected input excludes represented water and local rainfall".into(),
     }
+}
+pub(in super::super) fn bindings() -> Vec<CoupledPoolInflowBinding> {
+    let first = binding("first");
+    let mut second = binding("second");
+    second.pool_id = "pool-1".into();
+    vec![first, second]
 }
 pub(super) fn rate(boundary: &str, value: f64) -> CoupledPoolInflow {
     CoupledPoolInflow {

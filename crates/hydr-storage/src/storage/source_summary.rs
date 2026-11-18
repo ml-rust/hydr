@@ -91,3 +91,62 @@ where
         counter_roundoff_bound_m3,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::storage::LevelPoolSources;
+    use crate::storage::fixture::batch;
+
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn source_summary_retains_actual_processes_when_counters_absorb_increments() -> TestResult {
+        let mut batch = batch(true)?;
+        let film = batch.context.tensor(&[1e-20, 0.0])?;
+        batch.state.volume_m3 = film.clone();
+        batch.state.initial_volume_m3 = film;
+        let counter = batch.context.tensor(&[1.0, 0.0])?;
+        let source_state = batch
+            .state
+            .sources
+            .as_mut()
+            .ok_or("missing source counters")?;
+        source_state.rain = counter.clone();
+        source_state.bottom_loss = counter.clone();
+        source_state.bottom_loss_demand = counter;
+        let rate = f64::EPSILON / 4.0;
+        let plan = batch.bind_source_rates(&[
+            LevelPoolSources {
+                rain_rate_m_per_s: rate,
+                potential_evaporation_rate_m_per_s: 0.0,
+                bottom_loss_rate_m3_per_s: rate,
+            },
+            LevelPoolSources {
+                rain_rate_m_per_s: 0.0,
+                potential_evaporation_rate_m_per_s: 0.0,
+                bottom_loss_rate_m3_per_s: 0.0,
+            },
+        ])?;
+        let prepared = plan.prepare(1.0)?;
+        let totals = prepared.source_totals()?;
+        assert_eq!(totals.rain_volume_m3, rate);
+        assert_eq!(totals.bottom_loss_volume_m3, rate);
+        assert!(totals.counter_roundoff_bound_m3 >= 2.0 * rate);
+        let zero = batch.context.tensor(&[0.0, 0.0])?;
+        let next = prepared.trial_to_tensors(&zero, &zero)?.into_next();
+        let before = batch
+            .totals()?
+            .sources
+            .ok_or("missing original source totals")?;
+        let after = next.totals()?.sources.ok_or("missing next source totals")?;
+        assert_eq!(
+            after.cumulative_rain_volume_m3 - before.cumulative_rain_volume_m3,
+            0.0
+        );
+        assert_eq!(
+            after.cumulative_bottom_loss_volume_m3 - before.cumulative_bottom_loss_volume_m3,
+            0.0
+        );
+        Ok(())
+    }
+}

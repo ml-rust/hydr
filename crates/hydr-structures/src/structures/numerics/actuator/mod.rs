@@ -19,6 +19,3 @@ pub(crate) use forward::forward;
 pub(crate) use initial::initial;
 pub(crate) use step::{TensorActuatorLeft, install, left};
 pub(crate) use update::admit_update;
-
-#[cfg(test)]
-mod count_tests;

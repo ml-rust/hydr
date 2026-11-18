@@ -4,7 +4,7 @@ mod accounting;
 mod context;
 mod definition;
 #[cfg(test)]
-mod fixture;
+pub(super) mod fixture;
 mod preparation;
 mod projection;
 mod state;
@@ -17,6 +17,3 @@ pub use definition::{
 };
 pub(crate) use preparation::{InflowStep, PreparedInflows};
 pub(crate) use state::InflowState;
-
-#[cfg(test)]
-mod native_tests;

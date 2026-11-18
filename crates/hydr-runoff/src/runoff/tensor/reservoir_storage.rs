@@ -282,3 +282,75 @@ impl<R: Runtime<DType = DType>> std::fmt::Debug for TensorReservoirContext<R> {
             .finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runoff::tensor::fixture::{client, strided};
+    use crate::runoff::{ReservoirElement, ReservoirParameters};
+    use crate::soil::ModifiedGreenAmptParameters;
+    use hydr_soil::internal::TensorSoilContext;
+    use numr::runtime::cpu::CpuRuntime;
+
+    type Result = std::result::Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn reservoir_and_soil_diagnostics_keep_first_tied_lane_and_strided_field_value() -> Result {
+        let (device, client) = client();
+        for count in [3, 33, 257] {
+            let first = if count == 3 { 1 } else { 17 };
+            let mut flags = vec![0.0; count];
+            flags[first] = 1.0;
+            flags[count - 1] = 1.0;
+            let mask = strided(&device, &flags)?;
+            let field = strided(
+                &device,
+                &(0..count).map(|i| i as f64 + 10.0).collect::<Vec<_>>(),
+            )?;
+            let parameters = ReservoirParameters::from_si(1.0, 1.0, 1.0, 0.01, 0.0, 0.0)?;
+            let reservoirs = TensorReservoirContext::<CpuRuntime>::new(
+                client.clone(),
+                (0..count)
+                    .map(|i| ReservoirElement {
+                        id: format!("reservoir-{i}"),
+                        parameters,
+                    })
+                    .collect(),
+                ReservoirConfig::default(),
+            )?;
+            let error = reservoirs
+                .reject_mask(
+                    &mask,
+                    "ordered scalar field",
+                    &[("sample", &field)],
+                    &[("dt", 0.5)],
+                    "Declared action",
+                )
+                .err()
+                .ok_or("Missing reservoir rejection")?;
+            assert_eq!(error.element(), Some(first));
+            let message = error.to_string();
+            assert!(message.contains(&format!(", sample={:.17e}", first as f64 + 10.0)));
+            assert!(message.contains("Declared action"));
+            let soils = TensorSoilContext::<CpuRuntime>::new(
+                client.clone(),
+                &vec![ModifiedGreenAmptParameters::from_native(0.125, 1.0 / 1024.0, 1.0)?; count],
+            )?;
+            let error = soils
+                .reject_mask(
+                    &mask,
+                    "ordered scalar field",
+                    &[("sample", &field)],
+                    &[("dt", 0.5)],
+                    "Declared action",
+                )
+                .err()
+                .ok_or("Missing soil rejection")?;
+            assert_eq!(error.cell(), Some(first));
+            let message = error.to_string();
+            assert!(message.contains(&format!(", sample={:.17e}", first as f64 + 10.0)));
+            assert!(message.contains("Declared action"));
+        }
+        Ok(())
+    }
+}

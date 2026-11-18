@@ -292,7 +292,3 @@ impl<R: Runtime<DType = DType>> std::fmt::Debug for Solver<R> {
             .finish_non_exhaustive()
     }
 }
-
-#[cfg(test)]
-#[path = "restore_tests.rs"]
-mod tests;

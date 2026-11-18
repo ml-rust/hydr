@@ -103,3 +103,18 @@ impl LevelPoolCurve {
             })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::coupling_cuts::fixture::batch;
+
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn nonfinite_static_segment_difference_returns_typed_input_error() -> TestResult {
+        let result = batch(&[0.0, 1.0e308], &[-1.0e308, 1.0e308], 0.0);
+        assert!(matches!(result, Err(LevelPoolError::InvalidInput { .. })));
+        Ok(())
+    }
+}

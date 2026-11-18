@@ -6,8 +6,11 @@ use numr::runtime::{Device, Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 
 use super::error::{OutwardError, finite, nonnegative};
-use super::lanes::{check_tensor_finite, reject, rejected_lane};
-use super::{rounding_bound, upward_add, upward_mul};
+use super::lanes::{check_tensor_finite, reject};
+use super::rounding_bound;
+
+mod areas;
+mod unit_sum;
 
 /// Count-dependent reduction bound, cached by the surface runtime.
 #[derive(Debug, Clone, Copy)]
@@ -36,44 +39,6 @@ impl AdjustmentReduction {
             ));
         }
         Ok(Self { count, denominator })
-    }
-
-    /// Bound absolute error in a reported nonnegative, unit-area F64 sum.
-    ///
-    /// Assume IEEE round-to-nearest addition with gradual underflow and at most N-1 additions.
-    /// Unit-area multiplication is exact. This bound does not cover rounded area products.
-    #[inline]
-    pub fn unit_sum_error_bound(self, reported: f64) -> Result<f64, OutwardError> {
-        nonnegative(reported, "reported unit-area sum")?;
-        if self.count == 0 && reported != 0.0 {
-            return Err(OutwardError::input(
-                "empty unit-area reduction reports a nonzero sum",
-            ));
-        }
-        if self.count <= 1 || reported == 0.0 {
-            return Ok(0.0);
-        }
-        // With k <= N-1, u=EPSILON/2, q=smallest subnormal, and exact sum S:
-        // |reported-S| <= (k*u*S + k*q/2)/(1-k*u).
-        // Substitution S <= reported+|reported-S| gives denominator 1-2*k*u.
-        // The cached denominator is <= 1-(N+7)*EPSILON, hence <= 1-2*k*u.
-        // Numerator (N+7)*EPSILON*reported + N*q dominates both error directions.
-        // This is the same conservative count envelope used by storage accounting.
-        let additions = self
-            .count
-            .checked_add(7)
-            .ok_or_else(|| OutwardError::input("unit-area reduction count overflows usize"))?;
-        let relative = upward_mul(reported, additions as f64 * f64::EPSILON)?;
-        let absolute = upward_mul(self.count as f64, f64::from_bits(1))?;
-        let numerator = upward_add(relative, absolute)?;
-        let quotient = finite(
-            numerator / self.denominator,
-            "unit-area reduction error quotient",
-        )?;
-        finite(
-            quotient + rounding_bound(quotient)?,
-            "unit-area absolute reduction error bound",
-        )
     }
 
     pub fn totals<R>(
@@ -105,57 +70,6 @@ impl AdjustmentReduction {
             )));
         }
         self.totals_with_product(client, depths, || client.mul_scalar(depths, area))
-    }
-
-    /// Reduce corrections with checked positive per-lane F64 areas, without broadcasting.
-    pub fn totals_with_areas<R>(
-        self,
-        client: &R::Client,
-        depths: &Tensor<R>,
-        areas: &Tensor<R>,
-    ) -> Result<(f64, f64), OutwardError>
-    where
-        R: Runtime<DType = DType>,
-        R::Client: BinaryOps<R>
-            + CompareOps<R>
-            + ConditionalOps<R>
-            + ReduceOps<R>
-            + ScalarOps<R>
-            + TypeConversionOps<R>
-            + UnaryOps<R>,
-    {
-        if depths.shape() != [self.count]
-            || areas.shape() != [self.count]
-            || depths.dtype() != DType::F64
-            || !depths.device().is_same(client.device())
-            || areas.dtype() != DType::F64
-            || !areas.device().is_same(client.device())
-        {
-            return Err(OutwardError::input(format!(
-                "correction shape={:?}, dtype={:?}, area shape={:?}, dtype={:?}: require {} matching flat F64 entries",
-                depths.shape(),
-                depths.dtype(),
-                areas.shape(),
-                areas.dtype(),
-                self.count
-            )));
-        }
-        if self.count == 0 {
-            return Ok((0.0, 0.0));
-        }
-        let zero = Tensor::<R>::zeros(areas.shape(), DType::F64, areas.device())?;
-        let invalid = client.maximum(
-            &client.cast(&client.isnan(areas)?, DType::F64)?,
-            &client.cast(&client.isinf(areas)?, DType::F64)?,
-        )?;
-        let invalid = client.maximum(&invalid, &client.le(areas, &zero)?)?;
-        if let Some(index) = rejected_lane(client, &invalid)? {
-            return Err(OutwardError::input(
-                "per-lane area must be positive finite F64. Rescale or correct area support",
-            )
-            .at_cell(index));
-        }
-        self.totals_with_product(client, depths, || client.mul(depths, areas))
     }
 
     fn totals_with_product<R>(
@@ -238,10 +152,6 @@ where
 }
 
 #[cfg(test)]
-#[path = "variable_areas_tests.rs"]
-mod variable_areas_tests;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use numr::runtime::cpu::CpuClient;
@@ -277,7 +187,3 @@ mod tests {
         Ok(())
     }
 }
-
-#[cfg(test)]
-#[path = "unit_sum_tests.rs"]
-mod unit_sum_tests;

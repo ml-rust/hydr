@@ -230,5 +230,85 @@ impl<R: Runtime<DType = DType>> std::fmt::Debug for TensorSubcatchmentContext<R>
 }
 
 #[cfg(test)]
-#[path = "rejection_tests.rs"]
-mod rejection_tests;
+mod tests {
+    use super::*;
+    use crate::runoff::tensor::fixture::client;
+    use crate::runoff::tensor::fixture::strided;
+    use crate::runoff::{SubcatchmentGeometry, SubcatchmentParameters, SubcatchmentRouting};
+    use numr::runtime::cpu::CpuRuntime;
+
+    type Result = std::result::Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn runoff_diagnostics_preserve_flat_subarea_and_catchment_mapping() -> Result {
+        let (device, client) = client();
+        let parameters = SubcatchmentParameters::new(
+            SubcatchmentGeometry {
+                total_area_m2: 1.0,
+                width_m: 1.0,
+                slope: 0.01,
+                impervious_fraction: 1.0,
+                zero_storage_impervious_fraction: 1.0,
+                impervious_manning: 0.0,
+                pervious_manning: 0.0,
+                impervious_depression_m: 0.0,
+                pervious_depression_m: 0.0,
+            },
+            None,
+            SubcatchmentRouting::Direct,
+        )?;
+        let definitions = (0..3)
+            .map(|i| SubcatchmentDefinition {
+                id: format!("catchment-{i}"),
+                parameters: parameters.clone(),
+            })
+            .collect();
+        let context = TensorSubcatchmentContext::<CpuRuntime>::new(
+            client,
+            definitions,
+            SubcatchmentConfig::default(),
+        )?;
+        let mask = strided(&device, &[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0])?;
+        let field = strided(
+            &device,
+            &[10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0],
+        )?;
+        let error = context
+            .reject_mask(
+                &mask,
+                "flat scalar field",
+                &[("sample", &field)],
+                &[],
+                "Declared action",
+            )
+            .err()
+            .ok_or("Missing flat runoff rejection")?;
+        assert_eq!(error.catchment(), Some(1));
+        assert_eq!(error.subarea(), Some(Subarea::ImperviousStorage));
+        assert!(
+            error
+                .to_string()
+                .contains(&format!(", sample={:.17e}", 14.0))
+        );
+        let mask = strided(&device, &[0.0, 1.0, 1.0])?;
+        let field = strided(&device, &[10.0, 20.0, 30.0])?;
+        let error = context
+            .reject_mask(
+                &mask,
+                "catchment scalar field",
+                &[("sample", &field)],
+                &[],
+                "Declared action",
+            )
+            .err()
+            .ok_or("Missing catchment runoff rejection")?;
+        assert_eq!(error.catchment(), Some(1));
+        assert_eq!(error.subarea(), None);
+        assert!(
+            error
+                .to_string()
+                .contains(&format!(", sample={:.17e}", 20.0))
+        );
+        Ok(())
+    }
+}

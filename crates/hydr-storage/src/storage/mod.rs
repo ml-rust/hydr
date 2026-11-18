@@ -9,6 +9,8 @@ pub(crate) mod coupling_cuts;
 mod curve;
 pub(crate) mod definition;
 mod error;
+#[cfg(test)]
+mod fixture;
 pub(crate) mod numerics;
 pub(crate) mod prepared_interval;
 mod projection;

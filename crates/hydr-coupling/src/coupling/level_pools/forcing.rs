@@ -179,3 +179,67 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::inflows::InflowContext;
+    use super::super::inflows::fixture::{bindings, client, pools};
+    use super::*;
+    use numr::runtime::RuntimeClient;
+    use numr::runtime::cpu::{CpuClient, CpuRuntime, ParallelismConfig};
+
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    fn inputs() -> Vec<CoupledPoolInflow> {
+        vec![
+            CoupledPoolInflow {
+                boundary_id: "second".into(),
+                input_id: "input-second".into(),
+                value: CoupledPoolInflowValue::IntervalVolume { volume_m3: 0.75 },
+            },
+            CoupledPoolInflow {
+                boundary_id: "first".into(),
+                input_id: "input-first".into(),
+                value: CoupledPoolInflowValue::Rate {
+                    rate_m3_per_s: 0.25,
+                },
+            },
+        ]
+    }
+
+    #[test]
+    fn bound_forcing_projection_preserves_public_record_order_and_destination_context() -> TestResult
+    {
+        let client = client();
+        let destination_client = CpuClient::new(client.device().clone())
+            .with_parallelism(ParallelismConfig::new(Some(1), Some(128)));
+        let context = InflowContext::<CpuRuntime>::new(&client, &pools(4.0)?, &bindings())?;
+        let destination =
+            InflowContext::<CpuRuntime>::new(&destination_client, &pools(4.0)?, &bindings())?;
+        let interval = CoupledLevelPoolForcingInterval {
+            start_s: 0.0,
+            end_s: 2.0,
+            sources: None,
+            inflows: inputs(),
+        };
+        let forcing = BoundPoolForcing {
+            start_s: interval.start_s,
+            end_s: interval.end_s,
+            sources: None,
+            inflows: context.bind_inputs(&client, &interval.inflows)?,
+        };
+        assert!(forcing.project(&client, &context)?.same_bits(&interval));
+        let rebound = forcing.restore(&destination_client, &destination)?;
+        assert!(
+            rebound
+                .project(&destination_client, &destination)?
+                .same_bits(&interval)
+        );
+        let original = destination.zero_state(&destination_client)?;
+        let mixed =
+            destination.prepare(&destination_client, &rebound.inflows, &original, 2.0, 1)?;
+        assert!(!mixed.step.all_interval_volumes());
+        assert_eq!(destination_client.parallelism().chunk_size, Some(128));
+        Ok(())
+    }
+}

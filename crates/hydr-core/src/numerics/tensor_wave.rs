@@ -6,8 +6,13 @@ use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, UnaryOps};
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
-use solvr::optimize::OptimizeError;
-use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedBisectionOptions};
+use solvr::optimize::roots::BatchedBisectionAlgorithms;
+
+#[cfg(test)]
+mod fixture;
+mod root;
+
+use root::{Rooted, root_upper, rooted_curve};
 
 pub fn bounds<R, C>(
     client: &C,
@@ -165,178 +170,45 @@ where
     rooted_curve(client, h, &client.sqrt(h)?, &root, gravity)
 }
 
-/// A reference depth and its square root, taken once for repeated curve evaluations.
-struct Rooted<'a, R: Runtime<DType = DType>> {
-    reference: &'a Tensor<R>,
-    /// `sqrt(reference)`.
-    depth: Tensor<R>,
-}
-
-impl<'a, R: Runtime<DType = DType>> Rooted<'a, R> {
-    fn new<C: UnaryOps<R>>(client: &C, reference: &'a Tensor<R>) -> numr::error::Result<Self> {
-        Ok(Self {
-            depth: client.sqrt(reference)?,
-            reference,
-        })
-    }
-}
-
-/// [`curve`] with `sqrt(h)` and `sqrt(reference)` supplied.
-///
-/// Every operation matches [`curve`] on the same operands, so every bit agrees.
-fn rooted_curve<R, C>(
-    client: &C,
-    h: &Tensor<R>,
-    root_h: &Tensor<R>,
-    reference: &Rooted<'_, R>,
-    gravity: f64,
-) -> numr::error::Result<Tensor<R>>
-where
-    R: Runtime<DType = DType>,
-    C: RuntimeClient<R>
-        + BinaryOps<R>
-        + CompareOps<R>
-        + ConditionalOps<R>
-        + ScalarOps<R>
-        + UnaryOps<R>,
-{
-    let Rooted {
-        reference,
-        depth: root_reference,
-    } = reference;
-    let rarefaction =
-        client.mul_scalar(&client.sub(root_h, root_reference)?, 2.0 * gravity.sqrt())?;
-    let shock_h = client.maximum(h, reference)?;
-    let factor = client.sqrt(&client.mul_scalar(
-        &client.add_scalar(&client.div(reference, &shock_h)?, 1.0)?,
-        0.5,
-    )?)?;
-    let shock = client.mul(
-        &client.mul_scalar(
-            &client.div(&client.sub(&shock_h, reference)?, root_reference)?,
-            gravity.sqrt(),
-        )?,
-        &factor,
-    )?;
-    client.where_cond(&client.le(h, reference)?, &rarefaction, &shock)
-}
-
-/// `fL(h) + fR(h) + jump`, taking `sqrt(h)` once for both curves.
-fn residual<R, C>(
-    client: &C,
-    h: &Tensor<R>,
-    left: &Rooted<'_, R>,
-    right: &Rooted<'_, R>,
-    jump: &Tensor<R>,
-    gravity: f64,
-) -> numr::error::Result<Tensor<R>>
-where
-    R: Runtime<DType = DType>,
-    C: RuntimeClient<R>
-        + BinaryOps<R>
-        + CompareOps<R>
-        + ConditionalOps<R>
-        + ScalarOps<R>
-        + UnaryOps<R>,
-{
-    let root_h = client.sqrt(h)?;
-    let result = client.add(
-        &client.add(
-            &rooted_curve(client, h, &root_h, left, gravity)?,
-            &rooted_curve(client, h, &root_h, right, gravity)?,
-        )?,
-        jump,
-    )?;
-    Ok(result)
-}
-
-fn root_upper<R, C>(
-    client: &C,
-    hl: &Tensor<R>,
-    hr: &Tensor<R>,
-    jump: &Tensor<R>,
-    solve: &Tensor<R>,
-    gravity: f64,
-    config: &SolverConfig,
-) -> Result<Tensor<R>, EngineError>
-where
-    R: Runtime<DType = DType>,
-    C: RuntimeClient<R>
-        + BinaryOps<R>
-        + CompareOps<R>
-        + ConditionalOps<R>
-        + ReduceOps<R>
-        + ScalarOps<R>
-        + UnaryOps<R>
-        + BatchedBisectionAlgorithms<R>,
-{
-    let zero = constant(hl, 0.0)?;
-    // The reference roots stay fixed over every bracket expansion and bisection callback.
-    let left = Rooted::new(client, hl)?;
-    let right = Rooted::new(client, hr)?;
-    let maximum = client.maximum(hl, hr)?;
-    let coefficient_scale = gravity.sqrt() * std::f64::consts::FRAC_1_SQRT_2;
-    let coefficient = client.add(
-        &client.div(&constant(hl, coefficient_scale)?, &left.depth)?,
-        &client.div(&constant(hr, coefficient_scale)?, &right.depth)?,
-    )?;
-    check_finite(client, &coefficient, "compression bracket coefficient")?;
-    // For H>=M, fL(H)+fR(H)>=(H-M)*sum(sqrt(g/(2ha))).
-    let compression = client.maximum(&client.neg(jump)?, &zero)?;
-    let seed = client.add(&maximum, &client.div(&compression, &coefficient)?)?;
-    // Each one-sided shock lower bound supplies an upper root bracket, including mixed-wave states.
-    let mut seed = seed;
-    for (other, reference) in [(&left, &right), (&right, &left)] {
-        let numerator = client.maximum(
-            &client.sub(
-                &client.mul_scalar(&other.depth, 2.0 * gravity.sqrt())?,
-                jump,
-            )?,
-            &zero,
-        )?;
-        let factor =
-            client.mul_scalar(&reference.depth, std::f64::consts::SQRT_2 / gravity.sqrt())?;
-        let candidate = client.add(reference.reference, &client.mul(&numerator, &factor)?)?;
-        let finite = client.le(&client.abs(&candidate)?, &constant(&candidate, f64::MAX)?)?;
-        let candidate = client.where_cond(&finite, &candidate, &seed)?;
-        seed = client.minimum(&seed, &candidate)?;
-    }
-    let hi = client.add_scalar(
-        &client.mul_scalar(&seed, 1.0 + 16.0 * f64::EPSILON)?,
-        f64::from_bits(1),
-    )?;
-    check_finite(client, &hi, "compression bracket seed")?;
-    // Film-depth wave speeds require relative root accuracy beyond an absolute depth ceiling.
-    let options = BatchedBisectionOptions {
-        atol: f64::from_bits(1),
-        rtol: config.root_relative_depth.min(1e-12),
-        max_iter: config.root_iterations,
-        max_expansions: config.root_iterations,
-        expansion_factor: 2.0,
-    };
-    let result = client
-        .bisect_batched(
-            |depth| {
-                client.where_cond(
-                    solve,
-                    &residual(client, depth, &left, &right, jump, gravity)?,
-                    &zero,
-                )
-            },
-            &zero,
-            &hi,
-            &options,
-        )
-        .map_err(|error| {
-            let reason = match &error {
-                OptimizeError::DidNotConverge { .. } => format!("iteration limit reached: {error}"),
-                _ => error.to_string(),
-            };
-            EngineError::rejected("Riemann root", reason)
-        })?;
-    Ok(result.upper)
-}
-
 #[cfg(test)]
-#[path = "tensor_wave_tests.rs"]
-mod tests;
+mod tests {
+    use super::*;
+    use crate::numerics::tensor_wave::fixture::{
+        DEPTHS, GRAVITY, TestResult, physical_upper, setup,
+    };
+
+    #[test]
+    fn unequal_positive_films_enclose_the_physical_shock_in_both_orientations() -> TestResult {
+        let (client, left, right) = setup()?;
+        let (sl, sr) = bounds(&client, &left, &right, GRAVITY, &SolverConfig::default())?;
+        for ((&(hl, hr), sl), sr) in DEPTHS
+            .iter()
+            .zip(sl.try_to_vec::<f64>()?)
+            .zip(sr.try_to_vec::<f64>()?)
+        {
+            let deep = hl.max(hr);
+            let shallow = hl.min(hr);
+            let star = physical_upper(deep, shallow);
+            let head = GRAVITY.sqrt() * deep.sqrt();
+            let shock =
+                GRAVITY.sqrt() * (star / shallow.sqrt()) * (0.5 * (1.0 + shallow / star)).sqrt();
+            let (physical_sl, physical_sr) = if hl > hr {
+                (-head, shock)
+            } else {
+                (-shock, head)
+            };
+            let rounding = 32.0 * f64::EPSILON * shock;
+            assert!(sl.is_finite() && sr.is_finite());
+            assert!(
+                sl <= physical_sl + rounding,
+                "sl={sl}, physical_sl={physical_sl}"
+            );
+            assert!(
+                sr >= physical_sr - rounding,
+                "sr={sr}, physical_sr={physical_sr}"
+            );
+            assert!(sl < 0.0 && sr > 0.0);
+        }
+        Ok(())
+    }
+}
