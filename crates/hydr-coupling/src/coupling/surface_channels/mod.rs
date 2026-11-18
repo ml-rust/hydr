@@ -38,6 +38,7 @@ mod frames;
 mod identity;
 mod iteration;
 mod levelling;
+mod memo;
 mod output;
 mod projection;
 mod restoration;

@@ -20,7 +20,7 @@
 
 use super::SurfaceChannelError;
 use super::context::{Context, Ops};
-use super::evaluate::Attempt;
+use super::evaluate::{Attempt, Trials};
 use super::exchange::{Exchange, split};
 use super::start::Start;
 use crate::channel::{ChannelGeometry, ChannelReach, ChannelReachDefinition};
@@ -159,6 +159,7 @@ where
         reach_ids: &[&str],
         start: &Start<R>,
         attempt: &Attempt<R>,
+        trials: &Trials<R>,
     ) -> Result<Levelling<R>, SurfaceChannelError> {
         let c = &self.client;
         let device = c.device();
@@ -175,7 +176,8 @@ where
             outgoing: groups,
             aggregation_bound: 0.0,
         };
-        let (next, linked) = self.complete(surface, reaches, reach_ids, start, attempt, &zero)?;
+        let (next, linked) =
+            self.complete(surface, reaches, reach_ids, start, attempt, &zero, trials)?;
         let borrowed: Vec<&ChannelReach<R>> = linked.iter().collect();
         let (stage, _) = self.stages(&next, &borrowed, reach_ids)?;
         let host = stage.try_to_vec::<f64>()?;

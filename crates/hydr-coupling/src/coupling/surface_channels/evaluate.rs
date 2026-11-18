@@ -2,6 +2,8 @@
 //! child completions.
 //!
 //! Every evaluation starts from the accepted children, so no trial state carries over.
+//! A child trial whose exchange operands repeat an earlier trial of the attempt in every bit
+//! takes that trial's result. See [`TrialMemo`].
 //! Momentum closure: surface-to-channel water enters the reach with the surface donor's
 //! post-transport velocity projected on the reach tangent. Channel-to-surface water leaves at
 //! the channel's accepted-start velocity, the channel's own withdrawal rule, and enters the
@@ -11,6 +13,7 @@ use super::SurfaceChannelError;
 use super::context::{Context, Ops, transfer_error};
 use super::exchange::Exchange;
 use super::levelling::Levelling;
+use super::memo::{TrialKeys, TrialMemo};
 use super::start::Start;
 use crate::channel::ChannelReach;
 use crate::numerics::water_transfers::AggregationKind;
@@ -40,6 +43,9 @@ pub(super) struct Attempt<R: Runtime<DType = DType>> {
     /// Surface-to-channel inflow velocity along each link's reach, `[L]`.
     pub surface_velocity: Tensor<R>,
 }
+
+/// Kept child trials of one attempt.
+pub(super) type Trials<R> = TrialMemo<Solver<R>, ChannelReach<R>>;
 
 /// Complete candidate children and exchange of one map evaluation.
 pub(super) struct Evaluation<R: Runtime<DType = DType>> {
@@ -123,6 +129,7 @@ where
         attempt: &Attempt<R>,
         levelling: &Levelling<R>,
         x: &Tensor<R>,
+        trials: &Trials<R>,
     ) -> Result<Evaluation<R>, SurfaceChannelError> {
         let c = &self.client;
         let n = self.surface_count + self.slot_count;
@@ -144,8 +151,9 @@ where
             .map_err(|error| SurfaceChannelError::Numerical(format!("link volumes: {error}")))?;
         let level = self.level(&proposed, levelling)?;
         let exchange = self.exchange(proposed, level, &attempt.available)?;
-        let (next_surface, linked) =
-            self.complete(surface, reaches, reach_ids, start, attempt, &exchange)?;
+        let (next_surface, linked) = self.complete(
+            surface, reaches, reach_ids, start, attempt, &exchange, trials,
+        )?;
         let borrowed: Vec<&ChannelReach<R>> = linked.iter().collect();
         let (end_stage, end_wet) = self.stages(&next_surface, &borrowed, reach_ids)?;
         let packet = c.cat(&[&end_stage, &exchange.signed, &end_wet, &law.regime], 0)?;
@@ -160,6 +168,9 @@ where
     }
 
     /// Completes the surface and every linked reach with the limited volumes of `exchange`.
+    ///
+    /// A child whose operands repeat a trial kept in `trials` takes the kept result.
+    #[allow(clippy::too_many_arguments)]
     pub fn complete(
         &self,
         surface: &Solver<R>,
@@ -168,6 +179,7 @@ where
         start: &Start<R>,
         attempt: &Attempt<R>,
         exchange: &Exchange<R>,
+        trials: &Trials<R>,
     ) -> Result<(Solver<R>, Vec<ChannelReach<R>>), SurfaceChannelError> {
         let c = &self.client;
         let zero = self.scalar(0.0)?;
@@ -177,31 +189,48 @@ where
             &c.neg(&exchange.signed)?,
             &zero,
         )?;
-        let next_surface = self.complete_surface(surface, start, attempt, exchange, &to_surface)?;
-        let mut linked = Vec::with_capacity(self.linked.len());
-        for (index, entry) in self.linked.iter().enumerate() {
-            let reach = &reaches[entry.reach];
-            let bound = &start.forcing.reaches[entry.reach];
-            let mut inputs = bound.lateral.clone();
-            inputs.extend(self.exchange_inputs(
-                index,
+        let s = self.surface_count;
+        let packed = c.cat(
+            &[
                 &to_channel,
                 &to_surface,
-                &attempt.surface_velocity,
-            )?);
-            let channel = |source| SurfaceChannelError::Channel {
-                reach_id: reach_ids[entry.reach].to_string(),
-                source,
-            };
-            let forcing = reach
-                .bind_coupling_reserved(&start.reservations[entry.reach], attempt.end, &inputs)
-                .map_err(channel)?;
-            linked.push(advanced(
-                reach.trial_coupled(attempt.end, &forcing, None, None),
-                start.time,
-                attempt.end,
-                reach_ids[entry.reach],
-            )?);
+                &exchange.incoming.narrow(0, 0, s)?,
+                &exchange.outgoing.narrow(0, 0, s)?,
+            ],
+            0,
+        )?;
+        let reach_links: Vec<&[usize]> = self.linked.iter().map(|e| e.links.as_slice()).collect();
+        let keys = TrialKeys::read(&packed, self.link_count, &reach_links)?;
+        let next_surface = trials.surface(&keys.surface, || {
+            self.complete_surface(surface, start, attempt, exchange, &to_surface)
+        })?;
+        let mut linked = Vec::with_capacity(self.linked.len());
+        for ((index, entry), key) in self.linked.iter().enumerate().zip(&keys.linked) {
+            let reach = &reaches[entry.reach];
+            let next = trials.reach(index, key, || {
+                let bound = &start.forcing.reaches[entry.reach];
+                let mut inputs = bound.lateral.clone();
+                inputs.extend(self.exchange_inputs(
+                    index,
+                    &to_channel,
+                    &to_surface,
+                    &attempt.surface_velocity,
+                )?);
+                let channel = |source| SurfaceChannelError::Channel {
+                    reach_id: reach_ids[entry.reach].to_string(),
+                    source,
+                };
+                let forcing = reach
+                    .bind_coupling_reserved(&start.reservations[entry.reach], attempt.end, &inputs)
+                    .map_err(channel)?;
+                advanced(
+                    reach.trial_coupled(attempt.end, &forcing, None, None),
+                    start.time,
+                    attempt.end,
+                    reach_ids[entry.reach],
+                )
+            })?;
+            linked.push(next);
         }
         Ok((next_surface, linked))
     }

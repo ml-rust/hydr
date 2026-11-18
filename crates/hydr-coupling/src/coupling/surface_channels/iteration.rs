@@ -1,7 +1,7 @@
 //! Fixed-point iteration over end stages and signed link volumes, with separate budgets.
 
 use super::context::{Context, Ops};
-use super::evaluate::{Attempt, Evaluation};
+use super::evaluate::{Attempt, Evaluation, Trials};
 use super::start::Start;
 use super::{SurfaceChannelConfig, SurfaceChannelError};
 use crate::channel::ChannelReach;
@@ -136,7 +136,9 @@ where
         attempt: &Attempt<R>,
         stalled: &Cell<Option<Stall>>,
     ) -> Result<Solved<R>, SurfaceChannelError> {
-        let levelling = self.levelling(surface, reaches, reach_ids, start, attempt)?;
+        // Kept trials never outlive this attempt, so none crosses an accepted step or a retry.
+        let trials = Trials::new(self.linked.len());
+        let levelling = self.levelling(surface, reaches, reach_ids, start, attempt, &trials)?;
         let error = RefCell::new(None);
         let record = |e: SurfaceChannelError| -> numr::error::Error {
             if let Ok(mut slot) = error.try_borrow_mut()
@@ -155,7 +157,9 @@ where
         let checked: RefCell<Option<Residuals>> = RefCell::new(None);
         let map = |x: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
             let evaluation = self
-                .evaluate(surface, reaches, reach_ids, start, attempt, &levelling, x)
+                .evaluate(
+                    surface, reaches, reach_ids, start, attempt, &levelling, x, &trials,
+                )
                 .map_err(record)?;
             let packet = evaluation.packet.clone();
             *latest.borrow_mut() = Some((x.clone(), evaluation));
@@ -221,7 +225,7 @@ where
             }
             _ => {
                 let evaluation = self.evaluate(
-                    surface, reaches, reach_ids, start, attempt, &levelling, &root.x,
+                    surface, reaches, reach_ids, start, attempt, &levelling, &root.x, &trials,
                 )?;
                 let residuals = self.residuals(config, &root.x, &evaluation.packet)?;
                 (evaluation, residuals)

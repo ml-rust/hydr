@@ -35,6 +35,17 @@ pub struct Solver<R: Runtime<DType = DType>> {
     pub(super) context: Arc<TensorDomain<R>>,
 }
 
+/// A clone shares the immutable definition, domain and accepted tensors.
+impl<R: Runtime<DType = DType>> Clone for Solver<R> {
+    fn clone(&self) -> Self {
+        Self {
+            definition: Arc::clone(&self.definition),
+            accepted: self.accepted.clone(),
+            context: Arc::clone(&self.context),
+        }
+    }
+}
+
 impl<R: Runtime<DType = DType>> Solver<R>
 where
     R::Client: BinaryOps<R>
