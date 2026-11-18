@@ -54,6 +54,8 @@ pub(in super::super) struct LinkLaw {
     pub bed: [f64; 2],
     /// Cutoff stage of endpoints `[A, B]`, in metres.
     pub cut: [f64; 2],
+    /// Head allowance `(absolute, relative)` of the coordinator.
+    pub allowance: (f64, f64),
 }
 
 impl LinkLaw {
@@ -101,7 +103,17 @@ impl LinkLaw {
             kind,
             bed: beds,
             cut,
+            allowance: (absolute, relative),
         }
+    }
+
+    /// `gap` lies at or below the head allowance of stages `a` and `b`.
+    ///
+    /// It repeats the coordinator's tensor allowance operation for operation, so both agree in
+    /// every bit.
+    fn within(&self, gap: f64, a: f64, b: f64) -> bool {
+        let (absolute, relative) = self.allowance;
+        gap <= a.abs().max(b.abs()) * relative + absolute
     }
 
     /// The law moves water only down its head difference.
@@ -131,6 +143,8 @@ impl LinkLaw {
     /// - Orifice: the receiver stays below the donor, and the donor above the crown.
     /// - Pump: its donor stays at or above the suction stop, and the lift below the curve's
     ///   zero-flow head. The other direction keeps nothing.
+    ///
+    /// A direction stopped at its cap bounds keeps nothing, as in `Context::stopped`.
     pub fn bounds(
         &self,
         heads: [f64; 2],
@@ -145,16 +159,27 @@ impl LinkLaw {
             let z_r = self.cut[receiver];
             let floor = h_r.max(z_r);
             let level = (h_d - floor) / (s_d / area(donor, floor) + s_r / area(receiver, floor));
+            // A link stopped at its cap bounds keeps nothing. See `Context::stopped`.
+            let at_level = self.within(h_d - floor, h_d, floor);
             let kept = match &self.kind {
-                LawKind::Weir | LawKind::Gate => ((z_r - h_r) * area(receiver, h_r) / s_r)
-                    .max(level)
-                    .max(0.0),
+                LawKind::Weir | LawKind::Gate => {
+                    if at_level && self.within(z_r - h_r, z_r, h_r) {
+                        return 0.0;
+                    }
+                    ((z_r - h_r) * area(receiver, h_r) / s_r)
+                        .max(level)
+                        .max(0.0)
+                }
                 LawKind::Orifice => {
+                    if at_level {
+                        return 0.0;
+                    }
                     let z_d = self.cut[donor];
                     level.min((h_d - z_d) * area(donor, z_d) / s_d).max(0.0)
                 }
                 LawKind::Pump(p) => {
-                    if !p.running || p.donor != donor {
+                    let z_s = self.cut[donor];
+                    if !p.running || p.donor != donor || self.within(h_d - z_s, h_d, z_s) {
                         return 0.0;
                     }
                     let lift = p.outlet_m.map_or(h_r, |outlet| h_r.max(outlet)) - h_d;
@@ -290,6 +315,60 @@ mod tests {
             stopped.bounds([1.0, 1.5], area, [1.0, 1.0], [100.0, 100.0]),
             [0.0, 0.0]
         );
+        Ok(())
+    }
+
+    /// Frozen criteria, fixed before the first run, with head allowance `1e-12` m absolute:
+    /// - A running pump donor `0.9e-12` m above its suction bound keeps nothing.
+    /// - A donor `1.1e-12` m above it keeps `(H_d - stop) A` exactly.
+    #[test]
+    fn a_pump_in_its_suction_band_keeps_nothing() -> TestResult {
+        let law = LinkLaw::new(
+            &element(pump_law(0.4, None)?, DirectionPolicy::AtoBOnly),
+            StructureOperatingPoint::PumpRunning { speed_ratio: 1.0 },
+            [0.2, 0.5],
+            (1e-12, 0.0),
+        );
+        let Some(pump) = law.pump() else {
+            return Err("a pump law".into());
+        };
+        let wide = [100.0, 100.0];
+        let [inside, _] = law.bounds([0.4 + 0.9e-12, 1.5], area, [1.0, 1.0], wide);
+        assert_eq!(inside, 0.0);
+        let donor = 0.4 + 1.1e-12;
+        let [above, _] = law.bounds([donor, 1.5], area, [1.0, 1.0], wide);
+        assert_eq!(above, (donor - pump.stop_m) * 4.0);
+        assert!(above > 0.0);
+        Ok(())
+    }
+
+    /// Frozen criteria, fixed before the first run, with head allowance `1e-12` m absolute:
+    /// - A weir donor `0.5e-12` m above its crest over a receiver `0.3` m below it keeps the
+    ///   receiver's room below the crest: only one cap term sits at its bound.
+    /// - The same donor over a receiver `0.5e-12` m below the crest keeps nothing.
+    /// - An orifice donor `0.5e-12` m above its receiver keeps nothing.
+    #[test]
+    fn a_passive_link_keeps_nothing_only_with_every_term_at_its_bound() -> TestResult {
+        let weir = LinkLaw::new(
+            &element(weir_law(1.2)?, DirectionPolicy::Bidirectional),
+            StructureOperatingPoint::Passive,
+            [1.0, 0.5],
+            (1e-12, 0.0),
+        );
+        let wide = [100.0, 100.0];
+        let donor = 1.2 + 0.5e-12;
+        let [room, _] = weir.bounds([donor, 0.9], area, [1.0, 1.0], wide);
+        assert_eq!(room, (1.2 - 0.9) * 8.0);
+        let [stopped, _] = weir.bounds([donor, 1.2 - 0.5e-12], area, [1.0, 1.0], wide);
+        assert_eq!(stopped, 0.0);
+        let orifice = LinkLaw::new(
+            &element(orifice_law(0.5, 0.7)?, DirectionPolicy::Bidirectional),
+            StructureOperatingPoint::Passive,
+            [0.5, 0.5],
+            (1e-12, 0.0),
+        );
+        let [level, _] = orifice.bounds([0.8 + 0.5e-12, 0.8], area, [1.0, 1.0], wide);
+        assert_eq!(level, 0.0);
         Ok(())
     }
 

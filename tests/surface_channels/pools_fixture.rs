@@ -11,7 +11,7 @@ use hydr::channel::{
     SurveyedChannelCell,
 };
 #[path = "pools_laws.rs"]
-mod laws;
+pub mod laws;
 
 pub use laws::{
     controlled_gate, controlled_pump, gate_law, operating, orifice_law, pump_law, signal,

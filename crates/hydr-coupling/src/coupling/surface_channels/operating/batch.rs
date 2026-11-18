@@ -95,3 +95,147 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::SurfaceChannelOperating;
+    use super::super::scenario::{build, controlled_gate, signal};
+    use crate::coupling::surface_channels::pools::scenario::{
+        PoolForcing, advance, check, declaration, inflow_binding, inflow_input, link, pond, pool,
+    };
+    use crate::coupling::surface_channels::structures::SurfaceChannelOperationOwner;
+    use crate::coupling::surface_channels::structures::scenario::{
+        Batch, Tanks, TestResult, gate_law,
+    };
+    use crate::structures::{DirectionPolicy, StructureOperatingPoint};
+
+    /// Decision times of the pond relay, in s.
+    const DECISIONS: [f64; 12] = [
+        1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+    ];
+    /// Run end, in s.
+    const END_S: f64 = 12.0;
+    /// Requested duration of every interval, in s.
+    const DT: f64 = 0.5;
+    /// Pond inflow, in m³/s.
+    const FEED: f64 = 0.2;
+    /// Target opening of the outlet, in m.
+    const TARGET_M: f64 = 0.2;
+    /// Smallest admitted common step of the tanks, in s.
+    const MINIMUM_STEP_S: f64 = 1e-10;
+
+    /// A 4 m² pond at 1 m, fed at `FEED`, with an actuated outlet at `rate` onto a 100 m² basin.
+    ///
+    /// The relay opens the outlet at the decision after the pond passes 1.125 m, at 3 s.
+    fn pond_outlet(rate: f64) -> TestResult<Batch> {
+        let mut outlet = link(
+            "outlet",
+            gate_law(0.6)?,
+            DirectionPolicy::Bidirectional,
+            StructureOperatingPoint::GateOpening { opening_m: 0.0 },
+            (pool("pond"), 0.0),
+            (pool("basin"), 0.0),
+        );
+        outlet.operation = SurfaceChannelOperationOwner::Actuated;
+        let operating = SurfaceChannelOperating {
+            gates: Some(controlled_gate(
+                "outlet",
+                [0.7, 1.125],
+                (TARGET_M, rate),
+                (0.0, &DECISIONS, 20.0),
+            )),
+            pumps: None,
+            trajectories: Vec::new(),
+            signals: vec![signal("outlet", pool("pond"))],
+        };
+        let pools = declaration(
+            vec![
+                pond("basin", 0.0, 100.0, 4.0)?,
+                pond("pond", 0.0, 4.0, 4.0)?,
+            ],
+            false,
+            vec![inflow_binding("feed", "pond")],
+        );
+        Ok(build(
+            Tanks::at(0.0, 0.1),
+            pools,
+            &[20.0, 4.0],
+            vec![outlet],
+            operating,
+        )?)
+    }
+
+    /// Pending arrival window `[lower, upper]` of the accepted outlet, if any.
+    fn window(batch: &Batch) -> TestResult<Option<(f64, f64)>> {
+        let operating = batch.operating.as_ref().ok_or("operating children")?;
+        let gate = operating.gate().ok_or("the gate child")?;
+        let output = gate.actuators().outputs()?.remove(0);
+        Ok(output.arrival_lower_s.zip(output.arrival_upper_s))
+    }
+
+    /// Accepted arrival count of the outlet actuator.
+    fn arrivals(batch: &Batch) -> TestResult<usize> {
+        let operating = batch.operating.as_ref().ok_or("operating children")?;
+        let gate = operating.gate().ok_or("the gate child")?;
+        Ok(gate.actuators().states()?[0].arrival_count)
+    }
+
+    /// The outlet arrives at its target inside the run at actuator `rate`. Each rate of
+    /// `0.05`, `0.1`, and `0.025` m/s lands the exact arrival on a decision time. `0.06` m/s
+    /// lands it between decisions.
+    ///
+    /// Frozen criteria, fixed before the first run:
+    /// - Every interval to 12 s accepts and lasts at least `minimum_step_s`.
+    /// - Every interval passes its mass bound, every pairing, and the composite balance.
+    /// - Every decision time ends an interval, and no interval holds one strictly inside it.
+    /// - No interval holds a pending arrival window `[l, u]` with `start < l` and `u < end`.
+    /// - The actuator arrives at least once inside the run.
+    fn arrives_inside_the_run(rate: f64) -> TestResult {
+        let mut batch = pond_outlet(rate)?;
+        let forcing = PoolForcing {
+            sources: None,
+            inflows: vec![inflow_input("feed", FEED)],
+        };
+        let mut ends = Vec::new();
+        while batch.time() < END_S {
+            let start = batch.time();
+            let pending = window(&batch)?;
+            batch = advance(&batch, DT.min(END_S - start), &forcing)?;
+            let end = batch.time();
+            ends.push(end);
+            assert!(
+                end - start >= MINIMUM_STEP_S,
+                "rate={rate}: [{start},{end}]"
+            );
+            check(&batch, &[0.0, FEED * (end - start)])?;
+            for decision in DECISIONS {
+                assert!(
+                    !(start < decision && decision < end),
+                    "rate={rate}: [{start},{end}] holds {decision}"
+                );
+            }
+            if let Some((lower, upper)) = pending {
+                assert!(
+                    !(start < lower && upper < end),
+                    "rate={rate}: [{start},{end}] holds [{lower},{upper}]"
+                );
+            }
+        }
+        assert!(DECISIONS.iter().all(|t| ends.contains(t)), "{ends:?}");
+        assert!(arrivals(&batch)? >= 1, "rate={rate}: no arrival");
+        Ok(())
+    }
+
+    #[test]
+    fn an_arrival_between_decisions_takes_no_sliver() -> TestResult {
+        arrives_inside_the_run(0.06)
+    }
+
+    #[test]
+    fn an_arrival_on_a_decision_takes_no_sliver() -> TestResult {
+        for rate in [0.05, 0.1, 0.025] {
+            arrives_inside_the_run(rate)?;
+        }
+        Ok(())
+    }
+}

@@ -107,6 +107,13 @@ where
 
     /// Time of the first operating event strictly after the accepted time `start`, in seconds.
     ///
+    /// Each actuator arrival window counts as one event at its upper bound. The window
+    /// encloses one arrival instant, so an end at either bound reaches the same event. An end
+    /// inside a window reaches it too, and the next interval may then cross its upper bound.
+    /// No interval holds a whole window, a decision, a knot, or a terminal bound strictly
+    /// inside it. An interval ends strictly inside a window only at another event or a caller
+    /// limit, so the bounds of one window never split off an interval of their own.
+    ///
     /// # Errors
     /// Returns [`SurfaceChannelError::Input`] when no event follows: the common operating
     /// support ends at `start`.
@@ -114,12 +121,12 @@ where
         let registry = self
             .binding
             .registry
-            .next_event_after(start, &self.frames())
+            .next_coordinated_event_after(start, &self.frames())
             .map_err(child_error("operating sources"))?
             .map(|event| event.time_s);
         let gate = match &self.gate {
             Some(gate) => gate
-                .next_event()
+                .next_coordinated_event()
                 .map_err(child_error("controlled-gate"))?
                 .map(|event| event.time_s),
             None => None,
@@ -156,7 +163,7 @@ where
         let gate = self
             .gate
             .as_ref()
-            .map(|gate| gate.prepare_to(end))
+            .map(|gate| gate.prepare_coordinated_to(end))
             .transpose()
             .map_err(child_error("controlled-gate"))?;
         let pump = self

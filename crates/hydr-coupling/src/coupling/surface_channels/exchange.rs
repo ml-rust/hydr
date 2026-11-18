@@ -16,6 +16,9 @@ pub(super) struct Exchange<R: Runtime<DType = DType>> {
     pub proposed: Tensor<R>,
     /// Levelling factor applied to each weir volume before the donor limit, `[L]`.
     pub level: Tensor<R>,
+    /// Part of `level` that other links impose through a shared node, `[L]`. One where the
+    /// link's own cap terms set its factor.
+    pub imposed: Tensor<R>,
     /// Accepted volume per link, positive surface-to-channel, `[L]`.
     pub signed: Tensor<R>,
     /// Donor factor applied to each link, `[L]`.
@@ -34,6 +37,7 @@ impl<R: Runtime<DType = DType>> Exchange<R> {
         Self {
             proposed: empty.clone(),
             level: empty.clone(),
+            imposed: empty.clone(),
             signed: empty.clone(),
             factor: empty.clone(),
             incoming: empty.clone(),
@@ -50,12 +54,13 @@ where
     /// Limits the levelled `weir` volumes so no donor gives more than `available`.
     ///
     /// `level` scales each weir volume first. A factor of exactly one keeps every bit.
+    /// `imposed` is the part of `level` other links impose. See [`Context::level`].
     /// Each donor's factor is `(available - margin) / (demand + bound)` when demand exceeds it,
     /// rounded down once more. The margin grows with the donor's link count.
     pub fn exchange(
         &self,
         weir: Tensor<R>,
-        level: Tensor<R>,
+        (level, imposed): (Tensor<R>, Tensor<R>),
         available: &Tensor<R>,
     ) -> Result<Exchange<R>, SurfaceChannelError> {
         let c = &self.client;
@@ -74,6 +79,7 @@ where
         Ok(Exchange {
             proposed: weir,
             level,
+            imposed,
             signed: limit.signed,
             factor: limit.factor,
             incoming: limit.incoming,

@@ -350,6 +350,7 @@ where
         Ok(Exchange {
             proposed: empty.clone(),
             level: empty.clone(),
+            imposed: empty.clone(),
             signed: empty.clone(),
             factor: empty,
             incoming: groups.clone(),

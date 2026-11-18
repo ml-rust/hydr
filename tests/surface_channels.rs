@@ -4,6 +4,9 @@
 #[allow(dead_code)]
 #[path = "support/analytic.rs"]
 mod analytic;
+#[allow(dead_code)]
+#[path = "channel_pools/reference.rs"]
+mod channel_pool_reference;
 #[path = "surface_channels/definition.rs"]
 mod definition;
 #[path = "surface_channels/donors.rs"]
@@ -24,13 +27,26 @@ mod lifecycle;
 mod physics;
 #[path = "surface_channels/pools_definition.rs"]
 mod pools_definition;
+#[path = "surface_channels/pools_donors.rs"]
+mod pools_donors;
+#[allow(dead_code)]
+#[path = "surface_channels/pools_evidence.rs"]
+mod pools_evidence;
 #[allow(dead_code)]
 #[path = "surface_channels/pools_fixture.rs"]
 mod pools_fixture;
 #[path = "surface_channels/pools_order.rs"]
 mod pools_order;
+#[path = "surface_channels/pools_orifice_fill.rs"]
+mod pools_orifice_fill;
+#[path = "surface_channels/pools_reach_end.rs"]
+mod pools_reach_end;
+#[path = "surface_channels/pools_rest.rs"]
+mod pools_rest;
 #[path = "surface_channels/pools_restart.rs"]
 mod pools_restart;
+#[path = "surface_channels/pools_weir_drain.rs"]
+mod pools_weir_drain;
 #[path = "surface_channels/ports_dam_break.rs"]
 mod ports_dam_break;
 #[path = "surface_channels/ports_definition.rs"]
@@ -67,5 +83,15 @@ mod restoration;
 mod runtime;
 #[path = "surface_channels/scenario.rs"]
 mod scenario;
+#[path = "surface_channels/structures_gate.rs"]
+mod structures_gate;
+#[path = "surface_channels/structures_pump.rs"]
+mod structures_pump;
+#[path = "surface_channels/structures_pump_control.rs"]
+mod structures_pump_control;
+#[path = "surface_channels/structures_reversal.rs"]
+mod structures_reversal;
+#[path = "surface_channels/structures_surface_reach.rs"]
+mod structures_surface_reach;
 #[path = "surface_channels/surveyed.rs"]
 mod surveyed;

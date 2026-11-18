@@ -9,7 +9,8 @@
 //! `V = K(W(mid(H_start, H + r (V - V_g))))`, with `H` and `V_g` the evaluated end stages and
 //! accepted volume.
 //!
-//! - `K` clamps each direction to the most the levelling cap and the donor limit keep.
+//! - `K` clamps each direction to the most the levelling cap and the donor limit keep. A
+//!   factor another link's cap imposes through a shared node scales `W` first, as in the map.
 //! - `K(W)` falls as `V` rises, so the root lies between `V_g` and the plain proposal
 //!   `K(W(mid(H_start, H)))`. Bisection finds it.
 //! - Each side's response and bound split a shared cell evenly among its links. Links that
@@ -131,6 +132,9 @@ where
         let structures = operations.structures()?;
         let [forward, backward] = &response.bounds;
         let backward = c.neg(backward)?;
+        // A factor another link's cap imposes through a shared node scales the law volume, as in
+        // the map itself. Without it the step proposes the unscaled volume and never meets it.
+        let imposed = &evaluation.exchange.imposed;
         // Kept weir volume of every link when its own volume moves from `accepted` to `volume`.
         let weir = |volume: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
             let shift = c.sub(volume, &accepted)?;
@@ -148,6 +152,7 @@ where
             let weir = structures.held_volumes(&law, attempt.dt).map_err(|error| {
                 SurfaceChannelError::Numerical(format!("link volumes: {error}"))
             })?;
+            let weir = c.mul(&weir, imposed)?;
             Ok(c.minimum(&c.maximum(&weir, &backward)?, forward)?)
         };
         let residual = |volume: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {

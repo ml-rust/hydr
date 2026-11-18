@@ -80,12 +80,20 @@ pub fn gate_law(sill: f64) -> Result<StructureLaw> {
 ///
 /// The donor must stay above `suction`. `outlet` adds a free delivery outlet.
 pub fn pump_law(suction: f64, outlet: Option<f64>) -> Result<StructureLaw> {
-    let knot = |head_m, discharge_m3_per_s| PumpCurveKnot {
-        head_m,
-        discharge_m3_per_s,
-    };
+    pump_on(&[(-1.0, 0.2), (3.0, 0.0)], suction, outlet)
+}
+
+/// Pump on the piecewise linear curve through `(head, discharge)` knots, its donor above
+/// `suction`, with an optional free delivery outlet at `outlet`.
+pub fn pump_on(knots: &[(f64, f64)], suction: f64, outlet: Option<f64>) -> Result<StructureLaw> {
     let curve = PumpCurve::new(
-        vec![knot(-1.0, 0.2), knot(3.0, 0.0)],
+        knots
+            .iter()
+            .map(|&(head_m, discharge_m3_per_s)| PumpCurveKnot {
+                head_m,
+                discharge_m3_per_s,
+            })
+            .collect(),
         "Analytical linear curve".into(),
     )?;
     let pump = PumpParameters::new(

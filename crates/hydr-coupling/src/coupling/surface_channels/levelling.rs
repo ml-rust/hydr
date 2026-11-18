@@ -26,6 +26,11 @@
 //! A `θ` below one shrinks by `16` ulps. Every link then takes the smallest `θ` among the links
 //! that share its donor's outgoing total or its receiver's incoming total. Summed exchange at
 //! every cell therefore stays within each link's bound.
+//!
+//! A term whose stage lies within one head allowance of its bound keeps nothing. A link whose
+//! terms all keep nothing is stopped: `θ` is exactly zero, and the link joins no total and no
+//! shared `θ`. A running pump in its suction band `[z_s, z_s + allowance]` therefore moves no
+//! water. The cap drives a draining pump to its suction stop, half an allowance above `z_s`.
 
 use super::SurfaceChannelError;
 use super::context::{Context, NodeEnd, Ops};
@@ -119,6 +124,7 @@ where
         let zero = Exchange {
             proposed: links.clone(),
             level: ones.clone(),
+            imposed: ones.clone(),
             signed: links,
             factor: ones,
             incoming: groups.clone(),

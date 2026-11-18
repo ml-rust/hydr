@@ -6,7 +6,7 @@ use super::structures::LinkOperations;
 use crate::structures::{StructureError, StructureInputErrorKind, StructureLaw};
 use hydr_structures::internal::TensorStructureResult;
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps, UnaryOps};
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, UnaryOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
@@ -54,11 +54,7 @@ where
         let c = &self.client;
         let surface = c.index_select(stage, 0, &self.link_a)?;
         let channel = c.index_select(stage, 0, &self.link_b)?;
-        let magnitude = c.maximum(&c.abs(&surface)?, &c.abs(&channel)?)?;
-        let allowance = c.add_scalar(
-            &c.mul_scalar(&magnitude, self.head_relative)?,
-            self.head_absolute_m,
-        )?;
+        let allowance = self.head_allowance(&surface, &channel)?;
         Ok(c.le(&c.abs(&c.sub(&surface, &channel)?)?, &allowance)?)
     }
 
