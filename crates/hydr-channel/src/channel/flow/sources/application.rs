@@ -256,3 +256,191 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::fixture::{TestResult, client, definition};
+    use super::*;
+    use crate::channel::flow::{
+        ChannelBoundary, ChannelInitialState, ChannelLateralDirection, ChannelReach,
+        forcing::{ChannelTensorLateralInput, ChannelTensorWaterAmount},
+    };
+    use crate::forcing::WaterAmount;
+    use numr::ops::{CorrectlyRoundedOps, HypotOps, MidpointOps, NextRepresentableOps};
+    use numr::runtime::RuntimeClient;
+    use numr::runtime::cpu::CpuRuntime;
+    use solvr::integrate::CertifiedSimpsonAlgorithms;
+    use solvr::optimize::CertifiedMappedBisectionAlgorithms;
+    use solvr::optimize::roots::{
+        BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
+    };
+
+    fn native_case<R: Runtime<DType = DType>>(client: R::Client) -> TestResult
+    where
+        R::Client: BinaryOps<R>
+            + CompareOps<R>
+            + ConditionalOps<R>
+            + CorrectlyRoundedOps<R>
+            + HypotOps<R>
+            + IndexingOps<R>
+            + MidpointOps<R>
+            + ReduceOps<R>
+            + ScalarOps<R>
+            + ShapeOps<R>
+            + TwoSumOps<R>
+            + UnaryOps<R>
+            + NextRepresentableOps<R>
+            + CertifiedSimpsonAlgorithms<R>
+            + CertifiedBisectionAlgorithms<R>
+            + CertifiedMappedBisectionAlgorithms<R>
+            + CertifiedUpperBracketAlgorithms<R>
+            + BatchedBisectionAlgorithms<R>,
+    {
+        let source = LateralContext::<R>::new(
+            &client,
+            definition(&[
+                ChannelLateralDirection::Inflow,
+                ChannelLateralDirection::Withdrawal,
+            ]),
+        )?;
+        let values = Tensor::<R>::from_slice(
+            &[f64::NAN, 0.125, f64::INFINITY, 0.5],
+            &[2, 2],
+            client.device(),
+        )?
+        .narrow(1, 1, 1)?
+        .squeeze(Some(1));
+        assert!(!values.is_contiguous());
+        let incoming = values.narrow(0, 0, 1)?;
+        let withdrawal = values.narrow(0, 1, 1)?;
+        let velocity = Tensor::<R>::from_slice(&[-1.0], &[1], client.device())?;
+        let bound = source.bind_native(
+            &client,
+            0.0,
+            2.0,
+            crate::channel::ChannelTensorBoundary::Wall,
+            crate::channel::ChannelTensorBoundary::Wall,
+            vec![
+                ChannelTensorLateralInput::Withdrawal {
+                    boundary_id: "source-1".into(),
+                    amount: ChannelTensorWaterAmount::Rate {
+                        rate_m3_per_s: withdrawal,
+                    },
+                },
+                ChannelTensorLateralInput::Inflow {
+                    boundary_id: "source-0".into(),
+                    amount: ChannelTensorWaterAmount::IntervalVolume {
+                        volume_m3: incoming,
+                    },
+                    longitudinal_velocity_m_per_s: velocity,
+                },
+            ],
+        )?;
+        let projected = bound.project(&client)?;
+        assert_eq!(projected.lateral_inputs[0].boundary_id(), "source-1");
+        assert_eq!(
+            projected.lateral_inputs[0].amount(),
+            WaterAmount::Rate { rate_m3_per_s: 0.5 }
+        );
+        assert_eq!(
+            projected.lateral_inputs[1].amount(),
+            WaterAmount::IntervalVolume { volume_m3: 0.125 }
+        );
+        client.copy_into(
+            &values,
+            &Tensor::<R>::from_slice(&[f64::NAN, f64::NAN], &[2], client.device())?,
+        )?;
+        assert_eq!(
+            bound.lateral.original[1]
+                .amount()
+                .tensor()
+                .item::<f64>()?
+                .to_bits(),
+            0.125_f64.to_bits()
+        );
+        let make = |value| Tensor::<R>::from_slice(&[value], &[1], client.device());
+        let previous = source.initial_state(&client)?;
+        let prepared = source.prepare(
+            &client,
+            &bound.lateral,
+            &previous,
+            &make(8.0)?,
+            &make(3.0)?,
+            1.0,
+        )?;
+        let application = source.apply_lateral_and_transport(
+            &client,
+            &make(8.0)?,
+            &make(24.0)?,
+            &make(0.0)?,
+            &make(0.0)?,
+            &prepared,
+        )?;
+        assert_eq!(application.volume.item::<f64>()?, 7.625);
+        assert_eq!(application.momentum.item::<f64>()?, 22.375);
+        let receipts =
+            source.project_receipts(&client, &bound.lateral, &previous, &prepared.receipt)?;
+        assert_eq!(receipts[0].volume_m3, 0.125);
+        assert_eq!(receipts[0].momentum_m4_per_s, -0.125);
+        assert_eq!(receipts[1].volume_m3, 0.5);
+        assert_eq!(receipts[1].momentum_m4_per_s, -1.5);
+        assert_eq!(
+            previous.cumulative_volume.try_to_vec::<f64>()?,
+            vec![0.0, 0.0]
+        );
+        let reach = ChannelReach::<R>::new(
+            client.clone(),
+            (*source.definition).clone(),
+            ChannelInitialState {
+                time_s: 0.0,
+                volume_m3: vec![8.0],
+                longitudinal_momentum_m4_per_s: vec![24.0],
+            },
+        )?;
+        let endpoint = ChannelBoundary::Exterior {
+            depth_m: 1.0,
+            velocity_m_per_s: 3.0,
+        };
+        let native = reach.context.lateral.bind_native(
+            &client,
+            0.0,
+            0.01,
+            crate::channel::ChannelTensorBoundary::from_host(&client, &endpoint)?,
+            crate::channel::ChannelTensorBoundary::from_host(&client, &endpoint)?,
+            bound.lateral.original.clone(),
+        )?;
+        let advanced = reach.step_bound(0.01, &native)?.next;
+        let state = advanced.state()?;
+        assert!((state[0].volume_m3 - 8.12).abs() <= 1e-12);
+        assert!((state[0].longitudinal_momentum_m4_per_s - 23.86).abs() <= 1e-12);
+        let data = advanced.snapshot_data()?;
+        let last = data
+            .last_interval
+            .as_ref()
+            .ok_or("missing native final interval")?;
+        assert_eq!(last.diagnostics.retries, 0);
+        assert_eq!(last.diagnostics.end_s.to_bits(), 0.01_f64.to_bits());
+        assert!(
+            last.forcing
+                .lateral_inputs
+                .iter()
+                .zip(&projected.lateral_inputs)
+                .all(|(a, b)| a.same_bits(b))
+        );
+        let cold = reach.import_snapshot(&data)?;
+        assert_eq!(cold.snapshot_data()?, data);
+        Ok(())
+    }
+
+    #[test]
+    fn native_cpu_sources_retain_strides_input_order_and_momentum() -> TestResult {
+        native_case::<CpuRuntime>(client())
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn native_cuda_sources_retain_strides_input_order_and_momentum() -> TestResult {
+        use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+        native_case::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+    }
+}

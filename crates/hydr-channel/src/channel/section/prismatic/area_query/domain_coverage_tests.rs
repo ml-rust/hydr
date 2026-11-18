@@ -1,4 +1,4 @@
-use super::tests::test_support as support;
+use super::test_support as support;
 use super::{CoveredDomain, DomainCoverage, cover_domain};
 use crate::channel::{
     flow::surveyed::error,

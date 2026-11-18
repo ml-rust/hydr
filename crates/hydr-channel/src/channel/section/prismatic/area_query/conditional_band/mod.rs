@@ -19,13 +19,13 @@ pub(crate) use types::{
 pub(crate) use wet_depth_geometry::WetDepthGeometry;
 
 #[cfg(test)]
-mod tests;
-
-#[cfg(test)]
 mod oracle_tests;
 
 #[cfg(test)]
 mod prefix_tests;
+
+#[cfg(test)]
+mod tiny_gap_tests;
 
 #[cfg(test)]
 mod wet_depth_geometry_tests;

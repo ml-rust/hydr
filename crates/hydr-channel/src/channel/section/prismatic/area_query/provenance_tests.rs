@@ -1,4 +1,4 @@
-use super::tests::test_support::{Client, Result, batch, hydraulic};
+use super::test_support::{Client, Result, batch, hydraulic};
 use super::{
     AreaAnchor, AreaDirection, AreaQuery, endpoints::PhysicalEndpoint,
     source_difference::source_difference,

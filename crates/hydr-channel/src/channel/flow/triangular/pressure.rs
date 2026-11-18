@@ -114,3 +114,35 @@ where
         Ok((pressure, pressure_bound))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::faces::Face;
+    use super::super::fixture::{TestResult, context};
+    use crate::channel::flow::context::Context;
+    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+
+    #[test]
+    fn pressure_charge_retains_joint_erased_area_and_coefficient_uncertainty() -> TestResult {
+        let original = context()?;
+        let mut definition = original.definition.as_ref().clone();
+        definition.config.gravity = f64::from_bits(1);
+        let client = CpuClient::new(CpuDevice::new())
+            .with_parallelism(ParallelismConfig::new(Some(1), None));
+        let ctx =
+            Context::<CpuRuntime>::new(client, definition, original.original_initial.clone())?;
+        // For k=1 and h=1e-200, exact positive area rounds to zero within one subnormal.
+        let zero = ctx.tensor(&[0.0])?;
+        let sample = Face {
+            area: zero.clone(),
+            discharge: zero.clone(),
+            depth: ctx.tensor(&[1e-200])?,
+            velocity: zero,
+        };
+        let area_bound = ctx.tensor(&[f64::from_bits(1)])?;
+        let (pressure, bound) = ctx.triangular_pressure_value(&sample, &area_bound)?;
+        assert_eq!(pressure.item::<f64>()?, 0.0);
+        assert!(bound.item::<f64>()? > 0.0);
+        Ok(())
+    }
+}

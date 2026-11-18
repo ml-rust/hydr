@@ -82,3 +82,74 @@ where
         },
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::fixture::{cpu_client, element};
+    use super::super::prepare_budget;
+    use super::*;
+    use crate::runoff::tensor::reservoir_storage::TensorReservoirContext;
+    use crate::runoff::{ReservoirConfig, ReservoirElement, ReservoirParameters};
+    use numr::runtime::cpu::CpuRuntime;
+
+    #[test]
+    fn provided_budget_below_initial_storage_uses_no_synthetic_source() -> Result<(), ReservoirError>
+    {
+        let context = TensorReservoirContext::<CpuRuntime>::new(
+            cpu_client(),
+            vec![element("loss-budget", 1.0 / 32.0, 32.0)?],
+            ReservoirConfig::default(),
+        )?;
+        let initial_depth = 0.5 * 0.3048;
+        let available = 0.25 * 0.3048;
+        assert!(available < initial_depth);
+        let budget = prepare_budget(&context, context.tensor(&[available])?, 1.0, |_| {
+            context.tensor(&[1.0])
+        })?;
+        let result = drain(&budget)?;
+        assert_eq!(
+            budget.available_depth().item::<f64>()?.to_bits(),
+            available.to_bits()
+        );
+        assert!(result.depth.item::<f64>()? < available);
+        assert!(result.export_volume.item::<f64>()? > 0.0);
+        let checked = admit_drainage(
+            &budget,
+            DrainageRoot {
+                lower: result.lower.clone(),
+                upper: result.upper.clone(),
+                depth: result.depth.clone(),
+                iterations: result.iterations,
+            },
+        )?;
+        assert_eq!(
+            checked.export_volume.item::<f64>()?.to_bits(),
+            result.export_volume.item::<f64>()?.to_bits()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn provided_budget_retains_strict_reconstructed_excess_admission() -> Result<(), ReservoirError>
+    {
+        let depression = 1e6f64;
+        let context = TensorReservoirContext::<CpuRuntime>::new(
+            cpu_client(),
+            vec![ReservoirElement {
+                id: "stiff-budget".into(),
+                parameters: ReservoirParameters::from_si(1.0, 1.0, 1.0, 1.0, 1e-8, depression)?,
+            }],
+            ReservoirConfig::default(),
+        )?;
+        let available = f64::from_bits(depression.to_bits() + 1);
+        let budget = prepare_budget(&context, context.tensor(&[available])?, 1.0, |_| {
+            context.tensor(&[1.0])
+        })?;
+        let error = drain(&budget)
+            .err()
+            .ok_or_else(|| ReservoirError::numerical("collapsed implicit excess must reject"))?;
+        assert_eq!(error.element(), Some(0));
+        assert!(error.to_string().contains("represented implicit excess"));
+        Ok(())
+    }
+}

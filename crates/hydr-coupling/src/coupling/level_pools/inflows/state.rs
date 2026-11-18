@@ -176,3 +176,68 @@ where
         Ok(state)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::fixture::{binding, client, ledger, pools};
+    use super::*;
+    use numr::runtime::cpu::CpuRuntime;
+
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn finite_capacity_ceiling_remains_active_beyond_exact_integer_counts() -> TestResult {
+        if usize::BITS <= 53 {
+            return Ok(());
+        }
+        let client = client();
+        let context =
+            InflowContext::<CpuRuntime>::new(&client, &pools(4.0)?, &[binding("boundary")])?;
+        let steps = usize::MAX;
+        let finite_ceiling = 4.0 * steps as f64;
+        assert!(
+            context
+                .import_state(&client, &[ledger(finite_ceiling, 0.0)], steps)
+                .is_ok()
+        );
+        assert!(
+            context
+                .import_state(&client, &[ledger(2.0 * finite_ceiling, 0.0)], steps)
+                .is_err()
+        );
+        assert!(
+            context
+                .import_state(&client, &[ledger(1.0, 0.0)], 0)
+                .is_err()
+        );
+        assert!(
+            context
+                .import_state(&client, &[ledger(0.0, 1e-20)], 1)
+                .is_err()
+        );
+        assert!(
+            context
+                .import_state(&client, &[ledger(-0.0, 0.0)], 0)
+                .is_err()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn theoretical_capacity_overflow_keeps_finite_counters_admissible() -> TestResult {
+        let client = client();
+        let context =
+            InflowContext::<CpuRuntime>::new(&client, &pools(1e308)?, &[binding("boundary")])?;
+        assert!(
+            context
+                .import_state(&client, &[ledger(f64::MAX, 0.0)], 2)
+                .is_ok()
+        );
+        assert!(
+            context
+                .import_state(&client, &[ledger(f64::INFINITY, 0.0)], 2)
+                .is_err()
+        );
+        Ok(())
+    }
+}

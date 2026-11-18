@@ -1,5 +1,5 @@
 use super::area_point_query::PrismaticAreaPointRecovery;
-use super::area_query::tests::test_support as support;
+use super::area_query::test_support as support;
 use super::config::PrismaticRecoveryConfig;
 use crate::channel::flow::surveyed::error::{self, HydraulicError};
 use numr::{

@@ -1,7 +1,7 @@
 use super::check::{self, require};
 use super::{
     CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelIntervalSnapshotData,
-    ChannelSnapshot, ChannelSnapshotData,
+    ChannelSnapshotData,
 };
 use crate::channel::flow::coupling::ChannelCouplingTrial;
 use crate::channel::flow::{
@@ -13,7 +13,7 @@ use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, MidpointOps,
     NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
-use numr::runtime::{Device, Runtime, RuntimeClient};
+use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use solvr::{
     integrate::CertifiedSimpsonAlgorithms,
@@ -48,29 +48,6 @@ where
         + UnaryOps<R>
         + BatchedBisectionAlgorithms<R>,
 {
-    /// Restore trusted same-device state while retaining this reach's configured client.
-    pub fn restore(&self, snapshot: &ChannelSnapshot<R>) -> Result<Self, ChannelError> {
-        require(
-            check::definition(self.definition(), snapshot.reach.definition())
-                && check::initial(
-                    &self.context.original_initial,
-                    &snapshot.reach.context.original_initial,
-                ),
-            "geometry, config, or original initial-state bits differ from the destination",
-        )?;
-        require(
-            self.context
-                .client
-                .device()
-                .is_same(snapshot.reach.context.client.device()),
-            "trusted tensor device differs from the destination client",
-        )?;
-        Ok(Self {
-            context: Arc::clone(&self.context),
-            accepted: snapshot.reach.accepted.clone(),
-        })
-    }
-
     /// Check a complete persisted package and replay its final interval before restoration.
     ///
     /// Historical authenticity requires application-owned hashes or authenticated history.
@@ -352,5 +329,146 @@ where
         R::Client: TensorOps<R> + NextRepresentableOps<R>,
     {
         Self::from_parts(Arc::clone(&self.context), initial, volume_low, momentum_low)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::channel::flow::snapshot::fixture::{advanced, walled_reach};
+    use crate::channel::{ChannelConfig, ChannelReachDefinition, RectangularChannelCell};
+    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+
+    #[test]
+    fn cold_restore_uploads_with_a_separately_constructed_cpu_client() -> Result<(), ChannelError> {
+        let definition = ChannelReachDefinition {
+            vertical_datum: "synthetic datum".into(),
+            provenance: "exact rectangular device fixture".into(),
+            lateral_bindings: Vec::new(),
+            geometry: crate::channel::ChannelGeometry::Rectangular {
+                cells: vec![RectangularChannelCell {
+                    id: "cell".into(),
+                    length_m: 1.0,
+                    width_m: 2.0,
+                    bed_elevation_m: 0.0,
+                    maximum_depth_m: 4.0,
+                    manning_n: 0.0,
+                }],
+            },
+            config: ChannelConfig::default(),
+        };
+        let initial = ChannelInitialState {
+            time_s: 0.0,
+            volume_m3: vec![2.0],
+            longitudinal_momentum_m4_per_s: vec![0.0],
+        };
+        let source = ChannelReach::<CpuRuntime>::new(
+            CpuClient::new(CpuDevice::new()),
+            definition.clone(),
+            initial.clone(),
+        )?;
+        let destination =
+            ChannelReach::<CpuRuntime>::new(CpuClient::new(CpuDevice::new()), definition, initial)?;
+        let context = Arc::clone(&destination.context);
+        let restored = destination.import_snapshot(&source.snapshot_data()?)?;
+        assert!(Arc::ptr_eq(&restored.context, &context));
+        assert_eq!(restored.snapshot_data()?, source.snapshot_data()?);
+        Ok(())
+    }
+
+    #[test]
+    fn triangular_restoration_rejects_a_different_reconstruction() -> Result<(), ChannelError> {
+        use crate::channel::{
+            ChannelGeometry, ChannelTriangularReconstruction, TriangularChannelCell,
+        };
+        let client = CpuClient::new(CpuDevice::new())
+            .with_parallelism(ParallelismConfig::new(Some(1), None));
+        let definition = ChannelReachDefinition {
+            vertical_datum: "synthetic datum".into(),
+            provenance: "triangular reconstruction continuation".into(),
+            geometry: ChannelGeometry::PrismaticTriangular {
+                left_bank_slope_h_per_v: 1.0,
+                right_bank_slope_h_per_v: 1.0,
+                bed_elevation_m: 0.0,
+                cells: vec![TriangularChannelCell {
+                    id: "cell".into(),
+                    length_m: 2.0,
+                    maximum_depth_m: 3.0,
+                    manning_n: 0.0,
+                }],
+            },
+            lateral_bindings: vec![],
+            config: ChannelConfig::default(),
+        };
+        let initial = ChannelInitialState {
+            time_s: 0.0,
+            volume_m3: vec![2.0],
+            longitudinal_momentum_m4_per_s: vec![0.0],
+        };
+        let source =
+            ChannelReach::<CpuRuntime>::new(client.clone(), definition.clone(), initial.clone())?;
+        let mut changed = definition;
+        changed.config.triangular_reconstruction =
+            ChannelTriangularReconstruction::FirstOrderReference;
+        assert!(!source.definition().same_bits(&changed));
+        let destination = ChannelReach::<CpuRuntime>::new(client, changed, initial)?;
+        assert!(destination.restore(&source.snapshot()).is_err());
+        assert!(
+            destination
+                .import_snapshot(&source.snapshot_data()?)
+                .is_err()
+        );
+        assert!(source.restore(&destination.snapshot()).is_err());
+        assert!(
+            source
+                .import_snapshot(&destination.snapshot_data()?)
+                .is_err()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn unnormalized_low_is_rejected_on_import() -> Result<(), ChannelError> {
+        let origin = walled_reach()?;
+        let data = advanced(&origin)?.snapshot_data()?;
+        let mut current = data.clone();
+        current.volume_low_m3[0] = 0.5;
+        assert_eq!(
+            origin
+                .import_snapshot(&current)
+                .err()
+                .and_then(|e| e.cell()),
+            Some(0)
+        );
+        let mut previous = data.clone();
+        if let Some(interval) = previous.last_interval.as_mut() {
+            interval.previous_longitudinal_momentum_low_m4_per_s[0] = f64::NAN;
+        }
+        assert!(origin.import_snapshot(&previous).is_err());
+        let mut zero_step = origin.snapshot_data()?;
+        zero_step.longitudinal_momentum_low_m4_per_s[0] = 3.0;
+        assert!(origin.import_snapshot(&zero_step).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn rectangular_reach_rejects_a_nonzero_normalized_low() -> Result<(), ChannelError> {
+        let origin = walled_reach()?;
+        let data = advanced(&origin)?.snapshot_data()?;
+        let mut current = data.clone();
+        current.volume_low_m3[0] = 1e-20;
+        assert_eq!(
+            origin
+                .import_snapshot(&current)
+                .err()
+                .and_then(|e| e.cell()),
+            Some(0)
+        );
+        let mut previous = data;
+        if let Some(interval) = previous.last_interval.as_mut() {
+            interval.previous_volume_low_m3[0] = 1e-20;
+        }
+        assert!(origin.import_snapshot(&previous).is_err());
+        Ok(())
     }
 }

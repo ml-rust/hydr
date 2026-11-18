@@ -227,3 +227,44 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::channel::flow::snapshot::fixture::{advanced, walled_reach};
+
+    #[test]
+    fn snapshot_round_trip_keeps_current_and_previous_low_bits() -> Result<(), ChannelError> {
+        let origin = walled_reach()?;
+        let current = advanced(&advanced(&origin)?)?;
+        let data = current.snapshot_data()?;
+        let interval = data
+            .last_interval
+            .as_ref()
+            .ok_or_else(|| ChannelError::input("test interval absent: retain the accepted step"))?;
+        assert_eq!(data.volume_low_m3[0].to_bits(), 0.0_f64.to_bits());
+        assert_eq!(
+            data.longitudinal_momentum_low_m4_per_s[0].to_bits(),
+            0.0_f64.to_bits()
+        );
+        assert_eq!(
+            interval.previous_volume_low_m3[0].to_bits(),
+            0.0_f64.to_bits()
+        );
+        assert_eq!(
+            interval.previous_longitudinal_momentum_low_m4_per_s[0].to_bits(),
+            0.0_f64.to_bits()
+        );
+        assert_eq!(origin.import_snapshot(&data)?.snapshot_data()?, data);
+        Ok(())
+    }
+
+    #[test]
+    fn state_volume_equals_the_high_bits() -> Result<(), ChannelError> {
+        let reach = advanced(&walled_reach()?)?;
+        let data = reach.snapshot_data()?;
+        let state = reach.state()?;
+        assert_eq!(state[0].volume_m3.to_bits(), data.volume_m3[0].to_bits());
+        Ok(())
+    }
+}

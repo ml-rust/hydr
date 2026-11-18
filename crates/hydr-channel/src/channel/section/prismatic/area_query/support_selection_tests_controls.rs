@@ -1,4 +1,4 @@
-use super::super::tests::fixtures::AnchorKind;
+use super::super::fixtures::AnchorKind;
 use super::{rectangle_chart, shape, snapshot, support};
 use crate::channel::{
     flow::surveyed::error::{self, HydraulicError, HydraulicResult},

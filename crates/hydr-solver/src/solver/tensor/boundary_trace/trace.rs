@@ -212,3 +212,179 @@ where
     )?;
     Ok(celerity)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::fixture::{G, Lane, TestResult, lane, run, velocity};
+    use super::*;
+    use numr::runtime::cpu::{CpuClient, ParallelismConfig};
+
+    #[test]
+    fn uniform_stage_and_discharge_use_the_same_complete_physical_flux() -> TestResult {
+        let result = run(&[
+            lane(),
+            Lane {
+                discharge: Some(0.5),
+                ..lane()
+            },
+        ])?;
+        for value in result.q_normal.try_to_vec::<f64>()? {
+            assert_eq!(value.to_bits(), 0.5_f64.to_bits());
+        }
+        for value in result.flux[1].try_to_vec::<f64>()? {
+            assert!((value - 5.155).abs() <= 1e-11);
+        }
+        for value in result.flux[2].try_to_vec::<f64>()? {
+            assert!((value - 0.1).abs() <= 1e-11);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn still_water_has_zero_mass_flux_and_single_hydrostatic_pressure() -> TestResult {
+        let rest = Lane { u: 0.0, ..lane() };
+        let result = run(&[
+            rest,
+            Lane {
+                discharge: Some(0.0),
+                ..rest
+            },
+        ])?;
+        for value in result.flux[0].try_to_vec::<f64>()? {
+            assert_eq!(value, 0.0);
+        }
+        for value in result.flux[1].try_to_vec::<f64>()? {
+            assert!((value - 4.905).abs() <= 1e-11);
+        }
+        for value in result.flux[2].try_to_vec::<f64>()? {
+            assert_eq!(value, 0.0);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn mixed_shock_and_rarefaction_requests_recover_compatible_traces() -> TestResult {
+        let initial = lane();
+        let mut lanes = Vec::new();
+        for depth in [0.8, 1.2] {
+            let stage = Lane {
+                stage: depth,
+                ..initial
+            };
+            lanes.push(stage);
+            lanes.push(Lane {
+                discharge: Some(depth * velocity(initial, depth)),
+                ..stage
+            });
+        }
+        let result = run(&lanes)?;
+        let depths = result.h.try_to_vec::<f64>()?;
+        let q = result.q_normal.try_to_vec::<f64>()?;
+        let normal = result.flux[1].try_to_vec::<f64>()?;
+        let tangent = result.flux[2].try_to_vec::<f64>()?;
+        for (index, request) in lanes.iter().enumerate() {
+            let u = velocity(initial, request.stage);
+            let expected_q = request.stage * u;
+            let v = if expected_q < 0.0 { -0.4 } else { initial.v };
+            assert!((depths[index] / request.stage - 1.0).abs() <= 1e-11);
+            assert!((q[index] - expected_q).abs() <= 1e-11);
+            assert!(
+                (normal[index] - (expected_q * u + 0.5 * G * request.stage.powi(2))).abs() <= 1e-11
+            );
+            assert!((tangent[index] - expected_q * v).abs() <= 1e-11);
+            if request.stage > initial.h {
+                let shock = (q[index] - initial.h * initial.u) / (depths[index] - initial.h);
+                let initial_momentum = initial.h * initial.u.powi(2) + 0.5 * G * initial.h.powi(2);
+                assert!(shock < 0.0);
+                assert!(
+                    (normal[index] - initial_momentum - shock * (q[index] - initial.h * initial.u))
+                        .abs()
+                        <= 1e-11
+                );
+            } else {
+                assert!(u - (G * request.stage).sqrt() < 0.0);
+            }
+            if let Some(target) = request.discharge {
+                assert_eq!(q[index].to_bits(), target.to_bits());
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn inflow_requires_explicit_tangent_while_outflow_carries_the_interior_tangent() -> TestResult {
+        assert!(matches!(
+            run(&[Lane {
+                stage: 1.2,
+                incoming: None,
+                ..lane()
+            }]),
+            Err(EngineError::Boundary { .. })
+        ));
+        let result = run(&[Lane {
+            incoming: None,
+            ..lane()
+        }])?;
+        assert!((result.flux[2].try_to_vec::<f64>()?[0] - 0.1).abs() <= 1e-11);
+        Ok(())
+    }
+
+    #[test]
+    fn thin_wet_traces_control_characteristic_error_without_a_unit_floor() -> TestResult {
+        let mut lanes = Vec::new();
+        for h in [1e-20, 1e-100] {
+            let initial = Lane {
+                h,
+                u: 0.1 * (G * h).sqrt(),
+                v: 0.0,
+                stage: 0.8 * h,
+                discharge: None,
+                incoming: Some(0.0),
+            };
+            lanes.push(initial);
+            lanes.push(Lane {
+                discharge: Some(initial.stage * velocity(initial, initial.stage)),
+                ..initial
+            });
+        }
+        let result = run(&lanes)?;
+        let depths = result.h.try_to_vec::<f64>()?;
+        let residuals = result.characteristic_residual.try_to_vec::<f64>()?;
+        let q = result.q_normal.try_to_vec::<f64>()?;
+        for (index, request) in lanes.iter().enumerate() {
+            assert!((depths[index] / request.stage - 1.0).abs() <= 1e-11);
+            assert!(residuals[index].abs() / (G * request.h).sqrt() <= 1e-12);
+            if let Some(target) = request.discharge {
+                assert_eq!(q[index].to_bits(), target.to_bits());
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn incoming_tangent_remains_available_when_its_discharge_underflows() -> TestResult {
+        let incoming = 1e-200;
+        let result = run(&[Lane {
+            h: 1e-200,
+            u: 0.0,
+            stage: 1.2e-200,
+            incoming: Some(incoming),
+            ..lane()
+        }])?;
+        let normal = result.q_normal.try_to_vec::<f64>()?[0];
+        assert!(normal.is_finite() && normal < 0.0);
+        let client = CpuClient::new(result.h.device().clone())
+            .with_parallelism(ParallelismConfig::new(Some(1), None));
+        assert_eq!(
+            client
+                .mul(&result.h, &result.tangential_velocity)?
+                .item::<f64>()?,
+            0.0
+        );
+        assert_eq!(
+            result.tangential_velocity.try_to_vec::<f64>()?[0].to_bits(),
+            incoming.to_bits()
+        );
+        Ok(())
+    }
+}

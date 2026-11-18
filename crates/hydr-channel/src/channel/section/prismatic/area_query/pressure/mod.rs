@@ -6,8 +6,7 @@ pub(crate) use types::PressureEndpoint;
 mod weights;
 
 pub(crate) use range::pressure_endpoint;
-#[cfg(test)]
-pub(crate) use range::pressure_range;
 
 #[cfg(test)]
-pub(super) mod tests;
+#[path = "../pressure_fixtures/mod.rs"]
+pub(in crate::channel::section::prismatic::area_query) mod fixtures;

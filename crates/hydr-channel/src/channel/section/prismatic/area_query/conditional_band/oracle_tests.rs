@@ -1,7 +1,6 @@
 use super::super::{
-    endpoints::PhysicalEndpoint,
-    pressure::tests::fixtures::CASES as BINDINGS,
-    tests::{fixtures as queries, test_support as support},
+    endpoints::PhysicalEndpoint, fixtures as queries, pressure::fixtures::CASES as BINDINGS,
+    test_support as support,
 };
 use super::ConditionalBandSegments;
 use crate::channel::{

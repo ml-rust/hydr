@@ -1,7 +1,7 @@
 use super::super::{
     AreaAnchor, AreaDirection, AreaQuery,
     endpoints::PhysicalEndpoint,
-    tests::parameter_rebinding_tests::{Snapshot, snapshot},
+    parameter_rebinding_tests::{Snapshot, snapshot},
 };
 use super::{CoveredDomain, support};
 use crate::channel::{flow::surveyed::error, section::HydraulicGeometry};

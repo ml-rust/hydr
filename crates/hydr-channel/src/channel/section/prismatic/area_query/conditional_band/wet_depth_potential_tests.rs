@@ -1,4 +1,4 @@
-use super::super::{AreaDirection, AreaQuery, tests::test_support as support};
+use super::super::{AreaDirection, AreaQuery, test_support as support};
 use super::ConditionalBandSegments;
 use crate::channel::{
     flow::surveyed::{

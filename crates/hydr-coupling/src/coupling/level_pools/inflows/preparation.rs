@@ -237,3 +237,111 @@ impl<R: Runtime<DType = DType>> InflowStep<R> {
         self.volumes.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::fixture::{binding, client, pools, rate, volume};
+    use super::*;
+    use numr::runtime::cpu::CpuRuntime;
+
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn empty_and_explicit_zero_inflows_preserve_incoming_bits() -> TestResult {
+        let client = client();
+        for bindings in [vec![], vec![binding("boundary")]] {
+            let context = InflowContext::<CpuRuntime>::new(&client, &pools(4.0)?, &bindings)?;
+            let rates = if bindings.is_empty() {
+                vec![]
+            } else {
+                vec![rate("boundary", 0.0)]
+            };
+            let rates = context.bind_inputs(&client, &rates)?;
+            let original = context.zero_state(&client)?;
+            let prepared = context.prepare(&client, &rates, &original, 1.0, 1)?;
+            let incoming =
+                Tensor::<CpuRuntime>::from_slice(&[-0.0f64, 1.0], &[2], client.device())?;
+            let merged = context.merge_incoming(&client, &incoming, &prepared)?;
+            assert_eq!(
+                merged
+                    .volume
+                    .try_to_vec::<f64>()?
+                    .into_iter()
+                    .map(f64::to_bits)
+                    .collect::<Vec<_>>(),
+                vec![(-0.0f64).to_bits(), 1.0f64.to_bits()]
+            );
+            assert_eq!(merged.roundoff_bound_m3, 0.0);
+            assert_eq!(prepared.summary.volume_m3, 0.0);
+            assert_eq!(prepared.summary.reduction_bound_m3, 0.0);
+            assert_eq!(
+                context.project_state(&client, &original)?,
+                context.project_state(&client, &prepared.next)?
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn grouped_boundaries_reject_absorbed_positive_volumes() -> TestResult {
+        let client = client();
+        let context = InflowContext::<CpuRuntime>::new(
+            &client,
+            &pools(4.0)?,
+            &[binding("large"), binding("small")],
+        )?;
+        let rates = context.bind_inputs(
+            &client,
+            &[rate("small", f64::EPSILON / 4.0), rate("large", 1.0)],
+        )?;
+        let original = context.zero_state(&client)?;
+        assert!(context.prepare(&client, &rates, &original, 1.0, 1).is_err());
+        assert!(
+            context
+                .project_state(&client, &original)?
+                .iter()
+                .all(|entry| entry.cumulative_volume_m3 == 0.0 && entry.roundoff_bound_m3 == 0.0)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn original_products_reject_positive_underflow_and_overflow() -> TestResult {
+        let client = client();
+        let context =
+            InflowContext::<CpuRuntime>::new(&client, &pools(4.0)?, &[binding("boundary")])?;
+        let original = context.zero_state(&client)?;
+        for (value, duration) in [(f64::from_bits(1), 0.25), (f64::MAX, 2.0)] {
+            let rates = context.bind_inputs(&client, &[rate("boundary", value)])?;
+            assert!(
+                context
+                    .prepare(&client, &rates, &original, duration, 1)
+                    .is_err()
+            );
+        }
+        let rates = context.bind_inputs(&client, &[rate("boundary", 0.25)])?;
+        let prepared = context.prepare(&client, &rates, &original, 2.0, 1)?;
+        assert_eq!(prepared.incoming.dtype(), DType::F64);
+        assert_eq!(prepared.incoming.try_to_vec::<f64>()?, vec![0.5, 0.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn integrated_lanes_are_masked_before_unused_rate_multiplication() -> TestResult {
+        let client = client();
+        let context =
+            InflowContext::<CpuRuntime>::new(&client, &pools(4.0)?, &[binding("boundary")])?;
+        let original = context.zero_state(&client)?;
+        let inputs = context.bind_inputs(&client, &[volume("boundary", 3.0)])?;
+        let prepared = context.prepare(&client, &inputs, &original, f64::MAX, 1)?;
+        assert_eq!(prepared.incoming.try_to_vec::<f64>()?, vec![3.0, 0.0]);
+        let rate_inputs = context.bind_inputs(&client, &[rate("boundary", 3.0)])?;
+        assert!(!rate_inputs.has_interval_volumes());
+        assert!(
+            context
+                .prepare(&client, &rate_inputs, &original, f64::MAX, 1)
+                .is_err()
+        );
+        Ok(())
+    }
+}

@@ -1,5 +1,5 @@
 use super::source_difference::source_difference;
-use super::tests::{fixtures as queries, test_support as support};
+use super::{fixtures as queries, test_support as support};
 use crate::channel::flow::surveyed::error;
 use crate::channel::section::{HydraulicGeometry, PrismaticRecoveryConfig};
 use numr::dtype::DType;

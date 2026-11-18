@@ -146,3 +146,44 @@ fn root_error(error: solvr::optimize::OptimizeError) -> EngineError {
         format!("{error}: inspect the subcritical branch and configured root tolerances"),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::fixture::{G, Lane, TestResult, lane, run, velocity};
+    use super::*;
+
+    #[test]
+    fn sonic_discharge_limit_rejects_but_a_resolved_subcritical_rate_is_admitted() -> TestResult {
+        let rest = Lane { u: 0.0, ..lane() };
+        let sonic_depth = 4.0 / 9.0;
+        let maximum = sonic_depth * (G * sonic_depth).sqrt();
+        for target in [maximum, maximum * (1.0 + 1e-6)] {
+            assert!(
+                matches!(
+                    run(&[Lane {
+                        discharge: Some(target),
+                        ..rest
+                    }]),
+                    Err(EngineError::Boundary { .. })
+                ),
+                "target={target:.17e}"
+            );
+        }
+        let chosen_depth = sonic_depth * (1.0 + 1e-6);
+        let target = chosen_depth * velocity(rest, chosen_depth);
+        let result = run(&[Lane {
+            discharge: Some(target),
+            ..rest
+        }])?;
+        let depth = result.h.try_to_vec::<f64>()?[0];
+        let q = result.q_normal.try_to_vec::<f64>()?[0];
+        let u = q / depth;
+        let c = (G * depth).sqrt();
+        assert!(depth > sonic_depth);
+        assert!(u - c < 0.0 && u + c > 0.0);
+        assert_eq!(q.to_bits(), target.to_bits());
+        // Rate inversion is ill-conditioned at the sonic maximum. Check the characteristic relation directly.
+        assert!((u - velocity(rest, depth)).abs() / G.sqrt() <= 1e-12);
+        Ok(())
+    }
+}

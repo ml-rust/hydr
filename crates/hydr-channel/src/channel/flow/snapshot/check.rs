@@ -1,8 +1,12 @@
+mod forcing_identity;
+mod receipt_identity;
+
 use super::super::{
-    ChannelBoundary, ChannelError, ChannelForcingInterval, ChannelInitialState,
-    ChannelLateralReceipt, ChannelLateralStateData, ChannelReachDefinition, ChannelStepDiagnostics,
-    ChannelWaterLedger,
+    ChannelError, ChannelInitialState, ChannelLateralReceipt, ChannelLateralStateData,
+    ChannelReachDefinition, ChannelStepDiagnostics, ChannelWaterLedger,
 };
+pub(super) use forcing_identity::forcing;
+use receipt_identity::{boundary_trace, friction_geometry, riemann};
 
 pub(super) fn require(condition: bool, detail: &str) -> Result<(), ChannelError> {
     if condition {
@@ -40,56 +44,6 @@ pub(super) fn lateral_state(a: &ChannelLateralStateData, b: &ChannelLateralState
     values(&a.cumulative_volume_m3, &b.cumulative_volume_m3)
         && values(&a.counter_roundoff_bound_m3, &b.counter_roundoff_bound_m3)
         && a.cumulative_assembly_bound_m3.to_bits() == b.cumulative_assembly_bound_m3.to_bits()
-}
-
-pub(super) fn forcing(a: &ChannelForcingInterval, b: &ChannelForcingInterval) -> bool {
-    values(&[a.start_s, a.end_s], &[b.start_s, b.end_s])
-        && boundary(&a.left, &b.left)
-        && boundary(&a.right, &b.right)
-        && a.lateral_inputs.len() == b.lateral_inputs.len()
-        && a.lateral_inputs
-            .iter()
-            .zip(&b.lateral_inputs)
-            .all(|(a, b)| a.same_bits(b))
-}
-
-fn boundary(a: &ChannelBoundary, b: &ChannelBoundary) -> bool {
-    match (a, b) {
-        (ChannelBoundary::Wall, ChannelBoundary::Wall) => true,
-        (ChannelBoundary::Stage { elevation_m: a }, ChannelBoundary::Stage { elevation_m: b }) => {
-            a.to_bits() == b.to_bits()
-        }
-        (
-            ChannelBoundary::QuiescentReservoir {
-                elevation_m: ah,
-                entrance_loss_coefficient: ak,
-            },
-            ChannelBoundary::QuiescentReservoir {
-                elevation_m: bh,
-                entrance_loss_coefficient: bk,
-            },
-        ) => values(&[*ah, *ak], &[*bh, *bk]),
-        (
-            ChannelBoundary::Discharge {
-                discharge_m3_per_s: a,
-            },
-            ChannelBoundary::Discharge {
-                discharge_m3_per_s: b,
-            },
-        ) => a.to_bits() == b.to_bits(),
-        (
-            ChannelBoundary::Exterior {
-                depth_m: ah,
-                velocity_m_per_s: au,
-            },
-            ChannelBoundary::Exterior {
-                depth_m: bh,
-                velocity_m_per_s: bu,
-            },
-        ) => values(&[*ah, *au], &[*bh, *bu]),
-        (ChannelBoundary::FluxPort(a), ChannelBoundary::FluxPort(b)) => a.same_bits(b),
-        _ => false,
-    }
 }
 
 fn optional(a: Option<f64>, b: Option<f64>) -> bool {
@@ -322,61 +276,4 @@ pub(super) fn ledger_admission(
             && charged_residual <= tolerance,
         "cumulative residual differs from physical water accounting",
     )
-}
-
-pub(super) fn riemann(
-    a: Option<&super::super::ChannelRiemannDiagnostics>,
-    b: Option<&super::super::ChannelRiemannDiagnostics>,
-) -> bool {
-    match (a, b) {
-        (None, None) => true,
-        (Some(a), Some(b)) => {
-            a.root_iterations == b.root_iterations
-                && a.surveyed_work == b.surveyed_work
-                && values(&a.water_flux_width_m3_per_s, &b.water_flux_width_m3_per_s)
-                && values(
-                    &a.momentum_flux_width_m4_per_s2,
-                    &b.momentum_flux_width_m4_per_s2,
-                )
-                && values(
-                    &[
-                        a.max_water_flux_width_m3_per_s,
-                        a.max_momentum_flux_width_m4_per_s2,
-                    ],
-                    &[
-                        b.max_water_flux_width_m3_per_s,
-                        b.max_momentum_flux_width_m4_per_s2,
-                    ],
-                )
-        }
-        _ => false,
-    }
-}
-
-pub(super) fn friction_geometry(
-    a: Option<&super::super::output::ChannelFrictionGeometryDiagnostics>,
-    b: Option<&super::super::output::ChannelFrictionGeometryDiagnostics>,
-) -> bool {
-    match (a, b) {
-        (None, None) => true,
-        (Some(a), Some(b)) => {
-            values(
-                &a.momentum_abs_bound_m4_per_s,
-                &b.momentum_abs_bound_m4_per_s,
-            ) && a.max_momentum_abs_bound_m4_per_s.to_bits()
-                == b.max_momentum_abs_bound_m4_per_s.to_bits()
-        }
-        _ => false,
-    }
-}
-
-pub(super) fn boundary_trace(
-    a: Option<&super::super::ChannelBoundaryTrace>,
-    b: Option<&super::super::ChannelBoundaryTrace>,
-) -> bool {
-    match (a, b) {
-        (None, None) => true,
-        (Some(a), Some(b)) => a.same_bits(b),
-        _ => false,
-    }
 }

@@ -273,3 +273,54 @@ where
         "Receipt disagrees with represented reservoir algebra. Restore a matching complete receipt",
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::fixture::{cpu_client, element};
+    use super::super::{drain, prepare_budget};
+    use super::*;
+    use crate::runoff::ReservoirConfig;
+    use numr::runtime::cpu::CpuRuntime;
+
+    #[test]
+    fn foreign_root_witness_uses_the_budget_construction_context() -> Result<(), ReservoirError> {
+        let context_a = TensorReservoirContext::<CpuRuntime>::new(
+            cpu_client(),
+            vec![element("same-identity", 1.0 / 32.0, 32.0)?],
+            ReservoirConfig::default(),
+        )?;
+        let context_b = TensorReservoirContext::<CpuRuntime>::new(
+            cpu_client(),
+            vec![element("same-identity", 1.0 / 32.0, 64.0)?],
+            ReservoirConfig::default(),
+        )?;
+        let available = 0.25 * 0.3048;
+        let budget_a = prepare_budget(&context_a, context_a.tensor(&[available])?, 1.0, |_| {
+            context_a.tensor(&[1.0])
+        })?;
+        let budget_b = prepare_budget(&context_b, context_b.tensor(&[available])?, 1.0, |_| {
+            context_b.tensor(&[1.0])
+        })?;
+        let from_a = drain(&budget_a)?;
+        let error = admit_drainage(
+            &budget_b,
+            DrainageRoot {
+                lower: from_a.lower,
+                upper: from_a.upper,
+                depth: from_a.depth,
+                iterations: from_a.iterations,
+            },
+        )
+        .err()
+        .ok_or_else(|| {
+            ReservoirError::numerical(
+                "a physically different context must reject the foreign root witness",
+            )
+        })?;
+        assert_eq!(error.element(), Some(0));
+        assert!(error.to_string().contains("root signs"));
+        let from_b = drain(&budget_b)?;
+        assert!(from_b.export_volume.item::<f64>()? > 0.0);
+        Ok(())
+    }
+}

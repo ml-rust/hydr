@@ -146,3 +146,78 @@ where
         interval: dt,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::fixture::{cpu_client, element};
+    use super::super::drain;
+    use super::*;
+    use crate::runoff::ReservoirConfig;
+    use numr::runtime::cpu::CpuRuntime;
+
+    #[test]
+    fn provided_inactive_budgets_need_no_event_rate_or_root_work() -> Result<(), ReservoirError> {
+        let context = TensorReservoirContext::<CpuRuntime>::new(
+            cpu_client(),
+            vec![
+                element("closed", 1.0 / 32.0, 0.0)?,
+                element("instant", 0.0, 32.0)?,
+                element("unfilled", 1.0 / 32.0, 32.0)?,
+            ],
+            ReservoirConfig {
+                root_iterations: 1,
+                ..ReservoirConfig::default()
+            },
+        )?;
+        let available = [0.25 * 0.3048, 0.25 * 0.3048, 0.0625 * 0.3048];
+        let budget = prepare_budget(&context, context.tensor(&available)?, 1.0, |_| {
+            context.tensor(&[0.0; 3])
+        })?;
+        let result = drain(&budget)?;
+        assert_eq!(result.iterations, 0);
+        assert_eq!(
+            result.depth.try_to_vec::<f64>()?,
+            vec![available[0], 0.125 * 0.3048, available[2]]
+        );
+        assert_eq!(budget.active_duration().try_to_vec::<f64>()?, vec![0.0; 3]);
+        Ok(())
+    }
+
+    #[test]
+    fn provided_budget_rejects_invalid_storage_and_active_duration() -> Result<(), ReservoirError> {
+        let context = TensorReservoirContext::<CpuRuntime>::new(
+            cpu_client(),
+            vec![element("finite", 1.0 / 32.0, 32.0)?],
+            ReservoirConfig::default(),
+        )?;
+        for duration in [0.0, -1.0, 2.0, f64::NAN, f64::INFINITY] {
+            let error = prepare_budget(&context, context.tensor(&[0.25 * 0.3048])?, 1.0, |_| {
+                context.tensor(&[duration])
+            })
+            .err()
+            .ok_or_else(|| {
+                ReservoirError::numerical("invalid active drainage duration must reject")
+            })?;
+            assert_eq!(error.element(), Some(0));
+        }
+        for available in [-1.0, f64::NAN, f64::INFINITY] {
+            let error = prepare_budget(&context, context.tensor(&[available])?, 1.0, |_| {
+                context.tensor(&[0.0])
+            })
+            .err()
+            .ok_or_else(|| {
+                ReservoirError::numerical("invalid authoritative storage must reject")
+            })?;
+            assert_eq!(error.element(), Some(0));
+        }
+        for dt in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            let error = prepare_budget(&context, context.tensor(&[0.25 * 0.3048])?, dt, |_| {
+                context.tensor(&[1.0])
+            })
+            .err()
+            .ok_or_else(|| ReservoirError::numerical("invalid drainage interval must reject"))?;
+            assert!(matches!(error, ReservoirError::InvalidInput { .. }));
+        }
+        Ok(())
+    }
+}

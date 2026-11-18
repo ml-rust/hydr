@@ -283,3 +283,120 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::geometry::TensorGeometry;
+    use super::super::fixture::{TestResult, context, face};
+
+    #[test]
+    fn film_signals_remain_at_the_wet_vacuum_front_scale() -> TestResult {
+        let ctx = context()?;
+        let TensorGeometry::Triangular(geometry) = &ctx.geometry else {
+            return Err("triangular geometry required".into());
+        };
+        let wet = face(&ctx, 1.0, 0.0)?;
+        for exponent in 1..=150 {
+            let film_depth = 10_f64.powi(-exponent);
+            let film = face(&ctx, film_depth, 0.0)?;
+            let (sl, sr) = ctx.triangular_bounds(geometry, &wet, &film)?;
+            // For g=8, the resting sound floor is exactly 2*sqrt(h_right).
+            let reference_speed = 8.0 - 6.0 * film_depth.sqrt();
+            let sl = sl.item::<f64>()?;
+            let sr = sr.item::<f64>()?;
+            assert!(sl.is_finite() && sr.is_finite());
+            assert!(sl <= -reference_speed && (sl + reference_speed).abs() < 1e-12);
+            assert!(sr >= reference_speed && (sr - reference_speed).abs() < 1e-12);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn invariant_signals_enclose_compression_vacuum_and_characteristic_cancellation() -> TestResult
+    {
+        let ctx = context()?;
+        let TensorGeometry::Triangular(geometry) = &ctx.geometry else {
+            return Err("triangular geometry required".into());
+        };
+        for (ul, ur, reference_lower, reference_upper) in [
+            (3.0, -3.0, -5.0, 5.0),
+            (-10.0, 10.0, -12.0, 12.0),
+            (8.0, 8.0, 6.0, 10.0),
+            (2.0, 2.0, 0.0, 4.0),
+            (0.0, 0.0, -2.0, 2.0),
+            (-3.0, 3.0, -5.0, 5.0),
+        ] {
+            let (sl, sr) =
+                ctx.triangular_bounds(geometry, &face(&ctx, 1.0, ul)?, &face(&ctx, 1.0, ur)?)?;
+            assert!(sl.item::<f64>()? <= reference_lower);
+            assert!(sr.item::<f64>()? >= reference_upper);
+            assert!((sl.item::<f64>()? - reference_lower).abs() < 1e-12);
+            assert!((sr.item::<f64>()? - reference_upper).abs() < 1e-12);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn uncertain_rarefaction_boundary_retains_the_enclosure_until_certified() -> TestResult {
+        let ctx = context()?;
+        let TensorGeometry::Triangular(geometry) = &ctx.geometry else {
+            return Err("triangular geometry required".into());
+        };
+        let left = face(&ctx, 1.0, 0.0)?;
+        // The exact transition has c_left=2, c_right=1, and velocity jump 4.
+        for right_velocity in [f64::from_bits(4.0_f64.to_bits() - 1), 4.0] {
+            let (sl, sr) =
+                ctx.triangular_bounds(geometry, &left, &face(&ctx, 0.25, right_velocity)?)?;
+            assert!(sl.item::<f64>()? < -4.9);
+            assert!(sl.item::<f64>()? <= -2.0);
+            assert!(sr.item::<f64>()? >= right_velocity + 1.0);
+        }
+        let right_velocity = 4.0 + 1e-10;
+        let (sl, sr) =
+            ctx.triangular_bounds(geometry, &left, &face(&ctx, 0.25, right_velocity)?)?;
+        assert!(sl.item::<f64>()? <= -2.0);
+        assert!((sl.item::<f64>()? + 2.0).abs() < 1e-12);
+        assert!(sr.item::<f64>()? >= right_velocity + 1.0);
+        assert!((sr.item::<f64>()? - (right_velocity + 1.0)).abs() < 1e-12);
+        Ok(())
+    }
+
+    #[test]
+    fn vacuum_front_certificate_remains_false_when_zero_is_uncertain() -> TestResult {
+        let ctx = context()?;
+        let TensorGeometry::Triangular(geometry) = &ctx.geometry else {
+            return Err("triangular geometry required".into());
+        };
+        // At g=8 and h=1 the two vacuum fronts cross zero at velocities -8 and +8.
+        for (velocity, expected) in [(8.0 - 1e-10, 0.0), (8.0, 0.0), (8.0 + 1e-10, 1.0)] {
+            let bounds = ctx.triangular_wave_bounds(
+                geometry,
+                &face(&ctx, 1.0, -velocity)?,
+                &face(&ctx, 1.0, velocity)?,
+            )?;
+            assert_eq!(bounds.vacuum.item::<f64>()?, expected);
+        }
+        let one_dry =
+            ctx.triangular_wave_bounds(geometry, &face(&ctx, 1.0, -10.0)?, &face(&ctx, 0.0, 0.0)?)?;
+        assert_eq!(one_dry.vacuum.item::<f64>()?, 0.0);
+        Ok(())
+    }
+
+    #[test]
+    fn unselected_vacuum_advection_uses_benign_operands_before_product_checks() -> TestResult {
+        let ctx = context()?;
+        let TensorGeometry::Triangular(geometry) = &ctx.geometry else {
+            return Err("triangular geometry required".into());
+        };
+        let left = face(&ctx, 1.0, -1e200)?;
+        let right = face(&ctx, 1.0, 1e200)?;
+        let bounds = ctx.triangular_wave_bounds(geometry, &left, &right)?;
+        assert!(bounds.lower.item::<f64>()?.is_finite() && bounds.upper.item::<f64>()?.is_finite());
+        assert_eq!(bounds.vacuum.item::<f64>()?, 1.0);
+        let physical = ctx.triangular_physical(&left, &ctx.tensor(&[0.0])?)?;
+        assert_eq!(physical.momentum.item::<f64>()?, 0.0);
+        assert_eq!(physical.momentum_bound.item::<f64>()?, 0.0);
+        assert!((physical.pressure.item::<f64>()? - 8.0 / 3.0).abs() < 1e-14);
+        Ok(())
+    }
+}

@@ -1,6 +1,5 @@
-use super::super::super::{AreaDirection, AreaQuery, tests::test_support as support};
-use super::super::ConditionalBandSegments;
-use super::{Client, Result, hydraulic};
+use super::super::{AreaDirection, AreaQuery, test_support as support};
+use super::ConditionalBandSegments;
 use crate::channel::{
     flow::{
         surveyed::{equation_ops::scalar, error},
@@ -13,6 +12,7 @@ use numr::{
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
+use support::{Client, Result, hydraulic};
 
 pub(super) fn run<R>(client: &R::Client) -> Result
 where

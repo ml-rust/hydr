@@ -1,7 +1,7 @@
 use super::super::{
     chart::{AreaAnchor, AreaDirection, AreaQuery, SupportedAreaQuery},
     domain_coverage_tests::rectangles,
-    tests::test_support::{Client, Result, hydraulic},
+    test_support::{Client, Result, hydraulic},
 };
 use super::{SupportSelection, align};
 use crate::channel::{flow::surveyed::error, section::HydraulicGeometry};

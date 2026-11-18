@@ -5,13 +5,12 @@ mod arithmetic;
 mod context;
 mod expanded;
 mod expanded_momentum;
+#[cfg(test)]
+mod fixture;
 mod preparation;
 mod projection;
 mod state;
 mod types;
-
-#[cfg(test)]
-mod tests;
 
 pub(super) use context::LateralContext;
 pub(super) use types::{

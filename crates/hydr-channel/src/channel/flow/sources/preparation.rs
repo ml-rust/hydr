@@ -193,3 +193,175 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::fixture::{TestResult, client, definition, forcing, inflow};
+    use super::*;
+    use crate::channel::flow::{
+        ChannelLateralDirection, ChannelLateralInput, ChannelLateralStateData,
+    };
+    use crate::forcing::WaterAmount;
+    use numr::runtime::cpu::CpuRuntime;
+
+    #[test]
+    fn integrated_operands_never_enter_unused_rate_multiplication() -> TestResult {
+        let client = client();
+        let source = LateralContext::<CpuRuntime>::new(
+            &client,
+            definition(&[ChannelLateralDirection::Inflow]),
+        )?;
+        let bound = source.bind_host(&client, &forcing(vec![inflow(0, f64::MAX, 0.0)]))?;
+        let make = |value| Tensor::<CpuRuntime>::from_slice(&[value], &[1], client.device());
+        let prepared = source.prepare(
+            &client,
+            &bound.lateral,
+            &source.initial_state(&client)?,
+            &make(1.0)?,
+            &make(0.0)?,
+            2.0,
+        )?;
+        assert_eq!(
+            prepared.receipt.volume.item::<f64>()?.to_bits(),
+            f64::MAX.to_bits()
+        );
+        assert_eq!(prepared.incoming_volume.item::<f64>()?, f64::MAX);
+        assert_eq!(prepared.incoming_momentum.item::<f64>()?, 0.0);
+        Ok(())
+    }
+
+    #[test]
+    fn positive_water_absorption_rejects_grouping_and_receiving_storage() -> TestResult {
+        let client = client();
+        let make = |value| Tensor::<CpuRuntime>::from_slice(&[value], &[1], client.device());
+        let source = LateralContext::<CpuRuntime>::new(
+            &client,
+            definition(&[ChannelLateralDirection::Inflow; 2]),
+        )?;
+        let bound = source.bind_host(
+            &client,
+            &forcing(vec![inflow(0, 2.0_f64.powi(53), 0.0), inflow(1, 1.0, 0.0)]),
+        )?;
+        assert!(matches!(
+            source.prepare(
+                &client,
+                &bound.lateral,
+                &source.initial_state(&client)?,
+                &make(1.0)?,
+                &make(0.0)?,
+                1.0
+            ),
+            Err(ChannelError::Numerical { .. })
+        ));
+        let source = LateralContext::<CpuRuntime>::new(
+            &client,
+            definition(&[ChannelLateralDirection::Inflow]),
+        )?;
+        let bound = source.bind_host(&client, &forcing(vec![inflow(0, 1.0, 0.0)]))?;
+        let prepared = source.prepare(
+            &client,
+            &bound.lateral,
+            &source.initial_state(&client)?,
+            &make(2.0_f64.powi(53))?,
+            &make(0.0)?,
+            1.0,
+        )?;
+        assert!(matches!(
+            source.apply_lateral_and_transport(
+                &client,
+                &make(2.0_f64.powi(53))?,
+                &make(0.0)?,
+                &make(0.0)?,
+                &make(0.0)?,
+                &prepared
+            ),
+            Err(ChannelError::Numerical { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn signed_momentum_cancellation_retains_an_absolute_bound() -> TestResult {
+        let client = client();
+        let source = LateralContext::<CpuRuntime>::new(
+            &client,
+            definition(&[ChannelLateralDirection::Inflow; 3]),
+        )?;
+        let inputs = [2.0_f64.powi(53), 1.0, -2.0_f64.powi(53)]
+            .into_iter()
+            .enumerate()
+            .map(|(i, u)| inflow(i, 1.0, u))
+            .collect();
+        let bound = source.bind_host(&client, &forcing(inputs))?;
+        let make = |value| Tensor::<CpuRuntime>::from_slice(&[value], &[1], client.device());
+        let prepared = source.prepare(
+            &client,
+            &bound.lateral,
+            &source.initial_state(&client)?,
+            &make(1.0)?,
+            &make(0.0)?,
+            1.0,
+        )?;
+        assert_eq!(prepared.incoming_volume.item::<f64>()?, 3.0);
+        assert_eq!(prepared.incoming_momentum.item::<f64>()?, 0.0);
+        assert!(prepared.incoming_momentum_bound.item::<f64>()? >= 1.0);
+        Ok(())
+    }
+
+    #[test]
+    fn counter_addition_retains_low_components_and_dry_zero_velocity() -> TestResult {
+        let client = client();
+        let make = |value| Tensor::<CpuRuntime>::from_slice(&[value], &[1], client.device());
+        let source = LateralContext::<CpuRuntime>::new(
+            &client,
+            definition(&[ChannelLateralDirection::Inflow]),
+        )?;
+        let previous = source.restore_state(
+            &client,
+            &ChannelLateralStateData {
+                cumulative_volume_m3: vec![2.0_f64.powi(53)],
+                counter_roundoff_bound_m3: vec![0.0],
+                cumulative_assembly_bound_m3: 0.0,
+            },
+        )?;
+        let bound = source.bind_host(&client, &forcing(vec![inflow(0, 1.0, 0.0)]))?;
+        let prepared = source.prepare(
+            &client,
+            &bound.lateral,
+            &previous,
+            &make(1.0)?,
+            &make(0.0)?,
+            1.0,
+        )?;
+        assert_eq!(prepared.receipt.counter_addition_low.item::<f64>()?, 1.0);
+        assert_eq!(
+            prepared.receipt.next_counter.item::<f64>()?,
+            2.0_f64.powi(53)
+        );
+        assert!(prepared.receipt.next_counter_bound.item::<f64>()? >= 1.0);
+        let source = LateralContext::<CpuRuntime>::new(
+            &client,
+            definition(&[ChannelLateralDirection::Withdrawal]),
+        )?;
+        let bound = source.bind_host(
+            &client,
+            &forcing(vec![ChannelLateralInput::Withdrawal {
+                boundary_id: "source-0".into(),
+                amount: WaterAmount::IntervalVolume { volume_m3: 0.0 },
+            }]),
+        )?;
+        let previous = source.initial_state(&client)?;
+        let prepared = source.prepare(
+            &client,
+            &bound.lateral,
+            &previous,
+            &make(0.0)?,
+            &make(0.0)?,
+            1.0,
+        )?;
+        let receipts =
+            source.project_receipts(&client, &bound.lateral, &previous, &prepared.receipt)?;
+        assert_eq!(receipts[0].applied_longitudinal_velocity_m_per_s, None);
+        Ok(())
+    }
+}

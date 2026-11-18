@@ -1,5 +1,7 @@
-use super::super::{AreaAnchor, AreaDirection, SupportedAreaQuery, endpoints::PhysicalEndpoint};
-use super::{fixtures, test_support as support};
+use super::{
+    AreaAnchor, AreaDirection, SupportedAreaQuery, endpoints::PhysicalEndpoint, fixtures,
+    test_support as support,
+};
 use crate::channel::{
     flow::surveyed::error::{self, HydraulicError, HydraulicResult},
     section::{CrossSectionError, HydraulicGeometry},

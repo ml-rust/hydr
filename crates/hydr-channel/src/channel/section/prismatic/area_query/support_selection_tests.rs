@@ -1,4 +1,4 @@
-use super::tests::{
+use super::{
     fixtures::{AnchorKind, CASES, Chart},
     parameter_rebinding_tests::{float_fields, integer_fields, snapshot},
     test_support as support,

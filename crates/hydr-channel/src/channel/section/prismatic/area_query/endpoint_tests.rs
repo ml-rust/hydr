@@ -1,5 +1,5 @@
 use super::endpoints::PhysicalEndpoint;
-use super::tests::{fixtures, test_support as support};
+use super::{fixtures, test_support as support};
 use crate::channel::flow::surveyed::error;
 use crate::channel::section::HydraulicGeometry;
 use numr::{

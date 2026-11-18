@@ -128,3 +128,75 @@ where
     }
     Err(EngineError::Boundary { face, reason })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::fixture::{G, Lane, lane, run};
+    use super::*;
+    use crate::contract::Axis;
+
+    #[test]
+    fn dry_critical_supercritical_and_inadmissible_targets_reject() {
+        for request in [
+            Lane {
+                h: 0.0,
+                u: 0.0,
+                ..lane()
+            },
+            Lane {
+                u: G.sqrt(),
+                ..lane()
+            },
+            Lane { u: 4.0, ..lane() },
+            Lane { u: -4.0, ..lane() },
+            Lane {
+                stage: 0.0,
+                ..lane()
+            },
+            Lane {
+                stage: 0.01,
+                ..lane()
+            },
+            Lane {
+                stage: 10.0,
+                ..lane()
+            },
+            Lane {
+                discharge: Some(100.0),
+                ..lane()
+            },
+        ] {
+            assert!(
+                matches!(run(&[request]), Err(EngineError::Boundary { .. })),
+                "h={}, u={}, stage={}, q={:?}",
+                request.h,
+                request.u,
+                request.stage,
+                request.discharge
+            );
+        }
+    }
+
+    #[test]
+    fn a_bad_second_lane_identifies_its_face_in_mixed_boundary_batches() {
+        let expected = BoundaryFace {
+            axis: Axis::X,
+            column: 0,
+            row: 1,
+        };
+        for bad in [
+            Lane {
+                discharge: Some(100.0),
+                ..lane()
+            },
+            Lane {
+                stage: 0.01,
+                ..lane()
+            },
+        ] {
+            assert!(
+                matches!(run(&[lane(), bad]), Err(EngineError::Boundary { face, .. }) if face == expected)
+            );
+        }
+    }
+}

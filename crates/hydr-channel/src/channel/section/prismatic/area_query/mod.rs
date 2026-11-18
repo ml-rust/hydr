@@ -39,7 +39,16 @@ pub(crate) use evaluation::AreaQueryGeometry;
 pub(crate) use source_difference::source_difference;
 
 #[cfg(test)]
-pub(super) mod tests;
+mod admission_tests;
+
+#[cfg(test)]
+pub(in crate::channel::section::prismatic) mod fixtures;
+
+#[cfg(test)]
+mod parameter_rebinding_tests;
+
+#[cfg(test)]
+pub(in crate::channel::section::prismatic) mod test_support;
 
 #[cfg(test)]
 mod source_difference_tests;

@@ -1,5 +1,5 @@
-use super::super::{AreaAnchor, AreaDirection, AreaQuery, AreaQueryGeometry};
 use super::fixtures::{AnchorKind, Case, Chart, Extrema, PROFILES};
+use super::{AreaAnchor, AreaDirection, AreaQuery, AreaQueryGeometry};
 use crate::channel::flow::surveyed::error::{Arithmetic, HydraulicError, HydraulicResult};
 use crate::channel::section::{
     CrossSectionBatch, CrossSectionDefinition, CrossSectionPoint, GatheredBands,

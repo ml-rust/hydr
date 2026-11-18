@@ -1,6 +1,6 @@
 use super::super::CoupledLevelPoolForcingInterval;
 use super::super::forcing::BoundPoolForcing;
-use super::tests::{binding, client, pools};
+use super::fixture::{binding, client, pools};
 use super::*;
 use numr::dtype::DType;
 use numr::runtime::cpu::{CpuClient, CpuRuntime, ParallelismConfig};

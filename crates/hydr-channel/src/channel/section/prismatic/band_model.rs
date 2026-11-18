@@ -162,9 +162,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::area_query::tests::test_support::{
-        self as support, Client, Result, hydraulic,
-    };
+    use super::super::area_query::test_support::{self as support, Client, Result, hydraulic};
     use super::super::band_terms::BandTerms;
     use super::super::boundary_area::knot;
     use super::super::inputs::column;

@@ -141,7 +141,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::area_point_query::PrismaticAreaPointRecovery;
-    use super::super::area_query::tests::test_support::{self as support, Client, Result};
+    use super::super::area_query::test_support::{self as support, Client, Result};
     use super::super::config::PrismaticRecoveryConfig;
     use numr::{
         dtype::DType,
