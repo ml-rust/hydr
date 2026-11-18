@@ -24,6 +24,42 @@ impl<R: Runtime<DType = DType>> OperatingSourceBatch<R> {
             + numr::ops::ConditionalOps<R>
             + numr::ops::ReduceOps<R>,
     {
+        self.next_event_from(time_s, source_frames, false)
+    }
+
+    /// Return the next strictly later common-supported event of a coordinator.
+    ///
+    /// Each actuator arrival window counts as one event, as in
+    /// `GateActuatorBatch::next_coordinated_event`. Every other event keeps its exact time.
+    #[doc(hidden)]
+    pub fn next_coordinated_event_after(
+        &self,
+        time_s: f64,
+        source_frames: &[OperatingSourceFrame<'_, R>],
+    ) -> Result<Option<OperatingSourceEvent>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>,
+    {
+        self.next_event_from(time_s, source_frames, true)
+    }
+
+    /// The next event after `time_s`, with actuator events of a standalone walk or of a
+    /// `coordinated` one.
+    fn next_event_from(
+        &self,
+        time_s: f64,
+        source_frames: &[OperatingSourceFrame<'_, R>],
+        coordinated: bool,
+    ) -> Result<Option<OperatingSourceEvent>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>,
+    {
         self.check_time(time_s)?;
         let frames = frames(&self.context, time_s, source_frames)?;
         let Some(support) = self.support() else {
@@ -57,7 +93,12 @@ impl<R: Runtime<DType = DType>> OperatingSourceBatch<R> {
                             "checked actuator event frame is incomplete or has another kind",
                         ));
                     };
-                    actuator.next_event()?.map(|event| {
+                    let event = if coordinated {
+                        actuator.next_coordinated_event()?
+                    } else {
+                        actuator.next_event()?
+                    };
+                    event.map(|event| {
                         (
                             event.time_s,
                             OperatingSourceEventKind::Actuator {

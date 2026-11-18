@@ -1,9 +1,9 @@
 //! Two-phase actuator intervals: the old-target left state first, the endpoint packet second.
+//!
+//! The sibling `prepared` module prepares the left state. This module installs the packet.
 
-use super::{
-    GateActuatorBatch, GateActuatorEvent, GateActuatorOutput, GateActuatorTrial, GateTargetUpdate,
-};
-use crate::structures::numerics::actuator::{TensorActuatorLeft, install, left};
+use super::{GateActuatorBatch, GateActuatorPreparedInterval, GateActuatorTrial, GateTargetUpdate};
+use crate::structures::numerics::actuator::install;
 use crate::structures::tensor::actuator::{
     TensorActuatorContext, TensorActuatorUpdate, record::TensorRecord,
 };
@@ -12,118 +12,7 @@ use numr::dtype::DType;
 use numr::runtime::Runtime;
 use std::sync::Arc;
 
-/// Old-target response over one event-free interval, before any endpoint target packet.
-///
-/// `GateActuatorBatch::prepare_to` creates it. `GateActuatorBatch::complete` consumes it.
-/// Dropping it leaves the accepted batch unchanged.
-#[doc(hidden)]
-#[derive(Clone, Debug)]
-pub struct GateActuatorPreparedInterval<R: Runtime<DType = DType>> {
-    pub(crate) base: GateActuatorBatch<R>,
-    pub(crate) left: TensorActuatorLeft<R>,
-    pub(crate) frame: GateActuatorBatch<R>,
-    pub(crate) next_target: usize,
-}
-
-impl<R: Runtime<DType = DType>> GateActuatorPreparedInterval<R> {
-    /// Accepted start time in seconds.
-    #[doc(hidden)]
-    pub fn start_s(&self) -> f64 {
-        self.left.start
-    }
-    /// Interval end in seconds.
-    #[doc(hidden)]
-    pub fn end_s(&self) -> f64 {
-        self.left.end
-    }
-    /// Event exactly at the interval end. `None` when the end lies before the next event.
-    #[doc(hidden)]
-    pub fn event(&self) -> Option<GateActuatorEvent> {
-        self.left.event
-    }
-    /// Accepted batch at the interval start.
-    #[doc(hidden)]
-    pub fn start(&self) -> &GateActuatorBatch<R> {
-        &self.base
-    }
-    /// Project the old-target position at the interval end, before any endpoint packet.
-    #[doc(hidden)]
-    pub fn left_outputs(&self) -> Result<Vec<GateActuatorOutput>, StructureError> {
-        self.frame.outputs()
-    }
-}
-
 impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
-    /// Advance the old target to `end_s` without an endpoint target packet.
-    ///
-    /// The interval must contain no event. An end exactly at the next event is aligned to it.
-    /// The accepted batch stays unchanged.
-    #[doc(hidden)]
-    pub fn prepare_to(&self, end_s: f64) -> Result<GateActuatorPreparedInterval<R>, StructureError>
-    where
-        R::Client: numr::ops::BinaryOps<R>
-            + numr::ops::CompareOps<R>
-            + numr::ops::ConditionalOps<R>
-            + numr::ops::ReduceOps<R>
-            + numr::ops::ScalarOps<R>
-            + numr::ops::TwoSumOps<R>
-            + numr::ops::TypeConversionOps<R>
-            + numr::ops::UnaryOps<R>,
-    {
-        let duration = end_s - self.time;
-        if !end_s.is_finite() || !duration.is_finite() || duration <= 0.0 {
-            return Err(StructureError::input(
-                StructureInputErrorKind::Definition,
-                format!(
-                    "actuator interval=[{},{}],duration={duration}: supply a finite positive original duration",
-                    self.time, end_s
-                ),
-            ));
-        }
-        let next = self.next_event()?.ok_or_else(|| {
-            StructureError::input(
-                StructureInputErrorKind::UnsupportedRegime,
-                "actuator trial exceeds terminal support",
-            )
-        })?;
-        if end_s > next.time_s {
-            return Err(StructureError::input(
-                StructureInputErrorKind::UnsupportedRegime,
-                "actuator interval crosses the next original event: split at that event",
-            ));
-        }
-        let event = if end_s == next.time_s {
-            Some(next)
-        } else {
-            None
-        };
-        let steps = self.steps.checked_add(1).ok_or_else(|| {
-            StructureError::numerical("actuator accepted interval counter overflow")
-        })?;
-        let next_target = if event.and_then(|e| e.target_index).is_some() {
-            self.next_target.checked_add(1).ok_or_else(|| {
-                StructureError::numerical("actuator target event counter overflow")
-            })?
-        } else {
-            self.next_target
-        };
-        let left = left(&self.context, &self.state, self.time, end_s, event)?;
-        let frame = Self {
-            context: Arc::clone(&self.context),
-            state: left.state.clone(),
-            time: end_s,
-            next_target: self.next_target,
-            steps,
-            last: self.last.clone(),
-        };
-        Ok(GateActuatorPreparedInterval {
-            base: self.clone(),
-            left,
-            frame,
-            next_target,
-        })
-    }
-
     /// Install the endpoint target packets on the right side of a prepared interval.
     ///
     /// The prepared interval must come from this accepted batch.
@@ -245,11 +134,12 @@ impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use crate::structures::interval_fixture::{Cpu, TestResult, actuators, bits, context};
     use crate::structures::{GateActuatorBatch, GateTargetUpdate, StructureInputErrorKind};
 
-    fn update(time_s: f64, target_opening_m: f64) -> Vec<GateTargetUpdate> {
+    /// The update packet of actuator `g1` toward `target_opening_m`, issued at `time_s`.
+    pub(in super::super) fn update(time_s: f64, target_opening_m: f64) -> Vec<GateTargetUpdate> {
         vec![GateTargetUpdate {
             actuator_id: "actuator-g1".into(),
             structure_id: "g1".into(),
@@ -259,7 +149,8 @@ mod tests {
         }]
     }
 
-    fn accepted(batch: &GateActuatorBatch<Cpu>) -> TestResult<String> {
+    /// Debug text of every accepted field of `batch`.
+    pub(in super::super) fn accepted(batch: &GateActuatorBatch<Cpu>) -> TestResult<String> {
         Ok(bits(&(
             batch.time().to_bits(),
             batch.accepted_steps(),
@@ -270,7 +161,7 @@ mod tests {
     }
 
     /// Target for each original event: open, repeat, then close to the terminal bound.
-    fn target(time_s: f64) -> f64 {
+    pub(in super::super) fn target(time_s: f64) -> f64 {
         if time_s < 2.5 { 0.5 } else { 0.0 }
     }
 

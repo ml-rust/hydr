@@ -99,6 +99,43 @@ impl<R: Runtime<DType = DType>> GateActuatorBatch<R> {
             self.next_target,
         )
     }
+    /// Next strictly later target, arrival window, or terminal event of a coordinator.
+    ///
+    /// Each certified arrival window `[lower, upper]` encloses one arrival instant, so it
+    /// counts as one event. A window ahead of the accepted time reports its upper bound. A
+    /// window the accepted time lies inside reports nothing more. `prepare_coordinated_to`
+    /// admits every end up to this event. Terminal state returns None.
+    #[doc(hidden)]
+    pub fn next_coordinated_event(&self) -> Result<Option<GateActuatorEvent>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>,
+    {
+        crate::structures::numerics::actuator::next_coordinated_event(
+            &self.context,
+            &self.state,
+            self.time,
+            self.next_target,
+        )
+    }
+    /// The event exactly at `end_s`, or `None` when `end_s` holds no target, pending arrival
+    /// bound, or terminal horizon.
+    pub(crate) fn event_at(&self, end_s: f64) -> Result<Option<GateActuatorEvent>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>,
+    {
+        crate::structures::numerics::actuator::event_at(
+            &self.context,
+            &self.state,
+            (self.time, self.next_target),
+            end_s,
+        )
+    }
     /// Produce a complete candidate without crossing any original command or arrival event.
     pub fn trial_to(
         &self,

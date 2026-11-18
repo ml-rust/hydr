@@ -70,6 +70,49 @@ impl<R: Runtime<DType = DType>> ControlledGateBatch<R> {
             + numr::ops::TypeConversionOps<R>
             + numr::ops::UnaryOps<R>,
     {
+        self.prepare(end_s, false)
+    }
+
+    /// Advance the actual gate response to `end_s` under its old targets, counting each
+    /// actuator arrival window as one event.
+    ///
+    /// The end must lie at or before `next_coordinated_event`, as in
+    /// `GateActuatorBatch::prepare_coordinated_to`. The prepared event holds every decision,
+    /// arrival bound, and terminal flag exactly at the end. The accepted batch stays unchanged.
+    #[doc(hidden)]
+    pub fn prepare_coordinated_to(
+        &self,
+        end_s: f64,
+    ) -> Result<ControlledGatePreparedInterval<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
+        self.prepare(end_s, true)
+    }
+
+    /// The prepared interval to `end_s`, bounded by the standalone or the `coordinated` event.
+    fn prepare(
+        &self,
+        end_s: f64,
+        coordinated: bool,
+    ) -> Result<ControlledGatePreparedInterval<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
         let duration = end_s - self.time();
         if !end_s.is_finite() || !duration.is_finite() || duration <= 0.0 {
             return Err(StructureError::input(
@@ -81,7 +124,12 @@ impl<R: Runtime<DType = DType>> ControlledGateBatch<R> {
                 ),
             ));
         }
-        let event = self.next_event()?.ok_or_else(|| {
+        let event = if coordinated {
+            self.next_coordinated_event()?
+        } else {
+            self.next_event()?
+        };
+        let event = event.ok_or_else(|| {
             StructureError::input(
                 StructureInputErrorKind::UnsupportedRegime,
                 "controlled gate trial exceeds terminal support: retain the original common horizon",
@@ -94,12 +142,22 @@ impl<R: Runtime<DType = DType>> ControlledGateBatch<R> {
             ));
         }
         let controls = self.controls.prepare_to(end_s)?;
-        let actuators = self.actuators.prepare_to(end_s)?;
+        let (actuators, event) = if coordinated {
+            (
+                self.actuators.prepare_coordinated_to(end_s)?,
+                self.event_at(end_s)?,
+            )
+        } else {
+            (
+                self.actuators.prepare_to(end_s)?,
+                (end_s == event.time_s).then_some(event),
+            )
+        };
         Ok(ControlledGatePreparedInterval {
             base: self.clone(),
             controls,
             actuators,
-            event: (end_s == event.time_s).then_some(event),
+            event,
         })
     }
 

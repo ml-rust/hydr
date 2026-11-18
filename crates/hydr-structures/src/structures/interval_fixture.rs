@@ -144,12 +144,22 @@ pub(crate) fn actuators(
     opening_m: f64,
     target_opening_m: f64,
 ) -> TestResult<GateActuatorBatch<Cpu>> {
+    actuators_at(context, id, (0.25, 0.5), (opening_m, target_opening_m))
+}
+
+/// Actuator on `id` opening and closing at `rates`, in m/s, from `(opening, target)`, in m.
+pub(crate) fn actuators_at(
+    context: &StructureBatch<Cpu>,
+    id: &str,
+    (opening_rate_m_per_s, closing_rate_m_per_s): (f64, f64),
+    (opening_m, target_opening_m): (f64, f64),
+) -> TestResult<GateActuatorBatch<Cpu>> {
     Ok(context.with_gate_actuators(
         vec![GateActuatorDefinition {
             actuator_id: format!("actuator-{id}"),
             structure_id: id.into(),
-            opening_rate_m_per_s: 0.25,
-            closing_rate_m_per_s: 0.5,
+            opening_rate_m_per_s,
+            closing_rate_m_per_s,
             accuracy: GateActuatorAccuracy {
                 maximum_absolute_opening_error_m: 1e-12,
                 maximum_relative_opening_error: 1e-12,
