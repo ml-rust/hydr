@@ -394,6 +394,15 @@ pub fn last(batch: &Batch) -> Result<SurfaceChannelStepDiagnostics> {
         .ok_or_else(|| "the batch holds no accepted interval".into())
 }
 
+/// The first port receipt of the last accepted interval.
+pub fn transfer(batch: &Batch) -> Result<SurfaceChannelPortTransfer> {
+    Ok(last(batch)?
+        .ports
+        .first()
+        .ok_or("the port receipt")?
+        .clone())
+}
+
 /// Cell results of reach `id`.
 pub fn reach_cells(batch: &Batch, id: &str) -> Result<Vec<ChannelCellResult>> {
     Ok(batch.reach(id).ok_or("the reach exists")?.state()?)
