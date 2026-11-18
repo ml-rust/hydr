@@ -1,24 +1,20 @@
+mod clipped_endpoint;
+
+use super::super::super::area_point_query::PrismaticAreaPointBandCoordinates;
 #[cfg(test)]
 use super::super::super::context::Context;
-use super::super::super::{
-    area_point_inverse, area_point_query::PrismaticAreaPointBandCoordinates, band_geometry::masked,
-    hydraulic_geometry::query_error,
-};
-use super::super::{evaluation, fields, inverse};
+use super::ConditionalBandSegments;
 #[cfg(test)]
 use super::selection::capture;
-use super::{
-    ConditionalBandSegments, endpoint_authority::StoredEndpointArea, types::LocalEndpoint,
-};
 use crate::channel::flow::surveyed::{
     analytic_bottom::kinds,
-    error::{Arithmetic, HydraulicResult, PrismaticRiemannRejection},
+    error::{Arithmetic, HydraulicResult},
 };
 use numr::{
     dtype::DType,
     ops::{
-        BinaryOps, CompareOps, ConditionalOps, IndexingOps, NextRepresentableOps, ScalarOps,
-        TensorOps, TwoSumOps, TypeConversionOps,
+        BinaryOps, CompareOps, IndexingOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps,
+        TypeConversionOps,
     },
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
@@ -221,125 +217,243 @@ where
             target,
         })
     }
+}
 
-    fn clipped_endpoint(
-        &self,
-        a: &mut Arithmetic<'_, R>,
-        local: &LocalEndpoint<R>,
-        raw: &StoredEndpointArea<R>,
-        band0: &Tensor<R>,
-    ) -> HydraulicResult<ClippedEndpointGeometry<R>> {
-        let c = a.client();
-        let n = self.active.numel();
-        let zero = &self.rows.model.source.zero;
-        let rows = self.rows.rows(a)?;
-        let valid = rows.valid.reshape(&[n])?;
-        let raw_zero = c.mul(
-            &c.eq(raw.value.high(), zero)?,
-            &c.mul(
-                &c.eq(raw.value.low(), zero)?,
-                &c.eq(raw.value.abs_error(), zero)?,
-            )?,
+#[cfg(test)]
+mod tests {
+    use super::clipped_endpoint::tests::uncertainty;
+    use super::*;
+    use crate::channel::section::prismatic::area_query::{
+        AreaAnchor, AreaDirection, AreaQuery, test_support as support,
+    };
+    use crate::channel::{
+        flow::surveyed::error,
+        section::{HydraulicGeometry, PrismaticRecoveryConfig},
+    };
+    use numr::ops::BinaryOps;
+    use support::{Client, Result, hydraulic};
+
+    fn geometry<R>(client: &R::Client) -> Result
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        let section = support::batch::<R>(client)?;
+        let foreign = support::batch::<R>(client)?;
+        let geometry = HydraulicGeometry::from_batch(&section);
+        let foreign_geometry = HydraulicGeometry::from_batch(&foreign);
+        let owners = Tensor::from_slice(&[2_i64, 1, 4], &[3], client.device())?;
+        let source_area = support::expansion::<R>(
+            client,
+            &[
+                [4.0_f64.to_bits(), 0, 0],
+                [2.0_f64.to_bits(), 0, 0],
+                [1.5_f64.to_bits(), 0, 0],
+            ],
+            true,
         )?;
-        let at_start = c.mul(&valid, &local.at_start.reshape(&[n])?)?;
-        let exact_dry = c.mul(band0, &c.maximum(&at_start, &raw_zero)?)?;
-        let at_start = c.maximum(&at_start, &exact_dry)?;
-        let dry_column = exact_dry.reshape(&[n, 1])?;
-        let above = a.bounds(
-            &c.where_cond(&dry_column, zero, local.above_start.lower())?,
-            &c.where_cond(&dry_column, zero, local.above_start.upper())?,
+        let source = section.recover_area_points_tensor(
+            &owners,
+            &source_area,
+            &PrismaticRecoveryConfig::default(),
         )?;
-        let below = a.bounds(
-            &c.where_cond(
-                &dry_column,
-                rows.area_increment.lower(),
-                local.below_end.lower(),
-            )?,
-            &c.where_cond(
-                &dry_column,
-                rows.area_increment.upper(),
-                local.below_end.upper(),
-            )?,
-        )?;
-        let recovered = if n == 0 {
-            inverse::LocalInverse {
-                candidate: rows.valid.clone(),
-                area_above_start: above,
-                area_below_end: below,
-                depth_above_start: a.point(&Tensor::zeros(&[0, 1], DType::F64, c.device())?)?,
-                depth_below_end: a.point(&Tensor::zeros(&[0, 1], DType::F64, c.device())?)?,
-            }
-        } else {
-            inverse::recover(a, &self.rows.model, &rows, &rows.valid, &above, &below)
-                .map_err(query_error)?
-        };
-        self.reject(&c.mul(&valid, &c.eq(&recovered.candidate, zero)?.reshape(&[n])?)?, PrismaticRiemannRejection::GeometryUnresolved,
-            "clipped endpoint has no compatible inverse band. Tighten endpoint or geometry certificates")?;
-        let coordinates = PrismaticAreaPointBandCoordinates {
-            candidate: recovered.candidate,
-            area_above_start: recovered.area_above_start,
-            area_below_end: recovered.area_below_end,
-            depth_above_start: recovered.depth_above_start,
-            depth_below_end: recovered.depth_below_end,
-        };
-        let values = fields::polynomials(
-            a,
-            &self.rows.model,
-            &rows,
-            coordinates.candidate_mask(),
-            coordinates.depth_above_start_m(),
+        hydraulic(error::checked::<R, _>(
+            client,
+            "clipped endpoint identities",
+            |a| {
+                let bands = geometry.gather(a, &owners)?;
+                let boundaries = geometry.boundary_areas(a)?.gather(a, &owners)?;
+                let zeros = Tensor::zeros(&[3], DType::F64, client.device())?;
+                let scale = a.expansion_point(&zeros)?;
+                let parameter = a.point(&zeros)?;
+                let dry = AreaQuery::band_affine(
+                    a,
+                    &bands,
+                    AreaAnchor::Zero,
+                    AreaDirection::Add,
+                    &scale,
+                    &parameter,
+                )?
+                .prove_support(a, &bands)?;
+                let segments =
+                    ConditionalBandSegments::prepare(a, &bands, &source, &dry, &boundaries)?;
+                let lanes = Tensor::from_slice(&[6_i64, 0, 3, 6, 4], &[5], client.device())?;
+                let endpoints = segments.clipped_endpoints(a, &lanes)?;
+                assert_eq!(endpoints.owners().try_to_vec::<i64>()?, [4, 2, 1, 4, 1]);
+                assert_eq!(
+                    endpoints.original_rows().try_to_vec::<i64>()?,
+                    [2, 0, 1, 2, 1]
+                );
+                assert_eq!(
+                    endpoints.band_indices().try_to_vec::<i64>()?,
+                    [0, 0, 0, 0, 1]
+                );
+                assert_eq!(
+                    endpoints.valid_mask().try_to_vec::<f64>()?,
+                    [1.0, 1.0, 1.0, 1.0, 0.0]
+                );
+                assert_eq!(
+                    endpoints
+                        .compiled_bottom_width()
+                        .lower()
+                        .try_to_vec::<f64>()?,
+                    [0.0, 2.0, 2.0, 0.0, 2.0]
+                );
+                assert_eq!(
+                    endpoints.rectangular_band0_mask().try_to_vec::<f64>()?,
+                    [0.0, 0.0, 1.0, 0.0, 0.0]
+                );
+                assert_eq!(
+                    endpoints.pointed_band0_mask().try_to_vec::<f64>()?,
+                    [1.0, 0.0, 0.0, 1.0, 0.0]
+                );
+                let target = endpoints.target();
+                assert_eq!(
+                    target.exact_dry_mask().try_to_vec::<f64>()?,
+                    [1.0, 1.0, 1.0, 1.0, 0.0]
+                );
+                assert_eq!(
+                    target.raw_available_mask().try_to_vec::<f64>()?,
+                    [1.0, 1.0, 1.0, 1.0, 0.0]
+                );
+                assert_eq!(
+                    target.top_width().lower().try_to_vec::<f64>()?,
+                    [0.0, 2.0, 2.0, 0.0, 0.0]
+                );
+                for field in [
+                    target.depth(),
+                    target.integral(),
+                    target.hydraulic_depth(),
+                    target.physical_area(),
+                ] {
+                    assert_eq!(field.lower().try_to_vec::<f64>()?, [0.0; 5]);
+                    assert_eq!(field.upper().try_to_vec::<f64>()?, [0.0; 5]);
+                }
+                for component in [
+                    target.retained_area().high(),
+                    target.retained_area().low(),
+                    target.retained_area().abs_error(),
+                ] {
+                    assert_eq!(component.try_to_vec::<f64>()?, [0.0; 5]);
+                }
+                // The global source lies above band zero. Its clipped endpoint is the original first knot.
+                let clipped = endpoints.source();
+                assert_eq!(clipped.retained_area().high().try_to_vec::<f64>()?[1], 3.0);
+                assert_eq!(clipped.at_end_mask().try_to_vec::<f64>()?[1], 1.0);
+                assert_eq!(clipped.depth().lower().try_to_vec::<f64>()?[1], 1.0);
+                assert_eq!(clipped.top_width().lower().try_to_vec::<f64>()?[1], 4.0);
+                assert_eq!(
+                    clipped
+                        .coordinates()
+                        .area_below_end_m2()
+                        .lower()
+                        .contiguous()?
+                        .try_to_vec::<f64>()?[1],
+                    0.0
+                );
+                let same = AreaQuery::source_affine(
+                    a,
+                    &bands,
+                    &source,
+                    AreaDirection::Add,
+                    &scale,
+                    &parameter,
+                )?
+                .prove_support(a, &bands)?;
+                let same =
+                    ConditionalBandSegments::prepare(a, &bands, &source, &same, &boundaries)?;
+                let first = Tensor::from_slice(&[0_i64], &[1], client.device())?;
+                assert_eq!(same.zero_gap_mask().try_to_vec::<f64>()?[0], 1.0);
+                let shared = same.clipped_endpoints(a, &first)?;
+                assert!(endpoints.same_model(&shared));
+                assert_eq!(shared.source().retained_area().high().item::<f64>()?, 3.0);
+                assert_eq!(shared.target().retained_area().high().item::<f64>()?, 3.0);
+                assert_eq!(shared.source().at_end_mask().item::<f64>()?, 1.0);
+                assert_eq!(shared.target().at_end_mask().item::<f64>()?, 1.0);
+                let foreign_bands = foreign_geometry.gather(a, &owners)?;
+                let foreign_boundaries = foreign_geometry.boundary_areas(a)?.gather(a, &owners)?;
+                assert!(
+                    ConditionalBandSegments::prepare(
+                        a,
+                        &foreign_bands,
+                        &source,
+                        &dry,
+                        &foreign_boundaries
+                    )
+                    .is_err()
+                );
+                let foreign_dry = AreaQuery::band_affine(
+                    a,
+                    &foreign_bands,
+                    AreaAnchor::Zero,
+                    AreaDirection::Add,
+                    &scale,
+                    &parameter,
+                )?
+                .prove_support(a, &foreign_bands)?;
+                let foreign_prefix = ConditionalBandSegments::prefix_from_exact_dry(
+                    a,
+                    &foreign_bands,
+                    &foreign_dry,
+                    &foreign_boundaries,
+                )?;
+                let foreign_endpoints = foreign_prefix.segments.clipped_endpoints(a, &first)?;
+                assert!(!endpoints.same_model(&foreign_endpoints));
+                let raw = clipped.retained_area().high().try_to_vec::<f64>()?;
+                client.copy_into(
+                    segments.start_area.value.high(),
+                    &Tensor::zeros(
+                        segments.start_area.value.high().shape(),
+                        DType::F64,
+                        client.device(),
+                    )?,
+                )?;
+                client.copy_into(
+                    segments.original_rows(),
+                    &Tensor::zeros(
+                        segments.original_rows().shape(),
+                        DType::I64,
+                        client.device(),
+                    )?,
+                )?;
+                assert_eq!(
+                    endpoints
+                        .source()
+                        .retained_area()
+                        .high()
+                        .try_to_vec::<f64>()?,
+                    raw
+                );
+                assert_eq!(
+                    endpoints.original_rows().try_to_vec::<i64>()?,
+                    [2, 0, 1, 2, 1]
+                );
+                let empty = Tensor::from_slice::<i64>(&[], &[0], client.device())?;
+                let empty = segments.clipped_endpoints(a, &empty)?;
+                assert_eq!(empty.target().physical_area().lower().shape(), &[0]);
+                assert_eq!(
+                    empty.target().coordinates().candidate_mask().shape(),
+                    &[0, 1]
+                );
+                Ok(())
+            },
+        ))?;
+        uncertainty::<R>(client)
+    }
+
+    #[test]
+    fn cpu_clipped_endpoints_preserve_physical_identity_and_raw_authority() -> Result {
+        use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+        geometry::<CpuRuntime>(
+            &CpuClient::new(CpuDevice::new())
+                .with_parallelism(ParallelismConfig::new(Some(1), None)),
         )
-        .map_err(query_error)?;
-        let available = c.maximum(&raw.available, &exact_dry)?;
-        let retained_area = a.expansion_bounds(
-            &c.where_cond(&exact_dry, zero, raw.value.high())?,
-            &c.where_cond(&exact_dry, zero, raw.value.low())?,
-            &c.where_cond(&exact_dry, zero, raw.value.abs_error())?,
-        )?;
-        let projected_input = a.expansion_bounds(
-            &c.where_cond(&available, retained_area.high(), zero)?,
-            &c.where_cond(&available, retained_area.low(), zero)?,
-            &c.where_cond(&available, retained_area.abs_error(), zero)?,
-        )?;
-        let projection = a.expansion_interval(&projected_input)?;
-        let forward = &values.forward_area;
-        let lower = c.maximum(&forward.lower().reshape(&[n])?, zero)?;
-        let upper = forward.upper().reshape(&[n])?;
-        let lower = c.where_cond(&available, &c.maximum(&lower, projection.lower())?, &lower)?;
-        let upper = c.where_cond(&available, &c.minimum(&upper, projection.upper())?, &upper)?;
-        self.reject(&c.mul(&valid, &c.gt(&lower, &upper)?)?, PrismaticRiemannRejection::GeometryUnresolved,
-            "clipped endpoint area conflicts with retained authority. Tighten endpoint or geometry certificates")?;
-        let physical_area = a.bounds(
-            &c.where_cond(&valid, &lower, zero)?,
-            &c.where_cond(&valid, &upper, zero)?,
-        )?;
-        let hydraulic = evaluation::hydraulic(
-            a,
-            &self.rows.model,
-            &rows,
-            &physical_area,
-            &coordinates,
-            &values.top_width,
-        )?;
-        let depth = area_point_inverse::absolute_depth(a, &self.rows.model, &rows, &coordinates)
-            .map_err(query_error)?;
-        let flatten =
-            |a: &mut Arithmetic<'_, R>, value: &Interval<R>| -> HydraulicResult<Interval<R>> {
-                let value = masked(a, &rows.valid, value, zero).map_err(query_error)?;
-                Ok(a.bounds(&value.lower().reshape(&[n])?, &value.upper().reshape(&[n])?)?)
-            };
-        Ok(ClippedEndpointGeometry {
-            retained_area,
-            raw_available: c.mul(&available, &c.ge(projection.lower(), zero)?)?,
-            physical_area,
-            depth: flatten(a, &depth)?,
-            width: flatten(a, &values.top_width)?,
-            integral: flatten(a, &values.integral)?,
-            hydraulic_depth: flatten(a, &hydraulic)?,
-            coordinates,
-            at_start,
-            at_end: c.mul(&valid, &local.at_end.reshape(&[n])?)?,
-            exact_dry,
-        })
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_clipped_endpoints_preserve_physical_identity_and_raw_authority() -> Result {
+        use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+        geometry::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?)
     }
 }

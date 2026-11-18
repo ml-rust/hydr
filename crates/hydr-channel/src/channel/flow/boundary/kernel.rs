@@ -376,3 +376,81 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::fixture::{context, interior};
+    use super::*;
+
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn exact_rest_retains_original_depth_and_section_enclosure() -> TestResult {
+        for triangle in [false, true] {
+            for bed in [0.0, 16.0] {
+                let ctx = context(triangle, bed)?;
+                let state = interior(&ctx, 0.0, 0.0)?;
+                for loss in [0.0, 1.0] {
+                    let (request, _) = ctx.boundary_reservoir_prepare(
+                        &state,
+                        &ctx.tensor(&[4.0])?,
+                        &ctx.tensor(&[bed + 1.0])?,
+                        &ctx.tensor(&[bed])?,
+                        &ctx.tensor(&[loss])?,
+                    )?;
+                    let DepthRequest::Known(depth) = request else {
+                        return Err("exact resting depth enters numerical solving".into());
+                    };
+                    assert_eq!(depth.value.item::<f64>()?.to_bits(), 1.0_f64.to_bits());
+                    assert_eq!(
+                        depth.bounds.lo.item::<f64>()?,
+                        state.depth_bounds.lo.item::<f64>()?
+                    );
+                    assert_eq!(
+                        depth.bounds.hi.item::<f64>()?,
+                        state.depth_bounds.hi.item::<f64>()?
+                    );
+                    assert_eq!(depth.iterations, 0);
+                    assert!(!depth.approximate);
+                    for endpoint in [0, 1] {
+                        let inputs = EndpointInterior {
+                            depth: ctx.tensor(&[1.0, 1.0])?,
+                            area: ctx.tensor(&[1.0, 1.0])?,
+                            velocity: ctx.tensor(&[0.0, 0.0])?,
+                            discharge: ctx.tensor(&[0.0, 0.0])?,
+                        };
+                        let policy = ChannelTensorBoundary::QuiescentReservoir {
+                            elevation_m: ctx.tensor(&[bed + 1.0])?,
+                            entrance_loss_coefficient: ctx.tensor(&[loss])?,
+                        };
+                        let wall = ChannelTensorBoundary::Wall;
+                        let (left, right) = if endpoint == 0 {
+                            (&policy, &wall)
+                        } else {
+                            (&wall, &policy)
+                        };
+                        let frame = ctx
+                            .direct_boundary_frame(&inputs, left, right)?
+                            .ok_or("missing resting reservoir frame")?;
+                        let traces = frame
+                            .traces
+                            .as_deref()
+                            .ok_or("missing resting reservoir trace")?;
+                        assert_eq!(traces.depth_m.item::<f64>()?.to_bits(), 1.0_f64.to_bits());
+                        assert_eq!(traces.outward_discharge_m3_per_s.item::<f64>()?, 0.0);
+                        assert_eq!(frame.longitudinal_water.item::<f64>()?, 0.0);
+                        let momentum = if triangle { 1.0 / 3.0 } else { 0.5 };
+                        assert_eq!(traces.momentum_flux_m4_per_s2.item::<f64>()?, momentum);
+                        assert_eq!(frame.momentum_flux_m4_per_s2.item::<f64>()?, momentum);
+                        assert_eq!(traces.root_iterations, vec![0]);
+                        assert_eq!(traces.endpoints, vec![endpoint]);
+                        assert_eq!(frame.endpoints, vec![endpoint]);
+                        assert!(traces.reservoir.is_some());
+                        assert!(frame.ports.is_empty());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}

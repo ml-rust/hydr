@@ -6,6 +6,7 @@ mod curves;
 mod roots;
 mod sample_bounds;
 mod sampling;
+mod shock_bounds;
 mod types;
 
 pub(in crate::channel::flow::triangular) use types::RiemannInput;

@@ -252,10 +252,32 @@ where
 mod tests {
     use super::super::{
         ChannelTensorBoundary,
+        flux::tests::{native_flux, scalar_endpoint_reach},
         surveyed_update::tests::{Client, TestResult, cpu, reach_with_roughness},
     };
     use super::*;
+    use crate::channel::ChannelBoundary;
     use numr::runtime::cpu::CpuRuntime;
+
+    #[test]
+    fn prescribed_endpoint_transfer_rejects_disappearing_nonzero_volume()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let reach = scalar_endpoint_reach()?;
+        let fields = reach
+            .context
+            .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
+        let boundary = ChannelBoundary::Discharge {
+            discharge_m3_per_s: 1e-200,
+        };
+        let flux = native_flux(&reach.context, &fields, &boundary, &boundary)?;
+        let before = reach.snapshot_data()?;
+        assert!(matches!(
+            reach.context.integrate_transport(&flux, 1e-200),
+            Err(ChannelError::Numerical { .. })
+        ));
+        assert_eq!(reach.snapshot_data()?, before);
+        Ok(())
+    }
 
     fn uniform_rest_transfers_nothing<R>(client: R::Client) -> TestResult
     where

@@ -1,9 +1,10 @@
+mod entry;
+
 use super::{
-    ChannelError, ChannelForcingInterval, ChannelReach, ChannelStep, ChannelStepDiagnostics,
-    ChannelTensorForcingInterval, accounting::Impulses, boundary::assembly::is_scalar,
-    conserved_point::ConservedPoint, engine::Accepted, forcing::BoundChannelForcing,
-    interval::IntervalControl, interval_start::IntervalStart, interval_start::ReservedStart,
-    receipt::LastInterval, surveyed_residuals::ExpandedImpulses,
+    ChannelError, ChannelReach, ChannelStep, ChannelStepDiagnostics, accounting::Impulses,
+    boundary::assembly::is_scalar, conserved_point::ConservedPoint, engine::Accepted,
+    forcing::BoundChannelForcing, interval::IntervalControl, interval_start::IntervalStart,
+    interval_start::ReservedStart, receipt::LastInterval, surveyed_residuals::ExpandedImpulses,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -42,48 +43,6 @@ where
         + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {
-    /// Calculate one accepted interval without modifying the input reach.
-    ///
-    /// Rate inputs permit shortening. Integrated inputs require fresh inputs for a shorter span.
-    pub fn step(
-        &self,
-        requested_end_s: f64,
-        forcing: &ChannelForcingInterval,
-    ) -> Result<ChannelStep<R>, ChannelError> {
-        let bound = self
-            .context
-            .lateral
-            .bind_host(&self.context.client, forcing)?;
-        self.step_bound(requested_end_s, &bound)
-    }
-
-    /// Calculate one accepted interval using original device-resident forcing operands.
-    ///
-    /// Every tensor uses F64, shape `[1]`, and the configured reach device.
-    pub fn step_tensor(
-        &self,
-        requested_end_s: f64,
-        forcing: &ChannelTensorForcingInterval<R>,
-    ) -> Result<ChannelStep<R>, ChannelError> {
-        let bound = self.context.lateral.bind_native(
-            &self.context.client,
-            forcing.start_s,
-            forcing.end_s,
-            forcing.left.clone(),
-            forcing.right.clone(),
-            forcing.lateral_inputs.clone(),
-        )?;
-        self.step_bound(requested_end_s, &bound)
-    }
-
-    pub(super) fn step_bound(
-        &self,
-        requested_end_s: f64,
-        forcing: &BoundChannelForcing<R>,
-    ) -> Result<ChannelStep<R>, ChannelError> {
-        self.step_bound_policy(requested_end_s, forcing, false, None)
-    }
-
     /// Steps with `reserved` accepted-start operands when they belong to this reach.
     pub(super) fn step_bound_policy(
         &self,
@@ -483,10 +442,6 @@ where
         })
     }
 }
-
-#[cfg(test)]
-#[path = "stepping_tests.rs"]
-mod tests;
 
 #[cfg(test)]
 #[path = "stepping_tests_surveyed.rs"]

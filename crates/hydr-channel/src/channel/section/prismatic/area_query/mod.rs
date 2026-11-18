@@ -7,11 +7,7 @@ mod boundaries;
 mod chart;
 mod domain_coverage;
 pub(crate) use domain_coverage::cover_domain;
-#[cfg(test)]
-pub(crate) use domain_coverage::{CoveredDomain, DomainCoverage};
 pub(crate) mod conditional_band;
-#[cfg(test)]
-mod domain_coverage_tests;
 mod endpoints;
 pub(super) mod evaluation;
 pub(super) mod hydrostatic_point;
@@ -27,11 +23,6 @@ mod source_difference;
 mod support;
 mod support_assessment;
 mod support_selection;
-#[cfg(test)]
-pub(crate) use support_selection::SupportSelection;
-
-#[cfg(test)]
-mod support_selection_tests;
 
 pub(crate) use chart::{AreaAnchor, AreaDirection, AreaQuery, SupportedAreaQuery};
 pub(crate) use endpoints::PhysicalEndpoint;
@@ -39,22 +30,11 @@ pub(crate) use evaluation::AreaQueryGeometry;
 pub(crate) use source_difference::source_difference;
 
 #[cfg(test)]
-mod admission_tests;
-
-#[cfg(test)]
 pub(in crate::channel::section::prismatic) mod fixtures;
 
 #[cfg(test)]
-mod parameter_rebinding_tests;
+mod query_fixture;
+mod rebinding;
 
 #[cfg(test)]
 pub(in crate::channel::section::prismatic) mod test_support;
-
-#[cfg(test)]
-mod source_difference_tests;
-
-#[cfg(test)]
-mod endpoint_tests;
-
-#[cfg(test)]
-mod provenance_tests;

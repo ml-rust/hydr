@@ -1,29 +1,32 @@
-use super::super::super::{
-    boundary_area::BoundaryAreas, config, hydraulic_geometry::GatheredBands,
-};
-use super::super::{SupportedAreaQuery, admission, source_difference::source_difference};
-use super::clipping::{self, clip};
-use super::endpoint_authority;
-use super::selection::{capture, compact};
-use super::{
-    ConditionalBandSegments, PreparedAreaPrefix,
-    target_coordinates::{matrix, target},
-    types::LocalEndpoint,
-};
+pub(super) mod origin;
+mod prefix;
+
+#[cfg(test)]
+#[path = "oracle_checks.rs"]
+mod checks;
+#[cfg(test)]
+#[path = "oracle_execution.rs"]
+mod execution;
+#[cfg(test)]
+#[path = "fixtures/mod.rs"]
+mod fixtures;
+#[cfg(test)]
+#[path = "oracle_support.rs"]
+mod native;
+
+use super::super::super::{boundary_area::BoundaryAreas, hydraulic_geometry::GatheredBands};
+use super::super::{SupportedAreaQuery, source_difference::source_difference};
+use super::ConditionalBandSegments;
 use crate::channel::{
     flow::surveyed::error::{Arithmetic, HydraulicResult},
     section::PrismaticAreaPointRecovery,
 };
 use numr::{
     dtype::DType,
-    ops::{
-        BinaryOps, CompareOps, MidpointOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps,
-        TypeConversionOps, UtilityOps,
-    },
+    ops::{CompareOps, MidpointOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps},
     runtime::{Runtime, RuntimeClient},
-    tensor::Tensor,
 };
-use solvr::common::arithmetic::{CertifiedExpansion, Interval};
+use solvr::common::arithmetic::CertifiedExpansion;
 
 struct SourceOrigin<'a, R: Runtime<DType = DType>> {
     area: &'a CertifiedExpansion<R>,
@@ -65,243 +68,205 @@ where
             },
         )
     }
+}
 
-    pub(crate) fn prefix_from_exact_dry(
-        a: &mut Arithmetic<'_, R>,
-        bands: &GatheredBands<R>,
-        endpoint: &SupportedAreaQuery<R>,
-        boundaries: &BoundaryAreas<R>,
-    ) -> HydraulicResult<PreparedAreaPrefix<R>> {
-        let endpoint_area = endpoint.retained_endpoint_area(a, bands, boundaries)?;
-        let zeros = Tensor::zeros(bands.section_owner.shape(), DType::F64, a.client().device())?;
-        let origin = a.expansion_point(&zeros)?;
-        let segments = Self::prepare_origin(
-            a,
-            bands,
-            endpoint,
-            boundaries,
-            SourceOrigin {
-                area: &origin,
-                delta: &endpoint_area,
-                target_area: &endpoint_area,
-                exact_dry: true,
-            },
-        )?;
-        Ok(PreparedAreaPrefix {
-            segments,
-            endpoint_area,
-            band_count: bands.band_count,
-        })
+#[cfg(test)]
+mod tests {
+    use super::{ConditionalBandSegments, checks, execution, fixtures, native};
+    use crate::channel::section::prismatic::area_query::{
+        endpoints::PhysicalEndpoint, fixtures as queries, pressure::fixtures::CASES as BINDINGS,
+        test_support as support,
+    };
+    use crate::channel::{
+        flow::surveyed::error,
+        section::{HydraulicGeometry, PrismaticRecoveryConfig},
+    };
+    use numr::{
+        dtype::DType,
+        ops::BinaryOps,
+        runtime::{Runtime, RuntimeClient},
+        tensor::Tensor,
+    };
+    use std::cell::Cell;
+    use support::{Client, Result, hydraulic};
+
+    fn matrix<R>(client: R::Client) -> Result
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        let loaded: std::result::Result<fixtures::FixtureSet, fixtures::FixtureError> =
+            fixtures::load();
+        let evidence = loaded?;
+        assert_eq!(evidence.paths.len(), 44);
+        assert_eq!(fixtures::FIELD_ORDER.len(), 10);
+        let declared_fields: usize = evidence
+            .paths
+            .iter()
+            .flat_map(|path| &path.panels)
+            .map(|panel| {
+                (panel.points.len() + panel.intervals.len() + panel.endpoint_geometry.len()) * 10
+            })
+            .sum();
+        assert_eq!(declared_fields, 4110);
+        let section = support::batch::<R>(&client)?;
+        let geometry = HydraulicGeometry::from_batch(&section);
+        let table = hydraulic(error::checked::<R, _>(
+            &client,
+            "conditional oracle boundary table",
+            |a| geometry.boundary_areas(a),
+        ))?;
+        let mut classes = [0_usize; 4];
+        let mut fields = 0;
+        for path in &evidence.paths {
+            let mut partition: Vec<_> = path
+                .panels
+                .iter()
+                .map(|panel| panel.band_index)
+                .chain(path.padded_bands.iter().copied())
+                .collect();
+            partition.sort_unstable();
+            assert_eq!(
+                partition,
+                (0..fixtures::MAXIMUM_BANDS).collect::<Vec<_>>(),
+                "{}",
+                path.id
+            );
+            let binding = BINDINGS
+                .get(path.binding_index)
+                .ok_or("Missing original pressure binding")?;
+            assert_eq!(binding.id, path.binding_id);
+            assert_eq!(binding.query_index, path.query_index);
+            let original = queries::CASES
+                .get(path.query_index)
+                .ok_or("Missing original query chart")?;
+            assert_eq!(binding.query_id, original.id);
+            let physical = match path.physical_endpoint {
+                fixtures::PhysicalEndpoint::Lower => PhysicalEndpoint::Lower,
+                fixtures::PhysicalEndpoint::Upper => PhysicalEndpoint::Upper,
+            };
+            let upper = path.physical_endpoint == fixtures::PhysicalEndpoint::Upper;
+            assert_eq!(
+                path.original_parameter_endpoint,
+                usize::from(upper == original.chart.add)
+            );
+            let input = support::input::<R>(&client, &section, &[original.chart; 3], true, false)?;
+            let sources = [[
+                binding.source_components[0],
+                binding.source_components[1],
+                0,
+            ]; 3];
+            let areas = support::expansion::<R>(&client, &sources, true)?;
+            let source = section.recover_area_points_tensor(
+                &input.owners,
+                &areas,
+                &PrismaticRecoveryConfig::default(),
+            )?;
+            let requests = execution::Requests::new(path);
+            let stage = Cell::new("gather strided owners");
+            let prepared = error::checked::<R, _>(&client, "conditional oracle preparation", |a| {
+                let bands = geometry.gather(a, &input.owners)?;
+                stage.set("construct and prove query support");
+                let supported = support::query(a, &bands, &input)?.prove_support(a, &bands)?;
+                stage.set("select query and band rows");
+                let row_indices = Tensor::from_slice(&[2_i64, 0, 2], &[3], client.device())?;
+                let selected = supported.select(a, &row_indices)?;
+                let bands = bands.select(a, &row_indices)?;
+                stage.set("construct physical endpoint");
+                let endpoint = selected.endpoint(a, &bands, physical)?;
+                stage.set("read original rows");
+                assert_eq!(endpoint.query.original_rows.try_to_vec::<i64>()?, [2, 0, 2]);
+                stage.set("build and select boundary witnesses");
+                let boundaries = table.gather(a, &input.owners)?.select(a, &row_indices)?;
+                stage.set("prepare conditional segments");
+                let segments =
+                    ConditionalBandSegments::prepare(a, &bands, &source, &endpoint, &boundaries)?;
+                stage.set("project and read gap certificates");
+                let projected = a.expansion_interval(segments.retained_gap())?;
+                checks::gaps(&segments, &native::bounds(&projected)?, path)?;
+                stage.set("recover dry endpoint geometry");
+                let dry = execution::dry_geometry(
+                    a, &geometry, &bands, &source, &endpoint, &segments, path,
+                )?;
+                Ok((segments, dry))
+            })
+            .inspect_err(|error| eprintln!("{}: stage={}: {error:?}", path.id, stage.get()));
+            let (segments, dry) = hydraulic(prepared)?;
+            assert_eq!(
+                segments.owners().try_to_vec::<i64>()?,
+                vec![original.chart.owner as i64; 3 * fixtures::MAXIMUM_BANDS]
+            );
+            for (panel, values) in dry {
+                for (reference, value) in panel.endpoint_geometry.iter().zip(values) {
+                    checks::sample(&value, 0, reference, &path.id);
+                    for row in 1..3 {
+                        checks::sample(&value, row, reference, &path.id);
+                    }
+                    fields += 10;
+                }
+            }
+            for panel in &path.panels {
+                classes[match panel.kind {
+                    fixtures::PanelKind::OrdinaryWet => 0,
+                    fixtures::PanelKind::DryFirstBand => 1,
+                    fixtures::PanelKind::Zero => 2,
+                }] += 1;
+            }
+            classes[3] += path.padded_bands.len();
+            // Prepared segments own their source operands, including originally strided components and owner rows.
+            client.copy_into(
+                &input.owners,
+                &Tensor::zeros(input.owners.shape(), DType::I64, client.device())?,
+            )?;
+            client.copy_into(
+                areas.high(),
+                &Tensor::zeros(areas.high().shape(), DType::F64, client.device())?,
+            )?;
+            client.copy_into(
+                source.requested_areas_m2().high(),
+                &Tensor::zeros(
+                    source.requested_areas_m2().high().shape(),
+                    DType::F64,
+                    client.device(),
+                )?,
+            )?;
+            if !requests.lanes.is_empty() {
+                let value = hydraulic(
+                    error::checked::<R, _>(&client, "conditional oracle wet panels", |a| {
+                        execution::wet(a, &segments, &requests)
+                    })
+                    .inspect_err(|error| {
+                        eprintln!(
+                            "{}: stage=wet panel evaluation/readback: {error:?}",
+                            path.id
+                        )
+                    }),
+                )?;
+                for (row, reference) in requests.samples.iter().enumerate() {
+                    checks::sample(&value, row, reference, &requests.labels[row]);
+                    assert_eq!(value.active[row], 1.0, "{}", requests.labels[row]);
+                }
+                fields += requests.samples.len() / 3 * 10;
+            }
+        }
+        assert_eq!(classes, [35, 13, 38, 46]);
+        assert_eq!(fields, declared_fields);
+        Ok(())
     }
 
-    fn prepare_origin(
-        a: &mut Arithmetic<'_, R>,
-        bands: &GatheredBands<R>,
-        endpoint: &SupportedAreaQuery<R>,
-        boundaries: &BoundaryAreas<R>,
-        origin: SourceOrigin<'_, R>,
-    ) -> HydraulicResult<Self> {
-        let c = a.client();
-        admission::reject(
-            a,
-            &c.ne(
-                endpoint.query.parameter.lower(),
-                endpoint.query.parameter.upper(),
-            )?,
-            "conditional band preparation requires one physical endpoint. Select a supported physical endpoint",
-        )?;
-        let n = bands.section_owner.numel();
-        let b = bands.band_count;
-        let boundary_count =
-            b.checked_add(1)
-                .ok_or_else(|| numr::error::Error::InvalidArgument {
-                    arg: "band_count",
-                    reason: format!("band_count={b} overflows boundary count. Split the batch"),
-                })?;
-        config::check_work(n, boundary_count)?;
-        let m = config::check_work(n, b)?;
-        let shape = [n, b];
-        let zero = Tensor::zeros(&shape, DType::F64, c.device())?;
-        let indices = c.arange(0.0, b as f64, 1.0, DType::I64)?.reshape(&[1, b])?;
-        let boundary =
-            |a: &mut Arithmetic<'_, R>, index| -> HydraulicResult<CertifiedExpansion<R>> {
-                let values = boundaries.areas();
-                Ok(a.expansion_bounds(
-                    &values.high().narrow(1, index, b)?,
-                    &values.low().narrow(1, index, b)?,
-                    &values.abs_error().narrow(1, index, b)?,
-                )?)
-            };
-        let source_area = matrix(a, origin.area, &shape)?;
-        let start_area = boundary(a, 0)?;
-        let end_area = boundary(a, 1)?;
-        let source_above = a.expansion_sub(&source_area, &start_area)?;
-        let source_below = a.expansion_sub(&end_area, &source_area)?;
-        let exact_zero = |value: &CertifiedExpansion<R>| -> HydraulicResult<Tensor<R>> {
-            Ok(c.mul(
-                &c.eq(value.high(), &zero)?,
-                &c.mul(&c.eq(value.low(), &zero)?, &c.eq(value.abs_error(), &zero)?)?,
-            )?)
-        };
-        let first_band = c.mul(
-            &bands.valid,
-            &c.cast(
-                &c.eq(&indices, &Tensor::zeros(&[], DType::I64, c.device())?)?,
-                DType::F64,
-            )?,
-        )?;
-        let source_start_identity = if origin.exact_dry {
-            first_band.clone()
-        } else {
-            exact_zero(&source_above)?
-        };
-        let source_end_identity = if origin.exact_dry {
-            zero.clone()
-        } else {
-            exact_zero(&source_below)?
-        };
-        let delta = matrix(a, origin.delta, &shape)?;
-        let target = target(a, bands, endpoint, boundaries, &indices)?;
-        let source_above = a.expansion_interval(&source_above)?;
-        let source_below = a.expansion_interval(&source_below)?;
-        let target_above = target.above;
-        let target_below = target.below;
-        let start_identity = target.at_start;
-        let end_identity = target.at_end;
-        let inside = |above: &Interval<R>,
-                      below: &Interval<R>,
-                      at_start: &Tensor<R>,
-                      at_end: &Tensor<R>|
-         -> HydraulicResult<Tensor<R>> {
-            Ok(c.mul(
-                &c.maximum(&c.ge(above.lower(), &zero)?, at_start)?,
-                &c.maximum(&c.ge(below.lower(), &zero)?, at_end)?,
-            )?)
-        };
-        let source_inside = if origin.exact_dry {
-            first_band.clone()
-        } else {
-            inside(
-                &source_above,
-                &source_below,
-                &source_start_identity,
-                &source_end_identity,
-            )?
-        };
-        let target_inside = inside(&target_above, &target_below, &start_identity, &end_identity)?;
-        let unclipped = c.mul(&source_inside, &target_inside)?;
-        let start = if origin.exact_dry {
-            LocalEndpoint {
-                above_start: a.point(&zero)?,
-                below_end: a.bounds(bands.area_increment.lower(), bands.area_increment.upper())?,
-                at_start: bands.valid.clone(),
-                at_end: zero.clone(),
-            }
-        } else {
-            clip(
-                a,
-                &source_above,
-                &source_below,
-                &bands.area_increment,
-                &source_start_identity,
-                &source_end_identity,
-                &zero,
-            )?
-        };
-        let end = clip(
-            a,
-            &target_above,
-            &target_below,
-            &bands.area_increment,
-            &start_identity,
-            &end_identity,
-            &zero,
-        )?;
-        let clipped_gap = clipping::gap(a, &bands.valid, &start, &end, &delta, &unclipped, &zero)?;
-        let target_area = matrix(a, origin.target_area, &shape)?;
-        let source_dry = c.mul(&first_band, &start.at_start)?;
-        let target_dry = c.mul(&first_band, &end.at_start)?;
-        let retained_start = endpoint_authority::retain(
-            a,
-            &source_area,
-            (&start_area, &end_area),
-            &start,
-            &source_inside,
-            &source_dry,
-            &bands.valid,
-        )?;
-        let retained_end = endpoint_authority::retain(
-            a,
-            &target_area,
-            (&start_area, &end_area),
-            &end,
-            &target_inside,
-            &target_dry,
-            &bands.valid,
-        )?;
-        let gap = clipped_gap.retained;
-        let endpoint_area =
-            |a: &mut Arithmetic<'_, R>, local: &LocalEndpoint<R>| -> HydraulicResult<Interval<R>> {
-                let from_start = a.add(&bands.start_area, &local.above_start)?;
-                let from_end = a.sub(&bands.end_area, &local.below_end)?;
-                Ok(a.bounds(
-                    &c.maximum(from_start.lower(), from_end.lower())?,
-                    &c.minimum(from_start.upper(), from_end.upper())?,
-                )?)
-            };
-        let first = endpoint_area(a, &start)?;
-        let second = endpoint_area(a, &end)?;
-        let endpoint_hull = a.bounds(
-            &c.minimum(first.lower(), second.lower())?,
-            &c.maximum(first.upper(), second.upper())?,
-        )?;
-        let flatten =
-            |a: &mut Arithmetic<'_, R>, value: &Interval<R>| -> HydraulicResult<Interval<R>> {
-                Ok(a.bounds(&value.lower().reshape(&[m])?, &value.upper().reshape(&[m])?)?)
-            };
-        let local = |a: &mut Arithmetic<'_, R>,
-                     value: LocalEndpoint<R>|
-         -> HydraulicResult<LocalEndpoint<R>> {
-            Ok(LocalEndpoint {
-                above_start: a.bounds(
-                    &value.above_start.lower().reshape(&[m, 1])?,
-                    &value.above_start.upper().reshape(&[m, 1])?,
-                )?,
-                below_end: a.bounds(
-                    &value.below_end.lower().reshape(&[m, 1])?,
-                    &value.below_end.upper().reshape(&[m, 1])?,
-                )?,
-                at_start: value.at_start.reshape(&[m, 1])?,
-                at_end: value.at_end.reshape(&[m, 1])?,
-            })
-        };
-        let original_rows = capture(
-            a,
-            &endpoint
-                .query
-                .original_rows
-                .unsqueeze(1)?
-                .broadcast_to(&shape)?
-                .contiguous()?
-                .reshape(&[m])?,
-        )?;
-        Ok(Self {
-            start_area: retained_start,
-            end_area: retained_end,
-            rows: compact(a, bands, m)?,
-            original_rows,
-            band_index: indices.broadcast_to(&shape)?.contiguous()?.reshape(&[m])?,
-            active: clipped_gap.active.reshape(&[m])?,
-            zero_gap: clipped_gap.zero.reshape(&[m])?,
-            start: local(a, start)?,
-            end: local(a, end)?,
-            gap: a.expansion_bounds(
-                &gap.high().reshape(&[m])?,
-                &gap.low().reshape(&[m])?,
-                &gap.abs_error().reshape(&[m])?,
-            )?,
-            physical_gap: flatten(a, &clipped_gap.physical)?,
-            endpoint_hull: flatten(a, &endpoint_hull)?,
-        })
+    #[test]
+    fn cpu_conditional_band_oracle_encloses_every_original_panel_field() -> Result {
+        use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+        matrix::<CpuRuntime>(
+            CpuClient::new(CpuDevice::new())
+                .with_parallelism(ParallelismConfig::new(Some(1), None)),
+        )
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_conditional_band_oracle_encloses_every_original_panel_field() -> Result {
+        use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+        matrix::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
     }
 }

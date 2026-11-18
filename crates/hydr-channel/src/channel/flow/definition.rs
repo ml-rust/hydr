@@ -358,3 +358,30 @@ fn check_text(name: &str, value: &str) -> Result<(), ChannelError> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::geometry::fixture::geometry;
+    use super::*;
+
+    #[test]
+    fn reach_identity_retains_flux_tolerance_bits() {
+        let original = ChannelReachDefinition {
+            vertical_datum: "datum".into(),
+            provenance: "flux tolerance identity".into(),
+            geometry: geometry(1.0, 1.0, 0.0),
+            lateral_bindings: vec![],
+            config: ChannelConfig::default(),
+        };
+        for index in 0..3 {
+            let mut changed = original.clone();
+            let field = match index {
+                0 => &mut changed.config.riemann_water_flux_absolute_m3_per_s,
+                1 => &mut changed.config.riemann_momentum_flux_absolute_m4_per_s2,
+                _ => &mut changed.config.riemann_flux_relative,
+            };
+            *field = f64::from_bits(field.to_bits() + 1);
+            assert!(!original.same_bits(&changed));
+        }
+    }
+}

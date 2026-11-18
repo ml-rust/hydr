@@ -1,6 +1,6 @@
+use super::super::super::test_support::Client;
 use super::super::super::{AreaAnchor, AreaDirection, AreaQuery, SupportedAreaQuery};
 use super::super::ConditionalBandSegments;
-use super::Client;
 use super::{
     fixtures::{self, ClipAuthority, Panel, PanelKind, Path, Sample},
     native::{self, Snapshot},

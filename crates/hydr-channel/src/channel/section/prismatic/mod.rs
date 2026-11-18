@@ -8,8 +8,6 @@ mod area_point_projection;
 mod area_point_query;
 mod area_point_recovery;
 mod area_point_selection;
-#[cfg(test)]
-mod area_point_selection_tests;
 mod area_query;
 mod band_geometry;
 mod band_model;
@@ -62,6 +60,3 @@ pub(crate) use area_query::{
     pressure_endpoint, source_difference,
 };
 pub(crate) use boundary_area::BoundaryAreas;
-
-#[cfg(test)]
-mod hydraulic_geometry_tests;

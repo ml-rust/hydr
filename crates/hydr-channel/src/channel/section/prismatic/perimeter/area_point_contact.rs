@@ -4,7 +4,7 @@ use super::super::{
     compilation_bounds::nonnegative,
     query_input::{Arithmetic, QueryResult, reject},
 };
-use super::{compilation::ContactTable, contact::Fields};
+use super::{compilation::ContactTable, contact::Fields, local_contact::local_contact};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, NextRepresentableOps, ScalarOps,
@@ -141,87 +141,9 @@ where
     Ok(Fields { perimeter, radius })
 }
 
-/// Enclose partial bank contact using retained distance and the physical support `0 <= distance <= thickness`.
-pub(super) fn local_contact<R>(
-    a: &mut Arithmetic<'_, R>,
-    distance: &Interval<R>,
-    bank_length: &Interval<R>,
-    thickness: &Interval<R>,
-) -> QueryResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    let c = a.client();
-    let lower = point_contact(a, distance.lower(), bank_length.lower(), thickness.upper())?;
-    let upper_distance = c.minimum(distance.upper(), thickness.lower())?;
-    let upper = point_contact(a, &upper_distance, bank_length.upper(), thickness.lower())?;
-    // Each bank length is at least its vertical thickness, proving contact >= distance.
-    Ok(a.bounds(
-        &c.maximum(lower.lower(), distance.lower())?,
-        &c.minimum(upper.upper(), bank_length.upper())?,
-    )?)
-}
-
-fn point_contact<R>(
-    a: &mut Arithmetic<'_, R>,
-    distance: &Tensor<R>,
-    length: &Tensor<R>,
-    thickness: &Tensor<R>,
-) -> QueryResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    let c = a.client();
-    let zero = Tensor::zeros(distance.shape(), DType::F64, c.device())?;
-    let one = Tensor::ones(distance.shape(), DType::F64, c.device())?;
-    let large = c.ge(thickness, &one)?;
-    let small = c.eq(&large, &zero)?;
-    let large_h = a.point(&c.where_cond(&large, distance, &zero)?)?;
-    let large_length = a.point(&c.where_cond(&large, length, &zero)?)?;
-    let large_thickness = c.where_cond(&large, thickness, &one)?;
-    let ratio = a.div_positive(&large_length, &large_thickness)?;
-    let large_contact = a.mul(&large_h, &ratio)?;
-    let small_h = a.point(&c.where_cond(&small, distance, &zero)?)?;
-    let small_length = a.point(&c.where_cond(&small, length, &zero)?)?;
-    let small_thickness = c.where_cond(&small, thickness, &one)?;
-    let fraction = a.div_positive(&small_h, &small_thickness)?;
-    let fraction = a.bounds(
-        &c.maximum(fraction.lower(), &zero)?,
-        &c.minimum(fraction.upper(), &one)?,
-    )?;
-    let small_contact = a.mul(&fraction, &small_length)?;
-    let lower = c.where_cond(&large, large_contact.lower(), small_contact.lower())?;
-    let upper = c.where_cond(&large, large_contact.upper(), small_contact.upper())?;
-    let is_zero = c.eq(distance, &zero)?;
-    Ok(a.bounds(
-        &c.where_cond(&is_zero, &zero, &c.maximum(&lower, &zero)?)?,
-        &c.where_cond(&is_zero, &zero, &c.minimum(&upper, length)?)?,
-    )?)
-}
-
 fn column<R: Runtime<DType = DType>>(
     value: &Tensor<R>,
     band: usize,
 ) -> Result<Tensor<R>, numr::error::Error> {
     Ok(value.narrow(1, band, 1)?.squeeze(Some(1)))
 }
-
-#[cfg(test)]
-#[path = "area_point_contact_tests.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "area_point_contact_physical_tests.rs"]
-mod physical_tests;

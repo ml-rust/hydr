@@ -246,3 +246,188 @@ where
         })
     }
 }
+
+#[cfg(test)]
+pub(super) mod tests {
+    use super::super::{ChannelForcingInterval, ChannelReach};
+    use super::*;
+    use crate::channel::{
+        ChannelBoundary, ChannelConfig, ChannelInitialState, ChannelReachDefinition,
+        RectangularChannelCell,
+    };
+    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+
+    pub(in super::super) fn scalar_endpoint_reach() -> Result<ChannelReach<CpuRuntime>, ChannelError>
+    {
+        let client = CpuClient::new(CpuDevice::new())
+            .with_parallelism(ParallelismConfig::new(Some(1), None));
+        ChannelReach::new(
+            client,
+            ChannelReachDefinition {
+                vertical_datum: "synthetic datum".into(),
+                provenance: "scalar endpoint assembly arithmetic fixture".into(),
+                geometry: crate::channel::ChannelGeometry::Rectangular {
+                    cells: vec![RectangularChannelCell {
+                        id: "cell".into(),
+                        length_m: 10.0,
+                        width_m: 3.0,
+                        bed_elevation_m: 0.0,
+                        maximum_depth_m: 2.0,
+                        manning_n: 0.0,
+                    }],
+                },
+                lateral_bindings: vec![],
+                config: ChannelConfig {
+                    gravity: 1.0,
+                    ..ChannelConfig::default()
+                },
+            },
+            ChannelInitialState {
+                time_s: 0.0,
+                volume_m3: vec![30.0],
+                longitudinal_momentum_m4_per_s: vec![0.0],
+            },
+        )
+    }
+
+    #[test]
+    fn prescribed_endpoint_rates_retain_longitudinal_bits_without_width_round_trip()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let reach = scalar_endpoint_reach()?;
+        let fields = reach
+            .context
+            .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
+        let target: f64 = 0.48600000000000004;
+        assert_ne!((target / 3.0 * 3.0).to_bits(), target.to_bits());
+        for rate in [target, -target, 0.0, -0.0] {
+            let boundary = ChannelBoundary::Discharge {
+                discharge_m3_per_s: rate,
+            };
+            let flux = native_flux(&reach.context, &fields, &boundary, &boundary)?;
+            assert!(flux.riemann.is_none());
+            assert_eq!(
+                flux.boundary_traces
+                    .as_ref()
+                    .ok_or("missing scalar traces")?
+                    .endpoints,
+                vec![0, 1]
+            );
+            for endpoint in 0..2 {
+                assert_eq!(
+                    flux.water.narrow(0, endpoint, 1)?.item::<f64>()?.to_bits(),
+                    rate.to_bits()
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn scalar_only_rectangular_faces_preserve_full_section_motion()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let client = CpuClient::new(CpuDevice::new())
+            .with_parallelism(ParallelismConfig::new(Some(1), None));
+        let reach = ChannelReach::<CpuRuntime>::new(
+            client,
+            ChannelReachDefinition {
+                vertical_datum: "synthetic datum".into(),
+                provenance: "scalar-only full-section motion arithmetic fixture".into(),
+                geometry: crate::channel::ChannelGeometry::Rectangular {
+                    cells: vec![RectangularChannelCell {
+                        id: "cell".into(),
+                        length_m: 1.0,
+                        width_m: 1e160,
+                        bed_elevation_m: 0.0,
+                        maximum_depth_m: 2e-160,
+                        manning_n: 0.0,
+                    }],
+                },
+                lateral_bindings: vec![],
+                config: ChannelConfig {
+                    gravity: 1.0,
+                    ..ChannelConfig::default()
+                },
+            },
+            ChannelInitialState {
+                time_s: 0.0,
+                volume_m3: vec![1.0],
+                longitudinal_momentum_m4_per_s: vec![1e-170],
+            },
+        )?;
+        let before = reach.snapshot_data()?;
+        let fields = reach
+            .context
+            .fields(&reach.accepted.volume, &reach.accepted.momentum)?;
+        assert!(fields.discharge.item::<f64>()? > 0.0);
+        assert_eq!(
+            fields.depth.item::<f64>()? * fields.velocity.item::<f64>()?,
+            0.0
+        );
+        let boundary = ChannelBoundary::Stage {
+            elevation_m: 1e-160,
+        };
+        let flux = native_flux(&reach.context, &fields, &boundary, &boundary)?;
+        assert!(flux.riemann.is_none());
+        assert_eq!(
+            flux.boundary_traces
+                .as_ref()
+                .ok_or("missing scalar traces")?
+                .endpoints,
+            vec![0, 1]
+        );
+        let traces = flux
+            .boundary_traces
+            .as_ref()
+            .ok_or("missing scalar traces")?;
+        let expected_momentum: f64 = 5e-161;
+        for endpoint in 0..2 {
+            let momentum = flux.momentum.narrow(0, endpoint, 1)?.item::<f64>()?;
+            let width = traces
+                .momentum_flux_width_m4_per_s2
+                .narrow(0, endpoint, 1)?
+                .item::<f64>()?;
+            let allowance = width + 32.0 * f64::EPSILON * expected_momentum.abs();
+            assert!(
+                (momentum - expected_momentum).abs() <= allowance,
+                "endpoint={endpoint}, momentum={momentum:e}, expected={expected_momentum:e}, width={width:e}, allowance={allowance:e}"
+            );
+        }
+        assert!(matches!(
+            native_flux(&reach.context, &fields, &boundary, &ChannelBoundary::Wall),
+            Err(ChannelError::Numerical { .. })
+        ));
+        let forcing = ChannelForcingInterval {
+            start_s: 0.0,
+            end_s: 0.01,
+            left: boundary.clone(),
+            right: boundary,
+            lateral_inputs: vec![],
+        };
+        let accepted = reach.step(forcing.end_s, &forcing)?.next;
+        assert!(accepted.time() > reach.time());
+        assert!(
+            accepted
+                .last_step()?
+                .ok_or("missing accepted interval")?
+                .boundary_traces
+                .iter()
+                .all(Option::is_some)
+        );
+        assert_eq!(reach.snapshot_data()?, before);
+        Ok(())
+    }
+
+    pub(in super::super) fn native_flux(
+        context: &Context<CpuRuntime>,
+        fields: &Fields<CpuRuntime>,
+        left: &ChannelBoundary,
+        right: &ChannelBoundary,
+    ) -> Result<Flux<CpuRuntime>, ChannelError> {
+        use crate::channel::ChannelTensorBoundary;
+        context.flux(
+            fields,
+            &ChannelTensorBoundary::from_host(&context.client, left)?,
+            &ChannelTensorBoundary::from_host(&context.client, right)?,
+        )
+    }
+}

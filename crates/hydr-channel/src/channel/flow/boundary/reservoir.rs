@@ -317,5 +317,60 @@ where
 }
 
 #[cfg(test)]
-#[path = "reservoir_root_tests.rs"]
-mod tests;
+mod tests {
+    use super::super::fixture::{context, interior};
+    use super::*;
+    use std::sync::Arc;
+
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn unequal_or_uncertain_heads_and_nonzero_motion_retain_numerical_solving() -> TestResult {
+        for triangle in [false, true] {
+            let ctx = context(triangle, 0.0)?;
+            for (head, bed, velocity, discharge) in [
+                (f64::from_bits(1.0_f64.to_bits() - 1), 0.0, 0.0, 0.0),
+                (f64::from_bits(1.0_f64.to_bits() + 1), 0.0, 0.0, 0.0),
+                (1.0, 0.0, 1e-3, 1e-3),
+                (1.0, 0.0, 1e-3, 0.0),
+                (1.0, 0.0, 0.0, 1e-3),
+                (1.0, 2.0_f64.powi(-54), 0.0, 0.0),
+            ] {
+                let state = interior(&ctx, velocity, discharge)?;
+                let (request, reservoir) = ctx.boundary_reservoir_prepare(
+                    &state,
+                    &ctx.tensor(&[4.0])?,
+                    &ctx.tensor(&[head])?,
+                    &ctx.tensor(&[bed])?,
+                    &ctx.tensor(&[1.0])?,
+                )?;
+                assert!(matches!(request, DepthRequest::Reservoir(_)));
+                if bed > 0.0 {
+                    assert_eq!(reservoir.head.item::<f64>()?, 1.0);
+                    assert!(reservoir.bounds.lo.item::<f64>()? < 1.0);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn resting_root_retains_existing_depth_width_controls() -> TestResult {
+        let mut ctx = context(false, 0.0)?;
+        Arc::make_mut(&mut ctx.definition)
+            .config
+            .root_absolute_depth = f64::from_bits(1);
+        Arc::make_mut(&mut ctx.definition)
+            .config
+            .root_relative_depth = 0.0;
+        let result = ctx.boundary_reservoir_prepare(
+            &interior(&ctx, 0.0, 0.0)?,
+            &ctx.tensor(&[4.0])?,
+            &ctx.tensor(&[1.0])?,
+            &ctx.tensor(&[0.0])?,
+            &ctx.tensor(&[0.0])?,
+        );
+        assert!(matches!(result, Err(ChannelError::Numerical { .. })));
+        Ok(())
+    }
+}

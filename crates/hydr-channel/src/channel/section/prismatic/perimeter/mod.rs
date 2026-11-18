@@ -6,6 +6,7 @@ mod area_point_recovery;
 mod batch;
 mod compilation;
 mod contact;
+mod local_contact;
 mod projection;
 mod query;
 

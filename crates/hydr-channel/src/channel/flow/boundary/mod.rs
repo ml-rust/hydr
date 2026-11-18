@@ -6,6 +6,8 @@ mod curves;
 mod depth;
 mod discharge;
 mod evaluation;
+#[cfg(test)]
+mod fixture;
 mod kernel;
 mod port;
 mod projection;

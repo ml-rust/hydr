@@ -1,18 +1,8 @@
+mod construct;
+
 #[cfg(test)]
 use super::super::super::context::Context;
-use super::{ConditionalBandSegments, selection::capture};
-use crate::channel::flow::surveyed::error::{
-    Arithmetic, HydraulicResult, PrismaticRiemannRejection,
-};
-use numr::{
-    dtype::DType,
-    ops::{
-        BinaryOps, CompareOps, ConditionalOps, MidpointOps, NextRepresentableOps, ScalarOps,
-        TensorOps, TwoSumOps, UnaryOps,
-    },
-    runtime::{Runtime, RuntimeClient},
-    tensor::Tensor,
-};
+use numr::{dtype::DType, runtime::Runtime, tensor::Tensor};
 #[cfg(test)]
 use solvr::common::arithmetic::CertifiedExpansion;
 use solvr::common::arithmetic::Interval;
@@ -73,131 +63,170 @@ impl<R: Runtime<DType = DType>> WetDepthGeometry<R> {
     }
 }
 
-impl<R> ConditionalBandSegments<R>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + MidpointOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    pub(crate) fn wet_depth_geometry(
-        &self,
-        a: &mut Arithmetic<'_, R>,
-        lane_rows: &Tensor<R>,
-    ) -> HydraulicResult<WetDepthGeometry<R>> {
-        let selected = self.select(a, lane_rows)?;
-        let c = a.client();
-        let n = selected.active.numel();
-        let zero = Tensor::zeros(&[n], DType::F64, c.device())?;
-        let one = Tensor::ones(&[n], DType::F64, c.device())?;
-        let first_parameter = a.point(&zero)?;
-        let last_parameter = a.point(&one)?;
-        let first = selected.evaluate_point(a, &first_parameter)?;
-        let last = selected.evaluate_point(a, &last_parameter)?;
-        let safe = |a: &mut Arithmetic<'_, R>,
-                    value: &Interval<R>,
-                    fallback: &Tensor<R>|
-         -> HydraulicResult<Interval<R>> {
-            Ok(a.bounds(
-                &c.where_cond(&selected.active, value.lower(), fallback)?,
-                &c.where_cond(&selected.active, value.upper(), fallback)?,
-            )?)
-        };
-        let first_width = safe(a, &first.top_width, &one)?;
-        let last_width = safe(a, &last.top_width, &one)?;
-        let first_expansion = a.expansion_from_interval(&first_width)?;
-        let last_expansion = a.expansion_from_interval(&last_width)?;
-        let half = a.expansion_point(&c.mul_scalar(&one, 0.5)?)?;
-        let half_first = a.expansion_mul(&first_expansion, &half)?;
-        let half_last = a.expansion_mul(&last_expansion, &half)?;
-        let mean = a.expansion_add(&half_first, &half_last)?;
-        let mean = a.expansion_interval(&mean)?;
-        // The physical mean lies between endpoint widths, including subnormal half-products.
-        let mean = a.bounds(
-            &c.maximum(
-                mean.lower(),
-                &c.minimum(first_width.lower(), last_width.lower())?,
-            )?,
-            &c.minimum(
-                mean.upper(),
-                &c.maximum(first_width.upper(), last_width.upper())?,
-            )?,
+#[cfg(test)]
+mod tests {
+    use super::super::ConditionalBandSegments;
+    use super::*;
+    use crate::channel::section::prismatic::area_query::{
+        AreaDirection, AreaQuery, test_support as support,
+    };
+    use crate::channel::{
+        flow::surveyed::{
+            derivatives::{WetDepthPotential, wet_fourth_bound, wet_integrand},
+            error::{self, HydraulicError, PrismaticRiemannRejection},
+        },
+        section::{HydraulicGeometry, PrismaticRecoveryConfig},
+    };
+    use numr::{ops::BinaryOps, runtime::RuntimeClient};
+    use support::{Client, Result, hydraulic};
+
+    fn physical_constructor<R>(client: &R::Client) -> Result
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        let section = support::batch::<R>(client)?;
+        let geometry = HydraulicGeometry::from_batch(&section);
+        let owners = Tensor::<R>::from_slice(&[1_i64, 1], &[2], client.device())?;
+        let areas = support::expansion::<R>(
+            client,
+            &[[2.0_f64.to_bits(), 0, 0], [4.0_f64.to_bits(), 0, 0]],
+            false,
         )?;
-        let mean = a.expansion_from_interval(&mean)?;
-        let depth_gap = a.expansion_div_positive(&selected.gap, &mean)?;
-        let projection = a.expansion_interval(&depth_gap)?;
-        let from_start = a.sub(
-            last.coordinates.depth_above_start_m(),
-            first.coordinates.depth_above_start_m(),
+        let source = section.recover_area_points_tensor(
+            &owners,
+            &areas,
+            &PrismaticRecoveryConfig::default(),
         )?;
-        let from_end = a.sub(
-            first.coordinates.depth_below_end_m(),
-            last.coordinates.depth_below_end_m(),
-        )?;
-        let thickness = selected.rows.thickness.upper().reshape(&[n])?;
-        let lower = c.maximum(
-            &c.maximum(
-                &c.maximum(projection.lower(), &from_start.lower().reshape(&[n])?)?,
-                &from_end.lower().reshape(&[n])?,
-            )?,
-            &c.neg(&thickness)?,
-        )?;
-        let upper = c.minimum(
-            &c.minimum(
-                &c.minimum(projection.upper(), &from_start.upper().reshape(&[n])?)?,
-                &from_end.upper().reshape(&[n])?,
-            )?,
-            &thickness,
-        )?;
-        let lower = c.where_cond(
-            &c.ge(selected.physical_gap.lower(), &zero)?,
-            &c.maximum(&lower, &zero)?,
-            &lower,
-        )?;
-        let upper = c.where_cond(
-            &c.le(selected.physical_gap.upper(), &zero)?,
-            &c.minimum(&upper, &zero)?,
-            &upper,
-        )?;
-        selected.reject(&c.mul(&selected.active, &c.gt(&lower, &upper)?)?, PrismaticRiemannRejection::GeometryUnresolved,
-            "wet depth gap is incompatible with local endpoints. Tighten endpoint or geometry certificates")?;
-        let physical_depth_gap = a.bounds(
-            &c.where_cond(&selected.active, &lower, &zero)?,
-            &c.where_cond(&selected.active, &upper, &zero)?,
-        )?;
-        let hull = |a: &mut Arithmetic<'_, R>,
-                    first: &Interval<R>,
-                    last: &Interval<R>|
-         -> HydraulicResult<Interval<R>> {
-            Ok(a.bounds(
-                &c.minimum(first.lower(), last.lower())?,
-                &c.maximum(first.upper(), last.upper())?,
-            )?)
-        };
-        let area_hull = hull(a, &first.area, &last.area)?;
-        let width_hull = hull(a, &first.top_width, &last.top_width)?;
-        let slope = a.bounds(
-            &selected.rows.slope.lower().reshape(&[n])?,
-            &selected.rows.slope.upper().reshape(&[n])?,
-        )?;
-        Ok(WetDepthGeometry {
-            #[cfg(test)]
-            model: Arc::clone(&selected.rows.model),
-            owners: capture(a, selected.owners())?,
-            original_rows: capture(a, selected.original_rows())?,
-            active: capture(a, selected.active_mask())?,
-            area: safe(a, &first.area, &one)?,
-            width: first_width,
-            slope: safe(a, &slope, &zero)?,
-            #[cfg(test)]
-            depth_gap,
-            physical_depth_gap,
-            area_hull: safe(a, &area_hull, &one)?,
-            width_hull: safe(a, &width_hull, &one)?,
-        })
+        hydraulic(error::checked::<R, _>(
+            client,
+            "signed wet physical constructor",
+            |a| {
+                let bands = geometry.gather(a, &owners)?;
+                let boundaries = geometry.boundary_areas(a)?.gather(a, &owners)?;
+                let scale =
+                    a.expansion_point(&Tensor::from_slice(&[2.0; 2], &[2], client.device())?)?;
+                let parameter =
+                    a.point(&Tensor::from_slice(&[1.0, -1.0], &[2], client.device())?)?;
+                let endpoint = AreaQuery::source_affine(
+                    a,
+                    &bands,
+                    &source,
+                    AreaDirection::Add,
+                    &scale,
+                    &parameter,
+                )?
+                .prove_support(a, &bands)?;
+                let segments =
+                    ConditionalBandSegments::prepare(a, &bands, &source, &endpoint, &boundaries)?;
+                let lanes = Tensor::from_slice(&[0_i64, 3, 1, 4], &[4], client.device())?;
+                let wet = segments.wet_depth_geometry(a, &lanes)?;
+                let quadrature =
+                    Tensor::from_slice(&[0_i64, 1, 0, 1, 2, 3], &[6], client.device())?;
+                let x = a.point(&Tensor::from_slice(
+                    &[0.0, 1.0, 0.5, 0.5, 0.0, 1.0],
+                    &[6],
+                    client.device(),
+                )?)?;
+                let evaluator = WetDepthPotential::from_geometry(a, &wet, &quadrature, &x, 1.0)?;
+                let value = evaluator.value(a)?;
+                let fourth = evaluator.fourth_derivative(a)?;
+                let lower = value.lower().try_to_vec::<f64>()?;
+                let upper = value.upper().try_to_vec::<f64>()?;
+                for (lane, expected) in [1.0_f64, -1.0].into_iter().enumerate() {
+                    assert!(lower[lane] <= expected && expected <= upper[lane]);
+                    assert!(
+                        (lower[lane] - expected)
+                            .abs()
+                            .max((upper[lane] - expected).abs())
+                            <= 1e-10
+                    );
+                }
+                assert!(lower[2] > 0.0 && upper[3] < 0.0);
+                assert_eq!(&lower[4..], &[0.0; 2]);
+                assert_eq!(&upper[4..], &[0.0; 2]);
+                let lower = fourth.lower().try_to_vec::<f64>()?;
+                let upper = fourth.upper().try_to_vec::<f64>()?;
+                // Rectangle G=(1+x)^(-1/2), or -(2-x)^(-1/2), has endpoint fourth derivatives +/-105/16.
+                for (lane, expected) in [6.5625_f64, -6.5625].into_iter().enumerate() {
+                    assert!(lower[lane] <= expected && expected <= upper[lane]);
+                    assert!(
+                        (lower[lane] - expected)
+                            .abs()
+                            .max((upper[lane] - expected).abs())
+                            <= 1e-10 * expected.abs()
+                    );
+                }
+                assert_eq!(&lower[4..], &[0.0; 2]);
+                assert_eq!(&upper[4..], &[0.0; 2]);
+                let wrapped = wet_integrand(a, &wet, &quadrature, &x, 1.0)?;
+                assert_eq!(
+                    wrapped.lower().try_to_vec::<f64>()?,
+                    value.lower().try_to_vec::<f64>()?
+                );
+                let bound = wet_fourth_bound(a, &wet, &quadrature, &x, 1.0)?.try_to_vec::<f64>()?;
+                assert!(
+                    bound[..2]
+                        .iter()
+                        .all(|&bound| (6.5625..=6.5625 * (1.0 + 1e-10)).contains(&bound))
+                );
+                assert_eq!(&bound[4..], &[0.0; 2]);
+                let reversed = Tensor::from_slice(&[1_i64, 0, 1], &[3], client.device())?;
+                let whole = a.bounds(
+                    &Tensor::zeros(&[3], DType::F64, client.device())?,
+                    &Tensor::ones(&[3], DType::F64, client.device())?,
+                )?;
+                let broad = wet_integrand(a, &wet, &reversed, &whole, 1.0)?;
+                assert!(broad.upper().try_to_vec::<f64>()?[0] < 0.0);
+                assert!(broad.lower().try_to_vec::<f64>()?[1] > 0.0);
+                let outside = a.point(&Tensor::from_slice(&[1.5; 3], &[3], client.device())?)?;
+                assert!(matches!(
+                    WetDepthPotential::from_geometry(a, &wet, &reversed, &outside, 1.0),
+                    Err(HydraulicError::Rejected {
+                        reason: PrismaticRiemannRejection::QuadratureUnresolved,
+                        query: Some(1),
+                        section_owner: Some(1),
+                        ..
+                    })
+                ));
+                let empty = Tensor::from_slice::<i64>(&[], &[0], client.device())?;
+                let empty_parameter =
+                    a.point(&Tensor::zeros(&[0], DType::F64, client.device())?)?;
+                assert_eq!(
+                    wet_integrand(a, &wet, &empty, &empty_parameter, 1.0)?
+                        .lower()
+                        .shape(),
+                    &[0]
+                );
+                client.copy_into(
+                    wet.start_area().lower(),
+                    &Tensor::full_scalar(&[4], DType::F64, -10.0, client.device())?,
+                )?;
+                client.copy_into(
+                    wet.start_area().upper(),
+                    &Tensor::full_scalar(&[4], DType::F64, -10.0, client.device())?,
+                )?;
+                assert!(
+                    matches!(WetDepthPotential::from_geometry(a, &wet, &quadrature, &x, 1.0), Err(HydraulicError::Rejected { reason: PrismaticRiemannRejection::QuadratureUnresolved, ref context, .. }) if context.contains("physical hull"))
+                );
+                Ok(())
+            },
+        ))
+    }
+
+    #[test]
+    fn cpu_wet_depth_potential_uses_signed_physical_geometry_and_private_recurrence() -> Result {
+        use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+        physical_constructor::<CpuRuntime>(
+            &CpuClient::new(CpuDevice::new())
+                .with_parallelism(ParallelismConfig::new(Some(1), None)),
+        )
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_wet_depth_potential_uses_signed_physical_geometry_and_private_recurrence() -> Result {
+        use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+        physical_constructor::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?)
     }
 }

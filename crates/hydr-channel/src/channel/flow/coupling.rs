@@ -1,11 +1,13 @@
 //! Private finite-reservoir access with owned forcing and exact common intervals.
 
+mod accounting;
+#[cfg(test)]
+mod fixture;
+mod trial;
+
 use super::{
     ChannelBoundary, ChannelError, ChannelLateralInput, ChannelReach, ChannelTensorBoundary,
-    ChannelTensorLateralInput,
-    conserved_update::{exact, expanded, magnitude, transfer},
-    forcing::{BoundChannelForcing, BoundLateralInputs},
-    interval_start::ReservedStart,
+    ChannelTensorLateralInput, forcing::BoundLateralInputs, interval_start::ReservedStart,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -131,109 +133,6 @@ pub struct ChannelCouplingAccounting<'a, R: Runtime<DType = DType>> {
     pub lateral_inflow_mask: &'a Tensor<R>,
     pub lateral_counter_roundoff_bound_m3: &'a Tensor<R>,
     pub face_transfer_underflow_bound_m3: Option<&'a Tensor<R>>,
-}
-
-impl<R: Runtime<DType = DType>> ChannelReach<R> {
-    #[doc(hidden)]
-    pub fn coupling_accounting(&self) -> ChannelCouplingAccounting<'_, R> {
-        ChannelCouplingAccounting {
-            cell_volume_m3: &self.accepted.volume.high,
-            cell_volume_low_m3: &self.accepted.volume.low,
-            lateral_volume_m3: &self.accepted.lateral.cumulative_volume,
-            lateral_interval_volume_m3: self
-                .accepted
-                .last
-                .as_ref()
-                .map(|last| &last.lateral_receipt.volume),
-            lateral_inflow_mask: &self.context.lateral.inflow_mask,
-            lateral_counter_roundoff_bound_m3: &self.accepted.lateral.counter_roundoff_bound,
-            face_transfer_underflow_bound_m3: self
-                .accepted
-                .last
-                .as_ref()
-                .map(|last| &last.transfer_underflow_bound),
-        }
-    }
-}
-
-impl<R: Runtime<DType = DType>> ChannelReach<R>
-where
-    R::Client: BinaryOps<R>
-        + CompareOps<R>
-        + ConditionalOps<R>
-        + IndexingOps<R>
-        + ReduceOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + UnaryOps<R>
-        + numr::ops::TensorOps<R>
-        + numr::ops::NextRepresentableOps<R>,
-{
-    /// Bound on the water the stored interval update differs from its exact expansion update.
-    #[doc(hidden)]
-    pub fn coupling_water_assembly_bound_m3(&self) -> Result<Option<Tensor<R>>, ChannelError> {
-        self.accepted
-            .last
-            .as_ref()
-            .map(|last| {
-                let c = &self.context.client;
-                let count = self.context.count();
-                let left = last.face_volume.narrow(0, 0, count)?;
-                let right = last.face_volume.narrow(0, 1, count)?;
-                // The stored update used these rounded values.
-                let delta = c.sub(&left, &right)?;
-                self.context
-                    .finite(&delta, "channel transport water delta")?;
-                let stored = (!last.forcing.lateral.has_nonzero_values)
-                    .then(|| c.add(&last.previous_volume.high, &delta))
-                    .transpose()?;
-                if let Some(stored) = &stored {
-                    self.context
-                        .finite(stored, "channel transported water volume")?;
-                }
-                let (delta_error, stored_error) =
-                    expanded(c, "channel transport water assembly", |a| {
-                        let faces = exact(a, &last.face_volume, &last.face_volume_low)?;
-                        let transfer = transfer(a, &faces, count)?;
-                        let rounded = a.expansion_point(&delta)?;
-                        let difference = a.expansion_sub(&transfer, &rounded)?;
-                        let delta_error = magnitude(a, &difference)?;
-                        let stored_error = match &stored {
-                            Some(stored) => {
-                                let previous = exact(
-                                    a,
-                                    &last.previous_volume.high,
-                                    &last.previous_volume.low,
-                                )?;
-                                let update = a.expansion_add(&previous, &transfer)?;
-                                let stored = a.expansion_point(stored)?;
-                                let difference = a.expansion_sub(&update, &stored)?;
-                                Some(magnitude(a, &difference)?)
-                            }
-                            None => None,
-                        };
-                        Ok((delta_error, stored_error))
-                    })?;
-                self.context
-                    .finite(&delta_error, "channel transport subtraction bound")?;
-                match stored_error {
-                    Some(bound) => {
-                        self.context
-                            .finite(&bound, "channel water addition bound")?;
-                        Ok(bound)
-                    }
-                    None => {
-                        self.context.finite(
-                            &last.lateral_water_assembly_bound,
-                            "channel lateral water assembly bound",
-                        )?;
-                        self.context
-                            .bound_add(&delta_error, &last.lateral_water_assembly_bound)
-                    }
-                }
-            })
-            .transpose()
-    }
 }
 
 impl<R: Runtime<DType = DType>> ChannelCouplingForcing<R> {
@@ -362,76 +261,6 @@ where
 
 impl<R: Runtime<DType = DType>> ChannelReach<R>
 where
-    R::Client: numr::ops::TensorOps<R>
-        + CompareOps<R>
-        + numr::ops::CorrectlyRoundedOps<R>
-        + MidpointOps<R>
-        + numr::ops::NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + BatchedBisectionAlgorithms<R>
-        + solvr::integrate::CertifiedSimpsonAlgorithms<R>
-        + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>
-        + solvr::optimize::CertifiedMappedBisectionAlgorithms<R>
-        + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
-{
-    #[doc(hidden)]
-    pub fn trial_coupled(
-        &self,
-        requested_end_s: f64,
-        forcing: &ChannelCouplingForcing<R>,
-        left: Option<ChannelReservoirOperands<'_, R>>,
-        right: Option<ChannelReservoirOperands<'_, R>>,
-    ) -> Result<ChannelCouplingTrial<R>, ChannelError> {
-        let endpoint = |external: &Option<ChannelTensorBoundary<R>>,
-                        reservoir: Option<ChannelReservoirOperands<'_, R>>|
-         -> Result<ChannelTensorBoundary<R>, ChannelError> {
-            match (external, reservoir) {
-                (Some(external), None) => Ok(external.clone()),
-                (None, Some(reservoir)) => Ok(ChannelTensorBoundary::QuiescentReservoir {
-                    elevation_m: reservoir.elevation_m.clone(),
-                    entrance_loss_coefficient: reservoir.entrance_loss_coefficient.clone(),
-                }
-                .into_owned(&self.context.client)?),
-                _ => Err(ChannelError::input(
-                    "endpoint ownership: supply exactly one external policy or connected reservoir operand",
-                )),
-            }
-        };
-        let left = endpoint(&forcing.left, left)?;
-        let right = endpoint(&forcing.right, right)?;
-        self.context.lateral.check_endpoints(
-            &self.context.client,
-            forcing.start_s,
-            forcing.end_s,
-            Some(&left),
-            Some(&right),
-        )?;
-        let bound = BoundChannelForcing {
-            definition: Arc::clone(&forcing.lateral.definition),
-            start_s: forcing.start_s,
-            end_s: forcing.end_s,
-            left,
-            right,
-            lateral: forcing.lateral.clone(),
-        };
-        match self.step_bound_policy(requested_end_s, &bound, true, forcing.reserved.as_deref()) {
-            Ok(step) => Ok(ChannelCouplingTrial::Accepted(Box::new(step.next))),
-            Err(ChannelError::RecomputeInterval {
-                suggested_end_s,
-                reason,
-                ..
-            }) if !forcing.has_interval_volumes() => Ok(ChannelCouplingTrial::Shorter {
-                suggested_end_s,
-                reason,
-            }),
-            Err(error) => Err(error),
-        }
-    }
-}
-
-impl<R: Runtime<DType = DType>> ChannelReach<R>
-where
     R::Client: BinaryOps<R> + ShapeOps<R> + ScalarOps<R> + UnaryOps<R>,
 {
     #[doc(hidden)]
@@ -458,10 +287,6 @@ where
         })
     }
 }
-
-#[cfg(test)]
-#[path = "coupling_tests.rs"]
-mod tests;
 
 #[cfg(test)]
 #[path = "coupling_surveyed_tests.rs"]

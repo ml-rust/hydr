@@ -262,3 +262,36 @@ impl ChannelGeometry {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::fixture::geometry;
+    use super::*;
+
+    #[test]
+    fn triangular_identity_retains_original_section_bits() {
+        let section = geometry(1.0, 1.0, 0.0);
+        assert!(section.same_bits(&section.clone()));
+        assert!(!section.same_bits(&geometry(0.0, 2.0, 0.0)));
+        assert!(!section.same_bits(&geometry(1.0, 1.0, -0.0)));
+        assert!(!geometry(0.0, 2.0, 0.0).same_bits(&geometry(-0.0, 2.0, 0.0)));
+        let mut changed = section.clone();
+        if let ChannelGeometry::PrismaticTriangular { cells, .. } = &mut changed {
+            cells[0].maximum_depth_m = f64::from_bits(3.0_f64.to_bits() + 1);
+        }
+        assert!(!section.same_bits(&changed));
+    }
+
+    #[test]
+    fn triangular_banks_require_a_finite_positive_section() {
+        assert!(geometry(0.0, 2.0, 0.0).check().is_ok());
+        for (left, right) in [
+            (0.0, 0.0),
+            (-1.0, 2.0),
+            (f64::INFINITY, 1.0),
+            (1.0, f64::NAN),
+        ] {
+            assert!(geometry(left, right, 0.0).check().is_err());
+        }
+    }
+}

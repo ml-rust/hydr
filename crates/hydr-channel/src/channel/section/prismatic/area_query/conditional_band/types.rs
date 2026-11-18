@@ -89,7 +89,7 @@ mod tests {
     use super::super::super::{
         AreaDirection, AreaQuery, endpoints::PhysicalEndpoint, fixtures, test_support as support,
     };
-    use super::super::tiny_gap_tests;
+    use super::super::preparation::origin::tests as tiny_gap_tests;
     use super::*;
     use crate::channel::{
         flow::surveyed::error::{self, HydraulicError, PrismaticRiemannRejection},
