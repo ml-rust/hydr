@@ -3,6 +3,7 @@ use numr::ops::BinaryOps;
 use numr::ops::CompareOps;
 use numr::ops::ConditionalOps;
 use numr::ops::IndexingOps;
+use numr::ops::ReduceOps;
 use numr::ops::ShapeOps;
 use numr::ops::TypeConversionOps;
 use numr::ops::UnaryOps;
@@ -16,12 +17,22 @@ use crate::structures::{StructureError, StructureInputErrorKind};
 use numr::tensor::Tensor;
 use solvr::interpolate::{Interp1dAlgorithms, InterpMethod};
 
+/// Reference curve at every lane's normalized head, each `[n]`.
+pub(super) struct Curve<R: Runtime<DType = DType>> {
+    /// Reference discharge.
+    pub reference: Tensor<R>,
+    /// One where a running lane lies in the declared zero-flow region.
+    pub zero_region: Tensor<R>,
+    /// `|dQ_ref / dh|` of the segment holding the query, where the reference flow is positive.
+    pub slope: Tensor<R>,
+}
+
 pub(super) fn evaluate<R: Runtime<DType = DType>>(
     context: &TensorStructureContext<R>,
     pump: &TensorPumpContext<R>,
     operation: &TensorPumpInput<R>,
     normalized: &super::normalization::Normalized<R>,
-) -> Result<(Tensor<R>, Tensor<R>), StructureError>
+) -> Result<Curve<R>, StructureError>
 where
     R::Client: numr::ops::BinaryOps<R>
         + numr::ops::CompareOps<R>
@@ -37,6 +48,7 @@ where
     let c = &context.client;
     let mut flows = Vec::with_capacity(pump.groups.len());
     let mut zeros = Vec::with_capacity(pump.groups.len());
+    let mut slopes = Vec::with_capacity(pump.groups.len());
     for group in &pump.groups {
         let running = c.index_select(&operation.running, 0, &group.indices)?;
         let lower = c.index_select(&normalized.lower, 0, &group.indices)?;
@@ -122,6 +134,14 @@ where
             None,
             "certified positive pump curve support returns zero discharge",
         )?;
+        // A query on a knot lies in both of its segments and takes the steeper slope.
+        let column = query.reshape(&[query.numel(), 1])?;
+        let inside = c.mul(
+            &c.ge(&column, &group.segment_heads[0])?,
+            &c.le(&column, &group.segment_heads[1])?,
+        )?;
+        let slope = c.max(&c.mul(&inside, &group.segment_slope)?, &[1], false)?;
+        slopes.push(c.where_cond(&positive, &slope, &group.zero)?);
         flows.push(c.where_cond(&running, &reference, &group.zero)?);
         zeros.push(zero_region);
     }
@@ -137,7 +157,17 @@ where
         &pump.all_indices,
         &c.cat(&zeros.iter().collect::<Vec<_>>(), 0)?,
     )?;
-    Ok((reference, zero_region))
+    let slope = c.index_put(
+        &context.zero,
+        0,
+        &pump.all_indices,
+        &c.cat(&slopes.iter().collect::<Vec<_>>(), 0)?,
+    )?;
+    Ok(Curve {
+        reference,
+        zero_region,
+        slope,
+    })
 }
 
 fn reject<R: Runtime<DType = DType>>(

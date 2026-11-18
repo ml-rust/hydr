@@ -37,12 +37,6 @@ use numr::tensor::Tensor;
 /// Bisection rounds that bound one response step. Each round halves every open bracket.
 const ROUND_LIMIT: usize = 64;
 
-/// Exponent of the upstream head in the free weir law.
-const HEAD_EXPONENT: f64 = 1.5;
-
-/// Villemonte exponent of the submerged head difference.
-const VILLEMONTE_EXPONENT: f64 = 0.385;
-
 /// Stage response of every link's two sides to exchange, each `[L]`.
 pub(super) struct Response<R: Runtime<DType = DType>> {
     /// Stage change per cubic metre at the surface lane and the channel slot.
@@ -204,11 +198,11 @@ where
     /// Change one rounding of the midpoint heads can cause in each link volume and end stage.
     ///
     /// `law` holds the weir at `midpoint`, `[S + C]`, and `signed` the accepted volumes, `[L]`.
-    /// A weir volume `W` changes with a midpoint head by at most
-    /// `|W| (1.5 / h_u + 0.385 / gap)` per metre: `h_u` is the upstream head above the crest and
-    /// `gap` the head difference of submerged flow. One rounding moves each midpoint head by
-    /// `ε |H|`. The volume part is that bound times `ε (|H_s| + |H_c|)`. The stage part sums each
-    /// link's volume part over its cell's plan area.
+    /// A link volume `W` changes with a midpoint head by at most `|W| s` per metre, with `s` the
+    /// law's head sensitivity. For a weir `s = 1.5 / h_u + 0.385 / gap`: `h_u` is the upstream
+    /// head above the crest and `gap` the head difference of submerged flow. One rounding moves
+    /// each midpoint head by `ε |H|`. The volume part is `|W| s ε (|H_s| + |H_c|)`. The stage
+    /// part sums each link's volume part over its cell's plan area.
     ///
     /// Near level heads the gap term grows without bound. No representable iterate then meets a
     /// budget below this part, so the residual check adds it to each allowance.
@@ -220,23 +214,13 @@ where
         levelling: &Levelling<R>,
     ) -> Result<[Tensor<R>; 2], SurfaceChannelError> {
         let c = &self.client;
-        let zero = self.scalar(0.0)?;
-        let per_metre =
-            |head: &Tensor<R>, exponent: f64| -> Result<Tensor<R>, SurfaceChannelError> {
-                let positive = c.gt(head, &zero)?;
-                let safe = c.where_cond(&positive, head, &self.scalar(1.0)?)?;
-                Ok(c.where_cond(&positive, &c.div(&self.scalar(exponent)?, &safe)?, &zero)?)
-            };
-        let slope = c.add(
-            &per_metre(&law.upstream_head, HEAD_EXPONENT)?,
-            &per_metre(&law.head_gap, VILLEMONTE_EXPONENT)?,
-        )?;
+        let slope = &law.head_sensitivity;
         let gather = |index: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
             Ok(c.abs(&c.index_select(midpoint, 0, index)?)?)
         };
         let heads = c.add(&gather(&self.link_a)?, &gather(&self.link_b)?)?;
         let volume = c.mul_scalar(
-            &c.mul(&c.mul(&c.abs(signed)?, &slope)?, &heads)?,
+            &c.mul(&c.mul(&c.abs(signed)?, slope)?, &heads)?,
             f64::EPSILON,
         )?;
         let inverse = &levelling.response.inverse;

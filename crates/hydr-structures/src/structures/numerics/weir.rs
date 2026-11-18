@@ -12,7 +12,7 @@ use crate::structures::StructureError;
 use crate::structures::tensor::TensorStructureContext;
 use numr::tensor::Tensor;
 
-const VILLEMONTE_EXPONENT: f64 = 0.385;
+pub(super) const VILLEMONTE_EXPONENT: f64 = 0.385;
 
 pub(super) struct WeirResult<R: Runtime<DType = DType>> {
     pub magnitude: Tensor<R>,

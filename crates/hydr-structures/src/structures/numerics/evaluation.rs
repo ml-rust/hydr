@@ -39,6 +39,10 @@ where
         &context.zero,
     )?;
     context.finite(&discharge, "final signed structure proposal")?;
+    let head_gap = c.where_cond(&class.orifice, &orifice.gap, &submerged.gap)?;
+    let upstream_head = c.where_cond(&class.free_weir, &free.upstream, &submerged.upstream)?;
+    let head_sensitivity =
+        super::sensitivity::passive(context, &class.orifice, &upstream_head, &head_gap)?;
     Ok(TensorStructureResult {
         gate: None,
         pump: None,
@@ -46,8 +50,9 @@ where
         regime: class.regime,
         status: class.status,
         direction: class.direction,
-        head_gap: c.where_cond(&class.orifice, &orifice.gap, &submerged.gap)?,
-        upstream_head: c.where_cond(&class.free_weir, &free.upstream, &submerged.upstream)?,
+        head_gap,
+        upstream_head,
+        head_sensitivity,
         downstream_head: submerged.downstream,
         ratio: submerged.ratio,
         correction_k: submerged.k,

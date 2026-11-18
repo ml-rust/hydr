@@ -38,7 +38,11 @@ where
     let c = &context.client;
     let (donor, receiver) = super::admission::heads(context, pump, input, operation)?;
     let normalized = super::normalization::evaluate(context, &donor, &receiver, operation)?;
-    let (reference, zero_region) = super::curve::evaluate(context, pump, operation, &normalized)?;
+    let super::curve::Curve {
+        reference,
+        zero_region,
+        slope,
+    } = super::curve::evaluate(context, pump, operation, &normalized)?;
     let positive = c.sub(&operation.running, &zero_region)?;
     let used_speed = c.where_cond(&positive, &operation.speed, &context.one)?;
     let used_reference = c.where_cond(&positive, &reference, &context.zero)?;
@@ -67,6 +71,17 @@ where
         &c.mul_scalar(&operation.running, codes::PUMP_CURVE)?,
         &c.mul_scalar(&operation.isolated, codes::PUMP_ISOLATED)?,
     )?;
+    // `Q = N Q_ref(Δ / N²)` with lift `Δ`, so `|dQ/dΔ| / Q = |dQ_ref/dh| / (N Q)`.
+    // Either endpoint head moves `Δ` one for one.
+    let sensitivity = c.where_cond(
+        &positive,
+        &c.div(
+            &c.div(&slope, &used_speed)?,
+            &c.where_cond(&positive, &magnitude, &context.one)?,
+        )?,
+        &context.zero,
+    )?;
+    result.head_sensitivity = c.where_cond(&pump.mask, &sensitivity, &result.head_sensitivity)?;
     result.discharge = c.where_cond(&pump.mask, &discharge, &result.discharge)?;
     result.status = c.where_cond(&pump.mask, &status, &result.status)?;
     result.regime = c.where_cond(&pump.mask, &regime, &result.regime)?;
@@ -86,4 +101,118 @@ where
         division_exact: normalized.division_exact,
     });
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::sensitivity::fixture::{
+        Lane, MARGIN, STEP, TestResult, check_bound, evaluate, grid, structures,
+    };
+    use crate::structures::{
+        DirectionPolicy, PumpApplicability, PumpCurve, PumpCurveKnot, PumpParameters,
+        PumpSpeedPolicy, StructureLaw, StructureOperatingPoint,
+    };
+
+    /// Curve over `[-4, 3]` m: two falling segments, a flat one, and a fall to shutoff.
+    fn pump() -> TestResult<StructureLaw> {
+        let knots = [(-4.0, 7.0), (-1.0, 6.0), (1.0, 3.0), (2.0, 3.0), (3.0, 0.0)];
+        Ok(StructureLaw::Pump(PumpParameters::new(
+            PumpCurve::new(
+                knots
+                    .iter()
+                    .map(|&(head_m, discharge_m3_per_s)| PumpCurveKnot {
+                        head_m,
+                        discharge_m3_per_s,
+                    })
+                    .collect(),
+                "Analytical piecewise-linear curve".into(),
+            )?,
+            -100.0,
+            PumpSpeedPolicy::DeclaredAffinity {
+                minimum_ratio: 0.5,
+                maximum_ratio: 2.0,
+                applicability: "Analytical affinity scaling".into(),
+            },
+            PumpApplicability {
+                endpoint_stage_head_assertion: "Common-datum quiescent pools".into(),
+                connection_losses_and_velocity_head_account: "Curve includes connections".into(),
+                stopped_isolation_assertion: "Ideal isolation when stopped".into(),
+                operating_envelope: "Wet pools within the curve".into(),
+            },
+        )?))
+    }
+
+    #[test]
+    fn pump_sensitivity_bounds_every_curve_segment_and_knot() -> TestResult {
+        let knots = [-1.0, 1.0, 2.0];
+        let mut cases = Vec::new();
+        let mut speeds = Vec::new();
+        for speed in [1.0, 0.5, 2.0, 0.8] {
+            let square = speed * speed;
+            // Normalized lifts inside the curve domain, then each interior knot exactly.
+            let mut lifts: Vec<(f64, f64)> = grid(-3.99, 2.99, 60)
+                .into_iter()
+                .filter_map(|q| {
+                    let ends = (q + 4.0).min(3.0 - q);
+                    let distance = knots.iter().map(|k| (q - k).abs()).fold(ends, f64::min);
+                    (distance >= MARGIN).then_some((q, distance))
+                })
+                .collect();
+            // A power-of-two speed keeps a knot lift exact after normalization.
+            if speed != 0.8 {
+                lifts.extend(knots.iter().map(|&k| (k, 1.0)));
+            }
+            for (q, distance) in lifts {
+                let donor = 2.5;
+                cases.push(Lane {
+                    stage: [donor, donor + q * square],
+                    wet: [true, true],
+                    step: STEP * distance * square,
+                });
+                speeds.push(speed);
+            }
+        }
+        let law = pump()?;
+        let structures = structures(
+            |index| {
+                (
+                    law.clone(),
+                    DirectionPolicy::AtoBOnly,
+                    StructureOperatingPoint::PumpRunning {
+                        speed_ratio: speeds[index],
+                    },
+                )
+            },
+            cases.len(),
+        )?;
+        let flowing = check_bound(&structures, &cases)?;
+        assert_eq!(flowing, cases.len());
+        Ok(())
+    }
+
+    #[test]
+    fn pump_sensitivity_is_zero_at_shutoff_and_isolation() -> TestResult {
+        let law = pump()?;
+        let structures = structures(
+            |index| {
+                let operation = if index == 0 {
+                    StructureOperatingPoint::PumpRunning { speed_ratio: 1.0 }
+                } else {
+                    StructureOperatingPoint::PumpStoppedIsolated
+                };
+                (law.clone(), DirectionPolicy::AtoBOnly, operation)
+            },
+            2,
+        )?;
+        // Lift 3 m sits on the shutoff knot.
+        let lane = Lane {
+            stage: [1.0, 4.0],
+            wet: [true, true],
+            step: 0.0,
+        };
+        let sample = evaluate(&structures, &[lane, lane], None)?;
+        assert_eq!(sample.discharge, [0.0, 0.0]);
+        assert_eq!(sample.sensitivity, [0.0, 0.0]);
+        Ok(())
+    }
 }

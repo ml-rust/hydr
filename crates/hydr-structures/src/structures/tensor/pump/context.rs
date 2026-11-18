@@ -19,6 +19,10 @@ pub(crate) struct TensorPumpGroup<R: Runtime<DType = DType>> {
     pub zero_start: Tensor<R>,
     pub has_zero: Tensor<R>,
     pub zero: Tensor<R>,
+    /// Lower and upper knot head of every curve segment, each `[1, knots - 1]`.
+    pub segment_heads: [Tensor<R>; 2],
+    /// `|ΔQ / ΔH|` of every curve segment, `[1, knots - 1]`.
+    pub segment_slope: Tensor<R>,
 }
 #[derive(Debug)]
 pub(crate) struct TensorPumpContext<R: Runtime<DType = DType>> {
@@ -108,6 +112,13 @@ impl<R: Runtime<DType = DType>> TensorPumpContext<R> {
             let zero_start = zero.map_or(last, |i| heads[i]);
             let count = slots.len();
             all.extend_from_slice(&slots);
+            let segments = heads.len() - 1;
+            let row = |values: &[f64]| Tensor::<R>::from_slice(values, &[1, segments], device);
+            let slope: Vec<f64> = heads
+                .windows(2)
+                .zip(flows.windows(2))
+                .map(|(h, q)| ((q[1] - q[0]) / (h[1] - h[0])).abs())
+                .collect();
             cached.push(TensorPumpGroup {
                 indices: indices(&slots)?,
                 heads: tensor(&heads)?,
@@ -117,6 +128,8 @@ impl<R: Runtime<DType = DType>> TensorPumpContext<R> {
                 zero_start: tensor(&vec![zero_start; count])?,
                 has_zero: tensor(&vec![if zero.is_some() { 1.0 } else { 0.0 }; count])?,
                 zero: tensor(&vec![0.0; count])?,
+                segment_heads: [row(&heads[..segments])?, row(&heads[1..])?],
+                segment_slope: row(&slope)?,
                 slots,
             });
         }

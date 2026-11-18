@@ -9,6 +9,7 @@ pub(crate) mod held;
 mod log_add_exp;
 mod orifice;
 pub(crate) mod pump;
+mod sensitivity;
 mod weir;
 
 pub(crate) use evaluation::evaluate;

@@ -18,4 +18,8 @@ pub struct TensorStructureResult<R: Runtime<DType = DType>> {
     pub ratio: Tensor<R>,
     pub correction_k: Tensor<R>,
     pub log_magnitude: Tensor<R>,
+    /// Bound on `|dQ/dH| / |Q|` per metre, for a move of either endpoint head.
+    ///
+    /// Zero where the element carries no discharge.
+    pub head_sensitivity: Tensor<R>,
 }
