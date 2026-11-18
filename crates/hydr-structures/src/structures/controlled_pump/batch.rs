@@ -66,13 +66,7 @@ impl<R: Runtime<DType = DType>> ControlledPumpBatch<R> {
             + numr::ops::TypeConversionOps<R>
             + numr::ops::UnaryOps<R>,
     {
-        let controls = self.controls.trial_to(end_s, samples)?.into_next();
-        Ok(ControlledPumpTrial {
-            next: Self {
-                context: Arc::clone(&self.context),
-                controls,
-            },
-        })
+        self.complete(self.prepare_to(end_s)?, samples)
     }
     pub(crate) fn selected(&self) -> Result<TensorControlledPumpSelection<R>, StructureError>
     where

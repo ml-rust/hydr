@@ -3,7 +3,7 @@
 use super::{
     arithmetic::{count, not},
     arrival::arrival,
-    evaluate::{current_completion, evaluate, phase},
+    evaluate::{TensorActuatorEvaluation, current_completion, evaluate, phase},
 };
 use crate::structures::tensor::actuator::{
     TensorActuatorAnchor, TensorActuatorArrival, TensorActuatorChange, TensorActuatorCompletion,
@@ -16,13 +16,54 @@ use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
 use numr::runtime::Runtime;
 use std::sync::Arc;
 
-pub(crate) fn step<R: Runtime<DType = DType>>(
+/// Old-target endpoint evaluation and the left-side state it implies.
+#[derive(Clone, Debug)]
+pub(crate) struct TensorActuatorLeft<R: Runtime<DType = DType>> {
+    pub start: f64,
+    pub end: f64,
+    pub event: Option<GateActuatorEvent>,
+    pub evaluation: TensorActuatorEvaluation<R>,
+    pub state: TensorActuatorState<R>,
+}
+
+/// Evaluate the old target at `end` without any endpoint target packet.
+pub(crate) fn left<R: Runtime<DType = DType>>(
     ctx: &TensorActuatorContext<R>,
     before: &TensorActuatorState<R>,
     start: f64,
     end: f64,
     event: Option<GateActuatorEvent>,
-    target_index: Option<usize>,
+) -> Result<TensorActuatorLeft<R>, StructureError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>,
+{
+    let evaluation = evaluate(ctx, before, end)?;
+    let mut state = before.clone();
+    state.position = evaluation.position.clone();
+    state.phase = evaluation.phase.clone();
+    state.last_completion = evaluation.completion.clone();
+    state.arrivals = count(ctx, &before.arrivals, &evaluation.completed)?;
+    Ok(TensorActuatorLeft {
+        start,
+        end,
+        event,
+        evaluation,
+        state,
+    })
+}
+
+/// Install the endpoint packet on the right side of a prepared left state.
+pub(crate) fn install<R: Runtime<DType = DType>>(
+    ctx: &TensorActuatorContext<R>,
+    before: &TensorActuatorState<R>,
+    prepared: TensorActuatorLeft<R>,
     update: TensorActuatorUpdate<R>,
 ) -> Result<TensorActuatorStep<R>, StructureError>
 where
@@ -36,13 +77,15 @@ where
         + numr::ops::UnaryOps<R>,
 {
     let c = &ctx.structures.client;
-    let evaluation = evaluate(ctx, before, end)?;
+    let TensorActuatorLeft {
+        start,
+        end,
+        event,
+        evaluation,
+        state: left,
+    } = prepared;
+    let target_index = event.and_then(|event| event.target_index);
     let changed = c.mul(&update.valid, &c.ne(&update.target, &before.target)?)?;
-    let mut left = before.clone();
-    left.position = evaluation.position.clone();
-    left.phase = evaluation.phase.clone();
-    left.last_completion = evaluation.completion.clone();
-    left.arrivals = count(ctx, &before.arrivals, &evaluation.completed)?;
     let new_hold = c.mul(
         &changed,
         &c.mul(

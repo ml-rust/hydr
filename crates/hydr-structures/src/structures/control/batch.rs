@@ -140,6 +140,13 @@ impl<R: Runtime<DType = DType>> OperatingControlBatch<R> {
             + numr::ops::TypeConversionOps<R>
             + numr::ops::UnaryOps<R>,
     {
+        self.complete(self.prepare_to(end_s)?, decision_samples)
+    }
+    /// Check one event-free interval and align its end to the next event without samples.
+    pub(crate) fn prepare_to(
+        &self,
+        end_s: f64,
+    ) -> Result<OperatingControlPreparedInterval<R>, StructureError> {
         let duration = end_s - self.time;
         if !end_s.is_finite() || !duration.is_finite() || duration <= 0.0 {
             return Err(StructureError::input(
@@ -162,11 +169,36 @@ impl<R: Runtime<DType = DType>> OperatingControlBatch<R> {
                 "control interval crosses the next original event: split at the event",
             ));
         }
-        let decision = if end_s == event.time_s {
-            event.decision_index
-        } else {
-            None
-        };
+        Ok(OperatingControlPreparedInterval {
+            base: self.clone(),
+            end_s,
+            event: (end_s == event.time_s).then_some(event),
+        })
+    }
+    /// Apply the decision samples of a prepared interval on its right side.
+    pub(crate) fn complete(
+        &self,
+        prepared: OperatingControlPreparedInterval<R>,
+        decision_samples: &[ControlSample],
+    ) -> Result<OperatingControlTrial<R>, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
+        if !self.same_accepted(&prepared.base) {
+            return Err(StructureError::input(
+                StructureInputErrorKind::Identity,
+                "prepared control interval belongs to another accepted state: prepare it from this batch",
+            ));
+        }
+        let end_s = prepared.end_s;
+        let decision = prepared.decision_index();
         let step = match decision {
             Some(index) => {
                 let input = crate::structures::tensor::control::input::decision_samples(
@@ -223,5 +255,37 @@ impl<R: Runtime<DType = DType>> OperatingControlBatch<R> {
             last: Some(Arc::new(step)),
         };
         Ok(OperatingControlTrial { next })
+    }
+    /// Same context, clock, counters, and latch storage as `other`.
+    pub(crate) fn same_accepted(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.context, &other.context)
+            && self.time.to_bits() == other.time.to_bits()
+            && self.steps == other.steps
+            && self.next_decision == other.next_decision
+            && self.state.high.shares_storage_with(&other.state.high)
+            && self.state.pending.shares_storage_with(&other.state.pending)
+            && self.state.since.shares_storage_with(&other.state.since)
+            && self.state.count.shares_storage_with(&other.state.count)
+    }
+}
+
+/// One checked event-free control interval before its decision samples.
+#[derive(Clone, Debug)]
+pub(crate) struct OperatingControlPreparedInterval<R: Runtime<DType = DType>> {
+    pub base: OperatingControlBatch<R>,
+    pub end_s: f64,
+    pub event: Option<ControlEvent>,
+}
+impl<R: Runtime<DType = DType>> OperatingControlPreparedInterval<R> {
+    /// Decision index exactly at the interval end.
+    pub fn decision_index(&self) -> Option<usize> {
+        self.event.and_then(|event| event.decision_index)
+    }
+    /// Left-side controls at the interval end: the accepted state on the end clock.
+    pub fn left(&self) -> OperatingControlBatch<R> {
+        OperatingControlBatch {
+            time: self.end_s,
+            ..self.base.clone()
+        }
     }
 }

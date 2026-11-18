@@ -14,6 +14,7 @@ mod state;
 mod trial;
 
 pub use batch::OperatingControlBatch;
+pub(crate) use batch::OperatingControlPreparedInterval;
 pub use capabilities::operating_control_capabilities;
 pub use command::{ControlCommand, ControlCommandOutput, ControlLatch};
 pub use definition::OperatingControlDefinition;

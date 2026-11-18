@@ -11,6 +11,8 @@ mod gate;
 mod heads;
 mod held;
 pub(crate) mod identity;
+#[cfg(test)]
+pub(crate) mod interval_fixture;
 mod numerics;
 mod operation;
 mod operation_projection;
@@ -21,6 +23,8 @@ mod proposal;
 mod pump;
 pub(crate) mod tensor;
 
+#[doc(hidden)]
+pub use actuator::GateActuatorPreparedInterval;
 pub use actuator::{
     GATE_ACTUATOR_CONTRACT_VERSION, GATE_ACTUATOR_SNAPSHOT_SCHEMA, GateActuatorAccuracy,
     GateActuatorAnchor, GateActuatorArrivalCertificate, GateActuatorBatch,
@@ -74,12 +78,19 @@ pub use operating_source::{
     OperatingSourceEventKind, OperatingSourceEventOrigin, OperatingSourceFrame,
     OperatingSourceOutput, OperatingSourceProposal, OperatingSourceReceipt, OperatingSourceSupport,
 };
+#[doc(hidden)]
+pub use operating_source::{
+    OperatingSourceInterval, OperatingSourceIntervalDetail, OperatingSourceIntervalFrame,
+    OperatingSourceIntervalReceipt,
+};
 
 pub(crate) use actuator::{
     project_actuator_phase, project_actuator_position, same_actuator_context,
 };
 
 mod controlled_gate;
+#[doc(hidden)]
+pub use controlled_gate::ControlledGatePreparedInterval;
 pub use controlled_gate::{
     CONTROLLED_GATE_CONTRACT_VERSION, CONTROLLED_GATE_SNAPSHOT_SCHEMA, ControlledGateBatch,
     ControlledGateEvent, ControlledGateSnapshot, ControlledGateSnapshotData, ControlledGateTrial,
@@ -88,6 +99,8 @@ pub use controlled_gate::{
 
 mod controlled_pump;
 pub(crate) use control::same_control_context;
+#[doc(hidden)]
+pub use controlled_pump::ControlledPumpPreparedInterval;
 pub(crate) use controlled_pump::same_controlled_pump_context;
 pub use controlled_pump::{
     CONTROLLED_PUMP_CONTRACT_VERSION, CONTROLLED_PUMP_SNAPSHOT_SCHEMA, ControlledPumpBatch,

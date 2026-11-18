@@ -2,10 +2,7 @@
 
 use super::{ControlledGateEvent, ControlledGateTrial};
 use crate::structures::tensor::controlled_gate::TensorControlledGateContext;
-use crate::structures::{
-    ControlSample, GateActuatorBatch, OperatingControlBatch, StructureError,
-    StructureInputErrorKind,
-};
+use crate::structures::{ControlSample, GateActuatorBatch, OperatingControlBatch, StructureError};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use std::sync::Arc;
@@ -13,7 +10,7 @@ use std::sync::Arc;
 /// Complete accepted sampled commands and separately modelled actual gate response.
 #[derive(Clone, Debug)]
 pub struct ControlledGateBatch<R: Runtime<DType = DType>> {
-    context: Arc<TensorControlledGateContext<R>>,
+    pub(super) context: Arc<TensorControlledGateContext<R>>,
     pub(crate) controls: OperatingControlBatch<R>,
     pub(crate) actuators: GateActuatorBatch<R>,
 }
@@ -96,45 +93,6 @@ impl<R: Runtime<DType = DType>> ControlledGateBatch<R> {
             + numr::ops::TypeConversionOps<R>
             + numr::ops::UnaryOps<R>,
     {
-        let duration = end_s - self.time();
-        if !end_s.is_finite() || !duration.is_finite() || duration <= 0.0 {
-            return Err(StructureError::input(
-                StructureInputErrorKind::Definition,
-                format!(
-                    "controlled gate interval=[{},{}],duration={duration}: supply a finite positive original duration",
-                    self.time(),
-                    end_s
-                ),
-            ));
-        }
-        let event = self.next_event()?.ok_or_else(|| {
-            StructureError::input(
-                StructureInputErrorKind::UnsupportedRegime,
-                "controlled gate trial exceeds terminal support: retain the original common horizon",
-            )
-        })?;
-        if end_s > event.time_s {
-            return Err(StructureError::input(
-                StructureInputErrorKind::UnsupportedRegime,
-                "controlled gate interval crosses its next event: split at the common event",
-            ));
-        }
-        let controls = self.controls.trial_to(end_s, decision_samples)?.into_next();
-        let update = if end_s == event.time_s && event.decision_index.is_some() {
-            Some(self.context.update(&controls, &self.actuators, end_s)?)
-        } else {
-            None
-        };
-        let actuators = self
-            .actuators
-            .trial_to_with_update(end_s, update)?
-            .into_next();
-        Ok(ControlledGateTrial {
-            next: Self {
-                context: Arc::clone(&self.context),
-                controls,
-                actuators,
-            },
-        })
+        self.complete(self.prepare_to(end_s)?, decision_samples)
     }
 }

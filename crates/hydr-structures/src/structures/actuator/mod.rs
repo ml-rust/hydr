@@ -31,8 +31,11 @@ pub use state::{
 };
 
 mod batch;
+mod interval;
 mod trial;
 pub use batch::GateActuatorBatch;
+#[doc(hidden)]
+pub use interval::GateActuatorPreparedInterval;
 pub use trial::GateActuatorTrial;
 
 mod projection;

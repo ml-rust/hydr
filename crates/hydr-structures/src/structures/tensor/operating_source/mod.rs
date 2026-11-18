@@ -3,6 +3,7 @@
 mod context;
 mod frames;
 mod input;
+mod interval;
 
 pub(crate) use context::{
     TensorOperatingSourceContext, TensorOperatingSourceGroup, TensorOperatingSourceKind,
@@ -10,3 +11,4 @@ pub(crate) use context::{
 };
 pub(crate) use frames::frames;
 pub(crate) use input::{TensorOperatingSourcePoint, TensorOperatingSourceValue, assemble};
+pub(crate) use interval::{TensorOperatingSourceInterval, combine};

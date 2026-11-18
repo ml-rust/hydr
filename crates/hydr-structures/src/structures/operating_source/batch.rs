@@ -4,8 +4,9 @@ use super::{
     OperatingSourceBinding, OperatingSourceFrame, OperatingSourceProposal, OperatingSourceSupport,
 };
 use crate::structures::tensor::{
-    DerivedGateOperations, DerivedPumpOperationData, DerivedPumpOperations, TensorStructureInput,
-    operating_source::{TensorOperatingSourceContext, assemble},
+    DerivedGateOperations, DerivedPumpOperationData, DerivedPumpOperations, TensorStructureHeads,
+    TensorStructureInput,
+    operating_source::{TensorOperatingSourceContext, TensorOperatingSourcePoint, assemble},
 };
 use crate::structures::{
     StructureBatch, StructureElement, StructureError, StructureHeads, StructureInputErrorKind,
@@ -105,6 +106,38 @@ impl<R: Runtime<DType = DType>> OperatingSourceBatch<R> {
             ));
         }
         let point = assemble(&self.context, time_s, frames)?;
+        let hydraulic = self.hydraulic(heads, heads_input, manual_operations, &point)?;
+        Ok(OperatingSourceProposal::new(
+            Arc::clone(&self.context),
+            time_s,
+            hydraulic,
+            point,
+        ))
+    }
+    /// Evaluate the laws under assembled derived operations and checked manual packets.
+    pub(super) fn hydraulic(
+        &self,
+        heads: &[StructureHeads],
+        heads_input: TensorStructureHeads<R>,
+        manual_operations: &[StructureOperation],
+        point: &TensorOperatingSourcePoint<R>,
+    ) -> Result<StructureProposal<R>, StructureError>
+    where
+        R::Client: numr::ops::CumulativeOps<R>
+            + numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::CorrectlyRoundedOps<R>
+            + numr::ops::IndexingOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::ShapeOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>
+            + solvr::interpolate::Interp1dAlgorithms<R>,
+    {
+        let context = &self.context.structures;
         let input = TensorStructureInput::with_derived_heads(
             context,
             heads_input,
@@ -125,7 +158,7 @@ impl<R: Runtime<DType = DType>> OperatingSourceBatch<R> {
             }),
         )?;
         let result = crate::structures::numerics::proposal(context, &input)?;
-        let hydraulic = StructureProposal::from_derived(
+        Ok(StructureProposal::from_derived(
             Arc::clone(context),
             heads.to_vec(),
             manual_operations.to_vec(),
@@ -141,12 +174,6 @@ impl<R: Runtime<DType = DType>> OperatingSourceBatch<R> {
                 })
             },
             result,
-        );
-        Ok(OperatingSourceProposal::new(
-            Arc::clone(&self.context),
-            time_s,
-            hydraulic,
-            point,
         ))
     }
 }
