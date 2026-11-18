@@ -44,22 +44,28 @@ pub(super) struct Start<R: Runtime<DType = DType>> {
     pub wet: Tensor<R>,
     /// First fixed-point iterate: accepted stages, zero volumes, accepted support and regimes.
     pub initial: Tensor<R>,
-    /// Slot operands of every linked reach, or `None` when a linked reach is ported.
+    /// Slot operands of every linked reach, or `None` when a linked reach is ported or
+    /// pool-ended.
     ///
-    /// A ported reach's face outflow depends on its port flux, so each attempt builds them.
+    /// A ported reach's face outflow depends on its port flux, so each attempt builds them. A
+    /// pool-ended reach's face outflow depends on its reservoir heads, so each evaluation does.
     pub slots: Option<SlotOperands<R>>,
-    /// Smallest accepted-start CFL or face depletion limit over every unported reach, in seconds.
+    /// Smallest accepted-start CFL or face depletion limit over every reach without a port or a
+    /// pool end, in seconds.
     pub channel_limit_s: f64,
-    /// Accepted-start reservation of every unported reach in setup order.
+    /// Accepted-start reservation of every reach without a port or a pool end, in setup order.
     ///
     /// Every candidate binds through it, so each reach calculates its start fluxes once per trial.
-    /// A ported reach reserves once per attempt under its port flux.
+    /// A ported reach reserves once per attempt under its port flux. A pool-ended reach reserves
+    /// once per evaluation under its reservoir heads.
     pub reservations: Vec<Option<ChannelCouplingReservation<R>>>,
     pub forcing: BoundForcing<R>,
     /// Ghost states of every port from the accepted reach ends, or `None` without ports.
     pub ports: Option<PortStart<R>>,
     /// Pool forcing of this trial, or `None` without pools.
     pub pools: Option<PoolStart<R>>,
+    /// Wet support of every pool end at the accepted start, `[E]`, or `None` without pool ends.
+    pub end_support: Option<Tensor<R>>,
 }
 
 /// Donor operands of every channel slot.
@@ -140,7 +146,7 @@ where
         };
         let linked_of = |reach: usize| self.linked.iter().position(|r| r.reach == reach);
         for &reach in &self.reach_order {
-            if self.is_ported(reach) {
+            if self.is_ported(reach) || self.is_pool_ended(reach) {
                 continue;
             }
             let bound = &forcing.reaches[reach];
@@ -165,7 +171,11 @@ where
                 .min(reservation.face_depletion_limit_s);
             reservations[reach] = Some(reservation);
         }
-        let slots = if self.linked.iter().any(|entry| self.is_ported(entry.reach)) {
+        let slots = if self
+            .linked
+            .iter()
+            .any(|entry| self.is_ported(entry.reach) || self.is_pool_ended(entry.reach))
+        {
             None
         } else {
             Some(self.slot_operands(|reach| {
@@ -174,16 +184,28 @@ where
                 })
             })?)
         };
-        let (stage, wet, initial) = if self.link_count == 0 {
+        let pool_batch = pool_child.map(|child| &child.batch);
+        let end_support = self.start_end_support(reaches, pool_batch, reach_ids)?;
+        let (stage, wet, initial) = if self.link_count == 0 && end_support.is_none() {
             (zeros.clone(), zeros.clone(), zeros)
         } else {
             let linked: Vec<&ChannelReach<R>> =
                 self.linked.iter().map(|r| &reaches[r.reach]).collect();
-            let pool_batch = pool_child.map(|child| &child.batch);
             let (stage, wet) = self.node_stages(surface, &linked, pool_batch, reach_ids)?;
             self.check_pumps(&stage, &wet)?;
-            let regime = self.weir(&stage, &wet, &self.level_heads(&stage)?)?.regime;
-            let initial = c.cat(&[&stage, &zeros, &wet, &regime], 0)?;
+            let regime = if self.link_count == 0 {
+                zeros.clone()
+            } else {
+                self.weir(&stage, &wet, &self.level_heads(&stage)?)?.regime
+            };
+            let initial = match &end_support {
+                // Pool-end volumes and support follow the link volumes and regimes.
+                Some(support) => {
+                    let ends = Tensor::<R>::zeros(support.shape(), DType::F64, c.device())?;
+                    c.cat(&[&stage, &zeros, &ends, &wet, &regime, support], 0)?
+                }
+                None => c.cat(&[&stage, &zeros, &wet, &regime], 0)?,
+            };
             (stage, wet, initial)
         };
         let ports = self.port_start(surface, reaches, reach_ids)?;
@@ -198,6 +220,7 @@ where
             forcing,
             ports,
             pools: pool_start,
+            end_support,
         })
     }
 

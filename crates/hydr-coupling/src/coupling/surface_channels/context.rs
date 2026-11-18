@@ -1,10 +1,12 @@
 //! Static coordinator topology: link laws, donor trees, surface lanes, channel slots, and pools.
 
 mod access;
+mod nodes;
 
 pub(super) use access::transfer_error;
 
 use super::bindings::channel_cells;
+use super::pool_ends::PoolEndTopology;
 use super::pools::{LinkSides, PoolParts, PoolTopology};
 use super::ports::PortTopology;
 use super::slot_plan::SlotPlan;
@@ -27,31 +29,7 @@ use numr::tensor::Tensor;
 use std::collections::BTreeMap;
 
 pub(super) use super::ops::Ops;
-
-/// One resolved endpoint of a link.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum NodeEnd {
-    /// Surface lane.
-    Surface(usize),
-    /// Channel slot.
-    Channel(usize),
-    /// Pool in ascending identity.
-    Pool(usize),
-}
-
-/// A reach that holds at least one link, with its slots and exchange bindings.
-pub(super) struct LinkedReach<R: Runtime<DType = DType>> {
-    /// Setup reach index.
-    pub reach: usize,
-    /// Linked cells in ascending order. Their slots are consecutive.
-    pub cells: Vec<usize>,
-    /// `cells` as an I64 index tensor.
-    pub cell_index: Tensor<R>,
-    /// Positions of the links with a channel endpoint on this reach, in ascending link identity.
-    pub links: Vec<usize>,
-    /// Caller binding count. Exchange bindings follow, two per link.
-    pub caller_bindings: usize,
-}
+pub(super) use nodes::{LinkedReach, NodeEnd};
 
 /// Immutable coordinator operands built once from a checked definition.
 ///
@@ -73,7 +51,7 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub link_count: usize,
     /// Linked reaches in ascending identity order.
     pub linked: Vec<LinkedReach<R>>,
-    /// Unlinked setup reach indices in ascending identity order.
+    /// Setup reach indices without links and without pool ends, in ascending identity order.
     pub unlinked: Vec<usize>,
     /// Every setup reach index in ascending identity order.
     pub reach_order: Vec<usize>,
@@ -145,6 +123,8 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub ports: Option<PortTopology<R>>,
     /// Pool operands, or `None` without pools.
     pub pools: Option<PoolTopology<R>>,
+    /// Pool-end operands, or `None` without pool ends.
+    pub pool_ends: Option<PoolEndTopology<R>>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -214,7 +194,14 @@ where
         let mut grouped = Vec::with_capacity(table.len());
         for &reach in &reach_order {
             let Some(cells) = per_reach.get(&reach) else {
-                unlinked.push(reach);
+                // A pool-ended reach completes inside the fixed point.
+                if definition
+                    .pool_ends
+                    .iter()
+                    .all(|end| end.reach_index != reach)
+                {
+                    unlinked.push(reach);
+                }
                 continue;
             };
             let caller = &setup.reaches[reach].definition;
@@ -413,12 +400,15 @@ where
                 &client,
                 checked,
                 parts,
-                LinkSides {
-                    ids: &link_ids,
-                    ends: &link_ends,
-                    beds: &beds,
-                    laws: &laws,
-                },
+                (
+                    LinkSides {
+                        ids: &link_ids,
+                        ends: &link_ends,
+                        beds: &beds,
+                        laws: &laws,
+                    },
+                    &definition.pool_ends,
+                ),
                 surface_count + slot_count,
             )?),
             (None, None) => None,
@@ -428,7 +418,15 @@ where
                 ));
             }
         };
+        let pool_ends = PoolEndTopology::new(
+            &client,
+            &definition.pool_ends,
+            (setup.reaches.len(), &reach_order),
+            &linked,
+            pool_topology.as_ref(),
+        )?;
         Ok(Self {
+            pool_ends,
             ports,
             slot_plans,
             head_absolute_m: setup.config.head_absolute_m,

@@ -51,7 +51,7 @@ where
     ) -> Result<Residuals, SurfaceChannelError> {
         let c = &self.client;
         let n = self.group_count();
-        let l = self.link_count;
+        let l = self.transfer_count();
         let gx = &evaluation.packet;
         let change = c.abs(&c.sub(gx, x)?)?;
         let largest = |t: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
@@ -123,8 +123,8 @@ where
     /// An iterate whose pools overfill takes saturated pool stages and iterates on. A converged
     /// candidate above a top curve knot rejects with `pool-capacity-exceeded`, and no shorter
     /// interval retries it. The converged candidate then passes the link crossing check, the
-    /// raised-cutoff crossing check at pool attachments, and the pool cut check. Each of those
-    /// rejections is retryable.
+    /// raised-cutoff crossing check at pool attachments, the pool cut check with pool-end exports,
+    /// and the pool-end wet-support check. Each of those rejections is retryable.
     pub fn solve(
         &self,
         config: &SurfaceChannelConfig,
@@ -135,7 +135,8 @@ where
         stalled: &Cell<Option<Stall>>,
     ) -> Result<Solved<R>, SurfaceChannelError> {
         // Kept trials never outlive this attempt, so none crosses an accepted step or a retry.
-        let trials = Trials::new(self.linked.len());
+        let ended = self.pool_ends.as_ref().map_or(0, |ends| ends.ended.len());
+        let trials = Trials::new(self.linked.len() + ended);
         let levelling = self.levelling(accepted, reach_ids, start, attempt, &trials)?;
         let error = RefCell::new(None);
         let record = |e: SurfaceChannelError| -> numr::error::Error {
@@ -256,18 +257,29 @@ where
         if let Some(message) = &evaluation.pool_overflow {
             return Err(SurfaceChannelError::Input(message.clone()));
         }
-        self.check_crossing(config, &evaluation)?;
+        if self.link_count > 0 {
+            self.check_crossing(config, &evaluation)?;
+        }
         if let Some(pools) = &attempt.pools {
             let n = self.group_count();
-            let l = self.link_count;
+            let m = self.transfer_count();
             let packet = &evaluation.packet;
             let signed = &evaluation.exchange.signed;
-            self.check_pool_crossing(
-                &packet.narrow(0, 0, n)?,
-                &packet.narrow(0, n + l, n)?,
-                signed,
-            )?;
-            self.check_pool_cuts(&pools.available, signed)?;
+            if self.link_count > 0 {
+                self.check_pool_crossing(
+                    &packet.narrow(0, 0, n)?,
+                    &packet.narrow(0, n + m, n)?,
+                    signed,
+                )?;
+            }
+            self.check_pool_cuts(&pools.available, signed, evaluation.end_volume.as_ref())?;
+        }
+        if let (Some(start_support), Some(end_support), Some(volumes)) = (
+            &start.end_support,
+            &evaluation.end_support,
+            &evaluation.end_volume,
+        ) {
+            self.check_end_support(start_support, end_support, volumes)?;
         }
         let norms = norms.into_inner();
         let contraction = match norms.as_slice() {

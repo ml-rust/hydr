@@ -30,7 +30,7 @@ use faces::{FACE_OWNERSHIP, check_faces};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) use binding::PortBinding;
-pub(super) use counters::PortCounters;
+pub(super) use counters::{PortCounters, two_sum};
 pub(super) use endpoint::check_endpoint;
 pub(super) use ghosts::PortStart;
 pub(super) use receipt::PortInterval;

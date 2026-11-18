@@ -4,6 +4,7 @@
 
 use super::{CheckedPools, SurfaceChannelPools};
 use crate::coupling::surface_channels::SurfaceChannelError;
+use crate::coupling::surface_channels::pool_ends::CheckedPoolEnd;
 use crate::coupling::surface_channels::structures::{CheckedNode, CheckedStructure};
 use crate::coupling::surface_channels::validation::text;
 use std::collections::{BTreeMap, BTreeSet};
@@ -22,6 +23,12 @@ pub(in super::super) fn check_pools(
     pools: SurfaceChannelPools,
 ) -> Result<Option<CheckedPools>, SurfaceChannelError> {
     if pools.pools.is_empty() {
+        if let Some(end) = pools.ends.first() {
+            return Err(SurfaceChannelError::input(format!(
+                "structure-endpoint-identity: pool end={:?} pool_id={:?} names no coordinator pool: declare the pool or drop the pool end",
+                end.id, end.pool_id
+            )));
+        }
         if !pools.support.is_empty()
             || pools.sources.as_ref().is_some_and(|s| !s.is_empty())
             || !pools.inflows.is_empty()
@@ -112,20 +119,22 @@ pub(in super::super) fn check_pools(
     }))
 }
 
-/// Rejects a pool that no structure of `structures` attaches to.
+/// Rejects a pool that no structure of `structures` and no pool end of `ends` attaches to.
 pub(in super::super) fn check_attached(
     pools: &CheckedPools,
     structures: &[CheckedStructure],
+    ends: &[CheckedPoolEnd],
 ) -> Result<(), SurfaceChannelError> {
     for (position, id) in pools.ids.iter().enumerate() {
         let attached = structures
             .iter()
-            .any(|structure| structure.nodes.contains(&CheckedNode::Pool(position)));
+            .any(|structure| structure.nodes.contains(&CheckedNode::Pool(position)))
+            || ends.iter().any(|end| end.pool == position);
         if !attached {
             return Err(rejected(
                 "pool-support",
                 id,
-                "joins no structure: attach the pool through a structure or remove it".into(),
+                "joins no structure and no pool end: attach the pool or remove it".into(),
             ));
         }
     }

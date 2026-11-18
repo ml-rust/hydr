@@ -1,6 +1,7 @@
 //! Device-resident link counters and the receipt of the last accepted common interval.
 
 use super::SurfaceChannelForcingInterval;
+use super::pool_ends::{PoolEndCounters, PoolEndInterval};
 use super::pools::{PoolChild, SurfaceChannelPoolForcing};
 use super::ports::{PortCounters, PortInterval};
 use crate::channel::ChannelReach;
@@ -18,6 +19,8 @@ pub(super) struct LinkCounters<R: Runtime<DType = DType>> {
     pub roundoff_bound_m3: Tensor<R>,
     /// Lifetime port volumes in port identity order. Empty without ports.
     pub ports: PortCounters,
+    /// Lifetime pool-end volumes in pool-end identity order. Empty without pool ends.
+    pub pool_ends: PoolEndCounters,
 }
 
 /// Host scalars of one accepted interval's accounting.
@@ -72,4 +75,6 @@ pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub midpoint_channel_m: Tensor<R>,
     /// Port receipts and water totals. Empty without ports.
     pub ports: PortInterval,
+    /// Pool-end volumes and reservoir heads. Empty without pool ends.
+    pub pool_ends: PoolEndInterval,
 }

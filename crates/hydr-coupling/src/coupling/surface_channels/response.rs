@@ -102,15 +102,24 @@ where
         levelling: &Levelling<R>,
         evaluation: &Evaluation<R>,
     ) -> Result<Tensor<R>, SurfaceChannelError> {
+        // Without links no plan-area response applies: every entry takes the plain update.
+        if self.link_count == 0 {
+            return Ok(evaluation.packet.clone());
+        }
         let c = &self.client;
         let n = self.group_count();
         let l = self.link_count;
+        let m = self.transfer_count();
         let response = &levelling.response;
         let packet = &evaluation.packet;
         let end = packet.narrow(0, 0, n)?;
         let accepted = packet.narrow(0, n, l)?;
-        let flags = packet.narrow(0, n + l, n + l)?;
-        let wet = c.maximum(&start.wet, &packet.narrow(0, n + l, n)?)?;
+        // The reach sets each pool-end volume, so it takes the plain update.
+        let ends = (m > l)
+            .then(|| packet.narrow(0, n + l, m - l))
+            .transpose()?;
+        let flags = packet.narrow(0, n + m, n + m)?;
+        let wet = c.maximum(&start.wet, &packet.narrow(0, n + m, n)?)?;
         let gather = |values: &Tensor<R>, index: &Tensor<R>| c.index_select(values, 0, index);
         let [wet_a, wet_b] = [gather(&wet, &self.link_a)?, gather(&wet, &self.link_b)?];
         let [start_a, start_b] = [
@@ -192,7 +201,11 @@ where
             .aggregate(c, &moved, AggregationKind::Momentum)
             .map_err(transfer_error)?
             .value;
-        Ok(c.cat(&[&c.add(&end, &change)?, &volume, &flags], 0)?)
+        let stages = c.add(&end, &change)?;
+        Ok(match &ends {
+            Some(ends) => c.cat(&[&stages, &volume, ends, &flags], 0)?,
+            None => c.cat(&[&stages, &volume, &flags], 0)?,
+        })
     }
 
     /// Change one rounding of the midpoint heads can cause in each link volume and end stage.

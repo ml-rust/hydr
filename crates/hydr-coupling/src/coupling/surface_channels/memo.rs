@@ -2,13 +2,18 @@
 //!
 //! One memo lives for one attempted interval. Its start state, duration, caller forcing,
 //! reservations, port fluxes and inflow velocities stay fixed for that attempt. Port fluxes
-//! enter the surface stage and each ported reach's reservation, so no key holds them. Each
+//! enter the surface stage and each ported reach's reservation, so no key holds them. A
+//! pool-ended reach's reservation follows its reservoir heads, so its keys hold them. Each
 //! child trial is then a pure function of its exchange operands:
 //! - A linked reach: the inflow and withdrawal volume of each of its links.
 //! - The surface: the inflow and withdrawal of every lane, and the withdrawal of every link.
 //!   The link withdrawals carry the fixed channel velocity into the lane momentum.
-//! - The pools: the incoming volume of every pool, external inflows included, and its outgoing
-//!   volume.
+//! - The pools: the incoming volume of every pool, external inflows and pool-end water included,
+//!   and its outgoing volume.
+//! - A pool-ended reach: its link volumes, if any, then the reservoir head of each of its pool
+//!   ends. The head sets the reservation the reach binds through.
+//! - The surface beside a linked pool-ended reach: its operands, then every reservoir head. The
+//!   heads set the channel velocity its inflow carries.
 //!
 //! A trial whose operands match a kept entry in every bit takes that entry's result.
 //! A converged reach repeats its last trial. A dry attempt repeats its zero-exchange trial.
@@ -40,6 +45,18 @@ impl TrialKey {
                 .map(|v| v.to_bits())
                 .collect(),
         ))
+    }
+
+    /// The key of host operand `bits`.
+    pub fn from_bits(bits: Vec<u64>) -> Self {
+        Self(bits)
+    }
+
+    /// This key followed by `bits`.
+    pub fn joined(&self, bits: &[u64]) -> Self {
+        let mut joined = self.0.clone();
+        joined.extend_from_slice(bits);
+        Self(joined)
     }
 }
 

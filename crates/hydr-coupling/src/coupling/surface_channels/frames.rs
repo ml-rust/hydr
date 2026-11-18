@@ -5,6 +5,7 @@ use super::accounting::within;
 use super::batch::SurfaceChannelBatch;
 use super::context::Context;
 use super::identity::{self, Check};
+use super::pool_ends::PoolEndCounters;
 use super::ports::{PortCounters, PortTopology};
 use super::snapshot::SurfaceChannelCounterData;
 use super::state::LinkCounters;
@@ -291,6 +292,12 @@ fn import_counters<R: Runtime<DType = DType>>(
                 "differs from the ports in ascending identity, holds a negative or nonfinite value, or holds a nonzero value before the first interval",
             )
         })?;
+    // The package holds no pool-end ledgers, so only a frame before the first interval restores.
+    require(
+        context.pool_end_count() == 0 || data.accepted_steps == 0,
+        &format!("{prefix}counters"),
+        "holds no pool-end ledgers for an advanced frame",
+    )?;
     let device = context.client.device();
     let tensor = |values: Vec<f64>| Tensor::<R>::from_slice(&values, &[values.len()], device);
     Ok(LinkCounters {
@@ -298,5 +305,6 @@ fn import_counters<R: Runtime<DType = DType>>(
         to_surface_m3: tensor(data.links.iter().map(|l| l.channel_to_surface_m3).collect())?,
         roundoff_bound_m3: tensor(data.links.iter().map(|l| l.roundoff_bound_m3).collect())?,
         ports,
+        pool_ends: PoolEndCounters::zero(context.pool_end_count()),
     })
 }

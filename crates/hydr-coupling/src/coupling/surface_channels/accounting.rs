@@ -2,6 +2,7 @@
 
 use super::context::{Context, Ops, transfer_error};
 use super::exchange::Exchange;
+use super::pool_ends::{PoolEndCounters, PoolEndInterval};
 use super::pools::{PoolChild, inflow_error, pool_error};
 use super::ports::{PortCounters, PortInterval};
 use super::state::{LinkCounters, StepTotals};
@@ -87,15 +88,15 @@ where
 
     /// Surface, channel, and pool water terms in reach identity order.
     ///
-    /// `exchange` holds the lifetime channel link totals. `ports` holds the lifetime port
-    /// volumes, which the reach boundary totals hold. Pools join with their storage, local
-    /// sources, and external inflow ledgers. Their native counters hold link water, so they stay
-    /// out of the external terms.
+    /// `exchange` holds the lifetime channel link totals. `ports` and `ends` hold the lifetime
+    /// port and pool-end volumes, which the reach boundary totals hold. Pools join with their
+    /// storage, local sources, and external inflow ledgers. Their native counters hold link and
+    /// pool-end water, so they stay out of the external terms.
     fn terms(
         &self,
         (surface, reaches, pools): Children<'_, R>,
         exchange: (f64, f64),
-        ports: &PortCounters,
+        (ports, ends): (&PortCounters, &PoolEndCounters),
     ) -> Result<Terms, SurfaceChannelError> {
         let s = surface.ledger();
         let mut terms = Terms {
@@ -171,6 +172,14 @@ where
             terms.external_out -= out_of_reaches;
             terms.magnitude += 2.0 * (into_reaches + out_of_reaches);
         }
+        // Pool-end water stays inside: the reach boundary totals and the pool natives hold it.
+        if !ends.is_empty() {
+            let (into_reaches, out_of_reaches, bound) = ends.reach_totals();
+            terms.external_in -= into_reaches;
+            terms.external_out -= out_of_reaches;
+            terms.magnitude += 2.0 * (into_reaches + out_of_reaches);
+            terms.child_residual += bound;
+        }
         Ok(terms)
     }
 
@@ -208,7 +217,11 @@ where
         let (surface, reaches, _) = children;
         let (channel_in, channel_out, channel_bound) = self.channel_lifetime(reaches)?;
         let ports = &counters.ports;
-        let terms = self.terms(children, (channel_in, channel_out), ports)?;
+        let terms = self.terms(
+            children,
+            (channel_in, channel_out),
+            (ports, &counters.pool_ends),
+        )?;
         let s = surface.ledger();
         let residual = (terms.storage - terms.initial)
             - (terms.external_in - terms.external_out + terms.adjustment);
@@ -256,17 +269,21 @@ where
     /// Storage change minus external water must stay within the mass bound. Port water stays
     /// inside: it leaves the reach boundary totals, and each port's pairing bound joins the bound.
     ///
-    /// `ports` holds the lifetime port counters before and after the interval, then its receipt.
+    /// `counters` holds the lifetime counters before and after the interval, then its port
+    /// receipt. The pools' native net exchange adds every pool-end volume of `ends`. Pool-end
+    /// water stays inside: it leaves the reach boundary totals.
     pub fn step_totals(
         &self,
         config: &SurfaceChannelConfig,
         (before, after): (Children<'_, R>, Children<'_, R>),
         exchange: &Exchange<R>,
-        ports: (&PortCounters, &PortCounters, &PortInterval),
-        pool_inflow: PoolInflowStep,
+        counters: (&LinkCounters<R>, &LinkCounters<R>, &PortInterval),
+        (pool_inflow, ends): (PoolInflowStep, &PoolEndInterval),
     ) -> Result<StepTotals, SurfaceChannelError> {
-        let (ports_before, ports_after, port_step) = ports;
+        let (counters_before, counters_after, port_step) = counters;
+        let (ports_before, ports_after) = (&counters_before.ports, &counters_after.ports);
         let ported = !ports_after.is_empty();
+        let (end_net, end_magnitude) = ends.totals();
         let c = &self.client;
         let zero = self.scalar(0.0)?;
         let signed = &exchange.signed;
@@ -323,12 +340,13 @@ where
             )),
             None => None,
         };
-        let width = (2 * (self.link_count + self.group_count()) + 8) as f64;
+        let width = (2 * (self.transfer_count() + self.group_count()) + 8) as f64;
         let pool_magnitude = pool_native.map_or(0.0, |(into, out)| into + out);
         let paired_bound = exchange.aggregation_bound
             + width
                 * f64::EPSILON
                 * (magnitude
+                    + end_magnitude
                     + s1.exchange_in_m3
                     + s1.exchange_out_m3
                     + channel_in
@@ -345,11 +363,15 @@ where
         }
         if let Some((into, out)) = pool_native {
             let pool_net = net(&self.pool_sign)?;
-            let gap = (into - out) - (pool_net + pool_inflow.volume_m3);
+            let gap = if ends.volume_m3.is_empty() {
+                (into - out) - (pool_net + pool_inflow.volume_m3)
+            } else {
+                (into - out) - (pool_net + end_net + pool_inflow.volume_m3)
+            };
             let bound = paired_bound + pool_inflow.bound_m3;
             if !within(gap, bound) {
                 return Err(SurfaceChannelError::Numerical(format!(
-                    "paired pool exchange: summed pool links={pool_net}, external inflow={}, pool net in={}, bound={bound}: the pools disagree with their links; shorten the common interval",
+                    "paired pool exchange: summed pool links={pool_net}, pool ends={end_net}, external inflow={}, pool net in={}, bound={bound}: the pools disagree with their links; shorten the common interval",
                     pool_inflow.volume_m3,
                     into - out
                 )));
@@ -357,8 +379,16 @@ where
         }
         let (old_in, old_out, _) = self.channel_lifetime(before.1)?;
         let (new_in, new_out, _) = self.channel_lifetime(after.1)?;
-        let old = self.terms(before, (old_in, old_out), ports_before)?;
-        let new = self.terms(after, (new_in, new_out), ports_after)?;
+        let old = self.terms(
+            before,
+            (old_in, old_out),
+            (ports_before, &counters_before.pool_ends),
+        )?;
+        let new = self.terms(
+            after,
+            (new_in, new_out),
+            (ports_after, &counters_after.pool_ends),
+        )?;
         let external = (new.external_in - old.external_in) - (new.external_out - old.external_out)
             + (new.adjustment - old.adjustment);
         let mass_residual = (new.storage - old.storage) - external;
@@ -386,6 +416,9 @@ where
         if ported {
             mass_bound += port_step.paired_bound_m3;
         }
+        if !ends.volume_m3.is_empty() {
+            mass_bound += counters_after.pool_ends.reach_totals().2;
+        }
         if !within(mass_residual, mass_bound) {
             return Err(SurfaceChannelError::Numerical(format!(
                 "composite water residual={mass_residual}, bound={mass_bound}: storage change departs from external water; shorten the common interval"
@@ -409,7 +442,7 @@ where
         &self,
         counters: &LinkCounters<R>,
         signed: &Tensor<R>,
-        ports: &PortInterval,
+        (ports, ends): (&PortInterval, &PoolEndInterval),
     ) -> Result<LinkCounters<R>, SurfaceChannelError> {
         let c = &self.client;
         let zero = self.scalar(0.0)?;
@@ -426,6 +459,7 @@ where
             to_surface_m3: backward,
             roundoff_bound_m3,
             ports: counters.ports.advance(ports)?,
+            pool_ends: counters.pool_ends.advance(ends)?,
         })
     }
 }

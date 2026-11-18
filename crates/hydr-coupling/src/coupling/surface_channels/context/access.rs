@@ -3,7 +3,8 @@
 use super::Context;
 use crate::channel::ChannelEnd;
 use crate::coupling::surface_channels::SurfaceChannelError;
-use crate::coupling::surface_channels::ports::PortCounters;
+use crate::coupling::surface_channels::pool_ends::PoolEndCounters;
+use crate::coupling::surface_channels::ports::{PortCounters, end_slot};
 use crate::coupling::surface_channels::state::LinkCounters;
 use crate::numerics::water_transfers::WaterTransferError;
 use hydr_structures::internal::CouplingStructures;
@@ -20,6 +21,7 @@ impl<R: Runtime<DType = DType>> Context<R> {
             to_surface_m3: zero.clone(),
             roundoff_bound_m3: zero,
             ports: self.zero_port_counters(),
+            pool_ends: PoolEndCounters::zero(self.pool_end_count()),
         })
     }
 
@@ -63,6 +65,28 @@ impl<R: Runtime<DType = DType>> Context<R> {
                 .get(reach)
                 .is_some_and(|ends| ends.iter().any(Option::is_some))
         })
+    }
+
+    /// Pool-end count `E`.
+    pub fn pool_end_count(&self) -> usize {
+        self.pool_ends.as_ref().map_or(0, |ends| ends.ends.len())
+    }
+
+    /// Signed volume count of the iterate, `L + E`.
+    pub fn transfer_count(&self) -> usize {
+        self.link_count + self.pool_end_count()
+    }
+
+    /// Identity of the pool end at `end` of setup reach `reach`, if any.
+    pub fn pool_end_at(&self, reach: usize, end: ChannelEnd) -> Option<&str> {
+        let ends = self.pool_ends.as_ref()?;
+        let position = ends.reach_ends.get(reach)?[end_slot(end)]?;
+        ends.ends.get(position).map(|end| end.id.as_str())
+    }
+
+    /// True when a pool end owns either end of setup reach `reach`.
+    pub fn is_pool_ended(&self, reach: usize) -> bool {
+        self.pool_ends.as_ref().is_some_and(|ends| ends.owns(reach))
     }
 
     /// Laws of every link. A coordinator with ports only has none.

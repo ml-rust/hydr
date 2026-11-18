@@ -10,25 +10,24 @@
 //! surface along the tangent. Several inflows into one surface cell carry their summed momentum.
 //! Structure links hold a zero tangent, so their water enters either side without velocity.
 //! Pools hold no momentum.
+//!
+//! A pool-ended reach reserves under the reservoir heads of each iterate, so its slots' donor
+//! water is a function of the iterate. Its end volume joins the packet beside the link volumes.
 
 use super::SurfaceChannelError;
-use super::context::{Context, Ops, transfer_error};
+use super::context::{Context, Ops};
 use super::exchange::Exchange;
 use super::levelling::Levelling;
-use super::memo::{TrialKeys, TrialMemo};
-use super::pools::{PoolAttempt, PoolChild, PoolCompletion, charge};
+use super::memo::TrialMemo;
+use super::pools::{PoolAttempt, PoolChild, charge};
 use super::ports::PortBinding;
 use super::start::Start;
 use crate::channel::ChannelReach;
-use crate::numerics::water_transfers::AggregationKind;
 use crate::solver::Solver;
 use crate::storage::LevelPoolBatch;
-use hydr_channel::internal::ChannelCouplingTrial;
-use hydr_solver::internal::{CouplingCompletion, ExchangeSource, SurfaceCouplingStage};
+use hydr_solver::internal::SurfaceCouplingStage;
 use numr::dtype::DType;
-use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ScalarOps, ShapeOps, UnaryOps,
-};
+use numr::ops::{BinaryOps, IndexingOps, MidpointOps, ShapeOps};
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 
@@ -59,12 +58,16 @@ pub(super) struct Attempt<R: Runtime<DType = DType>> {
     pub end: f64,
     pub dt: f64,
     pub stage: SurfaceCouplingStage<R>,
-    /// Reserved donor water at every group, `[S + C + P]`.
-    pub available: Tensor<R>,
+    /// Reserved donor water at every group, `[S + C + P]`, or `None` when a linked reach is
+    /// pool-ended. Each evaluation then reserves it under its reservoir heads.
+    pub available: Option<Tensor<R>>,
     /// Surface-to-channel inflow velocity along each link's reach, `[L]`.
     pub surface_velocity: Tensor<R>,
-    /// Channel-to-surface inflow velocity per link, `[L]` per axis.
-    pub channel_velocity: [Tensor<R>; 2],
+    /// Channel-to-surface inflow velocity per link, `[L]` per axis, or `None` when a linked
+    /// reach is pool-ended.
+    pub channel_velocity: Option<[Tensor<R>; 2]>,
+    /// Caller withdrawal volume and margin of every slot, each `[C]`.
+    pub slot_reserve: [Tensor<R>; 2],
     /// Port fluxes and ported reach reservations of this attempt.
     pub ports: PortBinding<R>,
     /// Pool operands of this attempt, or `None` without pools.
@@ -79,28 +82,31 @@ pub(super) struct Evaluation<R: Runtime<DType = DType>> {
     pub surface: Solver<R>,
     /// Advanced linked reaches in `Context::linked` order.
     pub linked: Vec<ChannelReach<R>>,
+    /// Advanced pool-ended reaches without links, in `PoolEndTopology::ended` order.
+    pub ended: Vec<ChannelReach<R>>,
+    /// Pool-end volumes, positive into the pools, `[E]`, or `None` without pool ends.
+    pub end_volume: Option<Tensor<R>>,
+    /// Reservoir head of every pool end, `[E]`, or `None` without pool ends.
+    pub end_heads: Option<Tensor<R>>,
+    /// Wet support of every pool end at the candidate end, `[E]`, or `None` without pool ends.
+    pub end_support: Option<Tensor<R>>,
     /// Candidate pools, or `None` without pools or above a top curve knot.
     pub pools: Option<LevelPoolBatch<R>>,
     /// The `pool-capacity-exceeded` rejection of a candidate above a top curve knot. The packet
     /// then holds saturated pool stages.
     pub pool_overflow: Option<String>,
     pub exchange: Exchange<R>,
+    /// Regime code of every link, `[L]`.
     pub regime: Tensor<R>,
     /// Midpoint stage at every group, `[S + C + P]`.
     pub midpoint: Tensor<R>,
-    /// Output iterate: end stages, signed volumes, end support, regimes.
+    /// Output iterate: end stages `[S + C + P]`, signed link and pool-end volumes `[L + E]`, end
+    /// wet masks `[S + C + P]`, link regimes `[L]`, and pool-end support `[E]`.
     pub packet: Tensor<R>,
-    /// Change one rounding of the midpoint heads can cause: in each link volume, `[L]`, and in
-    /// each end stage, `[S + C + P]`. See [`Context::resolution`].
+    /// Change one rounding of the midpoint heads can cause: in each signed volume, `[L + E]`,
+    /// and in each end stage, `[S + C + P]`. See [`Context::resolution`]. Pool-end volumes take
+    /// zero: the reach sets them.
     pub resolution: [Tensor<R>; 2],
-}
-
-/// Candidate children of one completion.
-pub(super) struct Completed<R: Runtime<DType = DType>> {
-    pub surface: Solver<R>,
-    pub linked: Vec<ChannelReach<R>>,
-    /// Pool completion, or `None` without pools.
-    pub pools: Option<PoolCompletion<R>>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -121,9 +127,14 @@ where
     ) -> Result<Attempt<R>, SurfaceChannelError> {
         let c = &self.client;
         let dt = stage.dt();
+        let pool_ended = self
+            .linked
+            .iter()
+            .any(|entry| self.is_pool_ended(entry.reach));
         let slots = match &start.slots {
-            Some(slots) => slots.clone(),
-            None => self.slot_operands(|reach| ports.reservation(start, reach))?,
+            Some(slots) => Some(slots.clone()),
+            None if pool_ended => None,
+            None => Some(self.slot_operands(|reach| ports.reservation(start, reach))?),
         };
         let mut withdrawal = vec![0.0; self.slot_count];
         for reach in &start.forcing.reaches {
@@ -146,12 +157,7 @@ where
         let device = c.device();
         let margin = Tensor::<R>::from_slice(&margins, &[margins.len()], device)?;
         let withdrawal = Tensor::<R>::from_slice(&withdrawal, &[withdrawal.len()], device)?;
-        let kept = c.mul(&slots.donor, &c.sub(&self.scalar(1.0)?, &margin)?)?;
-        let reserved = c.mul(
-            &c.add(&c.mul_scalar(&slots.outgoing, dt)?, &withdrawal)?,
-            &c.add_scalar(&margin, 1.0)?,
-        )?;
-        let remaining = c.maximum(&c.sub(&kept, &reserved)?, &self.scalar(0.0)?)?;
+        let slot_reserve = [withdrawal, margin];
         let pools = match (pools, &start.pools) {
             (Some((child, steps)), Some(pool_start)) => {
                 Some(self.pool_attempt(child, pool_start, stage.end(), steps)?)
@@ -163,13 +169,10 @@ where
                 ));
             }
         };
-        let available = match &pools {
-            Some(pools) => c.cat(
-                &[stage.available_volume_m3(), &remaining, &pools.available],
-                0,
-            )?,
-            None => c.cat(&[stage.available_volume_m3(), &remaining], 0)?,
-        };
+        let available = slots
+            .as_ref()
+            .map(|slots| self.donor_water(&stage, slots, dt, &slot_reserve, pools.as_ref()))
+            .transpose()?;
         let [ux, uy] = stage.velocity_xy();
         let zero = Tensor::<R>::zeros(&[1], DType::F64, device)?;
         let lane = |values: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
@@ -185,7 +188,8 @@ where
             stage,
             available,
             surface_velocity,
-            channel_velocity: slots.channel_velocity,
+            channel_velocity: slots.map(|slots| slots.channel_velocity),
+            slot_reserve,
             ports,
             pools,
         })
@@ -207,27 +211,41 @@ where
     ) -> Result<Evaluation<R>, SurfaceChannelError> {
         let c = &self.client;
         let n = self.group_count();
-        let l = self.link_count;
-        if x.shape() != [2 * (n + l)] {
+        let m = self.transfer_count();
+        if x.shape() != [2 * (n + m)] {
             return Err(SurfaceChannelError::Numerical(format!(
                 "iterate shape={:?}, expected [{}]: supply the coordinator packet",
                 x.shape(),
-                2 * (n + l)
+                2 * (n + m)
             )));
         }
         let estimate = x.narrow(0, 0, n)?;
         let midpoint = c.midpoint(&start.stage, &estimate)?;
-        let end_wet = x.narrow(0, n + l, n)?;
+        let end_wet = x.narrow(0, n + m, n)?;
         self.check_pool_midpoints(&start.stage, &estimate, &start.wet, &end_wet)?;
-        let wet = c.maximum(&start.wet, &end_wet)?;
-        let law = self.weir(&midpoint, &wet, &levelling.level)?;
-        let proposed = self
-            .link_structures()?
-            .held_volumes(&law, attempt.dt)
-            .map_err(|error| SurfaceChannelError::Numerical(format!("link volumes: {error}")))?;
-        let level = self.level(&proposed, levelling)?;
-        let mut exchange = self.exchange(proposed, level, &attempt.available)?;
-        let completed = self.complete(accepted, reach_ids, start, attempt, &exchange, trials)?;
+        let reserved = self.reserve(accepted.reaches, reach_ids, start, attempt, x)?;
+        let (law, mut exchange) = if self.link_count == 0 {
+            (None, self.no_exchange()?)
+        } else {
+            let wet = c.maximum(&start.wet, &end_wet)?;
+            let law = self.weir(&midpoint, &wet, &levelling.level)?;
+            let proposed = self
+                .link_structures()?
+                .held_volumes(&law, attempt.dt)
+                .map_err(|error| {
+                    SurfaceChannelError::Numerical(format!("link volumes: {error}"))
+                })?;
+            let level = self.level(&proposed, levelling)?;
+            let exchange = self.exchange(proposed, level, &reserved.available)?;
+            (Some(law), exchange)
+        };
+        let completed = self.complete(
+            accepted,
+            reach_ids,
+            (start, attempt, &reserved),
+            &exchange,
+            trials,
+        )?;
         let borrowed: Vec<&ChannelReach<R>> = completed.linked.iter().collect();
         let (mut end_stage, mut end_wet) = self.stages(&completed.surface, &borrowed, reach_ids)?;
         let (pools, pool_overflow) = match completed.pools {
@@ -254,182 +272,76 @@ where
             }
             None => (None, None),
         };
-        let packet = c.cat(&[&end_stage, &exchange.signed, &end_wet, &law.regime], 0)?;
-        let resolution = self.resolution(&law, &exchange.signed, &midpoint, levelling)?;
+        let empty = Tensor::<R>::zeros(&[0], DType::F64, c.device())?;
+        let (regime, mut resolution) = match &law {
+            Some(law) => (
+                law.regime.clone(),
+                self.resolution(law, &exchange.signed, &midpoint, levelling)?,
+            ),
+            None => (
+                empty.clone(),
+                [empty, Tensor::<R>::zeros(&[n], DType::F64, c.device())?],
+            ),
+        };
+        let (packet, end_volume, end_support) = match &completed.ends {
+            Some(ends) => {
+                // An overflowing candidate rejects once it converges, so its support stays set.
+                let support = match &pools {
+                    Some(batch) => self.end_support(batch.volumes_tensor())?,
+                    None => Tensor::<R>::ones(ends.volume.shape(), DType::F64, c.device())?,
+                };
+                let none = Tensor::<R>::zeros(ends.volume.shape(), DType::F64, c.device())?;
+                resolution[0] = c.cat(&[&resolution[0], &none], 0)?;
+                let packet = c.cat(
+                    &[
+                        &end_stage,
+                        &exchange.signed,
+                        &ends.volume,
+                        &end_wet,
+                        &regime,
+                        &support,
+                    ],
+                    0,
+                )?;
+                (packet, Some(ends.volume.clone()), Some(support))
+            }
+            None => (
+                c.cat(&[&end_stage, &exchange.signed, &end_wet, &regime], 0)?,
+                None,
+                None,
+            ),
+        };
         Ok(Evaluation {
             surface: completed.surface,
             linked: completed.linked,
+            ended: completed.ended,
+            end_volume,
+            end_heads: reserved.ends.map(|ends| ends.heads),
+            end_support,
             pools,
             pool_overflow,
             exchange,
-            regime: law.regime,
+            regime,
             midpoint,
             packet,
             resolution,
         })
     }
 
-    /// Completes the surface, every linked reach, and the pools with the limited volumes of
-    /// `exchange`.
-    ///
-    /// `accepted` without a pool child leaves the pools out. A child whose operands repeat a trial
-    /// kept in `trials` takes the kept result.
-    pub fn complete(
-        &self,
-        accepted: Accepted<'_, R>,
-        reach_ids: &[&str],
-        start: &Start<R>,
-        attempt: &Attempt<R>,
-        exchange: &Exchange<R>,
-        trials: &Trials<R>,
-    ) -> Result<Completed<R>, SurfaceChannelError> {
-        let c = &self.client;
-        let zero = self.scalar(0.0)?;
-        let to_b = c.where_cond(&c.gt(&exchange.signed, &zero)?, &exchange.signed, &zero)?;
-        let to_a = c.where_cond(
-            &c.lt(&exchange.signed, &zero)?,
-            &c.neg(&exchange.signed)?,
-            &zero,
-        )?;
-        let s = self.surface_count;
-        let packed = if s == 0 {
-            c.cat(&[&to_b, &to_a], 0)?
-        } else {
-            c.cat(
-                &[
-                    &to_b,
-                    &to_a,
-                    &exchange.incoming.narrow(0, 0, s)?,
-                    &exchange.outgoing.narrow(0, 0, s)?,
-                ],
-                0,
-            )?
-        };
-        let reach_links: Vec<&[usize]> = self.linked.iter().map(|e| e.links.as_slice()).collect();
-        let keys = TrialKeys::read(&packed, self.link_count, &reach_links)?;
-        let next_surface = trials.surface(&keys.surface, || {
-            self.complete_surface(accepted.surface, attempt, exchange, &to_a)
-        })?;
-        let mut linked = Vec::with_capacity(self.linked.len());
-        for ((index, entry), key) in self.linked.iter().enumerate().zip(&keys.linked) {
-            let reach = &accepted.reaches[entry.reach];
-            let next = trials.reach(index, key, || {
-                let bound = &start.forcing.reaches[entry.reach];
-                let mut inputs = bound.lateral.clone();
-                inputs.extend(self.exchange_inputs(
-                    index,
-                    &to_b,
-                    &to_a,
-                    &attempt.surface_velocity,
-                )?);
-                let channel = |source| SurfaceChannelError::Channel {
-                    reach_id: reach_ids[entry.reach].to_string(),
-                    source,
-                };
-                let reservation = attempt.ports.reservation(start, entry.reach)?;
-                let forcing = reach
-                    .bind_coupling_reserved(reservation, attempt.end, &inputs)
-                    .map_err(channel)?;
-                advanced(
-                    reach.trial_coupled(attempt.end, &forcing, None, None),
-                    start.time,
-                    attempt.end,
-                    reach_ids[entry.reach],
-                )
-            })?;
-            linked.push(next);
-        }
-        let pools = match (accepted.pools, &start.pools, &attempt.pools) {
-            (Some(child), Some(pool_start), Some(pool_attempt)) => {
-                let offset = s + self.slot_count;
-                let p = self.pool_count;
-                Some(self.complete_pools(
-                    (child, pool_start, pool_attempt),
-                    &exchange.incoming.narrow(0, offset, p)?,
-                    &exchange.outgoing.narrow(0, offset, p)?,
-                    trials,
-                )?)
-            }
-            (None, _, _) => None,
-            _ => {
-                return Err(SurfaceChannelError::Numerical(
-                    "a completion lacks its pool child, pool forcing, or pool attempt".into(),
-                ));
-            }
-        };
-        Ok(Completed {
-            surface: next_surface,
-            linked,
-            pools,
+    /// The exchange of an evaluation without links: empty link tensors and zero group totals.
+    fn no_exchange(&self) -> Result<Exchange<R>, SurfaceChannelError> {
+        let device = self.client.device();
+        let empty = Tensor::<R>::zeros(&[0], DType::F64, device)?;
+        let groups = Tensor::<R>::zeros(&[self.group_count()], DType::F64, device)?;
+        Ok(Exchange {
+            proposed: empty.clone(),
+            level: empty.clone(),
+            signed: empty.clone(),
+            factor: empty,
+            incoming: groups.clone(),
+            outgoing: groups,
+            aggregation_bound: 0.0,
         })
-    }
-
-    /// Completes the surface interval with the lane totals of the limited link volumes.
-    ///
-    /// `to_a` holds each link's volume toward endpoint A. Only bank links, whose endpoint A is a
-    /// surface lane, carry velocity into the surface.
-    fn complete_surface(
-        &self,
-        surface: &Solver<R>,
-        attempt: &Attempt<R>,
-        exchange: &Exchange<R>,
-        to_a: &Tensor<R>,
-    ) -> Result<Solver<R>, SurfaceChannelError> {
-        let Some(links) = &self.links else {
-            return self.complete_alone(surface, &attempt.stage);
-        };
-        let c = &self.client;
-        let s = self.surface_count;
-        let inflow = exchange.incoming.narrow(0, 0, s)?;
-        let withdrawal = exchange.outgoing.narrow(0, 0, s)?;
-        let zero = self.scalar(0.0)?;
-        let has = c.gt(&inflow, &zero)?;
-        let safe = c.where_cond(&has, &inflow, &self.scalar(1.0)?)?;
-        let velocity = |axis: usize| -> Result<Tensor<R>, SurfaceChannelError> {
-            let momentum = c.mul(to_a, &attempt.channel_velocity[axis])?;
-            let lane = self
-                .lanes
-                .aggregate(c, &momentum, AggregationKind::Momentum)
-                .map_err(transfer_error)?;
-            Ok(c.where_cond(&has, &c.div(&lane.value, &safe)?, &zero)?)
-        };
-        let source = ExchangeSource::new(
-            links,
-            inflow.contiguous()?,
-            withdrawal.contiguous()?,
-            [velocity(0)?, velocity(1)?],
-        )?;
-        match surface.coupling_complete(&attempt.stage, Some(&source))? {
-            CouplingCompletion::Accepted(next) => Ok(*next),
-            CouplingCompletion::Retry(reason) => Err(SurfaceChannelError::Numerical(format!(
-                "surface completion: {reason}. Shorten the common interval"
-            ))),
-        }
-    }
-}
-
-/// Accepted reach of a coupled trial, or a retryable shortening request.
-pub(super) fn advanced<R: Runtime<DType = DType>>(
-    trial: Result<ChannelCouplingTrial<R>, crate::channel::ChannelError>,
-    start: f64,
-    end: f64,
-    reach_id: &str,
-) -> Result<ChannelReach<R>, SurfaceChannelError> {
-    match trial {
-        Ok(ChannelCouplingTrial::Accepted(next)) => Ok(*next),
-        Ok(ChannelCouplingTrial::Shorter {
-            suggested_end_s,
-            reason,
-        }) => Err(SurfaceChannelError::RecomputeInterval {
-            start_s: start,
-            requested_end_s: end,
-            suggested_end_s,
-            reason: format!("reach={reach_id:?}: {reason}"),
-        }),
-        Err(source) => Err(SurfaceChannelError::Channel {
-            reach_id: reach_id.to_string(),
-            source,
-        }),
     }
 }
 

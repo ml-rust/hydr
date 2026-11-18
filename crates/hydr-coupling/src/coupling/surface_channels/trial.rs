@@ -2,11 +2,12 @@
 
 use super::accounting::{PoolInflowStep, within};
 use super::batch::SurfaceChannelBatch;
-use super::context::Context;
-use super::evaluate::{Accepted, advanced};
-use super::exchange::Exchange;
+use super::completion::advanced;
+use super::evaluate::Accepted;
 use super::forcing::BoundForcing;
 use super::iteration::Stall;
+use super::outcome::LinkOutcome;
+use super::pool_ends::PoolEndInterval;
 use super::pools::{PoolChild, SurfaceChannelPoolForcing};
 use super::retry::{recompute, shortening};
 use super::start::Start;
@@ -20,7 +21,7 @@ use numr::ops::{
     IndexingOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps,
     TwoSumOps, TypeConversionOps, UnaryOps,
 };
-use numr::runtime::{Runtime, RuntimeClient};
+use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::interpolate::Interp1dAlgorithms;
 use solvr::optimize::roots::{
@@ -30,7 +31,7 @@ use std::cell::Cell;
 use std::sync::Arc;
 
 /// Fraction of the smallest step limit a shortened attempt uses.
-const LIMIT_SAFETY: f64 = 0.95;
+pub(super) const LIMIT_SAFETY: f64 = 0.95;
 
 /// Complete candidate of one common interval. Dropping it rejects every child together.
 #[derive(Debug)]
@@ -300,7 +301,7 @@ where
         let steps = self.accepted_steps + 1;
         let mut slots: Vec<Option<ChannelReach<R>>> =
             (0..self.reaches.len()).map(|_| None).collect();
-        let (surface, outcome, ports) = if context.link_count == 0 {
+        let (surface, outcome, ports) = if context.transfer_count() == 0 {
             let surface = context.complete_alone(&self.surface, &stage)?;
             (surface, LinkOutcome::empty(context)?, ports)
         } else {
@@ -332,6 +333,20 @@ where
             for (entry, next) in context.linked.iter().zip(evaluation.linked) {
                 slots[entry.reach] = Some(next);
             }
+            let ended = context.pool_ends.as_ref().map_or(&[][..], |e| &e.ended);
+            for (&reach, next) in ended.iter().zip(evaluation.ended) {
+                slots[reach] = Some(next);
+            }
+            let host = |values: Option<Tensor<R>>| -> Result<Vec<f64>, SurfaceChannelError> {
+                Ok(values
+                    .map(|v| v.try_to_vec::<f64>())
+                    .transpose()?
+                    .unwrap_or_default())
+            };
+            let pool_ends = PoolEndInterval {
+                volume_m3: host(evaluation.end_volume)?,
+                head_m: host(evaluation.end_heads)?,
+            };
             let c = &context.client;
             let outcome = LinkOutcome {
                 iterations: solved.iterations,
@@ -343,6 +358,7 @@ where
                 regime: evaluation.regime,
                 exchange: evaluation.exchange,
                 pools,
+                pool_ends,
             };
             (evaluation.surface, outcome, attempt.ports)
         };
@@ -388,8 +404,11 @@ where
             )));
         }
         let interval = context.port_interval(&ports, dt, &self.counters.ports)?;
+        let pool_ends = outcome.pool_ends;
+        context.check_end_pairing(&reaches, reach_ids, &pool_ends.volume_m3)?;
         let exchange = outcome.exchange;
-        let counters = context.advance_counters(&self.counters, &exchange.signed, &interval)?;
+        let counters =
+            context.advance_counters(&self.counters, &exchange.signed, (&interval, &pool_ends))?;
         let totals = context.step_totals(
             config,
             (
@@ -397,8 +416,8 @@ where
                 (&surface, &reaches, pools.as_ref()),
             ),
             &exchange,
-            (&self.counters.ports, &counters.ports, &interval),
-            pool_inflow,
+            (&self.counters, &counters, &interval),
+            (pool_inflow, &pool_ends),
         )?;
         let balance = context.balance(config, (&surface, &reaches, pools.as_ref()), &counters)?;
         if !within(balance.residual_m3, balance.bound_m3) {
@@ -433,6 +452,7 @@ where
             factor: exchange.factor,
             regime: outcome.regime,
             ports: interval,
+            pool_ends,
         };
         Ok(Self {
             definition: Arc::clone(&self.definition),
@@ -445,38 +465,6 @@ where
             counters,
             last: Some(Arc::new(step)),
             pools,
-        })
-    }
-}
-
-/// Link results of one attempt: the converged fixed point, or nothing without links.
-struct LinkOutcome<R: Runtime<DType = DType>> {
-    iterations: usize,
-    contraction: f64,
-    head_residual_m: f64,
-    transfer_residual_m3: f64,
-    midpoint_surface_m: Tensor<R>,
-    midpoint_channel_m: Tensor<R>,
-    regime: Tensor<R>,
-    exchange: Exchange<R>,
-    /// Candidate pools with the external inflow of the interval, or `None` without pools.
-    pools: Option<(PoolChild<R>, PoolInflowStep)>,
-}
-
-impl<R: Runtime<DType = DType>> LinkOutcome<R> {
-    /// The outcome of a coordinator without links: no update and empty link tensors.
-    fn empty(context: &Context<R>) -> Result<Self, SurfaceChannelError> {
-        let empty = Tensor::<R>::zeros(&[0], DType::F64, context.client.device())?;
-        Ok(Self {
-            iterations: 0,
-            contraction: 0.0,
-            head_residual_m: 0.0,
-            transfer_residual_m3: 0.0,
-            midpoint_surface_m: empty.clone(),
-            midpoint_channel_m: empty.clone(),
-            regime: empty.clone(),
-            exchange: Exchange::empty(&empty),
-            pools: None,
         })
     }
 }

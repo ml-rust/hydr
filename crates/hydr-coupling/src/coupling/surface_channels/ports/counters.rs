@@ -22,7 +22,7 @@ pub(in super::super) struct PortCounters {
 }
 
 /// `a + b` with its exact rounding error.
-fn two_sum(a: f64, b: f64) -> (f64, f64) {
+pub(in super::super) fn two_sum(a: f64, b: f64) -> (f64, f64) {
     let sum = a + b;
     let b_part = sum - a;
     let a_part = sum - b_part;

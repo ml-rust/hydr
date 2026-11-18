@@ -126,7 +126,11 @@ mod tests {
         let outgoing = reservation.outgoing_rate_m3_per_s.try_to_vec::<f64>()?[0];
         assert_eq!(outgoing.to_bits(), export.to_bits());
         let attempt = context.attempt(&start, *stage, ports, None)?;
-        let available = attempt.available.try_to_vec::<f64>()?[context.surface_count];
+        let available = attempt
+            .available
+            .as_ref()
+            .ok_or("a reach without pool ends reserves per attempt")?
+            .try_to_vec::<f64>()?[context.surface_count];
         let margin = 4.0 * f64::EPSILON * (context.slot_withdrawals[0] as f64 + 8.0);
         let expected = (donor * (1.0 - margin) - (outgoing * dt) * (margin + 1.0)).max(0.0);
         assert_eq!(available.to_bits(), expected.to_bits());

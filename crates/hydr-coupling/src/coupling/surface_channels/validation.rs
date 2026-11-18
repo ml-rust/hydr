@@ -4,6 +4,7 @@ use super::bank_links::check_links;
 use super::bindings::{
     LinkBindings, STRUCTURE_EXCHANGE_BINDING_PREFIX, binding_ids, coordinated_definition,
 };
+use super::pool_ends::{CheckedPoolEnd, check_pool_ends};
 use super::pools::{CheckedPools, SurfaceChannelPools, check_attached, check_pools};
 use super::ports::{CheckedPort, check_ports};
 use super::structures::{CheckedStructure, SurfaceChannelStructure, check_structures};
@@ -52,6 +53,8 @@ pub struct SurfaceChannelDefinition {
     pub(super) structures: Vec<CheckedStructure>,
     /// Admitted pools in ascending identity order, or `None` without pools.
     pub(super) pools: Option<CheckedPools>,
+    /// Admitted pool ends in ascending identity order.
+    pub(super) pool_ends: Vec<CheckedPoolEnd>,
 }
 
 impl SurfaceChannelDefinition {
@@ -140,7 +143,16 @@ impl SurfaceChannelDefinition {
     ///   (`duplicate-links`, `missing-link-evidence`)
     /// - a curve outside the surface datum (`datum-or-gravity-mismatch`)
     /// - a repeated storage support, or support, source policy, or origin that differs from the
-    ///   pools, or a pool that joins no structure (`pool-support`)
+    ///   pools, or a pool that joins no structure and no pool end (`pool-support`)
+    ///
+    /// Each pool end of `pools.ends` rejects for:
+    /// - an empty or repeated identity, one equal to a link, port, structure, or pool identity,
+    ///   or empty evidence (`duplicate-links`, `missing-link-evidence`)
+    /// - an unknown reach or pool, or a reach without cells (`structure-endpoint-identity`)
+    /// - a surveyed reach (`surveyed-pool-end`)
+    /// - an end cell bed below the pool origin (`unobstructed-pool-connection`)
+    /// - a reach end with a port or a second pool end (`reach-end-ownership`)
+    /// - a nonfinite or negative entrance loss (`pool-end-regime`)
     pub(super) fn with_nodes(
         setup: SurfaceChannelSetup,
         pools: SurfaceChannelPools,
@@ -173,7 +185,11 @@ impl SurfaceChannelDefinition {
             )));
         }
         let reach_index = check_reaches(&setup)?;
-        let resolved = check_links(&setup, &reach_index, structures.is_empty())?;
+        let resolved = check_links(
+            &setup,
+            &reach_index,
+            structures.is_empty() && pools.ends.is_empty(),
+        )?;
         let ports = check_ports(&setup, &reach_index)?;
         let taken: BTreeSet<&str> = setup
             .links
@@ -189,8 +205,20 @@ impl SurfaceChannelDefinition {
         }
         let structures =
             check_structures(&setup, &reach_index, pools.as_ref(), &taken, structures)?;
+        taken.extend(structures.iter().map(CheckedStructure::id));
+        let pool_ends = match &pools {
+            Some(checked) => check_pool_ends(
+                &setup,
+                &reach_index,
+                Some(checked),
+                &ports,
+                &taken,
+                &checked.declared.ends,
+            )?,
+            None => Vec::new(),
+        };
         if let Some(pools) = &pools {
-            check_attached(pools, &structures)?;
+            check_attached(pools, &structures, &pool_ends)?;
         }
         let surface_cells: Vec<usize> = setup
             .links
@@ -263,6 +291,7 @@ impl SurfaceChannelDefinition {
             ports,
             structures,
             pools,
+            pool_ends,
         })
     }
 

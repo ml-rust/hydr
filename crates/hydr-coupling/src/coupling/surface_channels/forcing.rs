@@ -55,9 +55,9 @@ pub(super) struct SlotWithdrawal {
 
 /// Caller forcing of one reach on the configured device.
 pub(super) struct BoundReach<R: Runtime<DType = DType>> {
-    /// Caller policy at the left end. `None` at a ported end.
+    /// Caller policy at the left end. `None` at a ported end or a pool end.
     pub left: Option<ChannelTensorBoundary<R>>,
-    /// Caller policy at the right end. `None` at a ported end.
+    /// Caller policy at the right end. `None` at a ported end or a pool end.
     pub right: Option<ChannelTensorBoundary<R>>,
     pub lateral: Vec<ChannelTensorLateralInput<R>>,
     pub withdrawals: Vec<SlotWithdrawal>,
@@ -73,7 +73,8 @@ pub(super) struct BoundForcing<R: Runtime<DType = DType>> {
 impl<R: Runtime<DType = DType>> BoundForcing<R> {
     /// Checks `forcing` against the accepted `start` and `requested` end, then copies it.
     ///
-    /// A ported end takes `None`. Every other end takes a caller policy.
+    /// A ported end and a pool end take `None`. Every other end takes a caller policy. A caller
+    /// policy at a pool end rejects with `reach-end-ownership`.
     pub fn bind(
         context: &Context<R>,
         reach_ids: &[&str],
@@ -182,8 +183,16 @@ impl<R: Runtime<DType = DType>> BoundForcing<R> {
             .into_iter()
             .enumerate()
             {
-                let port = context.port_at(reach, end);
                 let policy = policy.as_ref();
+                if let Some(pool_end) = context.pool_end_at(reach, end) {
+                    if let Some(policy) = policy {
+                        return Err(SurfaceChannelError::input(format!(
+                            "reach-end-ownership: reach={id:?} {end:?}={policy:?} sits at pool end={pool_end:?}: supply no caller policy at a pool end; the pool supplies its reservoir head"
+                        )));
+                    }
+                    continue;
+                }
+                let port = context.port_at(reach, end);
                 check_endpoint(id, end, port, policy)?;
                 policies[slot] = policy
                     .map(|policy| tensor_boundary(id, policy, &scalar))

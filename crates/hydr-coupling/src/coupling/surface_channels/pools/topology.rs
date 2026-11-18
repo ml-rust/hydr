@@ -2,6 +2,7 @@
 
 use super::super::SurfaceChannelError;
 use super::super::context::{Context, NodeEnd, Ops};
+use super::super::pool_ends::CheckedPoolEnd;
 use super::super::structures::LinkLaw;
 use super::CheckedPools;
 use super::child::{PoolFns, PoolParts, inflow_error, pool_error};
@@ -71,6 +72,8 @@ pub(in super::super) struct PoolTopology<R: Runtime<DType = DType>> {
     pub group_origin: Tensor<R>,
     /// Attachment cuts, or `None` without pool attachments.
     pub cuts: Option<PoolCuts<R>>,
+    /// Attachment cut of every pool end, in pool-end order.
+    pub end_cuts: Vec<usize>,
     empty_index: Tensor<R>,
     empty: Tensor<R>,
     zero: Tensor<R>,
@@ -89,14 +92,14 @@ where
         + TypeConversionOps<R>
         + UnaryOps<R>,
 {
-    /// Operands of `pools` with the child `parts` and the link table.
+    /// Operands of `pools` with the child `parts`, the link table, and the pool ends.
     ///
     /// Pool groups start at `offset`.
     pub fn new(
         client: &R::Client,
         pools: &CheckedPools,
         parts: &PoolParts<R>,
-        links: LinkSides<'_>,
+        (links, owned_ends): (LinkSides<'_>, &[CheckedPoolEnd]),
         offset: usize,
     ) -> Result<Self, SurfaceChannelError> {
         let LinkSides {
@@ -147,6 +150,19 @@ where
                 attachment_sign.push(if side == 0 { -1.0 } else { 1.0 });
             }
         }
+        // A pool end attaches at its end cell bed. Its volume enters the cut values after every
+        // link volume and is positive into the pool.
+        let first_end = attachments.len();
+        for (position, end) in owned_ends.iter().enumerate() {
+            attachments.push(CutAttachment {
+                pool: end.pool,
+                bed_m: end.bed_m,
+                id: end.id.as_str(),
+            });
+            attachment_link.push(ids.len() + position);
+            attachment_sign.push(1.0);
+        }
+        let mut end_cuts = Vec::new();
         let cuts = if attachments.is_empty() {
             None
         } else {
@@ -154,9 +170,10 @@ where
                 cuts,
                 blocks,
                 covers,
-                ..
+                attachment_cuts,
             } = cut_cover(client, origins.len(), &attachments)
                 .map_err(LinkError::surface_channel)?;
+            end_cuts = attachment_cuts.get(first_end..).unwrap_or(&[]).to_vec();
             let upper = (parts.fns.cut_volumes)(&parts.batch, &cuts).map_err(pool_error)?;
             Some(PoolCuts {
                 blocks,
@@ -182,6 +199,7 @@ where
             cutoff_b: floats(&cutoffs[1])?,
             group_origin: floats(&group_origin)?,
             cuts,
+            end_cuts,
             empty_index: index(&[])?,
             empty: floats(&[])?,
             zero: Tensor::<R>::zeros(&[], DType::F64, device)?,
@@ -279,18 +297,28 @@ where
 
     /// Rejects exports through pool attachments at or above a cut beyond the pool water above it.
     ///
-    /// `available` holds each pool's post-source water, `[P]`, and `signed` the accepted link
-    /// volumes, `[L]`. Incoming water funds no export.
+    /// `available` holds each pool's post-source water, `[P]`, `signed` the accepted link
+    /// volumes, `[L]`, and `ends` the accepted pool-end volumes, `[E]`, positive into the pools.
+    /// Incoming water funds no export.
     pub fn check_pool_cuts(
         &self,
         available: &Tensor<R>,
         signed: &Tensor<R>,
+        ends: Option<&Tensor<R>>,
     ) -> Result<(), SurfaceChannelError> {
         let Some(cuts) = self.pools.as_ref().and_then(|p| p.cuts.as_ref()) else {
             return Ok(());
         };
         let c = &self.client;
-        let values = c.mul(&c.index_select(signed, 0, &cuts.link)?, &cuts.sign)?;
+        let joined;
+        let volumes = match ends {
+            Some(ends) => {
+                joined = c.cat(&[signed, ends], 0)?;
+                &joined
+            }
+            None => signed,
+        };
+        let values = c.mul(&c.index_select(volumes, 0, &cuts.link)?, &cuts.sign)?;
         let demand = pool_ends::cut_demand(c, &cuts.blocks, &cuts.covers, &values)
             .map_err(LinkError::surface_channel)?;
         let above = c.sub(&c.index_select(available, 0, &cuts.pool)?, &cuts.upper)?;

@@ -135,6 +135,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
             midpoint_surface_m: self.midpoint_surface_m.clone(),
             midpoint_channel_m: self.midpoint_channel_m.clone(),
             ports: self.ports.clone(),
+            pool_ends: self.pool_ends.clone(),
         }
     }
 }

@@ -101,6 +101,7 @@ pub fn declaration(
         sources: policies,
         inflows,
         storage: LevelPoolConfig::default(),
+        ends: Vec::new(),
     }
 }
 
@@ -266,8 +267,8 @@ pub fn stages(batch: &Batch) -> TestResult<Vec<f64>> {
     Ok(stage.try_to_vec::<f64>()?)
 }
 
-/// Checks the last interval: mass, pairing at the surface, the channel, and every pool, and the
-/// lifetime composite balance.
+/// Checks the last interval: mass, pairing at the surface, the channel, and every pool with its
+/// link and pool-end volumes, and the lifetime composite balance.
 ///
 /// `external` holds each pool's external inflow volume over the interval, in ascending identity.
 pub fn check(batch: &Batch, external: &[f64]) -> TestResult {
@@ -309,6 +310,13 @@ pub fn check(batch: &Batch, external: &[f64]) -> TestResult {
             }
             if ends[0] == NodeEnd::Pool(index) {
                 expected -= volume;
+            }
+        }
+        if let Some(topology) = &context.pool_ends {
+            for (end, volume) in topology.ends.iter().zip(&step.pool_ends.volume_m3) {
+                if end.pool == index {
+                    expected += volume;
+                }
             }
         }
         assert!(

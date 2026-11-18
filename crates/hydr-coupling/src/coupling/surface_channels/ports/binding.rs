@@ -40,9 +40,16 @@ pub(in super::super) struct PortBinding<R: Runtime<DType = DType>> {
     pub fluxes: Vec<PortFlux>,
     /// Summed port water rate into the surface and out of it, as the surface counts it, in m³/s.
     pub surface_rate_m3_per_s: [f64; 2],
+    /// Flux port endpoint of every port, in port order.
+    boundaries: Vec<ChannelTensorBoundary<R>>,
 }
 
 impl<R: Runtime<DType = DType>> PortBinding<R> {
+    /// The flux port endpoint of `port`, in port order.
+    pub fn boundary(&self, port: usize) -> Option<&ChannelTensorBoundary<R>> {
+        self.boundaries.get(port)
+    }
+
     /// The attempt reservation of `reach`: its port reservation, else its start reservation.
     pub fn reservation<'a>(
         &'a self,
@@ -231,6 +238,7 @@ where
             limit_s: f64::INFINITY,
             fluxes: Vec::new(),
             surface_rate_m3_per_s: [0.0; 2],
+            boundaries: Vec::new(),
         };
         let (Some(topology), Some(ports)) = (&self.ports, &start.ports) else {
             return Ok(binding);
@@ -266,7 +274,8 @@ where
         }
         let zeros = Tensor::<R>::zeros(&[self.link_count], DType::F64, device)?;
         for (reach, ends) in topology.reach_ports.iter().enumerate() {
-            if ends.iter().all(Option::is_none) {
+            // A pool-ended reach reserves per evaluation under its reservoir heads.
+            if ends.iter().all(Option::is_none) || self.is_pool_ended(reach) {
                 continue;
             }
             let channel = |source| SurfaceChannelError::Channel {
@@ -305,6 +314,7 @@ where
                 .min(reservation.face_depletion_limit_s);
             binding.reservations[reach] = Some(reservation);
         }
+        binding.boundaries = boundaries;
         Ok(binding)
     }
 }

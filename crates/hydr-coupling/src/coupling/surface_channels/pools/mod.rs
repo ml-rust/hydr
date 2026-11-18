@@ -19,6 +19,7 @@ pub(super) use child::{
 };
 pub(super) use topology::{LinkSides, PoolTopology};
 
+use super::pool_ends::SurfaceChannelPoolEnd;
 use crate::coupling::level_pools::{
     CoupledPoolInflow, CoupledPoolInflowBinding, CoupledPoolSupport,
 };
@@ -37,6 +38,8 @@ pub(crate) struct SurfaceChannelPools {
     pub inflows: Vec<CoupledPoolInflowBinding>,
     /// Dimensional controls of the pool child.
     pub storage: LevelPoolConfig,
+    /// Reach ends joined to the pools in any order.
+    pub ends: Vec<SurfaceChannelPoolEnd>,
 }
 
 /// Pool forcing over one common interval.
