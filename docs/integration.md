@@ -84,7 +84,7 @@ Use [channel-to-pool connections](channel-pools.md) for rectangular or triangula
 
 Surface state remains separate from these channel/pool calculations.
 
-Use [surface/channel coupling](surface-channels.md) when water crosses a bank between surface cells and rectangular or triangular reach cells, or a rectangular reach end meets a line of surface faces. `SurfaceChannelBatch` accepts the surface and every reach over one common interval.
+Use [surface/channel coupling](surface-channels.md) when water crosses a bank between surface cells and rectangular, triangular, or surveyed reach cells, or a rectangular reach end meets a line of surface faces. `SurfaceChannelBatch` accepts the surface and every reach over one common interval.
 
 ## Read component capabilities
 
@@ -154,7 +154,7 @@ A boundary describes behavior at the surface domain's edge. Open boundaries repr
 
 | Support | Required declaration |
 | --- | --- |
-| Walls | Genuine impermeable exterior boundaries and inactive-cell interfaces |
+| Walls | Genuine impermeable exterior boundaries and inactive-cell interfaces. A [surface/channel port](boundaries.md#faces-a-coordinator-owns) owns some of these faces. |
 | Inactive mask | Impermeable exclusions. Missing influential terrain cannot silently become a wall. |
 | Open port | An active exterior face with bounded data over every forcing interval |
 

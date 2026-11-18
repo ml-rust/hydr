@@ -4,6 +4,9 @@
 #[path = "../surface_channels/fixture.rs"]
 mod fixture;
 #[allow(dead_code)]
+#[path = "../surface_channels/ports_fixture.rs"]
+mod ports_fixture;
+#[allow(dead_code)]
 #[path = "../surface_channels/scenario.rs"]
 mod scenario;
 
@@ -14,7 +17,14 @@ use hydr::coupling::{
     SurfaceChannelSetup,
 };
 use hydr::solver::{ForcingInterval, ForcingSchedule};
+use ports_fixture::{ALPHA, BETA, Reach, Scenario, west};
 use scenario::{ReachSpec, Spec, weir};
+
+/// Requested duration of every port interval, in s. The CFL limit shortens it.
+const PORT_DT: f64 = 0.25;
+
+/// Port intervals before the checkpoint, and after it.
+const PORT_HALF: usize = 40;
 
 /// End of the flood, in seconds. Surface evaporation drains the surface afterwards.
 const FLOOD_END: f64 = 0.5;
@@ -166,6 +176,115 @@ fn selected_cuda_client_executes_surface_channel_overflow_reversal_and_restart()
     // Accepted cell states match bit for bit. Lifetime counters, ledgers, bounds and iteration
     // residuals come from device reductions and differ in their last bits.
     let config = case()?.0.config;
+    super::same_states_bounded_data(&cpu, &cuda, config.mass_absolute_m3, config.mass_relative)
+}
+
+/// A reach above its floodplain drains through the west port, then refills and drains again.
+///
+/// The case holds no bank link. The weir law evaluates `exp` and `log`, and numr CUDA `exp`
+/// is not correctly rounded, so a link breaks the bit-for-bit state criterion.
+fn port_case() -> Scenario {
+    let mut case = Scenario::rest(1.0, 1.6, 0.5, vec![west("p")]);
+    case.alpha = Reach::rest(0.5, 1.75);
+    case.link = false;
+    case
+}
+
+/// Runs the port case on one client and checks restart against the whole run.
+///
+/// Returns the final per-cell states and the final checkpoint package for comparison.
+macro_rules! surface_channel_port_execution {
+    ($runtime:ty, $client:expr) => {{
+        use hydr::coupling::SurfaceChannelBatch;
+
+        let client = $client;
+        let (setup, initial) = port_case().parts()?;
+        let build =
+            || SurfaceChannelBatch::<$runtime>::new(client.clone(), setup.clone(), initial.clone());
+        // Accepts `count` intervals. Records port flow into and out of the reach.
+        let advance = |mut batch: SurfaceChannelBatch<$runtime>,
+                       count: usize|
+         -> Result<(SurfaceChannelBatch<$runtime>, [bool; 2])> {
+            let mut flows = [false; 2];
+            for _ in 0..count {
+                let (start, end) = (batch.time(), batch.time() + PORT_DT);
+                let held = ports_fixture::forcing(batch.setup(), start, end);
+                batch = batch.trial_to(end, &held)?.into_next();
+                let step = batch.last_step()?.ok_or("missing interval receipt")?;
+                let port = step.ports.first().ok_or("missing port receipt")?;
+                assert!(port.paired_gap_m3.abs() <= port.paired_bound_m3, "{port:?}");
+                assert!(
+                    step.mass_residual_m3.abs() <= step.mass_bound_m3,
+                    "{step:?}"
+                );
+                flows[0] |= port.signed_volume_m3 > 0.0;
+                flows[1] |= port.signed_volume_m3 < 0.0;
+            }
+            Ok((batch, flows))
+        };
+        let (middle, [_, drained]) = advance(build()?, PORT_HALF)?;
+        assert!(
+            drained,
+            "the reach must drain onto the surface through the port"
+        );
+        let trusted = middle.snapshot();
+        let data = middle.snapshot_data()?;
+        let (whole, [refilled, redrained]) = advance(middle, PORT_HALF)?;
+        assert!(
+            refilled,
+            "the surface must refill the reach through the port"
+        );
+        assert!(
+            redrained,
+            "the port must reverse again after the checkpoint"
+        );
+        let expected = whole.snapshot_data()?;
+        let ledger = whole.ledger()?;
+        assert!(ledger.residual_m3.abs() <= ledger.bound_m3, "{ledger:?}");
+        let port_ledger = &whole.port_ledgers()?[0];
+        assert!(port_ledger.surface_to_channel_m3 > 0.0 && port_ledger.channel_to_surface_m3 > 0.0);
+        let restored = build()?.restore(&trusted)?;
+        let imported = build()?.import_snapshot(&data)?;
+        let resumed = SurfaceChannelBatch::<$runtime>::resume(
+            client.clone(),
+            &data,
+            data.surface.setup.forcing.clone(),
+        )?;
+        for (name, batch) in [
+            ("restored", restored),
+            ("imported", imported),
+            ("resumed", resumed),
+        ] {
+            assert_eq!(batch.snapshot_data()?, data, "{name} at the checkpoint");
+            let (continued, _) = advance(batch, PORT_HALF)?;
+            assert_eq!(
+                continued.snapshot_data()?,
+                expected,
+                "{name} after continuing"
+            );
+        }
+        let surface = whole.surface().state()?;
+        let alpha = whole.reach(ALPHA).ok_or("missing reach")?.state()?;
+        let beta = whole.reach(BETA).ok_or("missing reach")?.state()?;
+        vec![((surface, alpha, beta), expected)]
+    }};
+}
+
+#[test]
+fn selected_cpu_client_executes_surface_channel_port_reversal_and_restart() -> Result {
+    surface_channel_port_execution!(runtime::Runtime, runtime::client());
+    Ok(())
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn selected_cuda_client_executes_surface_channel_port_reversal_and_restart() -> Result {
+    use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+    let cpu = surface_channel_port_execution!(runtime::Runtime, runtime::client());
+    let cuda = surface_channel_port_execution!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?);
+    // Accepted cell states match bit for bit. Lifetime counters, ledgers, bounds and iteration
+    // residuals come from device reductions and differ in their last bits.
+    let config = port_case().parts()?.0.config;
     super::same_states_bounded_data(&cpu, &cuda, config.mass_absolute_m3, config.mass_relative)
 }
 

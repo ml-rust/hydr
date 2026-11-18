@@ -642,6 +642,9 @@ A port joins a rectangular reach end to a line of surface edge faces. The criter
 | Sonic point | Ritter's dam sits on the port face, in both directions. Mean port discharge per width over the second half of the run comes within 5% of `(8/27) sqrt(g) h0^(3/2)` at `0.0625 m`. The error falls with each halving. |
 | Wet dam break | Stoker: `1 m` against `0.25 m`, with the shock crossing the port, in both directions. The L1 criteria match Ritter. At every spacing the shock lies within `2 Δx` of its exact position. |
 | [Seiche](../tests/surface_channels/ports_seiche.rs) | A closed `8 m` reach and `8 m` strip, `1 m` deep, start with a linear tilt of `a/h = 0.01`. Spacings are `2`, `1`, and `0.5 m`, over `2.25` exact periods. The port volume changes sign at least 4 times. The period from sign-change times comes within 3% of `2L/sqrt(g h)` at `0.5 m`, and the error falls with refinement. Port pairing, mass, and composite balance hold each interval. |
+| [Admission](../tests/surface_channels/ports_definition.rs) | Each port rejection returns `SurfaceChannelError::Input` and names its capability entry. A caller policy at a ported end and a missing policy at an unported end both reject the trial with `port-endpoint-policy`. |
+| [Declaration order](../tests/surface_channels/ports_order.rs) | Two ports, two bank links, and two reaches run 12 intervals. Reversing the port, face, link, and reach lists changes no accepted bit. |
+| [Restart](../tests/surface_channels/ports_restart.rs) | A reach drains through a port and a bank link, then refills. Snapshot, restore, import, resume, and forecast continuation match the uninterrupted run bit for bit. A replayed `reversed` flag matches. Forged port receipts, port ledgers, and setup ports reject. A package of an earlier schema or contract rejects by identity. A standalone surface restore rejects. |
 
 These cases establish no measured-event accuracy and no energy guarantee at bed steps.
 
@@ -661,7 +664,7 @@ The CUDA tests of these components also run the same case on CPU and compare com
 | --- | --- |
 | Operating controls, controlled gates, controlled pumps | Every field matches bit for bit |
 | Level pools, reservoirs, subcatchments | Per-element states match bit for bit. Batch totals and residual diagnostics agree within `volume_absolute + volume_relative * scale`. |
-| Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. |
+| Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart through one bank link. A second case drains a reach through a port, refills it, and drains it again, with restart. Its cell states also match bit for bit. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. |
 
 Those totals and diagnostics differ in their last bits between CPU and CUDA. CUDA execution establishes no GPU accuracy qualification.
 

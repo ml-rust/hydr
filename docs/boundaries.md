@@ -10,6 +10,14 @@ Use this guide to choose boundary data, supply each open face, and understand re
 
 Required open boundaries never become reflected walls when their data reject.
 
+### Faces a coordinator owns
+
+A face with one active cell is a wall unless a coordinator port owns it. Its other side is an inactive cell or lies off the grid. The [surface/channel coordinator](surface-channels.md#couple-a-reach-end-to-the-surface) turns a line of such faces into a reach-end port. Each port face then carries the surface's own HLL flux against the reach end cell.
+
+- Declare a port face as a wall here. Never declare it with `with_open_faces`. A port on a caller open face rejects with `port-face-ownership`.
+- Run a ported setup through `SurfaceChannelBatch`. A standalone `Solver` keeps every port face a wall.
+- A surface package that holds port water restores only through the coordinator.
+
 ## Choose the input
 
 | Variant | Supply | Numerical meaning |

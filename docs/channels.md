@@ -177,6 +177,10 @@ The reach checks the speed against its accepted-start end cell. Here `c = sqrt(g
 
 `ChannelTensorFluxPort::new` builds the same port from F64 tensors of shape `[1]` for `step_tensor`. Binding checks every value on the reach device.
 
+#### Ends a coordinator owns
+
+The [surface/channel coordinator](surface-channels.md#couple-a-reach-end-to-the-surface) owns the end of a reach that it ports. Set that end to `None` in `SurfaceChannelReachForcing`. The coordinator binds a `FluxPort` there on each attempt, from the surface's HLL flux at the port faces. Every other end takes your policy, as in a standalone reach. A ported end must be rectangular, with an end cell width equal to the port face width.
+
 ### Read scalar compatibility controls
 
 `ChannelConfig.boundary` contains `ChannelBoundaryConfig`. These controls limit mismatches between the computed trace and the interior wave relation. Conservation allowances and flux-width budgets remain separate.

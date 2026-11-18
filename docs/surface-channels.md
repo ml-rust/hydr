@@ -28,7 +28,7 @@ A surveyed reach joins the coordinator through lateral links only.
 - Stage: the bed plus the depth from the reach's certified area-to-stage recovery.
 - Donor water: the lower bound of the two-part stored volume, as the reach's own step uses.
 
-Surveyed reaches keep the [surveyed limits](channels.md#set-surveyed-numerical-controls). Surveyed links run in the CPU checks only. The CUDA runtime evidence covers rectangular reaches.
+Surveyed reaches keep the [surveyed limits](channels.md#set-surveyed-numerical-controls). Surveyed links run in the CPU checks only. The CUDA runtime evidence covers rectangular reaches, through a bank link in one case and a port in another.
 
 A reach without links advances on the same common interval with its own forcing.
 
@@ -204,7 +204,14 @@ Water entering the surface carries no tangential velocity. Tangential momentum l
 | `WetDryFront` | One side holds no water above the higher bed. |
 | `Dry` | Neither side holds water above the higher bed. The port moves nothing. |
 
-A port with mixed face regimes reports `WetDryFront`, then `Transcritical`, before `Subcritical`. `reversed` is true when the signed volume changes sign against the previous interval.
+A port takes one regime from its faces:
+
+- Every face `Dry`: the port is `Dry`. Otherwise dry faces drop out.
+- Any `WetDryFront` face: the port is `WetDryFront`.
+- Else any `Transcritical` face: the port is `Transcritical`.
+- Else wet faces that share one regime give that regime. Any other mix gives `Subcritical`.
+
+`reversed` is true when the signed volume changes sign against the previous interval.
 
 ### Port forcing and checks
 
@@ -219,7 +226,8 @@ Set `left` or `right` of `SurfaceChannelReachForcing` to `None` at a ported end.
 | Face width sum off the end cell width | `port-width-mismatch` |
 | Bad face set, two ports on one end, or an unknown reach | `port-face-ownership` |
 | Empty or repeated port identity, or empty evidence | `duplicate-links`, `missing-link-evidence` |
-| Reach datum or gravity bits that differ from the surface | `datum-or-gravity-mismatch` |
+
+A ported reach also needs the surface datum and gravity bits, as every reach does. That rejection names the reach and the differing value.
 
 ## Advance one common interval
 
