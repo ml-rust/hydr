@@ -141,7 +141,8 @@ pub(in crate::solver) fn coupled_step(
     exchange: Option<&ExchangeSource<CpuRuntime>>,
     links: &SurfaceLinks<CpuRuntime>,
 ) -> TestResult<Solver<CpuRuntime>> {
-    let CouplingPreparation::Ready(stage) = solver.coupling_prepare(end, 0, links, None)? else {
+    let CouplingPreparation::Ready(stage) = solver.coupling_prepare(end, 0, Some(links), None)?
+    else {
         return Err("the lake step must prepare without retry".into());
     };
     match solver.coupling_complete(&stage, exchange)? {

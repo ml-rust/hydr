@@ -220,7 +220,8 @@ mod tests {
         let solver = lake()?;
         let links = solver.coupling_links(&[0, 2])?;
         let end = 0.05;
-        let CouplingPreparation::Ready(stage) = solver.coupling_prepare(end, 0, &links, None)?
+        let CouplingPreparation::Ready(stage) =
+            solver.coupling_prepare(end, 0, Some(&links), None)?
         else {
             return Err("the lake step must prepare without retry".into());
         };
@@ -304,7 +305,8 @@ mod tests {
     fn exchange_withdrawal_beyond_available_rejects() -> TestResult {
         let solver = lake()?;
         let links = solver.coupling_links(&[1])?;
-        let CouplingPreparation::Ready(stage) = solver.coupling_prepare(0.05, 0, &links, None)?
+        let CouplingPreparation::Ready(stage) =
+            solver.coupling_prepare(0.05, 0, Some(&links), None)?
         else {
             return Err("the lake step must prepare without retry".into());
         };

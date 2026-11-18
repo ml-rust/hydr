@@ -144,7 +144,8 @@ pub fn prepare(
     let mut step = dt;
     for _ in 0..2 {
         let end = solver.time() + step;
-        let CouplingPreparation::Ready(stage) = solver.coupling_prepare(end, 0, &links, ports)?
+        let CouplingPreparation::Ready(stage) =
+            solver.coupling_prepare(end, 0, Some(&links), ports)?
         else {
             return Err("the stage must prepare without a retry".into());
         };

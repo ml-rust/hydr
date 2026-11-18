@@ -10,7 +10,7 @@ use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, ReduceOps, ScalarOps,
     TypeConversionOps, UnaryOps,
 };
-use numr::runtime::Runtime;
+use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedNewtonAlgorithms};
 use std::sync::Arc;
@@ -24,7 +24,7 @@ pub struct SurfaceCouplingStage<R: Runtime<DType = DType>> {
     start: f64,
     steps: usize,
     prepared: PreparedInterval<R>,
-    links: SurfaceLinks<R>,
+    links: Option<SurfaceLinks<R>>,
     available_volume_m3: Tensor<R>,
     velocity_xy: [Tensor<R>; 2],
 }
@@ -76,19 +76,22 @@ impl<R: Runtime<DType = DType>> SurfaceCouplingStage<R> {
         [&state.qx, &state.qy]
     }
 
-    /// Returns the linked cells the per-link tensors cover.
-    pub fn links(&self) -> &SurfaceLinks<R> {
-        &self.links
+    /// Returns the linked cells the per-link tensors cover, or `None` for a stage without links.
+    pub fn links(&self) -> Option<&SurfaceLinks<R>> {
+        self.links.as_ref()
     }
 
     /// Returns each linked cell's post-transport volume in m³, the donor limit for withdrawal.
     ///
     /// A cell that transport drives negative reports zero. Completion then asks for a retry.
+    /// A stage without links returns an empty tensor.
     pub fn available_volume_m3(&self) -> &Tensor<R> {
         &self.available_volume_m3
     }
 
     /// Returns each linked cell's post-transport x/y velocity in m/s. Dry cells report zero.
+    ///
+    /// A stage without links returns empty tensors.
     pub fn velocity_xy(&self) -> [&Tensor<R>; 2] {
         let [x, y] = &self.velocity_xy;
         [x, y]
@@ -151,6 +154,9 @@ where
     /// HLL flux. Port face speeds enter the CFL limit and port outflow the depletion limit.
     /// Completion counts port water in the exchange totals.
     ///
+    /// `links` `None` prepares a stage without linked cells, for a coordinator with ports only.
+    /// Its donor tensors are empty, so only a `None` exchange completes it.
+    ///
     /// # Errors
     /// Rejects links or ports for another grid, ghosts for other ports, an `end` outside the
     /// covering forcing interval or past `max_step`, a `retry` above `max_retries`, a retried
@@ -160,12 +166,14 @@ where
         &self,
         end: f64,
         retry: usize,
-        links: &SurfaceLinks<R>,
+        links: Option<&SurfaceLinks<R>>,
         ports: Option<CouplingPorts<'_, R>>,
     ) -> Result<CouplingPreparation<R>, EngineError> {
         let config = self.config();
         let time = self.time();
-        links.check_grid(self.domain().grid().cell_count())?;
+        if let Some(links) = links {
+            links.check_grid(self.domain().grid().cell_count())?;
+        }
         if let Some((ports, ghosts)) = ports {
             ports.check(self)?;
             ghosts.check(ports)?;
@@ -202,6 +210,31 @@ where
                 return Ok(CouplingPreparation::BoundaryRetry(error));
             }
         };
+        let (available_volume_m3, velocity_xy) = match links {
+            Some(links) => self.linked_donors(&prepared, links, dt)?,
+            None => {
+                let empty = Tensor::<R>::zeros(&[0], DType::F64, self.context.client.device())?;
+                (empty.clone(), [empty.clone(), empty])
+            }
+        };
+        Ok(CouplingPreparation::Ready(Box::new(SurfaceCouplingStage {
+            definition: Arc::clone(&self.definition),
+            start: time,
+            steps: self.accepted.steps,
+            prepared,
+            links: links.cloned(),
+            available_volume_m3,
+            velocity_xy,
+        })))
+    }
+
+    /// Post-transport volume and x/y velocity at each linked cell of `prepared`.
+    fn linked_donors(
+        &self,
+        prepared: &PreparedInterval<R>,
+        links: &SurfaceLinks<R>,
+        dt: f64,
+    ) -> Result<(Tensor<R>, [Tensor<R>; 2]), EngineError> {
         let client = &self.context.client;
         let zero = &self.context.zero;
         let transported = self.transported(&prepared.sources.state, &prepared.flux, dt)?;
@@ -215,16 +248,10 @@ where
         };
         let available_volume_m3 =
             gather(&client.mul_scalar(&depth, self.domain().grid().cell_area())?)?;
-        let velocity_xy = [velocity(&transported.qx)?, velocity(&transported.qy)?];
-        Ok(CouplingPreparation::Ready(Box::new(SurfaceCouplingStage {
-            definition: Arc::clone(&self.definition),
-            start: time,
-            steps: self.accepted.steps,
-            prepared,
-            links: links.clone(),
+        Ok((
             available_volume_m3,
-            velocity_xy,
-        })))
+            [velocity(&transported.qx)?, velocity(&transported.qy)?],
+        ))
     }
 
     /// Completes `stage` with an optional exchange and returns a new engine at the stage end.
@@ -233,8 +260,9 @@ where
     /// The new engine shares this engine's definition and device context.
     ///
     /// # Errors
-    /// Rejects a stage from another engine state, a step above the stage limit, exchange
-    /// operands for another grid, and every non-retryable completion and exchange error.
+    /// Rejects a stage from another engine state, a step above the stage limit, an exchange
+    /// for a stage without links, exchange operands for another grid, and every non-retryable
+    /// completion and exchange error.
     #[doc(hidden)]
     pub fn coupling_complete(
         &self,
@@ -267,6 +295,12 @@ where
                 ),
             ));
         }
+        if stage.links.is_none() && exchange.is_some() {
+            return Err(EngineError::rejected(
+                "coupling exchange",
+                "the stage has no linked cells: prepare the stage with links or complete it without exchange",
+            ));
+        }
         match self.complete_interval(stage.prepared.clone(), exchange)? {
             Completion::Accepted(accepted) => Ok(CouplingCompletion::Accepted(Box::new(Self {
                 definition: Arc::clone(&self.definition),
@@ -295,5 +329,98 @@ where
         let stage = gather(&client.add(&self.context.bed, h)?)?;
         let wet = client.cast(&gather(&client.gt(h, &self.context.zero)?)?, DType::F64)?;
         Ok((stage, wet))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::fixture::{TestResult, exchange, ported_grid};
+    use super::super::{PortReachEnd, SurfacePortSpec};
+    use super::*;
+    use crate::contract::{Axis, BoundaryFace};
+    use numr::runtime::cpu::{CpuDevice, CpuRuntime};
+
+    fn bits(tensor: &Tensor<CpuRuntime>) -> TestResult<Vec<u64>> {
+        Ok(tensor
+            .try_to_vec::<f64>()?
+            .iter()
+            .map(|value| value.to_bits())
+            .collect())
+    }
+
+    fn ready(
+        preparation: CouplingPreparation<CpuRuntime>,
+    ) -> TestResult<SurfaceCouplingStage<CpuRuntime>> {
+        match preparation {
+            CouplingPreparation::Ready(stage) => Ok(*stage),
+            _ => Err("the ported stage must prepare without retry".into()),
+        }
+    }
+
+    #[test]
+    fn a_stage_without_links_matches_the_linked_stage_bit_for_bit() -> TestResult {
+        let solver = ported_grid()?;
+        let face = |row| BoundaryFace {
+            axis: Axis::X,
+            column: 0,
+            row,
+        };
+        let ports = solver.coupling_ports(&[SurfacePortSpec {
+            faces: vec![face(0), face(1)],
+            ghost_bed_m: -0.25,
+            reach_end: PortReachEnd::Right,
+        }])?;
+        let device = CpuDevice::new();
+        let lane = |value: f64| Tensor::<CpuRuntime>::from_slice(&[value], &[1], &device);
+        let ghosts = solver.coupling_port_ghosts(&ports, &lane(0.8)?, &lane(0.2)?)?;
+        let links = solver.coupling_links(&[1])?;
+        let end = 0.05;
+        let linked =
+            ready(solver.coupling_prepare(end, 0, Some(&links), Some((&ports, &ghosts)))?)?;
+        let alone = ready(solver.coupling_prepare(end, 0, None, Some((&ports, &ghosts)))?)?;
+        assert!(alone.links().is_none());
+        assert_eq!(alone.available_volume_m3().shape(), [0]);
+        assert_eq!(alone.velocity_xy()[0].shape(), [0]);
+        assert_eq!(alone.cfl_limit().to_bits(), linked.cfl_limit().to_bits());
+        assert_eq!(
+            alone.depletion_limit().to_bits(),
+            linked.depletion_limit().to_bits()
+        );
+        let (Some(a), Some(b)) = (alone.port_fluxes(), linked.port_fluxes()) else {
+            return Err("both stages hold port fluxes".into());
+        };
+        assert_eq!(
+            bits(&a.reach_outward_water_rate_m3_per_s)?,
+            bits(&b.reach_outward_water_rate_m3_per_s)?
+        );
+        assert_eq!(
+            bits(&a.reach_outward_momentum_rate_m4_per_s2)?,
+            bits(&b.reach_outward_momentum_rate_m4_per_s2)?
+        );
+        let complete =
+            |stage: &SurfaceCouplingStage<CpuRuntime>| -> TestResult<Solver<CpuRuntime>> {
+                match solver.coupling_complete(stage, None)? {
+                    CouplingCompletion::Accepted(next) => Ok(*next),
+                    CouplingCompletion::Retry(reason) => Err(reason.into()),
+                }
+            };
+        let (a, b) = (complete(&alone)?, complete(&linked)?);
+        assert_eq!(bits(&a.accepted.flow.h)?, bits(&b.accepted.flow.h)?);
+        assert_eq!(bits(&a.accepted.flow.qx)?, bits(&b.accepted.flow.qx)?);
+        assert_eq!(
+            a.ledger().exchange_in_m3.to_bits(),
+            b.ledger().exchange_in_m3.to_bits()
+        );
+        assert!(a.ledger().exchange_in_m3 > 0.0);
+        let source = exchange(&links, &[0.0], &[0.0], [&[0.0], &[0.0]])?;
+        let message = match solver.coupling_complete(&alone, Some(&source)) {
+            Err(error) => error.to_string(),
+            Ok(_) => return Err("an exchange on a stage without links must reject".into()),
+        };
+        assert!(
+            message.contains("the stage has no linked cells"),
+            "{message}"
+        );
+        Ok(())
     }
 }

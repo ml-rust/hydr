@@ -285,7 +285,7 @@ mod tests {
         for (start, end, retry) in plan {
             assert_eq!(coupled.time().to_bits(), start.to_bits());
             let CouplingPreparation::Ready(stage) =
-                coupled.coupling_prepare(end, retry, &links, None)?
+                coupled.coupling_prepare(end, retry, Some(&links), None)?
             else {
                 return Err("an accepted step must prepare without retry".into());
             };
