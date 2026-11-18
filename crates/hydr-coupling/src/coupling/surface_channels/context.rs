@@ -2,7 +2,7 @@
 
 use super::bindings::channel_cells;
 use super::levelling::SlotPlan;
-use super::ports::PortTopology;
+use super::ports::{PortCounters, PortTopology};
 use super::state::LinkCounters;
 use super::{SurfaceChannelDefinition, SurfaceChannelError};
 use crate::channel::ChannelLateralDirection;
@@ -103,8 +103,10 @@ pub(super) struct LinkedReach<R: Runtime<DType = DType>> {
 /// Slots are unique linked `(reach identity, cell)` pairs in ascending order.
 pub(super) struct Context<R: Runtime<DType = DType>> {
     pub client: R::Client,
-    pub links: SurfaceLinks<R>,
-    pub structures: CouplingStructures<R>,
+    /// Linked surface cells, or `None` for a coordinator with ports only.
+    pub links: Option<SurfaceLinks<R>>,
+    /// Weir laws of every link, or `None` without links.
+    pub structures: Option<CouplingStructures<R>>,
     /// Groups `S + C`. Input `e` is link `e` at its surface lane, input `L + e` at its slot.
     pub donors: TransferTree<R>,
     /// Groups `S`. Input `e` is link `e` at its surface lane.
@@ -182,7 +184,11 @@ where
         surface: &Solver<R>,
     ) -> Result<Self, SurfaceChannelError> {
         let setup = definition.setup();
-        let links = surface.coupling_links(definition.surface_cells())?;
+        let links = if definition.surface_cells().is_empty() {
+            None
+        } else {
+            Some(surface.coupling_links(definition.surface_cells())?)
+        };
         let surface_count = definition.surface_cells().len();
         let mut reach_order: Vec<usize> = (0..setup.reaches.len()).collect();
         reach_order.sort_by(|&a, &b| setup.reaches[a].id.cmp(&setup.reaches[b].id));
@@ -325,8 +331,14 @@ where
                 operating_point: StructureOperatingPoint::Passive,
             })
             .collect();
-        let structures = CouplingStructures::new(client.clone(), elements, operations)
-            .map_err(|error| SurfaceChannelError::input(format!("link weirs: {error}")))?;
+        let structures = if link_ids.is_empty() {
+            None
+        } else {
+            Some(
+                CouplingStructures::new(client.clone(), elements, operations)
+                    .map_err(|error| SurfaceChannelError::input(format!("link weirs: {error}")))?,
+            )
+        };
         let crest: Vec<f64> = definition.links.iter().map(|l| l.weir.crest_m()).collect();
         let tangent = |axis: usize| -> Vec<f64> {
             definition.links().map(|l| l.reach_tangent[axis]).collect()
@@ -384,6 +396,7 @@ where
             to_channel_m3: zero.clone(),
             to_surface_m3: zero.clone(),
             roundoff_bound_m3: zero,
+            ports: self.zero_port_counters(),
         })
     }
 
@@ -402,6 +415,35 @@ impl<R: Runtime<DType = DType>> Context<R> {
     /// Identity of the port at `end` of setup reach `reach`, if any.
     pub fn port_at(&self, reach: usize, end: ChannelCouplingEnd) -> Option<&str> {
         self.ports.as_ref()?.port_at(reach, end)
+    }
+
+    /// Zero lifetime port counters, one lane per port.
+    pub fn zero_port_counters(&self) -> PortCounters {
+        PortCounters::zero(self.ports.as_ref().map_or(0, |ports| ports.ids.len()))
+    }
+
+    /// True when a port binds either end of setup reach `reach`.
+    pub fn is_ported(&self, reach: usize) -> bool {
+        self.ports.as_ref().is_some_and(|ports| {
+            ports
+                .reach_ports
+                .get(reach)
+                .is_some_and(|ends| ends.iter().any(Option::is_some))
+        })
+    }
+
+    /// Weir laws of every link. A coordinator with ports only has none.
+    pub fn link_structures(&self) -> Result<&CouplingStructures<R>, SurfaceChannelError> {
+        self.structures.as_ref().ok_or_else(|| {
+            SurfaceChannelError::Numerical("a coordinator without links has no weir laws".into())
+        })
+    }
+
+    /// Linked surface cells. A coordinator with ports only has none.
+    pub fn surface_links(&self) -> Result<&SurfaceLinks<R>, SurfaceChannelError> {
+        self.links.as_ref().ok_or_else(|| {
+            SurfaceChannelError::Numerical("a coordinator without links has no linked cells".into())
+        })
     }
 }
 

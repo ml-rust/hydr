@@ -39,7 +39,14 @@ impl<R: Runtime<DType = DType>> std::fmt::Debug for SurfaceChannelBatch<R> {
             .field("setup", self.definition.setup())
             .field("time_s", &self.time_s)
             .field("accepted_steps", &self.accepted_steps)
-            .field("surface_cells", &self.context.links.cells())
+            .field(
+                "surface_cells",
+                &self
+                    .context
+                    .links
+                    .as_ref()
+                    .map_or(&[][..], |links| links.cells()),
+            )
             .finish()
     }
 }

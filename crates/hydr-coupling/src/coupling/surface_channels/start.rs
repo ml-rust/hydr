@@ -3,6 +3,7 @@
 use super::SurfaceChannelError;
 use super::context::{Context, Ops};
 use super::forcing::BoundForcing;
+use super::ports::PortStart;
 use crate::channel::{ChannelReach, ChannelTensorLateralInput, ChannelTensorWaterAmount};
 use crate::solver::Solver;
 use hydr_channel::internal::ChannelCouplingReservation;
@@ -29,19 +30,31 @@ pub(super) struct Start<R: Runtime<DType = DType>> {
     pub wet: Tensor<R>,
     /// First fixed-point iterate: accepted stages, zero volumes, accepted support and regimes.
     pub initial: Tensor<R>,
+    /// Slot operands of every linked reach, or `None` when a linked reach is ported.
+    ///
+    /// A ported reach's face outflow depends on its port flux, so each attempt builds them.
+    pub slots: Option<SlotOperands<R>>,
+    /// Smallest accepted-start CFL or face depletion limit over every unported reach, in seconds.
+    pub channel_limit_s: f64,
+    /// Accepted-start reservation of every unported reach in setup order.
+    ///
+    /// Every candidate binds through it, so each reach calculates its start fluxes once per trial.
+    /// A ported reach reserves once per attempt under its port flux.
+    pub reservations: Vec<Option<ChannelCouplingReservation<R>>>,
+    pub forcing: BoundForcing<R>,
+    /// Ghost states of every port from the accepted reach ends, or `None` without ports.
+    pub ports: Option<PortStart<R>>,
+}
+
+/// Donor operands of every channel slot.
+#[derive(Clone)]
+pub(super) struct SlotOperands<R: Runtime<DType = DType>> {
     /// Accepted donor water at every slot, `[C]`.
     pub donor: Tensor<R>,
-    /// Accepted native face outflow rate at every slot, `[C]`.
+    /// Accepted native face outflow rate at every slot, port ends included, `[C]`.
     pub outgoing: Tensor<R>,
     /// Channel-to-surface inflow velocity per link, `[L]` per axis: start velocity on the tangent.
     pub channel_velocity: [Tensor<R>; 2],
-    /// Smallest accepted-start CFL or face depletion limit over every reach, in seconds.
-    pub channel_limit_s: f64,
-    /// Accepted-start reservation of every reach in setup order.
-    ///
-    /// Every candidate binds through it, so each reach calculates its start fluxes once per trial.
-    pub reservations: Vec<ChannelCouplingReservation<R>>,
-    pub forcing: BoundForcing<R>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -83,7 +96,8 @@ where
         linked: &[&ChannelReach<R>],
         reach_ids: &[&str],
     ) -> Result<(Tensor<R>, Tensor<R>), SurfaceChannelError> {
-        let (stage, wet) = surface.coupling_cell_stages(&self.links)?;
+        let links = self.surface_links()?;
+        let (stage, wet) = surface.coupling_cell_stages(links)?;
         let mut stages = vec![stage];
         let mut wets = vec![wet];
         for (entry, reach) in self.linked.iter().zip(linked) {
@@ -116,10 +130,7 @@ where
         let time = surface.time();
         let zeros = Tensor::<R>::zeros(&[self.link_count], DType::F64, c.device())?;
         let mut channel_limit_s = f64::INFINITY;
-        let mut donors = Vec::with_capacity(self.linked.len());
-        let mut outgoing = Vec::with_capacity(self.linked.len());
-        let mut velocities = Vec::with_capacity(self.linked.len());
-        let mut reserved: Vec<Option<ChannelCouplingReservation<R>>> =
+        let mut reservations: Vec<Option<ChannelCouplingReservation<R>>> =
             (0..reaches.len()).map(|_| None).collect();
         let channel = |reach: usize| {
             move |source| SurfaceChannelError::Channel {
@@ -129,14 +140,22 @@ where
         };
         let linked_of = |reach: usize| self.linked.iter().position(|r| r.reach == reach);
         for &reach in &self.reach_order {
+            if self.is_ported(reach) {
+                continue;
+            }
             let bound = &forcing.reaches[reach];
+            let (Some(left), Some(right)) = (&bound.left, &bound.right) else {
+                return Err(SurfaceChannelError::Numerical(
+                    "an unported reach lacks a caller endpoint policy".into(),
+                ));
+            };
             let mut inputs = bound.lateral.clone();
             if let Some(linked) = linked_of(reach) {
                 inputs.extend(self.exchange_inputs(linked, &zeros, &zeros, &zeros)?);
             }
             let child = &reaches[reach];
             let bound_forcing = child
-                .bind_coupling_tensor(time, end, Some(&bound.left), Some(&bound.right), &inputs)
+                .bind_coupling_tensor(time, end, Some(left), Some(right), &inputs)
                 .map_err(channel(reach))?;
             let reservation = child
                 .coupling_reservation(&bound_forcing)
@@ -144,43 +163,77 @@ where
             channel_limit_s = channel_limit_s
                 .min(reservation.start_cfl_s)
                 .min(reservation.face_depletion_limit_s);
-            if let Some(linked) = linked_of(reach) {
-                let index = &self.linked[linked].cell_index;
-                donors.push(c.index_select(&reservation.donor_volume_m3, 0, index)?);
-                outgoing.push(c.index_select(&reservation.outgoing_rate_m3_per_s, 0, index)?);
-                velocities.push(c.index_select(&reservation.velocity_m_per_s, 0, index)?);
-            }
-            reserved[reach] = Some(reservation);
+            reservations[reach] = Some(reservation);
         }
-        let reservations = reserved
-            .into_iter()
-            .collect::<Option<Vec<_>>>()
-            .ok_or_else(|| {
-                SurfaceChannelError::Numerical("a reach lacks its reservation".into())
-            })?;
-        let linked: Vec<&ChannelReach<R>> = self.linked.iter().map(|r| &reaches[r.reach]).collect();
-        let (stage, wet) = self.stages(surface, &linked, reach_ids)?;
-        let surface_zero = Tensor::<R>::zeros(&[self.surface_count], DType::F64, c.device())?;
-        let mut group_velocity = vec![&surface_zero];
-        group_velocity.extend(velocities.iter());
-        let link_velocity = c.index_select(&c.cat(&group_velocity, 0)?, 0, &self.link_b)?;
-        let channel_velocity = [
-            c.mul(&link_velocity, &self.tangent[0])?,
-            c.mul(&link_velocity, &self.tangent[1])?,
-        ];
-        let regime = self.weir(&stage, &wet)?.regime;
-        let initial = c.cat(&[&stage, &zeros, &wet, &regime], 0)?;
+        let slots = if self.linked.iter().any(|entry| self.is_ported(entry.reach)) {
+            None
+        } else {
+            Some(self.slot_operands(|reach| {
+                reservations[reach].as_ref().ok_or_else(|| {
+                    SurfaceChannelError::Numerical("a reach lacks its reservation".into())
+                })
+            })?)
+        };
+        let (stage, wet, initial) = if self.link_count == 0 {
+            (zeros.clone(), zeros.clone(), zeros)
+        } else {
+            let linked: Vec<&ChannelReach<R>> =
+                self.linked.iter().map(|r| &reaches[r.reach]).collect();
+            let (stage, wet) = self.stages(surface, &linked, reach_ids)?;
+            let regime = self.weir(&stage, &wet)?.regime;
+            let initial = c.cat(&[&stage, &zeros, &wet, &regime], 0)?;
+            (stage, wet, initial)
+        };
+        let ports = self.port_start(surface, reaches, reach_ids)?;
         Ok(Start {
             time,
-            donor: c.cat(&donors.iter().collect::<Vec<_>>(), 0)?,
-            outgoing: c.cat(&outgoing.iter().collect::<Vec<_>>(), 0)?,
             stage,
             wet,
             initial,
-            channel_velocity,
+            slots,
             channel_limit_s,
             reservations,
             forcing,
+            ports,
+        })
+    }
+
+    /// Slot operands of every linked reach from the reservation that `reservation` returns.
+    pub fn slot_operands<'a>(
+        &self,
+        reservation: impl Fn(usize) -> Result<&'a ChannelCouplingReservation<R>, SurfaceChannelError>,
+    ) -> Result<SlotOperands<R>, SurfaceChannelError>
+    where
+        R: 'a,
+    {
+        let c = &self.client;
+        let mut donors = Vec::with_capacity(self.linked.len());
+        let mut outgoing = Vec::with_capacity(self.linked.len());
+        let mut velocities = Vec::with_capacity(self.linked.len());
+        for entry in &self.linked {
+            let reserved = reservation(entry.reach)?;
+            let index = &entry.cell_index;
+            donors.push(c.index_select(&reserved.donor_volume_m3, 0, index)?);
+            outgoing.push(c.index_select(&reserved.outgoing_rate_m3_per_s, 0, index)?);
+            velocities.push(c.index_select(&reserved.velocity_m_per_s, 0, index)?);
+        }
+        let join = |parts: &[Tensor<R>]| -> Result<Tensor<R>, SurfaceChannelError> {
+            if parts.is_empty() {
+                return Ok(Tensor::<R>::zeros(&[0], DType::F64, c.device())?);
+            }
+            Ok(c.cat(&parts.iter().collect::<Vec<_>>(), 0)?)
+        };
+        let surface_zero = Tensor::<R>::zeros(&[self.surface_count], DType::F64, c.device())?;
+        let mut group_velocity = vec![surface_zero];
+        group_velocity.extend(velocities);
+        let link_velocity = c.index_select(&join(&group_velocity)?, 0, &self.link_b)?;
+        Ok(SlotOperands {
+            donor: join(&donors)?,
+            outgoing: join(&outgoing)?,
+            channel_velocity: [
+                c.mul(&link_velocity, &self.tangent[0])?,
+                c.mul(&link_velocity, &self.tangent[1])?,
+            ],
         })
     }
 
@@ -199,7 +252,7 @@ where
         let surface = gather(stage, &self.link_a)?;
         let channel = gather(stage, &self.link_b)?;
         let mut law = self
-            .structures
+            .link_structures()?
             .evaluate_heads(
                 &surface,
                 &channel,

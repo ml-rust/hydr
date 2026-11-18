@@ -277,5 +277,6 @@ fn import_counters<R: Runtime<DType = DType>>(
         to_channel_m3: tensor(data.links.iter().map(|l| l.surface_to_channel_m3).collect())?,
         to_surface_m3: tensor(data.links.iter().map(|l| l.channel_to_surface_m3).collect())?,
         roundoff_bound_m3: tensor(data.links.iter().map(|l| l.roundoff_bound_m3).collect())?,
+        ports: context.zero_port_counters(),
     })
 }

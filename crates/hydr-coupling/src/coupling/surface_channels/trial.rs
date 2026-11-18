@@ -2,8 +2,10 @@
 
 use super::accounting::within;
 use super::batch::SurfaceChannelBatch;
+use super::context::Context;
 use super::evaluate::advanced;
-use super::forcing::BoundForcing;
+use super::exchange::Exchange;
+use super::forcing::{BoundForcing, PortedEnds};
 use super::iteration::Stall;
 use super::start::Start;
 use super::state::{PreviousFrame, StoredStep};
@@ -16,7 +18,8 @@ use numr::ops::{
     NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, TypeConversionOps,
     UnaryOps,
 };
-use numr::runtime::Runtime;
+use numr::runtime::{Runtime, RuntimeClient};
+use numr::tensor::Tensor;
 use solvr::interpolate::Interp1dAlgorithms;
 use solvr::optimize::roots::{
     AndersonAlgorithms, BatchedBisectionAlgorithms, BatchedNewtonAlgorithms,
@@ -100,12 +103,40 @@ where
         requested_end_s: f64,
         forcing: &SurfaceChannelForcingInterval,
     ) -> Result<SurfaceChannelTrial<R>, SurfaceChannelError> {
+        self.trial_bound(requested_end_s, forcing, PortedEnds::Caller)
+    }
+
+    /// [`Self::trial_to`] with the coordinator's flux port at every ported reach end.
+    ///
+    /// The forcing record's policy at a ported end is not read.
+    #[cfg(test)]
+    pub(super) fn trial_ported(
+        &self,
+        requested_end_s: f64,
+        forcing: &SurfaceChannelForcingInterval,
+    ) -> Result<SurfaceChannelTrial<R>, SurfaceChannelError> {
+        self.trial_bound(requested_end_s, forcing, PortedEnds::Coordinator)
+    }
+
+    /// [`Self::trial_to`] with the ported end policies that `ported` names.
+    fn trial_bound(
+        &self,
+        requested_end_s: f64,
+        forcing: &SurfaceChannelForcingInterval,
+        ported: PortedEnds,
+    ) -> Result<SurfaceChannelTrial<R>, SurfaceChannelError> {
         let setup = self.definition.setup();
         let config = &setup.config;
         let reach_ids: Vec<&str> = setup.reaches.iter().map(|r| r.id.as_str()).collect();
         let start = self.time_s;
         let requested = requested_end_s;
-        let bound = BoundForcing::bind(&self.context, &reach_ids, start, requested, forcing)?;
+        let bound = BoundForcing::bind(
+            &self.context,
+            &reach_ids,
+            (start, requested),
+            forcing,
+            ported,
+        )?;
         let intervals = self.surface.coupling_forcing().intervals();
         let surface_end = intervals
             .get(intervals.partition_point(|interval| interval.end <= start))
@@ -218,52 +249,82 @@ where
         let context = &self.context;
         let config = &self.definition.setup().config;
         let start = self.time_s;
-        let stage = match self
-            .surface
-            .coupling_prepare(end, retries, &context.links, None)?
-        {
-            CouplingPreparation::Ready(stage) => *stage,
-            CouplingPreparation::SourceRetry(error) | CouplingPreparation::BoundaryRetry(error) => {
-                return Err(SurfaceChannelError::Numerical(format!(
-                    "surface preparation: {error}. Shorten the common interval"
-                )));
-            }
-        };
-        let limit = stage.limit().min(operands.channel_limit_s);
+        let ghosts = context
+            .ports
+            .as_ref()
+            .zip(operands.ports.as_ref())
+            .map(|(topology, ports)| (&topology.surface, &ports.ghosts));
+        let stage =
+            match self
+                .surface
+                .coupling_prepare(end, retries, context.links.as_ref(), ghosts)?
+            {
+                CouplingPreparation::Ready(stage) => *stage,
+                CouplingPreparation::SourceRetry(error)
+                | CouplingPreparation::BoundaryRetry(error) => {
+                    return Err(SurfaceChannelError::Numerical(format!(
+                        "surface preparation: {error}. Shorten the common interval"
+                    )));
+                }
+            };
+        let ports = context.bind_ports(&stage, operands, &self.reaches, reach_ids)?;
+        let limit = stage
+            .limit()
+            .min(operands.channel_limit_s)
+            .min(ports.limit_s);
         if stage.dt() > limit {
             return Err(SurfaceChannelError::RecomputeInterval {
                 start_s: start,
                 requested_end_s: end,
                 suggested_end_s: start + LIMIT_SAFETY * limit,
                 reason: format!(
-                    "surface CFL={}, surface depletion={}, channel start CFL or face depletion={}",
+                    "surface CFL={}, surface depletion={}, channel start CFL or face depletion={}, ported reach CFL or face depletion={}",
                     stage.cfl_limit(),
                     stage.depletion_limit(),
-                    operands.channel_limit_s
+                    operands.channel_limit_s,
+                    ports.limit_s
                 ),
             });
         }
-        let attempt = context.attempt(operands, stage)?;
-        let solved = context.solve(
-            config,
-            &self.surface,
-            &self.reaches,
-            reach_ids,
-            operands,
-            &attempt,
-            stalled,
-        )?;
-        let evaluation = solved.evaluation;
+        let dt = stage.dt();
         let mut slots: Vec<Option<ChannelReach<R>>> =
             (0..self.reaches.len()).map(|_| None).collect();
-        for (entry, next) in context.linked.iter().zip(evaluation.linked) {
-            slots[entry.reach] = Some(next);
-        }
+        let (surface, outcome, ports) = if context.link_count == 0 {
+            let surface = context.complete_alone(&self.surface, &stage)?;
+            (surface, LinkOutcome::empty(context)?, ports)
+        } else {
+            let attempt = context.attempt(operands, stage, ports)?;
+            let solved = context.solve(
+                config,
+                &self.surface,
+                &self.reaches,
+                reach_ids,
+                operands,
+                &attempt,
+                stalled,
+            )?;
+            let evaluation = solved.evaluation;
+            for (entry, next) in context.linked.iter().zip(evaluation.linked) {
+                slots[entry.reach] = Some(next);
+            }
+            let c = &context.client;
+            let outcome = LinkOutcome {
+                iterations: solved.iterations,
+                contraction: solved.contraction,
+                head_residual_m: solved.residuals.head_m,
+                transfer_residual_m3: solved.residuals.transfer_m3,
+                midpoint_surface_m: c.index_select(&evaluation.midpoint, 0, &context.link_a)?,
+                midpoint_channel_m: c.index_select(&evaluation.midpoint, 0, &context.link_b)?,
+                regime: evaluation.regime,
+                exchange: evaluation.exchange,
+            };
+            (evaluation.surface, outcome, attempt.ports)
+        };
         for &index in &context.unlinked {
             let reach = &self.reaches[index];
             let bound = &operands.forcing.reaches[index];
             let forcing = reach
-                .bind_coupling_reserved(&operands.reservations[index], end, &bound.lateral)
+                .bind_coupling_reserved(ports.reservation(operands, index)?, end, &bound.lateral)
                 .map_err(|source| SurfaceChannelError::Channel {
                     reach_id: reach_ids[index].to_string(),
                     source,
@@ -279,7 +340,6 @@ where
             .into_iter()
             .collect::<Option<Vec<_>>>()
             .ok_or_else(|| SurfaceChannelError::Numerical("a reach lacks its candidate".into()))?;
-        let surface = evaluation.surface;
         let steps = self.accepted_steps + 1;
         if surface.time().to_bits() != end.to_bits()
             || reaches
@@ -290,14 +350,16 @@ where
                 "candidate children disagree on end={end} or accepted step {steps}"
             )));
         }
-        let exchange = evaluation.exchange;
+        let interval = context.port_interval(&ports, dt, self.last.as_deref())?;
+        let exchange = outcome.exchange;
+        let counters = context.advance_counters(&self.counters, &exchange.signed, &interval)?;
         let totals = context.step_totals(
             config,
             (&self.surface, &self.reaches),
             (&surface, &reaches),
             &exchange,
+            (&self.counters.ports, &counters.ports, &interval),
         )?;
-        let counters = context.advance_counters(&self.counters, &exchange.signed)?;
         let balance = context.balance(config, &surface, &reaches, &counters)?;
         if !within(balance.residual_m3, balance.bound_m3) {
             return Err(SurfaceChannelError::Numerical(format!(
@@ -305,7 +367,6 @@ where
                 balance.residual_m3, balance.bound_m3
             )));
         }
-        let c = &context.client;
         let step = StoredStep {
             previous: PreviousFrame {
                 surface: self.surface.coupling_clone(),
@@ -317,18 +378,19 @@ where
             end_s: end,
             requested_end_s: requested,
             retries,
-            iterations: solved.iterations,
-            contraction: solved.contraction,
-            head_residual_m: solved.residuals.head_m,
-            transfer_residual_m3: solved.residuals.transfer_m3,
+            iterations: outcome.iterations,
+            contraction: outcome.contraction,
+            head_residual_m: outcome.head_residual_m,
+            transfer_residual_m3: outcome.transfer_residual_m3,
             totals,
-            midpoint_surface_m: c.index_select(&evaluation.midpoint, 0, &context.link_a)?,
-            midpoint_channel_m: c.index_select(&evaluation.midpoint, 0, &context.link_b)?,
+            midpoint_surface_m: outcome.midpoint_surface_m,
+            midpoint_channel_m: outcome.midpoint_channel_m,
             signed_m3: exchange.signed,
             weir_m3: exchange.proposed,
             level: exchange.level,
             factor: exchange.factor,
-            regime: evaluation.regime,
+            regime: outcome.regime,
+            ports: interval,
         };
         Ok(Self {
             definition: Arc::clone(&self.definition),
@@ -340,6 +402,35 @@ where
             accepted_steps: steps,
             counters,
             last: Some(Arc::new(step)),
+        })
+    }
+}
+
+/// Link results of one attempt: the converged fixed point, or nothing without links.
+struct LinkOutcome<R: Runtime<DType = DType>> {
+    iterations: usize,
+    contraction: f64,
+    head_residual_m: f64,
+    transfer_residual_m3: f64,
+    midpoint_surface_m: Tensor<R>,
+    midpoint_channel_m: Tensor<R>,
+    regime: Tensor<R>,
+    exchange: Exchange<R>,
+}
+
+impl<R: Runtime<DType = DType>> LinkOutcome<R> {
+    /// The outcome of a coordinator without links: no update and empty link tensors.
+    fn empty(context: &Context<R>) -> Result<Self, SurfaceChannelError> {
+        let empty = Tensor::<R>::zeros(&[0], DType::F64, context.client.device())?;
+        Ok(Self {
+            iterations: 0,
+            contraction: 0.0,
+            head_residual_m: 0.0,
+            transfer_residual_m3: 0.0,
+            midpoint_surface_m: empty.clone(),
+            midpoint_channel_m: empty.clone(),
+            regime: empty.clone(),
+            exchange: Exchange::empty(&empty),
         })
     }
 }

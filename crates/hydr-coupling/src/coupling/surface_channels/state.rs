@@ -1,6 +1,7 @@
 //! Device-resident link counters and the receipt of the last accepted common interval.
 
 use super::SurfaceChannelForcingInterval;
+use super::ports::{PortCounters, PortInterval};
 use crate::channel::ChannelReach;
 use crate::solver::Solver;
 use numr::dtype::DType;
@@ -14,6 +15,8 @@ pub(super) struct LinkCounters<R: Runtime<DType = DType>> {
     pub to_surface_m3: Tensor<R>,
     /// Upward-rounded sum of every addition error of both counters.
     pub roundoff_bound_m3: Tensor<R>,
+    /// Lifetime port volumes in port identity order. Empty without ports.
+    pub ports: PortCounters,
 }
 
 /// Host scalars of one accepted interval's accounting.
@@ -62,4 +65,6 @@ pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub regime: Tensor<R>,
     pub midpoint_surface_m: Tensor<R>,
     pub midpoint_channel_m: Tensor<R>,
+    /// Port receipts and water totals. Empty without ports.
+    pub ports: PortInterval,
 }

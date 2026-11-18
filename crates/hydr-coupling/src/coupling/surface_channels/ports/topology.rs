@@ -13,24 +13,10 @@ use numr::runtime::Runtime;
 /// Admitted ports of one coordinator, in ascending port identity order.
 pub(in super::super) struct PortTopology<R: Runtime<DType = DType>> {
     /// Surface port faces. Port `p` here is port `p` of `ports`.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "port execution passes these faces to the surface stage"
-        )
-    )]
     pub surface: SurfacePorts<R>,
     /// Port identities in ascending order.
     pub ids: Vec<String>,
     /// Reach, end cell, width, ghost bed, and ghost side of every port.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "port execution reads each port's reach end and width"
-        )
-    )]
     pub ports: Vec<CheckedPort>,
     /// Per setup reach: the port at its `[left, right]` end.
     pub reach_ports: Vec<[Option<usize>; 2]>,
@@ -91,7 +77,7 @@ impl<R: Runtime<DType = DType>> PortTopology<R> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::forcing::BoundForcing;
+    use super::super::super::forcing::{BoundForcing, PortedEnds};
     use super::super::super::{
         SurfaceChannelBatch, SurfaceChannelError, SurfaceChannelForcingInterval,
         SurfaceChannelReachForcing,
@@ -162,8 +148,11 @@ mod tests {
             end_s: 1.0,
             reaches: vec![reach(ALPHA), reach(BETA)],
         };
-        let bound = BoundForcing::bind(&batch.context, &[ALPHA, BETA], 0.0, 1.0, &forcing);
-        let Err(SurfaceChannelError::Input(message)) = bound else {
+        let ids = [ALPHA, BETA];
+        let bind = |batch: &SurfaceChannelBatch<CpuRuntime>, ported| {
+            BoundForcing::bind(&batch.context, &ids, (0.0, 1.0), &forcing, ported)
+        };
+        let Err(SurfaceChannelError::Input(message)) = bind(&batch, PortedEnds::Caller) else {
             return Err("a caller policy at a ported end must reject".into());
         };
         contains(
@@ -173,9 +162,23 @@ mod tests {
                 "reach=\"alpha\" left=Wall sits at port=\"p-alpha-left\"",
             ],
         )?;
+        // The coordinator owns every ported end, so no end keeps a caller policy.
+        let owned = bind(&batch, PortedEnds::Coordinator)?;
+        assert!(
+            owned
+                .reaches
+                .iter()
+                .all(|reach| reach.left.is_none() && reach.right.is_none())
+        );
         // Without ports every end takes its caller policy.
         let unported = build(false)?;
-        BoundForcing::bind(&unported.context, &[ALPHA, BETA], 0.0, 1.0, &forcing)?;
+        let caller = bind(&unported, PortedEnds::Coordinator)?;
+        assert!(
+            caller
+                .reaches
+                .iter()
+                .all(|reach| reach.left.is_some() && reach.right.is_some())
+        );
         Ok(())
     }
 }

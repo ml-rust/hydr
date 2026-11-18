@@ -115,7 +115,8 @@ pub fn rectangular(count: usize, bed: f64) -> ChannelReachDefinition {
     }
 }
 
-fn link() -> SurfaceChannelLink {
+/// Bank weir between surface cell 1 and `alpha` cell 1, crest at 1.2 m.
+pub fn link() -> SurfaceChannelLink {
     SurfaceChannelLink {
         id: "bank".into(),
         surface_cell: 1,

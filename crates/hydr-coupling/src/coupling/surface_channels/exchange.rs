@@ -29,6 +29,21 @@ pub(super) struct Exchange<R: Runtime<DType = DType>> {
     pub aggregation_bound: f64,
 }
 
+impl<R: Runtime<DType = DType>> Exchange<R> {
+    /// The exchange of a coordinator without links. Every tensor is `empty`.
+    pub fn empty(empty: &Tensor<R>) -> Self {
+        Self {
+            proposed: empty.clone(),
+            level: empty.clone(),
+            signed: empty.clone(),
+            factor: empty.clone(),
+            incoming: empty.clone(),
+            outgoing: empty.clone(),
+            aggregation_bound: 0.0,
+        }
+    }
+}
+
 /// Donor-group sums and their absolute rounding bounds.
 pub(super) struct Sums<R: Runtime<DType = DType>> {
     pub value: Tensor<R>,

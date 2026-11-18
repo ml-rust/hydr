@@ -1,8 +1,9 @@
 //! Child trials of one attempt, keyed by the exact bits of their exchange operands.
 //!
 //! One memo lives for one attempted interval. Its start state, duration, caller forcing,
-//! reservations and inflow velocities stay fixed for that attempt. Each child trial is then a
-//! pure function of its exchange operands:
+//! reservations, port fluxes and inflow velocities stay fixed for that attempt. Port fluxes
+//! enter the surface stage and each ported reach's reservation, so no key holds them. Each
+//! child trial is then a pure function of its exchange operands:
 //! - A linked reach: the inflow and withdrawal volume of each of its links.
 //! - The surface: the inflow and withdrawal of every lane, and the withdrawal of every link.
 //!   The link withdrawals carry the fixed channel velocity into the lane momentum.

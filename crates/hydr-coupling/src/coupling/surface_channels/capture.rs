@@ -128,6 +128,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
             regime: self.regime.clone(),
             midpoint_surface_m: self.midpoint_surface_m.clone(),
             midpoint_channel_m: self.midpoint_channel_m.clone(),
+            ports: self.ports.clone(),
         }
     }
 }
@@ -155,6 +156,12 @@ where
     /// # Errors
     /// Returns child projection and runtime transfer errors.
     pub fn data(&self) -> Result<SurfaceChannelSnapshotData, SurfaceChannelError> {
+        if let Some(ports) = &self.context.ports {
+            return Err(SurfaceChannelError::input(format!(
+                "snapshot data ports={:?}: the checkpoint schema holds no reach-end ports; continue a ported coordinator from its native snapshot",
+                ports.ids
+            )));
+        }
         let setup = self.definition.setup();
         let link_ids = &self.context.link_ids;
         let reaches = self

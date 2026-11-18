@@ -14,6 +14,7 @@ use super::context::{Context, Ops, transfer_error};
 use super::exchange::Exchange;
 use super::levelling::Levelling;
 use super::memo::{TrialKeys, TrialMemo};
+use super::ports::PortBinding;
 use super::start::Start;
 use crate::channel::ChannelReach;
 use crate::numerics::water_transfers::AggregationKind;
@@ -42,6 +43,10 @@ pub(super) struct Attempt<R: Runtime<DType = DType>> {
     pub available: Tensor<R>,
     /// Surface-to-channel inflow velocity along each link's reach, `[L]`.
     pub surface_velocity: Tensor<R>,
+    /// Channel-to-surface inflow velocity per link, `[L]` per axis.
+    pub channel_velocity: [Tensor<R>; 2],
+    /// Port fluxes and ported reach reservations of this attempt.
+    pub ports: PortBinding<R>,
 }
 
 /// Kept child trials of one attempt.
@@ -67,13 +72,19 @@ where
     /// Builds the operands of the attempt ending at `stage.end()`.
     ///
     /// Channel slots reserve native face outflow over the duration and caller withdrawals.
+    /// A ported reach's face outflow includes its port export.
     pub fn attempt(
         &self,
         start: &Start<R>,
         stage: SurfaceCouplingStage<R>,
+        ports: PortBinding<R>,
     ) -> Result<Attempt<R>, SurfaceChannelError> {
         let c = &self.client;
         let dt = stage.dt();
+        let slots = match &start.slots {
+            Some(slots) => slots.clone(),
+            None => self.slot_operands(|reach| ports.reservation(start, reach))?,
+        };
         let mut withdrawal = vec![0.0; self.slot_count];
         for reach in &start.forcing.reaches {
             for item in &reach.withdrawals {
@@ -95,9 +106,9 @@ where
         let device = c.device();
         let margin = Tensor::<R>::from_slice(&margins, &[margins.len()], device)?;
         let withdrawal = Tensor::<R>::from_slice(&withdrawal, &[withdrawal.len()], device)?;
-        let kept = c.mul(&start.donor, &c.sub(&self.scalar(1.0)?, &margin)?)?;
+        let kept = c.mul(&slots.donor, &c.sub(&self.scalar(1.0)?, &margin)?)?;
         let reserved = c.mul(
-            &c.add(&c.mul_scalar(&start.outgoing, dt)?, &withdrawal)?,
+            &c.add(&c.mul_scalar(&slots.outgoing, dt)?, &withdrawal)?,
             &c.add_scalar(&margin, 1.0)?,
         )?;
         let remaining = c.maximum(&c.sub(&kept, &reserved)?, &self.scalar(0.0)?)?;
@@ -113,6 +124,8 @@ where
             stage,
             available,
             surface_velocity,
+            channel_velocity: slots.channel_velocity,
+            ports,
         })
     }
 
@@ -146,7 +159,7 @@ where
         let wet = c.maximum(&start.wet, &end_wet)?;
         let law = self.weir(&midpoint, &wet)?;
         let proposed = self
-            .structures
+            .link_structures()?
             .held_volumes(&law, attempt.dt)
             .map_err(|error| SurfaceChannelError::Numerical(format!("link volumes: {error}")))?;
         let level = self.level(&proposed, levelling)?;
@@ -202,7 +215,7 @@ where
         let reach_links: Vec<&[usize]> = self.linked.iter().map(|e| e.links.as_slice()).collect();
         let keys = TrialKeys::read(&packed, self.link_count, &reach_links)?;
         let next_surface = trials.surface(&keys.surface, || {
-            self.complete_surface(surface, start, attempt, exchange, &to_surface)
+            self.complete_surface(surface, attempt, exchange, &to_surface)
         })?;
         let mut linked = Vec::with_capacity(self.linked.len());
         for ((index, entry), key) in self.linked.iter().enumerate().zip(&keys.linked) {
@@ -220,8 +233,9 @@ where
                     reach_id: reach_ids[entry.reach].to_string(),
                     source,
                 };
+                let reservation = attempt.ports.reservation(start, entry.reach)?;
                 let forcing = reach
-                    .bind_coupling_reserved(&start.reservations[entry.reach], attempt.end, &inputs)
+                    .bind_coupling_reserved(reservation, attempt.end, &inputs)
                     .map_err(channel)?;
                 advanced(
                     reach.trial_coupled(attempt.end, &forcing, None, None),
@@ -239,7 +253,6 @@ where
     fn complete_surface(
         &self,
         surface: &Solver<R>,
-        start: &Start<R>,
         attempt: &Attempt<R>,
         exchange: &Exchange<R>,
         to_surface: &Tensor<R>,
@@ -252,7 +265,7 @@ where
         let has = c.gt(&inflow, &zero)?;
         let safe = c.where_cond(&has, &inflow, &self.scalar(1.0)?)?;
         let velocity = |axis: usize| -> Result<Tensor<R>, SurfaceChannelError> {
-            let momentum = c.mul(to_surface, &start.channel_velocity[axis])?;
+            let momentum = c.mul(to_surface, &attempt.channel_velocity[axis])?;
             let lane = self
                 .lanes
                 .aggregate(c, &momentum, AggregationKind::Momentum)
@@ -260,7 +273,7 @@ where
             Ok(c.where_cond(&has, &c.div(&lane.value, &safe)?, &zero)?)
         };
         let source = ExchangeSource::new(
-            &self.links,
+            self.surface_links()?,
             inflow.contiguous()?,
             withdrawal.contiguous()?,
             [velocity(0)?, velocity(1)?],

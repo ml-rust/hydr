@@ -1,12 +1,22 @@
-//! Coordinator reach-end ports: declarations, admission, and static topology.
+//! Coordinator reach-end ports: declarations, admission, static topology, and execution.
 //!
 //! A port binds one contiguous line of surface faces to one end of a rectangular reach.
 //! The coordinator owns that end: the caller supplies no endpoint policy there.
+//!
+//! Each attempt runs one surface HLL flux per port face against the reach end's accepted-start
+//! state. The ported reach end then takes the summed rates as a `FluxPort`. The flux stays
+//! fixed for the attempt and recalculates after shortening.
 
+mod attempt;
+mod binding;
 mod endpoint;
 mod faces;
 #[cfg(test)]
 mod fixture;
+mod ghosts;
+mod receipt;
+#[cfg(test)]
+mod scenario;
 mod topology;
 
 use super::{SurfaceChannelError, SurfaceChannelSetup};
@@ -16,7 +26,10 @@ use faces::{FACE_OWNERSHIP, check_faces};
 use hydr_channel::internal::ChannelCouplingEnd;
 use std::collections::{BTreeMap, BTreeSet};
 
+pub(super) use binding::PortBinding;
 pub(super) use endpoint::check_endpoint;
+pub(super) use ghosts::PortStart;
+pub(super) use receipt::{PortCounters, PortInterval};
 pub(super) use topology::PortTopology;
 
 /// Largest admitted `|W - b| / b` between the face width sum `W` and the end cell width `b`.
@@ -55,6 +68,10 @@ pub(super) struct CheckedPort {
     pub ghost_bed_m: f64,
     /// The ghost lies on the faces' negative side.
     pub ghost_left: bool,
+    /// Bed of each face's active surface cell, in face order, in m.
+    pub face_beds_m: Vec<f64>,
+    /// Gravity of the ported reach, bit-identical to the surface gravity, in m/s².
+    pub gravity: f64,
 }
 
 /// Position of `end` in a per-reach `[left, right]` pair.
@@ -174,6 +191,8 @@ pub(super) fn check_ports(
                 width_m: b,
                 ghost_bed_m: end_cell.bed_elevation_m,
                 ghost_left: line.ghost_left,
+                face_beds_m: line.beds_m,
+                gravity: setup.reaches[reach].definition.config.gravity,
             },
         );
     }

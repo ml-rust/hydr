@@ -49,10 +49,28 @@ pub(super) struct SlotWithdrawal {
     pub amount: WaterAmount,
 }
 
+/// Source of the policy at a ported reach end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PortedEnds {
+    /// Every record end is a caller policy. A caller policy at a ported end rejects.
+    Caller,
+    /// The coordinator supplies every ported end. The record's policy there is not read.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "public forcing records carry a caller policy at both ends"
+        )
+    )]
+    Coordinator,
+}
+
 /// Caller forcing of one reach on the configured device.
 pub(super) struct BoundReach<R: Runtime<DType = DType>> {
-    pub left: ChannelTensorBoundary<R>,
-    pub right: ChannelTensorBoundary<R>,
+    /// Caller policy at the left end. `None` at a ported end.
+    pub left: Option<ChannelTensorBoundary<R>>,
+    /// Caller policy at the right end. `None` at a ported end.
+    pub right: Option<ChannelTensorBoundary<R>>,
     pub lateral: Vec<ChannelTensorLateralInput<R>>,
     pub withdrawals: Vec<SlotWithdrawal>,
 }
@@ -66,12 +84,14 @@ pub(super) struct BoundForcing<R: Runtime<DType = DType>> {
 
 impl<R: Runtime<DType = DType>> BoundForcing<R> {
     /// Checks `forcing` against the accepted `start` and `requested` end, then copies it.
+    ///
+    /// `ported` names the source of each ported end's policy.
     pub fn bind(
         context: &Context<R>,
         reach_ids: &[&str],
-        start: f64,
-        requested: f64,
+        (start, requested): (f64, f64),
         forcing: &SurfaceChannelForcingInterval,
+        ported: PortedEnds,
     ) -> Result<Self, SurfaceChannelError> {
         if !requested.is_finite()
             || requested <= start
@@ -162,15 +182,28 @@ impl<R: Runtime<DType = DType>> BoundForcing<R> {
                     }
                 });
             }
-            for (end, policy) in [
+            let mut policies = [None, None];
+            for (slot, (end, policy)) in [
                 (ChannelCouplingEnd::Left, &record.left),
                 (ChannelCouplingEnd::Right, &record.right),
-            ] {
-                check_endpoint(id, end, context.port_at(reach, end), Some(policy))?;
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let port = context.port_at(reach, end);
+                let policy = match (ported, port) {
+                    (PortedEnds::Coordinator, Some(_)) => None,
+                    _ => Some(policy),
+                };
+                check_endpoint(id, end, port, policy)?;
+                policies[slot] = policy
+                    .map(|policy| tensor_boundary(id, policy, &scalar))
+                    .transpose()?;
             }
+            let [left, right] = policies;
             reaches.push(BoundReach {
-                left: tensor_boundary(id, &record.left, &scalar)?,
-                right: tensor_boundary(id, &record.right, &scalar)?,
+                left,
+                right,
                 lateral,
                 withdrawals,
             });

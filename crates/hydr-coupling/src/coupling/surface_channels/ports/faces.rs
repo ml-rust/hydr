@@ -16,6 +16,8 @@ pub(super) struct LineFaces {
     pub ghost_left: bool,
     /// Sum of face widths along the line, in m.
     pub width_m: f64,
+    /// Bed of each face's active surface cell, in face order, in m.
+    pub beds_m: Vec<f64>,
 }
 
 /// `(line, position)` of `face`: X faces lie on a column line, Y faces on a row line.
@@ -68,6 +70,7 @@ pub(super) fn check_faces(
     faces.sort_by_key(|face| line(*face).1);
     let mut ghost_left = None;
     let mut width_m = 0.0;
+    let mut beds_m = Vec::with_capacity(faces.len());
     for (slot, face) in faces.iter().enumerate() {
         if !claimed.insert(*face) {
             return Err(reject(format!(
@@ -113,11 +116,15 @@ pub(super) fn check_faces(
             )));
         }
         width_m += if face.axis == Axis::X { dy } else { dx };
+        if let Some(cell) = left.or(right) {
+            beds_m.push(domain.bed()[cell]);
+        }
     }
     Ok(LineFaces {
         faces,
         ghost_left: ghost_left.unwrap_or(true),
         width_m,
+        beds_m,
     })
 }
 
@@ -208,6 +215,8 @@ mod tests {
         assert_eq!(line.faces, [y_face(0, 2), y_face(1, 2), y_face(2, 2)]);
         assert!(!line.ghost_left);
         assert_eq!(line.width_m.to_bits(), 6.0f64.to_bits());
+        // The fixture surface bed is 1 m everywhere.
+        assert_eq!(line.beds_m, [1.0; 3]);
         assert_eq!(claimed.len(), 3);
         Ok(())
     }
