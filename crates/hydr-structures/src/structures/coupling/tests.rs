@@ -199,6 +199,47 @@ fn cached_manual_operations_match_original_proposals() -> TestResult {
     Ok(())
 }
 
+/// Laws rebuilt under new operations equal laws built with them, bit for bit.
+#[test]
+fn replaced_operations_match_a_fresh_build() -> TestResult {
+    let (device, structures) = fixture()?;
+    let fields = Fields::new(&device)?;
+    let changed = vec![
+        StructureOperation {
+            structure_id: "gate".into(),
+            operating_point: StructureOperatingPoint::GateOpening { opening_m: 0.0 },
+        },
+        StructureOperation {
+            structure_id: "pump".into(),
+            operating_point: StructureOperatingPoint::PumpStoppedIsolated,
+        },
+    ];
+    let fresh = CouplingStructures::new(
+        CpuClient::new(device.clone()).with_parallelism(ParallelismConfig::new(Some(1), None)),
+        structures.batch.elements().to_vec(),
+        changed.clone(),
+    )?;
+    let replaced = structures.with_operations(&changed)?;
+    let read = |result: TensorStructureResult<CpuRuntime>| -> Result<_, StructureError> {
+        Ok((
+            result.discharge.try_to_vec::<f64>()?,
+            result.regime.try_to_vec::<f64>()?,
+        ))
+    };
+    let (discharge, regime) = read(fields.evaluate(&replaced)?)?;
+    let (expected_discharge, expected_regime) = read(fields.evaluate(&fresh)?)?;
+    let bits = |values: &[f64]| values.iter().map(|v| v.to_bits()).collect::<Vec<_>>();
+    assert_eq!(bits(&discharge), bits(&expected_discharge));
+    assert_eq!(bits(&regime), bits(&expected_regime));
+    assert!(discharge.iter().all(|&q| q == 0.0), "{discharge:?}");
+    let error = structures
+        .with_operations(&changed[..1])
+        .err()
+        .ok_or("an incomplete operation packet rejects")?;
+    assert!(error.input_kind().is_some());
+    Ok(())
+}
+
 #[test]
 fn tensor_heads_require_complete_f64_binary_support() -> TestResult {
     let (device, structures) = fixture()?;

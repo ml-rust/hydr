@@ -44,6 +44,26 @@ impl<R: Runtime<DType = DType>> CouplingStructures<R> {
         Ok(Self { batch, tensors })
     }
 
+    /// The same checked laws under `operations`, one per element in element order.
+    ///
+    /// The elements stay checked once. Only the operation tensors change.
+    #[doc(hidden)]
+    pub fn with_operations(&self, operations: &[StructureOperation]) -> Result<Self, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::IndexingOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
+        let tensors = TensorStaticOperations::<R>::new(&self.batch.context, operations)?;
+        Ok(Self {
+            batch: self.batch.clone(),
+            tensors,
+        })
+    }
+
     #[doc(hidden)]
     pub fn evaluate_heads(
         &self,
