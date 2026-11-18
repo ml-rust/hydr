@@ -241,12 +241,10 @@ pub struct PortFluxes<R: Runtime<DType = DType>> {
 pub(crate) struct TransportFaces<'a, R: Runtime<DType = DType>> {
     pub left: &'a TensorFaceState<R>,
     pub right: &'a TensorFaceState<R>,
+    /// Face-frame HLL result: `shared[1]` is normal and `shared[2]` tangential momentum flux.
     pub result: &'a TensorFaceFlux<R>,
     /// Grid-frame shared flux: water, x momentum, y momentum.
     pub flux: &'a [Tensor<R>; 3],
-    /// Face-frame shared normal and tangential momentum flux.
-    pub normal: &'a Tensor<R>,
-    pub tangent: &'a Tensor<R>,
     pub pressures: [&'a Tensor<R>; 2],
     pub speed: &'a Tensor<R>,
 }
@@ -282,8 +280,8 @@ where
         let into = &self.into;
         let widths = &self.widths;
         let water = client.mul(&gather(&faces.flux[0])?, into)?;
-        let normal = gather(faces.normal)?;
-        let tangent = client.mul(&gather(faces.tangent)?, into)?;
+        let normal = gather(&faces.result.shared[1])?;
+        let tangent = client.mul(&gather(&faces.result.shared[2])?, into)?;
         let (ghost_pressure, surface_pressure) = by_side(faces.pressures[0], faces.pressures[1])?;
         let speed = gather(faces.speed)?;
         let lower = gather(&faces.result.lower)?;

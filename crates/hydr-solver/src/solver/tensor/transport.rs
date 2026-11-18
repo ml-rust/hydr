@@ -122,12 +122,13 @@ where
     let direct_mask = client.maximum(&source.port_mask, &source.trace_mask)?;
     let pressure_left = client.where_cond(&direct_mask, &zero_face, &result.left_pressure)?;
     let pressure_right = client.where_cond(&direct_mask, &zero_face, &result.right_pressure)?;
-    let normal_flux = client.where_cond(&topology.x_mask, &result.shared[1], &result.shared[2])?;
-    let tangent_flux = client.where_cond(&topology.x_mask, &result.shared[2], &result.shared[1])?;
+    // The HLL kernel works in the face frame: shared[1] is normal, shared[2] tangential.
+    let x_flux = client.where_cond(&topology.x_mask, &result.shared[1], &result.shared[2])?;
+    let y_flux = client.where_cond(&topology.x_mask, &result.shared[2], &result.shared[1])?;
     let mut flux = [
         client.where_cond(&source.port_mask, &source.port_flux[0], &result.shared[0])?,
-        client.where_cond(&source.port_mask, &source.port_flux[1], &normal_flux)?,
-        client.where_cond(&source.port_mask, &source.port_flux[2], &tangent_flux)?,
+        client.where_cond(&source.port_mask, &source.port_flux[1], &x_flux)?,
+        client.where_cond(&source.port_mask, &source.port_flux[2], &y_flux)?,
     ];
     let mut speed = client.where_cond(&source.port_mask, &source.port_speed, &result.speed)?;
     let boundary_trace = source.characteristic.calculate(context, state, config)?;
@@ -161,8 +162,6 @@ where
                 right: &right,
                 result: &result,
                 flux: &flux,
-                normal: &normal_flux,
-                tangent: &tangent_flux,
                 pressures: [&pressure_left, &pressure_right],
                 speed: &speed,
             },

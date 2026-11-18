@@ -2,6 +2,7 @@
 
 use crate::fixture::{
     GRAVITY, Grid, TestResult, complete, engine, ghosts, host, prepare, relative, spec, x_face,
+    y_face,
 };
 use hydr::model::CellState;
 use hydr_solver::internal::PortReachEnd;
@@ -12,22 +13,29 @@ const MOMENTUM_RELATIVE: f64 = 1e-14;
 /// A Froude 2 surface cell drains east into a faster ghost. The flux is the surface's own.
 #[test]
 fn supercritical_outflow_equals_upwind_physical_flux() -> TestResult {
+    supercritical_outflow(true)
+}
+
+/// The same outflow rotated onto a north face: the y face takes its normal momentum.
+#[test]
+fn supercritical_outflow_through_a_y_face_equals_upwind_physical_flux() -> TestResult {
+    supercritical_outflow(false)
+}
+
+/// Outflow through the east face of one cell, or through its north face when `!x_axis`.
+fn supercritical_outflow(x_axis: bool) -> TestResult {
     let h = 1.0;
     let q = 2.0 * (GRAVITY * h).sqrt() * h;
     let tangent = 0.1;
-    let solver = engine(Grid::uniform(
-        1,
-        1,
-        [2.0, 3.0],
-        0.0,
-        CellState {
-            h,
-            qx: q,
-            qy: tangent,
-        },
-    ))?;
-    // The east ghost is on the right. A left reach end maps reach-positive onto +x.
-    let ports = solver.coupling_ports(&[spec(vec![x_face(1, 0)], 0.0, PortReachEnd::Left)])?;
+    // The face is 3 m wide. Its normal discharge is `q`, its tangential discharge `tangent`.
+    let (spacing, qx, qy, face) = if x_axis {
+        ([2.0, 3.0], q, tangent, x_face(1, 0))
+    } else {
+        ([3.0, 2.0], tangent, q, y_face(0, 1))
+    };
+    let solver = engine(Grid::uniform(1, 1, spacing, 0.0, CellState { h, qx, qy }))?;
+    // The ghost is on the right. A left reach end maps reach-positive onto the face axis.
+    let ports = solver.coupling_ports(&[spec(vec![face], 0.0, PortReachEnd::Left)])?;
     let ghost_q = 3.0 * (GRAVITY * h).sqrt() * h;
     let ghost = ghosts(&solver, &ports, &[h], &[ghost_q])?;
     assert_eq!(host(ghost.face_normal_discharge_m2_per_s())?, vec![ghost_q]);
@@ -70,8 +78,9 @@ fn supercritical_outflow_equals_upwind_physical_flux() -> TestResult {
         host(&fluxes.junction_reaction_rate_m4_per_s2[0])?[0],
         host(&fluxes.junction_reaction_rate_m4_per_s2[1])?[0],
     ];
-    assert_eq!(reaction[0], 0.0);
-    assert!(relative(reaction[1], tangent * velocity * width) <= MOMENTUM_RELATIVE);
+    let (normal_axis, tangent_axis) = if x_axis { (0, 1) } else { (1, 0) };
+    assert_eq!(reaction[normal_axis], 0.0);
+    assert!(relative(reaction[tangent_axis], tangent * velocity * width) <= MOMENTUM_RELATIVE);
     Ok(())
 }
 
