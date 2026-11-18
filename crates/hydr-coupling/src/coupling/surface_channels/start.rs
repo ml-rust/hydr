@@ -13,13 +13,19 @@ use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps, ShapeOps, UnaryOps,
 };
 
-/// Structures regime code of submerged weir flow.
-const SUBMERGED_CODE: f64 = 3.0;
+use numr::runtime::{Runtime, RuntimeClient};
+use numr::tensor::Tensor;
+
+/// Structures regime codes of submerged-type passive flow: fully submerged orifice, submerged
+/// weir, mixed gate aperture, and submerged gate aperture.
+///
+/// Each one moves water down a head difference between two supported sides. At level heads it
+/// counts as equal heads and carries no water. Pump regimes never take that rule, since a pump
+/// moves water at equal heads.
+const SUBMERGED_CODES: [f64; 4] = [1.0, 3.0, 11.0, 12.0];
 
 /// Structures regime code of equal heads above the crest.
 const EQUAL_HEADS_CODE: f64 = 5.0;
-use numr::runtime::{Runtime, RuntimeClient};
-use numr::tensor::Tensor;
 
 /// Operands that depend only on the accepted state and the caller forcing.
 pub(super) struct Start<R: Runtime<DType = DType>> {
@@ -180,6 +186,7 @@ where
             let linked: Vec<&ChannelReach<R>> =
                 self.linked.iter().map(|r| &reaches[r.reach]).collect();
             let (stage, wet) = self.stages(surface, &linked, reach_ids)?;
+            self.check_pumps(&stage, &wet)?;
             let regime = self.weir(&stage, &wet, &self.level_heads(&stage)?)?.regime;
             let initial = c.cat(&[&stage, &zeros, &wet, &regime], 0)?;
             (stage, wet, initial)
@@ -196,6 +203,59 @@ where
             forcing,
             ports,
         })
+    }
+
+    /// Rejects a running pump that cannot run from the accepted `stage` and `wet` masks.
+    ///
+    /// No shorter interval changes the accepted state, so both rejections are final:
+    /// - `pump-without-suction`: the donor holds no supported water above its suction cutoff.
+    /// - `pump-dry-delivery`: the receiver is dry and no declared free outlet lies at or above
+    ///   its attachment bed.
+    fn check_pumps(&self, stage: &Tensor<R>, wet: &Tensor<R>) -> Result<(), SurfaceChannelError> {
+        if self
+            .laws
+            .iter()
+            .all(|law| law.pump().is_none_or(|p| !p.running))
+        {
+            return Ok(());
+        }
+        let stage = stage.try_to_vec::<f64>()?;
+        let wet = wet.try_to_vec::<f64>()?;
+        let missing = || SurfaceChannelError::Numerical("pump check lacks a group".into());
+        for (link, law) in self.laws.iter().enumerate() {
+            let Some(pump) = law.pump().filter(|p| p.running) else {
+                continue;
+            };
+            let groups = [
+                *self.link_lane.get(link).ok_or_else(missing)?,
+                self.surface_count + *self.link_slot.get(link).ok_or_else(missing)?,
+            ];
+            let side = |index: usize| -> Result<(f64, bool), SurfaceChannelError> {
+                let group = groups[index];
+                let h = *stage.get(group).ok_or_else(missing)?;
+                let w = *wet.get(group).ok_or_else(missing)?;
+                Ok((h, w > 0.0 && h > law.bed[index]))
+            };
+            let id = &self.link_ids[link];
+            let donor = pump.donor;
+            let (donor_stage, donor_wet) = side(donor)?;
+            if !(donor_wet && donor_stage > law.cut[donor]) {
+                return Err(SurfaceChannelError::input(format!(
+                    "pump-without-suction: structure={id:?} donor stage={donor_stage} holds no supported water above its suction cutoff={}: stop the pump or raise the donor above the cutoff",
+                    law.cut[donor]
+                )));
+            }
+            let receiver = 1 - donor;
+            let (_, receiver_wet) = side(receiver)?;
+            let bed = law.bed[receiver];
+            if !receiver_wet && pump.outlet_m.is_none_or(|outlet| bed > outlet) {
+                return Err(SurfaceChannelError::input(format!(
+                    "pump-dry-delivery: structure={id:?} receiver is dry at bed={bed} with outlet={:?}: declare a free outlet at or above the receiver bed or wet the receiver",
+                    pump.outlet_m
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Slot operands of every linked reach from the reservation that `reservation` returns.
@@ -271,10 +331,10 @@ where
         Ok(c.le(&c.abs(&c.sub(&surface, &channel)?)?, &allowance)?)
     }
 
-    /// Weir law of every link at its surface and channel `stages` and `wet` masks, each `[L]`.
+    /// Law of every link at its surface and channel `stages` and `wet` masks, each `[L]`.
     ///
-    /// A side supports flow when it is wet and stands above its bed. A submerged link where
-    /// `level` is one counts as equal heads and carries no water.
+    /// A side supports flow when it is wet and stands above its attachment bed. A link in a
+    /// submerged-type regime where `level` is one counts as equal heads and carries no water.
     pub fn link_weir(
         &self,
         [surface, channel]: [&Tensor<R>; 2],
@@ -293,9 +353,108 @@ where
                 &c.mul(wet_channel, &c.gt(channel, &self.bed_b)?)?,
             )
             .map_err(|error| SurfaceChannelError::Numerical(format!("link weir: {error}")))?;
-        let level = c.mul(&c.eq(&law.regime, &self.scalar(SUBMERGED_CODE)?)?, level)?;
+        let mut submerged = c.eq(&law.regime, &self.scalar(SUBMERGED_CODES[0])?)?;
+        for code in &SUBMERGED_CODES[1..] {
+            submerged = c.maximum(&submerged, &c.eq(&law.regime, &self.scalar(*code)?)?)?;
+        }
+        let level = c.mul(&submerged, level)?;
         law.regime = c.where_cond(&level, &self.scalar(EQUAL_HEADS_CODE)?, &law.regime)?;
         law.discharge = c.where_cond(&level, &self.scalar(0.0)?, &law.discharge)?;
         Ok(law)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::SurfaceChannelError;
+    use super::super::structures::scenario::{
+        DT, EQUAL_HEADS, PUMP_CURVE, Tanks, TestResult, check, gate_law, orifice_law, pump_law,
+        receipt, step, structure,
+    };
+    use crate::structures::{DirectionPolicy, StructureOperatingPoint};
+
+    /// An orifice and a gate between tanks at rest, beside a pump between the same tanks.
+    ///
+    /// Frozen criteria, fixed before the first run:
+    /// - Over 5 intervals both passive links take equal heads and carry `0.0`.
+    /// - The pump keeps its curve regime and moves water at equal heads.
+    /// - Every interval passes its mass bound, both pairings, and the composite balance.
+    #[test]
+    fn passive_links_rest_at_equal_heads_while_a_pump_runs() -> TestResult {
+        let passive = |id: &str, law, operation| {
+            structure(
+                id,
+                law,
+                DirectionPolicy::Bidirectional,
+                operation,
+                [0.0, 0.0],
+            )
+        };
+        let structures = vec![
+            passive(
+                "culvert",
+                orifice_law(0.1, 0.3)?,
+                StructureOperatingPoint::Passive,
+            ),
+            passive(
+                "gate",
+                gate_law(0.2)?,
+                StructureOperatingPoint::GateOpening { opening_m: 0.2 },
+            ),
+        ];
+        let mut batch = Tanks::at(0.6, 0.6).build(structures)?;
+        for _ in 0..5 {
+            batch = step(&batch, DT, &[])?;
+            check(&batch)?;
+            for id in ["culvert", "gate"] {
+                let link = receipt(&batch, id)?;
+                assert_eq!(link.regime, EQUAL_HEADS, "{id}: {link:?}");
+                assert_eq!(link.signed, 0.0, "{id}: {link:?}");
+            }
+        }
+        let pump = structure(
+            "pump",
+            pump_law(0.3, None)?,
+            DirectionPolicy::AtoBOnly,
+            StructureOperatingPoint::PumpRunning { speed_ratio: 1.0 },
+            [0.0, 0.0],
+        );
+        let batch = step(&Tanks::at(0.6, 0.6).build(vec![pump])?, DT, &[])?;
+        check(&batch)?;
+        let link = receipt(&batch, "pump")?;
+        assert_eq!(link.regime, PUMP_CURVE, "{link:?}");
+        assert!(link.signed > 0.0, "{link:?}");
+        Ok(())
+    }
+
+    /// Input message of the first trial of a running pump between `tanks`.
+    fn pump_rejection(tanks: Tanks, direction: DirectionPolicy) -> TestResult<String> {
+        let pump = structure(
+            "pump",
+            pump_law(0.3, None)?,
+            direction,
+            StructureOperatingPoint::PumpRunning { speed_ratio: 1.0 },
+            [0.0, 0.0],
+        );
+        match step(&tanks.build(vec![pump])?, DT, &[]) {
+            Err(SurfaceChannelError::Input(message)) => Ok(message),
+            Err(other) => Err(format!("expected an input rejection, got {other}").into()),
+            Ok(_) => Err("the trial admitted a pump that cannot run".into()),
+        }
+    }
+
+    #[test]
+    fn a_running_pump_rejects_without_suction_or_delivery() -> TestResult {
+        let message = pump_rejection(Tanks::at(0.3, 0.6), DirectionPolicy::AtoBOnly)?;
+        assert!(
+            message.contains("pump-without-suction") && message.contains("\"pump\""),
+            "{message}"
+        );
+        let message = pump_rejection(Tanks::at(0.0, 0.6), DirectionPolicy::BtoAOnly)?;
+        assert!(
+            message.contains("pump-dry-delivery") && message.contains("\"pump\""),
+            "{message}"
+        );
+        Ok(())
     }
 }

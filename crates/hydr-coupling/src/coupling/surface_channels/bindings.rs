@@ -1,10 +1,26 @@
-//! Coordinator lateral bindings synthesized from bank-overflow links.
+//! Coordinator lateral bindings synthesized from bank and structure links.
 
-use super::{SurfaceChannelLink, SurfaceChannelReach};
+use super::SurfaceChannelReach;
 use crate::channel::{
     ChannelGeometry, ChannelLateralBinding, ChannelLateralDirection, ChannelReachDefinition,
 };
 use hydr_channel::internal::SURFACE_EXCHANGE_BINDING_PREFIX;
+
+/// Lateral binding identity prefix reserved for coordinator structure exchange.
+///
+/// Caller definitions and caller forcing reject it.
+pub(super) const STRUCTURE_EXCHANGE_BINDING_PREFIX: &str = "structure-exchange:";
+
+/// One link's synthesized bindings at its channel cell.
+#[derive(Clone, Copy)]
+pub(super) struct LinkBindings<'a> {
+    /// `surface-channel link` or `surface-channel structure`.
+    pub owner: &'static str,
+    pub id: &'a str,
+    pub cell_id: &'a str,
+    pub inflow: &'a str,
+    pub withdrawal: &'a str,
+}
 
 /// Ordered cell identities and bed elevations of a reach.
 ///
@@ -44,29 +60,34 @@ pub(super) fn binding_ids(link_id: &str) -> (String, String) {
     )
 }
 
+/// Inflow and withdrawal binding identities of one structure link.
+pub(super) fn structure_binding_ids(structure_id: &str) -> (String, String) {
+    (
+        format!("{STRUCTURE_EXCHANGE_BINDING_PREFIX}{structure_id}:inflow"),
+        format!("{STRUCTURE_EXCHANGE_BINDING_PREFIX}{structure_id}:withdrawal"),
+    )
+}
+
 /// Caller definition plus two bindings per link, appended in the order of `links`.
 ///
-/// `links` holds each link with its channel cell identity, already sorted by link identity.
+/// `links` holds each link of the reach, already sorted by link identity.
 pub(super) fn coordinated_definition(
     reach: &SurfaceChannelReach,
-    links: &[(&SurfaceChannelLink, &str)],
+    links: &[LinkBindings<'_>],
     storage_exclusion_evidence: &str,
 ) -> ChannelReachDefinition {
     let mut definition = reach.definition.clone();
     definition.lateral_bindings.reserve(2 * links.len());
-    for (link, cell_id) in links {
-        let (inflow, withdrawal) = binding_ids(&link.id);
-        let ownership_assertion = format!(
-            "surface-channel link {:?}: {storage_exclusion_evidence}",
-            link.id
-        );
+    for link in links {
+        let ownership_assertion =
+            format!("{} {:?}: {storage_exclusion_evidence}", link.owner, link.id);
         for (boundary_id, direction) in [
-            (inflow, ChannelLateralDirection::Inflow),
-            (withdrawal, ChannelLateralDirection::Withdrawal),
+            (link.inflow, ChannelLateralDirection::Inflow),
+            (link.withdrawal, ChannelLateralDirection::Withdrawal),
         ] {
             definition.lateral_bindings.push(ChannelLateralBinding {
-                boundary_id,
-                cell_id: (*cell_id).to_string(),
+                boundary_id: boundary_id.to_string(),
+                cell_id: link.cell_id.to_string(),
                 direction,
                 ownership_assertion: ownership_assertion.clone(),
             });

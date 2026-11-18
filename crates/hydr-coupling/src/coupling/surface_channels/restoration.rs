@@ -84,6 +84,12 @@ where
             ),
             "differs from the destination setup",
         )?;
+        if snapshot.definition.structures != self.definition.structures {
+            return Err(rejected(
+                "structures",
+                "differs from the destination structure links",
+            ));
+        }
         checked(
             identity::initial(&snapshot.initial, &self.initial),
             "differs from the destination original state",
@@ -135,6 +141,12 @@ where
             identity::setup(&data.setup, &SurfaceChannelSetupData::of(self.setup())),
             "differs from the destination setup",
         )?;
+        if !self.definition.structures.is_empty() {
+            return Err(rejected(
+                "structures",
+                "holds no structure links of the destination",
+            ));
+        }
         checked(
             identity::initial(&data.initial, &self.initial),
             "differs from the destination original state",

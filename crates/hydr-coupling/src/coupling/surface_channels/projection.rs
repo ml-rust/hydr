@@ -1,6 +1,7 @@
 //! Host projections of the last interval, the link counters, and the composite balance.
 
 use super::batch::SurfaceChannelBatch;
+use super::context::Context;
 use super::state::{LinkCounters, StoredStep};
 use super::{
     SurfaceChannelError, SurfaceChannelLinkLedger, SurfaceChannelLinkTransfer,
@@ -28,7 +29,7 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
     pub fn last_step(&self) -> Result<Option<SurfaceChannelStepDiagnostics>, SurfaceChannelError> {
         self.last
             .as_ref()
-            .map(|step| step.diagnostics(&self.context.link_ids))
+            .map(|step| step.diagnostics(&self.context))
             .transpose()
     }
 
@@ -37,7 +38,7 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
     /// # Errors
     /// Returns runtime transfer errors.
     pub fn link_ledgers(&self) -> Result<Vec<SurfaceChannelLinkLedger>, SurfaceChannelError> {
-        self.counters.ledgers(&self.context.link_ids)
+        self.counters.ledgers(&self.context)
     }
 
     /// Projects lifetime directional port counters in ascending port identity.
@@ -53,10 +54,12 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
 }
 
 impl<R: Runtime<DType = DType>> StoredStep<R> {
-    /// Host receipt of this interval, with links in `link_ids` order.
+    /// Host receipt of this interval, with the bank links of `context` in identity order.
+    ///
+    /// Structure links stay in the interval totals and leave the per-link list.
     pub(super) fn diagnostics(
         &self,
-        link_ids: &[String],
+        context: &Context<R>,
     ) -> Result<SurfaceChannelStepDiagnostics, SurfaceChannelError> {
         let step = self;
         let signed = step.signed_m3.try_to_vec::<f64>()?;
@@ -66,10 +69,10 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
         let regime = step.regime.try_to_vec::<f64>()?;
         let surface = step.midpoint_surface_m.try_to_vec::<f64>()?;
         let channel = step.midpoint_channel_m.try_to_vec::<f64>()?;
-        let mut links = Vec::with_capacity(signed.len());
-        for (index, id) in link_ids.iter().enumerate() {
+        let mut links = Vec::with_capacity(context.bank.len());
+        for &index in &context.bank {
             links.push(SurfaceChannelLinkTransfer {
-                link_id: id.clone(),
+                link_id: context.link_ids[index].clone(),
                 signed_volume_m3: signed[index],
                 weir_volume_m3: weir[index],
                 level_factor: level[index],
@@ -106,19 +109,19 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
 }
 
 impl<R: Runtime<DType = DType>> LinkCounters<R> {
-    /// Host counters with links in `link_ids` order.
+    /// Host counters of the bank links of `context` in identity order.
     pub(super) fn ledgers(
         &self,
-        link_ids: &[String],
+        context: &Context<R>,
     ) -> Result<Vec<SurfaceChannelLinkLedger>, SurfaceChannelError> {
         let to_channel = self.to_channel_m3.try_to_vec::<f64>()?;
         let to_surface = self.to_surface_m3.try_to_vec::<f64>()?;
         let bound = self.roundoff_bound_m3.try_to_vec::<f64>()?;
-        Ok(link_ids
+        Ok(context
+            .bank
             .iter()
-            .enumerate()
-            .map(|(index, id)| SurfaceChannelLinkLedger {
-                link_id: id.clone(),
+            .map(|&index| SurfaceChannelLinkLedger {
+                link_id: context.link_ids[index].clone(),
                 surface_to_channel_m3: to_channel[index],
                 channel_to_surface_m3: to_surface[index],
                 roundoff_bound_m3: bound[index],

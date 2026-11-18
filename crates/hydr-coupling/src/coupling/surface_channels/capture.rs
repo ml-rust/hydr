@@ -161,6 +161,11 @@ where
     pub fn data(&self) -> Result<SurfaceChannelSnapshotData, SurfaceChannelError> {
         let setup = self.definition.setup();
         let context = &self.context;
+        if !self.definition.structures.is_empty() {
+            return Err(SurfaceChannelError::input(
+                "snapshot data: the package holds no structure links: keep the native snapshot of a coordinator with structure links",
+            ));
+        }
         let reaches = self
             .reaches
             .iter()
@@ -193,7 +198,7 @@ where
                         )?,
                     },
                     forcing: step.forcing.clone(),
-                    diagnostics: step.diagnostics(&context.link_ids)?,
+                    diagnostics: step.diagnostics(context)?,
                 })
             }
         };
@@ -240,7 +245,7 @@ fn counter_data<R: Runtime<DType = DType>>(
     Ok(SurfaceChannelCounterData {
         time_s,
         accepted_steps,
-        links: counters.ledgers(&context.link_ids)?,
+        links: counters.ledgers(context)?,
         ports: counters.ports.data(context.port_ids()),
     })
 }

@@ -1,7 +1,11 @@
 //! Construction checks that turn a setup into a checked surface/channel definition.
 
-use super::bindings::{binding_ids, channel_cells, coordinated_definition};
+use super::bindings::{
+    LinkBindings, STRUCTURE_EXCHANGE_BINDING_PREFIX, binding_ids, channel_cells,
+    coordinated_definition,
+};
 use super::ports::{CheckedPort, check_ports};
+use super::structures::{CheckedStructure, SurfaceChannelStructure, check_structures};
 use super::{
     SURFACE_CHANNEL_TANGENT_TOLERANCE, SurfaceChannelError, SurfaceChannelLink, SurfaceChannelSetup,
 };
@@ -45,6 +49,8 @@ pub struct SurfaceChannelDefinition {
     pub(super) surface_cells: Vec<usize>,
     /// Admitted ports in ascending port-identity order.
     pub(super) ports: Vec<CheckedPort>,
+    /// Admitted structure links in ascending identity order.
+    pub(super) structures: Vec<CheckedStructure>,
 }
 
 impl SurfaceChannelDefinition {
@@ -70,7 +76,8 @@ impl SurfaceChannelDefinition {
     /// - a crest below the surface bed or the channel bed; a surveyed channel bed is the
     ///   minimum elevation of its section
     /// - gravity or vertical datum differing between the surface and a reach
-    /// - a caller lateral binding using the `surface-exchange:` prefix
+    /// - a caller lateral binding using the `surface-exchange:` prefix, or the
+    ///   `structure-exchange:` prefix (`reserved-binding-prefix`)
     /// - `maximum_step_s` above the surface or a reach `max_step`
     /// - `minimum_step_s` below the surface or a reach `min_step`
     /// - `retry_limit` above the surface `max_retries`
@@ -86,6 +93,35 @@ impl SurfaceChannelDefinition {
     ///   a caller open face, a face in two ports, faces off one axis, face line, or surface
     ///   side, or a gap in the face line (`port-face-ownership`)
     pub fn new(setup: SurfaceChannelSetup) -> Result<Self, SurfaceChannelError> {
+        Self::with_structures(setup, Vec::new())
+    }
+
+    /// Checks `setup` with structure links `structures` beside its bank links and ports.
+    ///
+    /// Each structure synthesizes `structure-exchange:<id>:inflow` and
+    /// `structure-exchange:<id>:withdrawal` at its channel cell. Every link's bindings follow the
+    /// caller bindings in ascending link identity, bank and structure links together.
+    ///
+    /// # Errors
+    /// Returns every [`Self::new`] rejection. Links, ports, and structures together must be
+    /// nonempty. Each structure also rejects for:
+    /// - an empty or repeated identity, one equal to a link or port identity, or a repeated
+    ///   scenario identity (`duplicate-links`)
+    /// - empty scenario or connection evidence (`missing-link-evidence`)
+    /// - an endpoint A that is no active surface cell, an endpoint B that is no existing channel
+    ///   cell, or an element endpoint that differs from its node identity
+    ///   (`structure-endpoint-identity`)
+    /// - an element datum other than the surface datum, or a gate or orifice gravity other than
+    ///   the surface gravity (`datum-or-gravity-mismatch`)
+    /// - an attachment bed below its node bed, or a weir crest, gate sill, or orifice sill below
+    ///   either attachment bed (`unobstructed-pool-connection`)
+    /// - a bidirectional pump, or a bidirectional law without symmetric reversal evidence
+    ///   (`non-symmetric-structure`)
+    /// - an operation that does not drive its law (`operation-ownership`)
+    pub(super) fn with_structures(
+        setup: SurfaceChannelSetup,
+        structures: Vec<SurfaceChannelStructure>,
+    ) -> Result<Self, SurfaceChannelError> {
         setup.config.check()?;
         text(
             "storage_exclusion_evidence",
@@ -113,40 +149,74 @@ impl SurfaceChannelDefinition {
             )));
         }
         let reach_index = check_reaches(&setup)?;
-        let resolved = check_links(&setup, &reach_index)?;
+        let resolved = check_links(&setup, &reach_index, structures.is_empty())?;
         let ports = check_ports(&setup, &reach_index)?;
+        let taken: BTreeSet<&str> = setup
+            .links
+            .iter()
+            .map(|link| link.id.as_str())
+            .chain(setup.ports.iter().map(|port| port.id.as_str()))
+            .collect();
+        let structures = check_structures(&setup, &reach_index, &taken, structures)?;
         let surface_cells: Vec<usize> = setup
             .links
             .iter()
             .map(|link| link.surface_cell)
+            .chain(structures.iter().map(|structure| structure.surface_cell))
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
         let mut links = Vec::with_capacity(resolved.len());
-        let mut per_reach: Vec<Vec<(&SurfaceChannelLink, &str)>> =
-            vec![Vec::new(); setup.reaches.len()];
-        for resolved in resolved {
+        let mut per_reach: Vec<BTreeMap<&str, LinkBindings<'_>>> =
+            (0..setup.reaches.len()).map(|_| BTreeMap::new()).collect();
+        for resolved in &resolved {
             let link = resolved.link;
-            if let Some(reach_links) = per_reach.get_mut(resolved.reach_index) {
-                reach_links.push((link, resolved.cell_id));
-            }
             let (inflow_binding, withdrawal_binding) = binding_ids(&link.id);
             links.push(CheckedLink {
                 setup_index: resolved.setup_index,
                 reach_index: resolved.reach_index,
                 surface_lane: surface_cells.partition_point(|&cell| cell < link.surface_cell),
                 channel_cell: link.channel_cell,
-                weir: resolved.weir,
+                weir: resolved.weir.clone(),
                 inflow_binding,
                 withdrawal_binding,
             });
+        }
+        for (link, resolved) in links.iter().zip(&resolved) {
+            if let Some(reach_links) = per_reach.get_mut(link.reach_index) {
+                reach_links.insert(
+                    resolved.link.id.as_str(),
+                    LinkBindings {
+                        owner: "surface-channel link",
+                        id: resolved.link.id.as_str(),
+                        cell_id: resolved.cell_id,
+                        inflow: &link.inflow_binding,
+                        withdrawal: &link.withdrawal_binding,
+                    },
+                );
+            }
+        }
+        for structure in &structures {
+            if let Some(reach_links) = per_reach.get_mut(structure.reach_index) {
+                reach_links.insert(
+                    structure.id(),
+                    LinkBindings {
+                        owner: "surface-channel structure",
+                        id: structure.id(),
+                        cell_id: &structure.cell_id,
+                        inflow: &structure.inflow_binding,
+                        withdrawal: &structure.withdrawal_binding,
+                    },
+                );
+            }
         }
         let coordinated = setup
             .reaches
             .iter()
             .zip(&per_reach)
             .map(|(reach, links)| {
-                coordinated_definition(reach, links, &setup.storage_exclusion_evidence)
+                let links: Vec<LinkBindings<'_>> = links.values().copied().collect();
+                coordinated_definition(reach, &links, &setup.storage_exclusion_evidence)
             })
             .collect();
         Ok(Self {
@@ -155,6 +225,7 @@ impl SurfaceChannelDefinition {
             links,
             surface_cells,
             ports,
+            structures,
         })
     }
 
@@ -197,7 +268,7 @@ impl SurfaceChannelDefinition {
 }
 
 /// Rejects empty identity or evidence text and text with control characters.
-fn text(name: &str, value: &str) -> Result<(), SurfaceChannelError> {
+pub(super) fn text(name: &str, value: &str) -> Result<(), SurfaceChannelError> {
     if value.trim().is_empty() || value.chars().any(char::is_control) {
         return Err(SurfaceChannelError::input(format!(
             "{name}={value:?}: supply nonempty identity and evidence without control characters"
@@ -250,6 +321,16 @@ fn check_reaches(
                 reach.id, binding.boundary_id
             )));
         }
+        if let Some(binding) = definition.lateral_bindings.iter().find(|binding| {
+            binding
+                .boundary_id
+                .starts_with(STRUCTURE_EXCHANGE_BINDING_PREFIX)
+        }) {
+            return Err(SurfaceChannelError::input(format!(
+                "reserved-binding-prefix: reach={:?} lateral binding {:?} uses the reserved prefix {STRUCTURE_EXCHANGE_BINDING_PREFIX:?}: rename the binding; the coordinator synthesizes structure-exchange bindings from structure links",
+                reach.id, binding.boundary_id
+            )));
+        }
         let config = &setup.config;
         if config.maximum_step_s > definition.config.max_step {
             return Err(SurfaceChannelError::input(format!(
@@ -278,12 +359,13 @@ struct Resolved<'a> {
 
 /// Checks every link. Returns the resolved links in ascending link-identity order.
 ///
-/// The links may be empty only beside a port.
+/// The links may be empty only beside a port or a structure link.
 fn check_links<'a>(
     setup: &'a SurfaceChannelSetup,
     reach_index: &BTreeMap<&str, usize>,
+    no_structures: bool,
 ) -> Result<Vec<Resolved<'a>>, SurfaceChannelError> {
-    if setup.links.is_empty() && setup.ports.is_empty() {
+    if setup.links.is_empty() && setup.ports.is_empty() && no_structures {
         return Err(SurfaceChannelError::input(
             "links is empty and ports is empty: supply at least one surface-channel link or port",
         ));

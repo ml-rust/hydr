@@ -1,16 +1,16 @@
 //! Static coordinator topology: weir laws, donor trees, surface lanes, and channel slots.
 
 use super::bindings::channel_cells;
-use super::levelling::SlotPlan;
 use super::ports::{PortCounters, PortTopology};
+use super::slot_plan::SlotPlan;
 use super::state::LinkCounters;
+use super::structures::LinkLaw;
+use super::table::table;
 use super::{SurfaceChannelDefinition, SurfaceChannelError};
 use crate::channel::{ChannelEnd, ChannelLateralDirection};
 use crate::numerics::water_transfers::{TransferTree, WaterTransferError};
 use crate::solver::Solver;
-use crate::structures::{
-    DirectionPolicy, StructureElement, StructureLaw, StructureOperatingPoint, StructureOperation,
-};
+use crate::structures::StructureOperation;
 use hydr_solver::internal::SurfaceLinks;
 use hydr_structures::internal::CouplingStructures;
 use numr::dtype::DType;
@@ -106,7 +106,7 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub client: R::Client,
     /// Linked surface cells, or `None` for a coordinator with ports only.
     pub links: Option<SurfaceLinks<R>>,
-    /// Weir laws of every link, or `None` without links.
+    /// Laws of every bank and structure link, or `None` without links.
     pub structures: Option<CouplingStructures<R>>,
     /// Groups `S + C`. Input `e` is link `e` at its surface lane, input `L + e` at its slot.
     pub donors: TransferTree<R>,
@@ -125,11 +125,22 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub link_a: Tensor<R>,
     /// Donor group of each link's channel side, I64 `[L]`.
     pub link_b: Tensor<R>,
+    /// Attachment bed of each link's surface side, `[L]`. A bank link uses the cell bed.
     pub bed_a: Tensor<R>,
+    /// Attachment bed of each link's channel side, `[L]`. A bank link uses the cell bed.
     pub bed_b: Tensor<R>,
-    /// Weir crest of every link, `[L]`.
-    pub crest: Tensor<R>,
-    /// Unit reach tangent of every link, `[L]` per axis.
+    /// Cutoff stage of each link's surface side and channel side, each `[L]`.
+    pub cut: [Tensor<R>; 2],
+    /// One where a link keeps free flow while its receiver stays at or below its cutoff, `[L]`.
+    pub has_below: Tensor<R>,
+    /// One at every pump link, `[L]`.
+    pub pump: Tensor<R>,
+    /// Stage at which the suction cap stops each pump donor, `[L]`. Zero at passive links.
+    pub suction_stop: Tensor<R>,
+    /// Plan area of each pump donor at its suction stop, `[L]`. Zero at passive links.
+    pub suction_area: Tensor<R>,
+    /// Unit reach tangent of every bank link, `[L]` per axis. Zero at structure links, whose
+    /// water enters either side without velocity.
     pub tangent: [Tensor<R>; 2],
     /// Position of each link's inflow binding in the reach-grouped exchange bindings, I64 `[L]`.
     ///
@@ -141,8 +152,10 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub slot_withdrawals: Vec<usize>,
     /// Per setup reach: caller withdrawal binding identity to linked slot.
     pub caller_slots: Vec<BTreeMap<String, usize>>,
-    /// Link identities in ascending order.
+    /// Link identities in ascending order, bank and structure links together.
     pub link_ids: Vec<String>,
+    /// Positions of the bank links in the table, ascending. Public receipts list these only.
+    pub bank: Vec<usize>,
     /// Synthesized `(inflow, withdrawal)` channel binding identities per link.
     pub link_bindings: Vec<(String, String)>,
     /// Plan area of every surface lane, in m².
@@ -153,8 +166,8 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub link_lane: Vec<usize>,
     /// Slot of every link.
     pub link_slot: Vec<usize>,
-    /// Weir crest of every link, in metres.
-    pub crest_m: Vec<f64>,
+    /// Law class and cutoffs of every link.
+    pub laws: Vec<LinkLaw>,
     /// Absolute head allowance, in metres.
     pub head_absolute_m: f64,
     /// Relative head allowance.
@@ -192,8 +205,9 @@ where
         let surface_count = definition.surface_cells().len();
         let mut reach_order: Vec<usize> = (0..setup.reaches.len()).collect();
         reach_order.sort_by(|&a, &b| setup.reaches[a].id.cmp(&setup.reaches[b].id));
+        let table = table(definition);
         let mut per_reach: BTreeMap<usize, BTreeMap<usize, Vec<usize>>> = BTreeMap::new();
-        for (position, link) in definition.links.iter().enumerate() {
+        for (position, link) in table.iter().enumerate() {
             per_reach
                 .entry(link.reach_index)
                 .or_default()
@@ -215,12 +229,12 @@ where
         };
         let mut linked = Vec::new();
         let mut unlinked = Vec::new();
-        let mut slot_of = vec![0usize; definition.links.len()];
+        let mut slot_of = vec![0usize; table.len()];
         let mut slot_beds = Vec::new();
         let mut slot_plans = Vec::new();
         let mut slot_withdrawals = Vec::new();
         let mut caller_slots = vec![BTreeMap::new(); setup.reaches.len()];
-        let mut grouped = Vec::with_capacity(definition.links.len());
+        let mut grouped = Vec::with_capacity(table.len());
         for &reach in &reach_order {
             let Some(cells) = per_reach.get(&reach) else {
                 unlinked.push(reach);
@@ -267,22 +281,27 @@ where
             });
         }
         let slot_count = slot_beds.len();
-        let link_count = definition.links.len();
+        let link_count = table.len();
         let floats = |values: &[f64]| Tensor::<R>::from_slice(values, &[values.len()], &device);
         let surface_beds: Vec<f64> = definition
             .surface_cells()
             .iter()
             .map(|&cell| setup.surface.domain.bed()[cell])
             .collect();
-        let lane: Vec<usize> = definition.links.iter().map(|l| l.surface_lane).collect();
+        let lane: Vec<usize> = table.iter().map(|l| l.surface_lane).collect();
         let slot_group: Vec<usize> = slot_of.iter().map(|&s| surface_count + s).collect();
-        let bed_a: Vec<f64> = lane.iter().map(|&l| surface_beds[l]).collect();
-        let bed_b: Vec<f64> = slot_of.iter().map(|&s| slot_beds[s]).collect();
+        let beds: Vec<[f64; 2]> = table
+            .iter()
+            .zip(lane.iter().zip(&slot_of))
+            .map(|(link, (&l, &s))| link.beds.unwrap_or([surface_beds[l], slot_beds[s]]))
+            .collect();
+        let bed_a: Vec<f64> = beds.iter().map(|b| b[0]).collect();
+        let bed_b: Vec<f64> = beds.iter().map(|b| b[1]).collect();
         let mut order = vec![0usize; link_count];
         for (index, &position) in grouped.iter().enumerate() {
             order[position] = index;
         }
-        let link_ids: Vec<String> = definition.links().map(|l| l.id.clone()).collect();
+        let link_ids: Vec<String> = table.iter().map(|l| l.id.to_string()).collect();
         let mut donor_targets = Vec::with_capacity(2 * link_count);
         let mut lane_targets = Vec::with_capacity(link_count);
         for (e, id) in link_ids.iter().enumerate() {
@@ -299,66 +318,78 @@ where
         .map_err(transfer_error)?;
         let lanes = TransferTree::new_grouped(&client, surface_count, link_count, &lane_targets)
             .map_err(transfer_error)?;
-        let datum = setup
-            .surface
-            .domain
-            .reference()
-            .vertical_datum()
-            .to_string();
-        let elements = definition
-            .links
+        let operations = table
             .iter()
-            .zip(&link_ids)
-            .map(|(link, id)| StructureElement {
-                id: id.clone(),
-                endpoint_a: format!(
-                    "surface-cell:{}",
-                    setup.links[link.setup_index].surface_cell
-                ),
-                endpoint_b: format!(
-                    "reach:{}:cell:{}",
-                    setup.reaches[link.reach_index].id, link.channel_cell
-                ),
-                datum: datum.clone(),
-                direction: DirectionPolicy::Bidirectional,
-                law: StructureLaw::SuppressedRectangularWeir(link.weir.clone()),
+            .map(|link| StructureOperation {
+                structure_id: link.id.to_string(),
+                operating_point: link.operation,
             })
             .collect();
-        let operations = link_ids
+        let allowance = (setup.config.head_absolute_m, setup.config.head_relative);
+        let laws: Vec<LinkLaw> = table
             .iter()
-            .map(|id| StructureOperation {
-                structure_id: id.clone(),
-                operating_point: StructureOperatingPoint::Passive,
-            })
+            .zip(&beds)
+            .map(|(link, &beds)| LinkLaw::new(&link.element, link.operation, beds, allowance))
             .collect();
+        let elements = table.iter().map(|link| link.element.clone()).collect();
         let structures = if link_ids.is_empty() {
             None
         } else {
             Some(
-                CouplingStructures::new(client.clone(), elements, operations)
-                    .map_err(|error| SurfaceChannelError::input(format!("link weirs: {error}")))?,
+                CouplingStructures::new(client.clone(), elements, operations).map_err(|error| {
+                    SurfaceChannelError::input(format!("link structures: {error}"))
+                })?,
             )
         };
-        let crest: Vec<f64> = definition.links.iter().map(|l| l.weir.crest_m()).collect();
-        let tangent = |axis: usize| -> Vec<f64> {
-            definition.links().map(|l| l.reach_tangent[axis]).collect()
-        };
         let cell_area = setup.surface.domain.grid().cell_area();
+        let lane_area_m2 = vec![cell_area; surface_count];
+        let per_law = |value: &dyn Fn(usize, &LinkLaw) -> f64| -> Vec<f64> {
+            laws.iter()
+                .enumerate()
+                .map(|(link, law)| value(link, law))
+                .collect()
+        };
+        let flag = |condition: bool| f64::from(u8::from(condition));
+        let side_area = |link: usize, side: usize, stage: f64| -> f64 {
+            if side == 0 {
+                lane_area_m2.get(lane[link]).copied().unwrap_or(0.0)
+            } else {
+                slot_plans
+                    .get(slot_of[link])
+                    .map_or(0.0, |plan| plan.area(stage))
+            }
+        };
+        let cut = |side: usize| per_law(&|_, law| law.cut[side]);
+        let stop = per_law(&|_, law| law.pump().map_or(0.0, |p| p.stop_m));
+        let stop_area = per_law(&|link, law| {
+            law.pump()
+                .map_or(0.0, |p| side_area(link, p.donor, p.stop_m))
+        });
+        let tangent = |axis: usize| -> Vec<f64> { table.iter().map(|l| l.tangent[axis]).collect() };
         let ports = PortTopology::new(definition, surface)?;
         Ok(Self {
             ports,
-            lane_area_m2: vec![cell_area; surface_count],
             slot_plans,
             link_lane: lane.clone(),
             link_slot: slot_of,
-            crest_m: crest.clone(),
             head_absolute_m: setup.config.head_absolute_m,
             head_relative: setup.config.head_relative,
             link_a: indices(&lane)?,
             link_b: indices(&slot_group)?,
             bed_a: floats(&bed_a)?,
             bed_b: floats(&bed_b)?,
-            crest: floats(&crest)?,
+            cut: [floats(&cut(0))?, floats(&cut(1))?],
+            has_below: floats(&per_law(&|_, law| flag(law.has_below())))?,
+            pump: floats(&per_law(&|_, law| flag(!law.passive())))?,
+            suction_stop: floats(&stop)?,
+            suction_area: floats(&stop_area)?,
+            bank: table
+                .iter()
+                .enumerate()
+                .filter_map(|(position, link)| link.bank.then_some(position))
+                .collect(),
+            laws,
+            lane_area_m2,
             tangent: [floats(&tangent(0))?, floats(&tangent(1))?],
             inflow_binding_index: indices(&order.iter().map(|&g| 2 * g).collect::<Vec<_>>())?,
             withdrawal_binding_index: indices(
@@ -377,10 +408,9 @@ where
             slot_withdrawals,
             caller_slots,
             link_ids,
-            link_bindings: definition
-                .links
+            link_bindings: table
                 .iter()
-                .map(|l| (l.inflow_binding.clone(), l.withdrawal_binding.clone()))
+                .map(|l| (l.bindings.0.to_string(), l.bindings.1.to_string()))
                 .collect(),
             client,
         })

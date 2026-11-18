@@ -1,6 +1,7 @@
 //! Caller channel forcing over one common interval, checked and copied once per trial.
 
 use super::SurfaceChannelError;
+use super::bindings::STRUCTURE_EXCHANGE_BINDING_PREFIX;
 use super::context::Context;
 use super::ports::check_endpoint;
 use crate::channel::ChannelEnd;
@@ -131,6 +132,11 @@ impl<R: Runtime<DType = DType>> BoundForcing<R> {
                 if boundary_id.starts_with(SURFACE_EXCHANGE_BINDING_PREFIX) {
                     return Err(SurfaceChannelError::input(format!(
                         "reach={id:?} lateral input {boundary_id:?} uses the reserved prefix {SURFACE_EXCHANGE_BINDING_PREFIX:?}: omit surface-exchange inputs; the coordinator supplies them"
+                    )));
+                }
+                if boundary_id.starts_with(STRUCTURE_EXCHANGE_BINDING_PREFIX) {
+                    return Err(SurfaceChannelError::input(format!(
+                        "reserved-binding-prefix: reach={id:?} lateral input {boundary_id:?} uses the reserved prefix {STRUCTURE_EXCHANGE_BINDING_PREFIX:?}: omit structure-exchange inputs; the coordinator supplies them"
                     )));
                 }
                 requires_exact_span |= !amount.is_rate();

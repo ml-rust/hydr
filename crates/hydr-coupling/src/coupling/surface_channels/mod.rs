@@ -51,9 +51,12 @@ mod ports;
 mod projection;
 mod response;
 mod restoration;
+mod slot_plan;
 mod snapshot;
 mod start;
 mod state;
+mod structures;
+mod table;
 mod trial;
 mod validation;
 

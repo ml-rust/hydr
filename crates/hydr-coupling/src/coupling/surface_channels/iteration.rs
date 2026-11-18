@@ -267,9 +267,10 @@ where
         })
     }
 
-    /// Rejects a link whose receiver ends above its donor beyond the head budget.
+    /// Rejects a passive link whose receiver ends above its donor beyond the head budget.
     ///
-    /// Heads below the crest count as the crest, so a stopped overflow never crosses.
+    /// Heads below a side's cutoff count as the cutoff, so a stopped overflow never crosses.
+    /// A pump lifts water, so it never takes this check.
     fn check_crossing(
         &self,
         config: &SurfaceChannelConfig,
@@ -278,11 +279,11 @@ where
         let c = &self.client;
         let n = self.surface_count + self.slot_count;
         let end = evaluation.packet.narrow(0, 0, n)?;
-        let head = |index: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
-            Ok(c.maximum(&c.index_select(&end, 0, index)?, &self.crest)?)
+        let head = |index: &Tensor<R>, cut: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
+            Ok(c.maximum(&c.index_select(&end, 0, index)?, cut)?)
         };
-        let surface = head(&self.link_a)?;
-        let channel = head(&self.link_b)?;
+        let surface = head(&self.link_a, &self.cut[0])?;
+        let channel = head(&self.link_b, &self.cut[1])?;
         let signed = &evaluation.exchange.signed;
         let zero = self.scalar(0.0)?;
         let allowance = |receiver: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
@@ -297,8 +298,9 @@ where
             };
         let forward = c.mul(&c.gt(signed, &zero)?, &crossed(&surface, &channel)?)?;
         let backward = c.mul(&c.lt(signed, &zero)?, &crossed(&channel, &surface)?)?;
+        let passive = c.sub(&self.scalar(1.0)?, &self.pump)?;
         self.reject(
-            &c.maximum(&forward, &backward)?,
+            &c.mul(&c.maximum(&forward, &backward)?, &passive)?,
             "link heads cross beyond the head budget over the interval: shorten the common interval",
         )
     }

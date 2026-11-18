@@ -8,6 +8,7 @@
 //! post-transport velocity projected on the reach tangent. Channel-to-surface water leaves at
 //! the channel's accepted-start velocity, the channel's own withdrawal rule, and enters the
 //! surface along the tangent. Several inflows into one surface cell carry their summed momentum.
+//! Structure links hold a zero tangent, so their water enters either side without velocity.
 
 use super::SurfaceChannelError;
 use super::context::{Context, Ops, transfer_error};
@@ -314,5 +315,70 @@ pub(super) fn advanced<R: Runtime<DType = DType>>(
             reach_id: reach_id.to_string(),
             source,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::structures::scenario::{
+        DT, Tanks, TestResult, check, inflow, orifice_law, receipt, step, structure, withdrawal,
+    };
+    use crate::structures::{DirectionPolicy, StructureOperatingPoint};
+
+    /// Orifice crown of both cases, in m.
+    const CROWN: f64 = 0.3;
+
+    fn culvert() -> TestResult<super::super::structures::SurfaceChannelStructure> {
+        Ok(structure(
+            "culvert",
+            orifice_law(0.1, CROWN)?,
+            DirectionPolicy::Bidirectional,
+            StructureOperatingPoint::Passive,
+            [0.0, 0.0],
+        ))
+    }
+
+    /// Caller inflow raises the reach above the surface, then caller withdrawal lowers it.
+    ///
+    /// Frozen criteria, fixed before the first run:
+    /// - Some interval of the inflow phase carries water to the surface (negative volume).
+    /// - Some later interval of the withdrawal phase carries water to the reach (positive).
+    /// - Every interval passes its mass bound, both pairings, and the composite balance.
+    #[test]
+    fn caller_water_reverses_the_orifice() -> TestResult {
+        let mut batch = Tanks::at(0.7, 0.7).build(vec![culvert()?])?;
+        let mut to_surface = false;
+        for _ in 0..20 {
+            batch = step(&batch, DT, &[inflow(0.02)])?;
+            check(&batch)?;
+            to_surface |= receipt(&batch, "culvert")?.signed < 0.0;
+        }
+        let mut to_reach = false;
+        for _ in 0..40 {
+            batch = step(&batch, DT, &[withdrawal(0.02)])?;
+            check(&batch)?;
+            to_reach |= receipt(&batch, "culvert")?.signed > 0.0;
+        }
+        assert!(to_surface && to_reach, "{to_surface} {to_reach}");
+        Ok(())
+    }
+
+    /// A caller withdrawal would draw the reach below the orifice crown over the full interval.
+    ///
+    /// Frozen criteria, fixed before the first run:
+    /// - The trial accepts after at least one retry, short of the requested end.
+    /// - Both midpoint heads stand above the crown.
+    /// - The interval passes its mass bound, both pairings, and the composite balance.
+    #[test]
+    fn a_crown_crossing_retries_a_shorter_interval() -> TestResult {
+        let batch = Tanks::at(0.36, 0.35).build(vec![culvert()?])?;
+        let batch = step(&batch, DT, &[withdrawal(1.0)])?;
+        check(&batch)?;
+        let interval = batch.last_step()?.ok_or("an accepted interval")?;
+        assert!(interval.retries >= 1, "{interval:?}");
+        assert!(interval.end_s < DT, "{interval:?}");
+        let link = receipt(&batch, "culvert")?;
+        assert!(link.midpoint.iter().all(|&head| head > CROWN), "{link:?}");
+        Ok(())
     }
 }
