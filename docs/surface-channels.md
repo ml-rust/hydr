@@ -96,9 +96,9 @@ The weir uses midpoint heads: the mean of start and end stage on each side. Its 
 | `BelowCrest` | No supported side above the crest | Zero |
 | `Free` | One side above the crest | Free weir discharge |
 | `Submerged` | Both sides above the crest at different heads | Villemonte-reduced discharge |
-| `EqualHeads` | Both sides above the crest, heads within the head allowance | Zero |
+| `EqualHeads` | Both sides above the crest. The start heads and the zero-exchange end heads each sit within the head allowance | Zero |
 
-The head allowance is `head_absolute_m + head_relative * max(|H_s|, |H_c|)`, at the midpoint heads.
+The head allowance is `head_absolute_m + head_relative * max(|H_s|, |H_c|)`. The zero-exchange end heads come from one completion of every child without exchange, at the start of each attempt. A link whose heads are level, with nothing else moving them apart, carries no water. When other water moves level heads apart, the Villemonte law carries the exchange.
 
 The capability declaration names these `below-crest`, `free-weir-flow`, and `submerged-weir-flow`. `EqualHeads` counts as submerged flow.
 
@@ -130,7 +130,7 @@ A `θ` below one shrinks by 16 units in the last place. Each link then takes the
 
 The donor limit applies after the cap. `level_factor` reports the applied `θ`. It is exactly `1.0` when the cap does not bind, and the weir volume then keeps every bit.
 
-On the next interval the heads sit within the head allowance, so the link reports `EqualHeads` and carries no water.
+On the next interval the heads sit within the head allowance. Without other water to move them apart, the link reports `EqualHeads` and carries no water.
 
 ### Limit each donor to its water
 
@@ -176,11 +176,37 @@ The common end is the smallest of the requested end, the start plus `maximum_ste
    - Applies the levelling cap, then the donor limit.
    - Completes the surface with the summed volume of each linked cell.
    - Advances each linked reach with each link's volume on its synthesized bindings.
-5. Accept the iterate when both budgets pass and the support and regime flags repeat exactly. The evaluation of the accepted iterate is the candidate.
+5. Accept the iterate when both budgets pass and the support and regime flags repeat exactly. The evaluation of the accepted iterate is the candidate. An unconverged iterate moves on by the [response step](#response-step).
 6. Reject heads that cross beyond the head budget over the interval. The cap keeps this check from binding unless a child's stage departs from its plan-area bound.
 7. Check pairing and the composite water balance.
 
-The iteration is a plain fixed-point (Picard) update without history. Stiff links can stall it. Each update `k` has a residual norm `r_k`: the largest change over its allowance. Convergence needs `r_k <= 1`. The contraction `ρ = sqrt(r_k / r_{k-2})` spans two updates, so a 2-cycle shows its true rate. Two checks end a stalled attempt at once:
+Each update `k` has a residual norm `r_k`: the largest change between an iterate and its evaluation, over its allowance. Convergence needs `r_k <= 1`. The last update within `iteration_limit` counts.
+
+#### Response step
+
+Near level heads the Villemonte discharge changes without bound as the heads move. A plain update `x ← g(x)` then overshoots, and it stops contracting at the step limits. Each unconverged update instead takes a response step:
+
+1. Model each end stage as the evaluated stage plus `±(V - V_g) / A`. `V_g` is the evaluated link volume. `A` is the plan area of the [levelling cap](#stop-at-level-heads), split evenly among the links of a shared cell.
+2. Clamp each weir volume to the most the levelling cap and the donor limit keep in its direction.
+3. Find by bisection the volume `V` at which the clamped weir volume at the modelled midpoint heads equals `V`. The root lies between `V_g` and the plain proposal.
+4. Take `V` and the modelled end stages as the next iterate.
+
+The children then correct the model at the next evaluation. Convergence still compares each iterate with its own evaluation, so the accepted fixed point and every budget stay those of the plain update.
+
+#### Resolution term
+
+Near level heads one rounding of the heads can move a weir volume by more than a tight transfer budget. Each allowance therefore adds the change one rounding of the midpoint heads causes:
+
+| Allowance | Added term |
+| --- | --- |
+| Transfer, per link | `ε (|H_s| + |H_c|) |V| (1.5 / h_u + 0.385 / gap)` |
+| Head, per cell | The transfer term of each link at the cell, over its plan area, summed |
+
+`ε` is `f64::EPSILON`, `h_u` the upstream head above the crest, and `gap` the head difference of submerged flow. Away from level heads the term stays far below any positive budget.
+
+#### Stalled attempts
+
+The contraction `ρ = sqrt(r_k / r_{k-2})` spans two updates, so a 2-cycle shows its true rate. Two checks end a stalled attempt at once:
 
 | Check | Rejection | Recorded `ρ` |
 | --- | --- | --- |

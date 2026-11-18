@@ -22,6 +22,7 @@ use super::SurfaceChannelError;
 use super::context::{Context, Ops};
 use super::evaluate::{Attempt, Trials};
 use super::exchange::{Exchange, split};
+use super::response::Response;
 use super::start::Start;
 use crate::channel::{ChannelGeometry, ChannelReach, ChannelReachDefinition};
 use crate::solver::Solver;
@@ -145,6 +146,11 @@ pub(super) struct Levelling<R: Runtime<DType = DType>> {
     channel_receiver_area: Tensor<R>,
     /// Channel area at `max(surface stage, crest)`, `[L]`. It bounds a channel donor above it.
     channel_donor_area: Tensor<R>,
+    /// Stage response at the pre-exchange end stages, for the fixed-point response step.
+    pub response: Response<R>,
+    /// One where the start heads and the pre-exchange end heads of a link each sit within the
+    /// head allowance, `[L]`. Nothing else then moves them apart, so the link carries no water.
+    pub level: Tensor<R>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -181,31 +187,72 @@ where
         let borrowed: Vec<&ChannelReach<R>> = linked.iter().collect();
         let (stage, _) = self.stages(&next, &borrowed, reach_ids)?;
         let host = stage.try_to_vec::<f64>()?;
+        let available = attempt.available.try_to_vec::<f64>()?;
+        let count = |cells: &[usize]| -> Vec<usize> {
+            cells
+                .iter()
+                .map(|cell| cells.iter().filter(|&other| other == cell).count())
+                .collect()
+        };
+        let counts = [count(&self.link_lane), count(&self.link_slot)];
         let mut areas = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
+        let mut bounds = [Vec::new(), Vec::new()];
         let topology = || SurfaceChannelError::Numerical("levelling topology lacks a link".into());
         for (link, (&lane, &slot)) in self.link_lane.iter().zip(&self.link_slot).enumerate() {
-            let read = |index: usize| {
-                host.get(index).copied().ok_or_else(|| {
+            let read = |values: &[f64], index: usize| {
+                values.get(index).copied().ok_or_else(|| {
                     SurfaceChannelError::Numerical("pre-exchange stages lack a group".into())
                 })
             };
-            let surface_stage = read(lane)?;
-            let channel_stage = read(self.surface_count + slot)?;
+            let surface_stage = read(&host, lane)?;
+            let channel_stage = read(&host, self.surface_count + slot)?;
             let crest = *self.crest_m.get(link).ok_or_else(topology)?;
             let plan = self.slot_plans.get(slot).ok_or_else(topology)?;
-            areas[0].push(*self.lane_area_m2.get(lane).ok_or_else(topology)?);
-            areas[1].push(plan.area(channel_stage));
-            areas[2].push(plan.area(channel_stage.max(crest)));
-            areas[3].push(plan.area(surface_stage.max(crest)));
+            let lane_area = *self.lane_area_m2.get(lane).ok_or_else(topology)?;
+            let channel_area = plan.area(channel_stage);
+            let receiver_area = plan.area(channel_stage.max(crest));
+            let donor_area = plan.area(surface_stage.max(crest));
+            let shares = [counts[0][link] as f64, counts[1][link] as f64];
+            // The largest volume each direction keeps under the cap and the donor limit, with
+            // every shared cell split evenly among its links.
+            let forward = ((crest - channel_stage) * channel_area / shares[1])
+                .max(
+                    (surface_stage - channel_stage.max(crest))
+                        / (shares[0] / lane_area + shares[1] / receiver_area),
+                )
+                .max(0.0)
+                .min(read(&available, lane)? / shares[0]);
+            let backward = ((crest - surface_stage) * lane_area / shares[0])
+                .max(
+                    (channel_stage - surface_stage.max(crest))
+                        / (shares[1] / donor_area + shares[0] / lane_area),
+                )
+                .max(0.0)
+                .min(read(&available, self.surface_count + slot)? / shares[1]);
+            bounds[0].push(forward);
+            bounds[1].push(backward);
+            areas[0].push(lane_area);
+            areas[1].push(channel_area);
+            areas[2].push(receiver_area);
+            areas[3].push(donor_area);
         }
+        let response = Response::new(
+            [&areas[0], &areas[1]],
+            [&counts[0], &counts[1]],
+            [&bounds[0], &bounds[1]],
+            device,
+        )?;
         let [surface_area, start_area, receiver_area, donor_area] =
             areas.map(|values| Tensor::<R>::from_slice(&values, &[values.len()], device));
+        let level = c.mul(&self.level_heads(&start.stage)?, &self.level_heads(&stage)?)?;
         Ok(Levelling {
+            level,
             stage,
             surface_area: surface_area?,
             channel_start_area: start_area?,
             channel_receiver_area: receiver_area?,
             channel_donor_area: donor_area?,
+            response,
         })
     }
 

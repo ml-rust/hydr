@@ -124,8 +124,6 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub link_a: Tensor<R>,
     /// Donor group of each link's channel side, I64 `[L]`.
     pub link_b: Tensor<R>,
-    /// Bed elevation of every donor group, `[S + C]`.
-    pub bed: Tensor<R>,
     pub bed_a: Tensor<R>,
     pub bed_b: Tensor<R>,
     /// Weir crest of every link, `[L]`.
@@ -343,8 +341,6 @@ where
         let tangent = |axis: usize| -> Vec<f64> {
             definition.links().map(|l| l.reach_tangent[axis]).collect()
         };
-        let mut beds = surface_beds;
-        beds.extend_from_slice(&slot_beds);
         let cell_area = setup.surface.domain.grid().cell_area();
         let ports = PortTopology::new(definition, surface)?;
         Ok(Self {
@@ -358,7 +354,6 @@ where
             head_relative: setup.config.head_relative,
             link_a: indices(&lane)?,
             link_b: indices(&slot_group)?,
-            bed: floats(&beds)?,
             bed_a: floats(&bed_a)?,
             bed_b: floats(&bed_b)?,
             crest: floats(&crest)?,

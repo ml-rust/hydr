@@ -1,8 +1,8 @@
 //! Package rejections name the foreign or forged field and leave no batch behind.
 
 use crate::fixture::{Result, contains};
-use crate::restoration::{network, run};
-use crate::scenario::Batch;
+use crate::restoration::{network, run, spill};
+use crate::scenario::{Batch, Spec, step};
 use hydr::coupling::{
     SurfaceChannelError, SurfaceChannelIntervalSnapshotData, SurfaceChannelSnapshotData,
 };
@@ -23,14 +23,19 @@ fn last_interval(
         .ok_or("the package lacks its last interval")?)
 }
 
-/// Input messages of import into a fresh batch and of resume, in that order.
+/// Input messages of import into a fresh network batch and of resume, in that order.
 fn rejections(data: &SurfaceChannelSnapshotData) -> Result<[String; 2]> {
+    rejections_from(&network(), data)
+}
+
+/// Input messages of import into a fresh `spec` batch and of resume, in that order.
+fn rejections_from(spec: &Spec, data: &SurfaceChannelSnapshotData) -> Result<[String; 2]> {
     let message = |result: std::result::Result<Batch, SurfaceChannelError>| match result {
         Ok(_) => Err("the coordinator accepted a forged package".into()),
         Err(SurfaceChannelError::Input(message)) => Ok(message),
         Err(other) => Err(format!("expected an input rejection, got {other}").into()),
     };
-    let imported: Result<String> = message(network().build()?.import_snapshot(data));
+    let imported: Result<String> = message(spec.build()?.import_snapshot(data));
     let resumed: Result<String> = message(Batch::resume(
         crate::runtime::client(),
         data,
@@ -166,21 +171,31 @@ fn forged_last_interval_transfer_rejects() -> Result {
 
 #[test]
 fn forged_last_interval_contraction_rejects() -> Result {
-    let data = package()?;
+    let spec = spill();
+    let mut batch = spec.build()?;
+    for _ in 0..3 {
+        batch = step(&batch, batch.time() + 0.2)?;
+    }
+    let data = batch.snapshot_data()?;
     let mut forged = data.clone();
     let diagnostics = &mut last_interval(&mut forged)?.diagnostics;
+    // Two updates measure the contraction. The response step can converge exactly, so the
+    // measured value can be zero.
     assert!(
-        diagnostics.contraction > 0.0,
-        "the second interval measures its contraction"
+        diagnostics.iterations >= 2,
+        "the third spill interval takes two updates: {diagnostics:?}"
     );
     diagnostics.contraction = diagnostics.contraction.next_up();
-    rejects(
-        &forged,
-        &[
-            "last_interval.diagnostics.contraction",
-            "recalculated last interval",
-        ],
-    )
+    for message in rejections_from(&spec, &forged)? {
+        contains(
+            &message,
+            &[
+                "last_interval.diagnostics.contraction",
+                "recalculated last interval",
+            ],
+        )?;
+    }
+    Ok(())
 }
 
 #[test]

@@ -16,6 +16,16 @@ pub fn network() -> Spec {
         .link(weir("s-1", 4, "south", 1, 1.2, 2.0))
 }
 
+/// A surface at 1.4 m spills freely into a reach at 1.15 m, below a 1.2 m crest.
+///
+/// The reach rises above the crest during the third 0.2 s interval. That interval's first
+/// update changes the weir regime, so a second update must repeat it.
+pub fn spill() -> Spec {
+    Spec::new(1, 1, 1.0, 0.4)
+        .reach(ReachSpec::new("river", 0.0, &[1.15, 1.15]))
+        .link(weir("bank", 0, "river", 0, 1.2, 2.0))
+}
+
 /// Accepts one interval toward each target in turn.
 pub fn run(mut batch: Batch, targets: &[f64]) -> Result<Batch> {
     for &target in targets {

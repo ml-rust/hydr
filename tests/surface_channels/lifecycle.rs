@@ -1,6 +1,7 @@
 //! Common-interval lifecycle: determinism, rollback, shortening, and recomputation.
 
 use crate::fixture::Result;
+use crate::restoration::spill;
 use crate::scenario::{Batch, ReachSpec, Spec, depths, forcing, last, step, volumes, weir};
 use hydr::channel::ChannelLateralInput;
 use hydr::coupling::SurfaceChannelError;
@@ -82,22 +83,30 @@ fn rejected_trial_leaves_batch_bitwise_unchanged() -> Result {
 
 #[test]
 fn nonconvergence_halves_common_interval() -> Result {
-    let mut spec = network();
-    spec.config.iteration_limit = 3;
-    let mut converged = network();
+    // One update exhausts the third spill interval.
+    let mut spec = spill();
+    spec.config.iteration_limit = 1;
+    let mut converged = spill();
     converged.config.iteration_limit = 64;
-    let requested = 0.2;
-    let full = last(&step(&converged.build()?, requested)?)?;
-    assert_eq!((full.retries, full.end_s), (0, requested));
-    let batch = step(&spec.build()?, requested)?;
-    let halved = last(&batch)?;
+    let (mut limited, mut full) = (spec.build()?, converged.build()?);
+    for _ in 0..2 {
+        limited = step(&limited, limited.time() + 0.2)?;
+        full = step(&full, full.time() + 0.2)?;
+        assert_eq!(last(&limited)?, last(&full)?);
+    }
+    let start = full.time();
+    let requested = start + 0.2;
+    let reference = last(&step(&full, requested)?)?;
+    assert_eq!((reference.retries, reference.end_s), (0, requested));
+    assert!(reference.iterations > 1, "{reference:?}");
+    let halved = last(&step(&limited, requested)?)?;
     assert!(halved.retries > 0, "{halved:?}");
     let mut end = requested;
     for _ in 0..halved.retries {
-        end *= 0.5;
+        end = start + 0.5 * (end - start);
     }
     assert_eq!(halved.end_s.to_bits(), end.to_bits(), "{halved:?}");
-    assert!(halved.iterations <= 3);
+    assert!(halved.iterations <= 1);
     Ok(())
 }
 

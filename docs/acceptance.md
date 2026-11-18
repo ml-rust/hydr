@@ -618,6 +618,7 @@ Use the [surface/channel guide](surface-channels.md) to declare bank links and t
 | [Split bank](../tests/surface_channels/refinement.rs) | One `2 m` bank becomes 1, 2, 4, 8, and 16 links on refined floodplain cells. Exchanged volumes over `2 s` stay frozen within `1e-9 m³`. Successive level differences shrink by at least `1.4`, then `1.9`, per refinement. The 8-link and 16-link totals agree within `1.1e-2 m³`. |
 | [Closed levelling](../tests/surface_channels/levelling.rs) | A floodplain and a reach cell behind a submerged bank reach the exact level within the head allowance, then carry no water. Rectangular, surveyed, and two-links-into-one-cell variants pass. Heads never cross. Storage balances each interval. Each run takes at most 20 accepted intervals to `3 s`. |
 | Levelled restart | A package whose last interval binds the cap restores bit for bit. A forged `level_factor` rejects. |
+| Bank seiche | A floodplain at `1.6 m` and a reach at `1.75 m` exchange through one bank link over 120 intervals toward `0.25 s`, with and without a reach-end port. Midpoint heads come within `1e-6 m`. Every accepted interval keeps at least half of `0.95` times its smallest child step limit. Mass, link pairing, and port pairing hold each interval. |
 
 The drain converges at second order because an isolated drain makes each interval one implicit-midpoint step. The coordinator still declares first-order time integration.
 

@@ -40,87 +40,82 @@ impl<R: Runtime<DType = DType>> Context<R>
 where
     R::Client: Ops<R>,
 {
-    /// Head and transfer residuals of map value `gx` at iterate `x`.
+    /// Head and transfer residuals of the map value of `evaluation` at iterate `x`.
+    ///
+    /// Each allowance adds the evaluation's resolution. Every maximum comes back in one
+    /// device-to-host read.
     pub fn residuals(
         &self,
         config: &SurfaceChannelConfig,
         x: &Tensor<R>,
-        gx: &Tensor<R>,
+        evaluation: &Evaluation<R>,
     ) -> Result<Residuals, SurfaceChannelError> {
-        Ok(self.residuals_against(config, x, gx, None)?.0)
-    }
-
-    /// Residuals of `gx` at `x`, and whether `gx` repeats iterate `earlier` bit for bit.
-    ///
-    /// Every maximum, and the repeat test, comes back in one device-to-host read.
-    fn residuals_against(
-        &self,
-        config: &SurfaceChannelConfig,
-        x: &Tensor<R>,
-        gx: &Tensor<R>,
-        earlier: Option<&Tensor<R>>,
-    ) -> Result<(Residuals, bool), SurfaceChannelError> {
         let c = &self.client;
         let n = self.surface_count + self.slot_count;
         let l = self.link_count;
+        let gx = &evaluation.packet;
         let change = c.abs(&c.sub(gx, x)?)?;
         let largest = |t: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
             Ok(c.max(t, &[0], false)?.reshape(&[1])?)
         };
-        let budget = |start: usize, len: usize, absolute: f64, relative: f64| {
-            let allowance = c.add_scalar(
-                &c.mul_scalar(&c.abs(&gx.narrow(0, start, len)?)?, relative)?,
-                absolute,
+        let budget = |start: usize, len: usize, (absolute, relative): (f64, f64), floor| {
+            let allowance = c.add(
+                &c.add_scalar(
+                    &c.mul_scalar(&c.abs(&gx.narrow(0, start, len)?)?, relative)?,
+                    absolute,
+                )?,
+                floor,
             )?;
             let part = change.narrow(0, start, len)?;
             Ok::<_, SurfaceChannelError>([largest(&part)?, largest(&c.div(&part, &allowance)?)?])
         };
-        let [head, head_ratio] = budget(0, n, config.head_absolute_m, config.head_relative)?;
-        let [transfer, transfer_ratio] =
-            budget(n, l, config.transfer_absolute_m3, config.transfer_relative)?;
-        let mut parts = vec![
+        let [volume_floor, stage_floor] = &evaluation.resolution;
+        let [head, head_ratio] = budget(
+            0,
+            n,
+            (config.head_absolute_m, config.head_relative),
+            stage_floor,
+        )?;
+        let [transfer, transfer_ratio] = budget(
+            n,
+            l,
+            (config.transfer_absolute_m3, config.transfer_relative),
+            volume_floor,
+        )?;
+        let parts = [
             head,
             head_ratio,
             transfer,
             transfer_ratio,
             largest(&change.narrow(0, n + l, n + l)?)?,
         ];
-        if let Some(earlier) = earlier {
-            parts.push(largest(&c.abs(&c.sub(gx, earlier)?)?)?);
-        }
         let values = c
             .cat(&parts.iter().collect::<Vec<_>>(), 0)?
             .try_to_vec::<f64>()?;
-        let &[head_m, head_ratio, transfer_m3, transfer_ratio, flags, ..] = values.as_slice()
-        else {
+        let &[head_m, head_ratio, transfer_m3, transfer_ratio, flags] = values.as_slice() else {
             return Err(SurfaceChannelError::Numerical(
                 "iteration residual read lacks a maximum".into(),
             ));
-        };
-        // Equal values can still differ in signed zeros, so a repeat is confirmed bit for bit.
-        let repeats = match (earlier, values.get(5)) {
-            (Some(earlier), Some(&0.0)) => same_bits(gx, earlier)?,
-            _ => false,
         };
         if !head_m.is_finite() || !transfer_m3.is_finite() || !flags.is_finite() {
             return Err(SurfaceChannelError::Numerical(
                 "iteration residual is nonfinite: rescale heads or link volumes".into(),
             ));
         }
-        let norm = head_ratio.max(transfer_ratio);
-        let residuals = Residuals {
+        Ok(Residuals {
             head_m,
             transfer_m3,
-            norm,
+            norm: head_ratio.max(transfer_ratio),
             converged: head_ratio <= 1.0 && transfer_ratio <= 1.0 && flags == 0.0,
-        };
-        Ok((residuals, repeats))
+        })
     }
 
-    /// Solves the attempt by Anderson iteration with no history.
+    /// Solves the attempt by fixed-point iteration with no history.
     ///
     /// The levelling operands come from one zero-exchange completion before the first update.
-    /// The root's own evaluation is the candidate. An attempt that cannot converge rejects at
+    /// Each unconverged update takes the plan-area response step of [`Context::respond`].
+    /// Convergence tests the map value against its iterate. The root's own evaluation is the
+    /// candidate. An attempt that cannot converge rejects at
     /// once and records its [`Stall`] in `stalled`:
     /// - An iterate that repeats the one two updates earlier: the update-limit rejection it
     ///   would reach, with contraction one.
@@ -154,16 +149,37 @@ where
         // The map keeps its latest evaluation with its iterate. With no history and unit
         // mixing, the root is the last iterate, so its evaluation is the accepted candidate.
         let latest: RefCell<Option<(Tensor<R>, Evaluation<R>)>> = RefCell::new(None);
-        let checked: RefCell<Option<Residuals>> = RefCell::new(None);
+        // Residuals of the latest evaluation, and whether its next iterate repeats the iterate
+        // before it.
+        let checked: RefCell<Option<(Residuals, bool)>> = RefCell::new(None);
+        // The iterate before `x`. The map is deterministic, so a next iterate equal to it in
+        // every bit starts a cycle of unconverged iterates that lasts to the update limit.
+        let before: RefCell<Option<Tensor<R>>> = RefCell::new(None);
+        // The map value `g(x)` decides convergence. An unconverged `x` moves on by the response
+        // step, so a converged evaluation computes no step.
         let map = |x: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
             let evaluation = self
                 .evaluate(
                     surface, reaches, reach_ids, start, attempt, &levelling, x, &trials,
                 )
                 .map_err(record)?;
-            let packet = evaluation.packet.clone();
+            let earlier = before.replace(Some(x.clone()));
+            let residuals = self.residuals(config, x, &evaluation).map_err(record)?;
+            let (next, repeats) = if residuals.converged {
+                (evaluation.packet.clone(), false)
+            } else {
+                let next = self
+                    .respond(start, attempt, &levelling, &evaluation)
+                    .map_err(record)?;
+                let repeats = match &earlier {
+                    Some(earlier) => same_bits(&next, earlier).map_err(record)?,
+                    None => false,
+                };
+                (next, repeats)
+            };
+            *checked.borrow_mut() = Some((residuals, repeats));
             *latest.borrow_mut() = Some((x.clone(), evaluation));
-            Ok(packet)
+            Ok(next)
         };
         let options = AndersonOptions {
             m: 0,
@@ -173,17 +189,15 @@ where
                 ..RootOptions::default()
             },
         };
-        // The iterate before `x`. The map is deterministic, so a next iterate equal to it in
-        // every bit starts a cycle of unconverged iterates that lasts to the update limit.
-        let before: RefCell<Option<Tensor<R>>> = RefCell::new(None);
         let norms: RefCell<Vec<f64>> = RefCell::new(Vec::new());
         let root =
             self.client
-                .anderson_with_convergence(map, &start.initial, &options, |x, gx, _| {
-                    let earlier = before.replace(Some(x.clone()));
-                    let (residual, repeats) = self
-                        .residuals_against(config, x, gx, earlier.as_ref())
-                        .map_err(record)?;
+                .anderson_with_convergence(map, &start.initial, &options, |_, _, _| {
+                    let (residual, repeats) = checked.borrow_mut().take().ok_or_else(|| {
+                        record(SurfaceChannelError::Numerical(
+                            "fixed-point update lacks its residuals".into(),
+                        ))
+                    })?;
                     let mut norms = norms.borrow_mut();
                     norms.push(residual.norm);
                     if !residual.converged {
@@ -207,31 +221,33 @@ where
                         residual_norm: residual.norm,
                         converged: residual.converged,
                     };
-                    *checked.borrow_mut() = Some(residual);
+                    *checked.borrow_mut() = Some((residual, repeats));
                     Ok(decision)
                 });
         if let Some(error) = error.into_inner() {
             return Err(error);
         }
         let root = root.map_err(|e| SurfaceChannelError::Numerical(e.to_string()))?;
-        if !root.converged {
-            return Err(exhausted(config));
-        }
+        // At the update limit the solver reports no convergence, even when the last update
+        // converges. That last update's own check decides.
         // Reevaluation repeats the same calculation on the same operands, so it runs only
         // when the root is not the latest evaluated iterate.
         let (evaluation, residuals) = match (latest.into_inner(), checked.into_inner()) {
-            (Some((x, evaluation)), Some(residuals)) if x.shares_storage_with(&root.x) => {
+            (Some((x, evaluation)), Some((residuals, _))) if x.shares_storage_with(&root.x) => {
                 (evaluation, residuals)
             }
             _ => {
                 let evaluation = self.evaluate(
                     surface, reaches, reach_ids, start, attempt, &levelling, &root.x, &trials,
                 )?;
-                let residuals = self.residuals(config, &root.x, &evaluation.packet)?;
+                let residuals = self.residuals(config, &root.x, &evaluation)?;
                 (evaluation, residuals)
             }
         };
         if !residuals.converged {
+            if !root.converged {
+                return Err(exhausted(config));
+            }
             return Err(SurfaceChannelError::Numerical(
                 "final reevaluation exceeds head or transfer budgets, or changes support or regime: shorten the common interval".into(),
             ));

@@ -63,6 +63,9 @@ pub(super) struct Evaluation<R: Runtime<DType = DType>> {
     pub midpoint: Tensor<R>,
     /// Output iterate: end stages, signed volumes, end support, regimes.
     pub packet: Tensor<R>,
+    /// Change one rounding of the midpoint heads can cause: in each link volume, `[L]`, and in
+    /// each end stage, `[S + C]`. See [`Context::resolution`].
+    pub resolution: [Tensor<R>; 2],
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -157,7 +160,7 @@ where
         let midpoint = c.midpoint(&start.stage, &x.narrow(0, 0, n)?)?;
         let end_wet = x.narrow(0, n + l, n)?;
         let wet = c.maximum(&start.wet, &end_wet)?;
-        let law = self.weir(&midpoint, &wet)?;
+        let law = self.weir(&midpoint, &wet, &levelling.level)?;
         let proposed = self
             .link_structures()?
             .held_volumes(&law, attempt.dt)
@@ -170,6 +173,7 @@ where
         let borrowed: Vec<&ChannelReach<R>> = linked.iter().collect();
         let (end_stage, end_wet) = self.stages(&next_surface, &borrowed, reach_ids)?;
         let packet = c.cat(&[&end_stage, &exchange.signed, &end_wet, &law.regime], 0)?;
+        let resolution = self.resolution(&law, &exchange.signed, &midpoint, levelling)?;
         Ok(Evaluation {
             surface: next_surface,
             linked,
@@ -177,6 +181,7 @@ where
             regime: law.regime,
             midpoint,
             packet,
+            resolution,
         })
     }
 

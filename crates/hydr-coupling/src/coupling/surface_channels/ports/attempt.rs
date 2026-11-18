@@ -296,13 +296,13 @@ mod tests {
         balanced(&next)
     }
 
-    /// The reach starts above the surface. Water runs out through the port, then back.
+    /// The reach starts above the surface. Water runs out through the port and the bank link,
+    /// then back.
     ///
     /// Every interval checks the step mass bound and the lifetime composite balance.
     /// Returns the port receipts of every interval and the last batch.
     fn seiche(intervals: usize) -> TestResult<(Vec<PortInterval>, Batch)> {
         let mut case = Scenario::rest(1.0, 1.6, 0.5, vec![west("p")]);
-        case.link = false;
         case.alpha = Reach::rest(0.5, 1.75);
         let mut batch = case.build()?;
         let mut run = Vec::with_capacity(intervals);

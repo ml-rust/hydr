@@ -12,11 +12,11 @@ mod binding;
 mod endpoint;
 mod faces;
 #[cfg(test)]
-mod fixture;
+pub(super) mod fixture;
 mod ghosts;
 mod receipt;
 #[cfg(test)]
-mod scenario;
+pub(super) mod scenario;
 mod topology;
 
 use super::{SurfaceChannelError, SurfaceChannelSetup};

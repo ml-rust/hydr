@@ -180,7 +180,7 @@ where
             let linked: Vec<&ChannelReach<R>> =
                 self.linked.iter().map(|r| &reaches[r.reach]).collect();
             let (stage, wet) = self.stages(surface, &linked, reach_ids)?;
-            let regime = self.weir(&stage, &wet)?.regime;
+            let regime = self.weir(&stage, &wet, &self.level_heads(&stage)?)?.regime;
             let initial = c.cat(&[&stage, &zeros, &wet, &regime], 0)?;
             (stage, wet, initial)
         };
@@ -239,38 +239,61 @@ where
 
     /// Weir law of every link at group `stage` with support `wet`, both `[S + C]`.
     ///
-    /// Submerged heads that differ by at most the head allowance count as equal heads and carry
-    /// no water. The allowance is `head_absolute_m + head_relative * max(|H_a|, |H_b|)`.
+    /// A submerged link where `level` is one counts as equal heads and carries no water.
     pub fn weir(
         &self,
         stage: &Tensor<R>,
         wet: &Tensor<R>,
+        level: &Tensor<R>,
     ) -> Result<TensorStructureResult<R>, SurfaceChannelError> {
         let c = &self.client;
-        let supported = c.mul(wet, &c.gt(stage, &self.bed)?)?;
         let gather = |values: &Tensor<R>, index: &Tensor<R>| c.index_select(values, 0, index);
-        let surface = gather(stage, &self.link_a)?;
-        let channel = gather(stage, &self.link_b)?;
-        let mut law = self
-            .link_structures()?
-            .evaluate_heads(
-                &surface,
-                &channel,
-                &self.bed_a,
-                &self.bed_b,
-                &gather(&supported, &self.link_a)?,
-                &gather(&supported, &self.link_b)?,
-            )
-            .map_err(|error| SurfaceChannelError::Numerical(format!("link weir: {error}")))?;
+        self.link_weir(
+            [&gather(stage, &self.link_a)?, &gather(stage, &self.link_b)?],
+            [&gather(wet, &self.link_a)?, &gather(wet, &self.link_b)?],
+            level,
+        )
+    }
+
+    /// One where a link's surface and channel `stage`, `[S + C]`, differ by at most the head
+    /// allowance, `[L]`.
+    ///
+    /// The allowance is `head_absolute_m + head_relative * max(|H_s|, |H_c|)`.
+    pub fn level_heads(&self, stage: &Tensor<R>) -> Result<Tensor<R>, SurfaceChannelError> {
+        let c = &self.client;
+        let surface = c.index_select(stage, 0, &self.link_a)?;
+        let channel = c.index_select(stage, 0, &self.link_b)?;
         let magnitude = c.maximum(&c.abs(&surface)?, &c.abs(&channel)?)?;
         let allowance = c.add_scalar(
             &c.mul_scalar(&magnitude, self.head_relative)?,
             self.head_absolute_m,
         )?;
-        let level = c.mul(
-            &c.eq(&law.regime, &self.scalar(SUBMERGED_CODE)?)?,
-            &c.le(&c.abs(&c.sub(&surface, &channel)?)?, &allowance)?,
-        )?;
+        Ok(c.le(&c.abs(&c.sub(&surface, &channel)?)?, &allowance)?)
+    }
+
+    /// Weir law of every link at its surface and channel `stages` and `wet` masks, each `[L]`.
+    ///
+    /// A side supports flow when it is wet and stands above its bed. A submerged link where
+    /// `level` is one counts as equal heads and carries no water.
+    pub fn link_weir(
+        &self,
+        [surface, channel]: [&Tensor<R>; 2],
+        [wet_surface, wet_channel]: [&Tensor<R>; 2],
+        level: &Tensor<R>,
+    ) -> Result<TensorStructureResult<R>, SurfaceChannelError> {
+        let c = &self.client;
+        let mut law = self
+            .link_structures()?
+            .evaluate_heads(
+                surface,
+                channel,
+                &self.bed_a,
+                &self.bed_b,
+                &c.mul(wet_surface, &c.gt(surface, &self.bed_a)?)?,
+                &c.mul(wet_channel, &c.gt(channel, &self.bed_b)?)?,
+            )
+            .map_err(|error| SurfaceChannelError::Numerical(format!("link weir: {error}")))?;
+        let level = c.mul(&c.eq(&law.regime, &self.scalar(SUBMERGED_CODE)?)?, level)?;
         law.regime = c.where_cond(&level, &self.scalar(EQUAL_HEADS_CODE)?, &law.regime)?;
         law.discharge = c.where_cond(&level, &self.scalar(0.0)?, &law.discharge)?;
         Ok(law)

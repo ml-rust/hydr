@@ -233,8 +233,8 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
             doc: SURFACE_CHANNELS_DOC,
         },
         Limit {
-            id: "picard-convergence",
-            summary: "Plain fixed-point iteration can stall on stiff drains. A residual forecast ends a stalled attempt early, and its measured contraction sets the shorter retry.",
+            id: "fixed-point-convergence",
+            summary: "Each update solves every link against a plan-area model of its end stages, so steep weirs near level heads keep their step. Allowances add the change one rounding of the heads causes. A residual forecast ends a stalled attempt early, and its measured contraction sets the shorter retry.",
             doc: SURFACE_CHANNELS_DOC,
         },
         Limit {
@@ -255,7 +255,7 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
     ],
     summary: Summary {
         equations: "2D shallow-water surface and 1D channel reaches exchanging water through suppressed rectangular bank weirs with Villemonte submergence",
-        method: "fixed-point iteration of end stages and signed link volumes over one common interval, midpoint-head weir volumes, a levelling cap per link, one shared factor per donor, and nested child admission",
+        method: "fixed-point iteration of end stages and signed link volumes over one common interval, with a plan-area response step per update, midpoint-head weir volumes, a levelling cap per link, one shared factor per donor, and nested child admission",
         assessment: "selected spill, reversal, donor-limit, retry and restart cases; field accuracy remains unestablished",
     },
 };
