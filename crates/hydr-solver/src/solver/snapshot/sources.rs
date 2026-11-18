@@ -5,6 +5,7 @@ use super::check::{nonnegative, rejected, require};
 use crate::contract::EngineError;
 use crate::numerics::outward::adjustment_volume_totals;
 use crate::soil::LandCell;
+use crate::solver::coupling::SurfacePorts;
 use crate::solver::{Solver, SourceReceipt, StepDiagnostics};
 use numr::dtype::DType;
 use numr::runtime::{Runtime, RuntimeClient};
@@ -15,6 +16,7 @@ pub(super) fn check<R: Runtime<DType = DType>>(
     data: &SnapshotData,
     step: &StepDiagnostics,
     interval_index: usize,
+    ports: Option<&SurfacePorts<R>>,
 ) -> Result<(), EngineError>
 where
     R::Client: numr::ops::BinaryOps<R>
@@ -143,6 +145,12 @@ where
             area,
         )?;
     }
+    // Port water enters through port faces and counts as exchange water.
+    if let Some(ports) = ports {
+        let [inflow, outflow] = ports.face_volumes(&step.faces)?;
+        exchange[0] += inflow;
+        exchange[1] += outflow;
+    }
     check_local_depths(data, step, &post_source, exchange)?;
     Ok(())
 }
@@ -242,7 +250,8 @@ fn check_cell(
 
 /// Replays each cell's post-source depth, face volumes, and exchange depths against accepted depth.
 ///
-/// `exchange` holds the receipt inflow and withdrawal depths summed as volumes in m³.
+/// `exchange` holds the receipt inflow and withdrawal depths summed as volumes in m³, plus
+/// the port face volumes into and out of the surface.
 fn check_local_depths(
     data: &SnapshotData,
     step: &StepDiagnostics,

@@ -4,7 +4,7 @@ use super::super::Solver;
 use super::super::tensor::land_sources::{
     SourceInputs, SourceTrial, calculate as calculate_sources,
 };
-use super::super::tensor::transport::{self, TensorTransport};
+use super::super::tensor::transport::{self, PortGhostFaces, TensorTransport};
 use crate::contract::EngineError;
 use numr::dtype::DType;
 use numr::ops::{
@@ -76,13 +76,15 @@ where
 {
     /// Runs sources, post-source checks, face fluxes, and the CFL and depletion limits.
     ///
-    /// Reads only the accepted state, the forcing interval at `trial.index`, and `trial.dt`.
+    /// Reads only the accepted state, the forcing interval at `trial.index`, `trial.dt`, and
+    /// the coordinator port ghosts. Port face speeds and outflow enter both limits.
     ///
     /// # Errors
     /// Returns non-retryable source, transport, CFL, and depletion errors.
     pub(in crate::solver) fn prepare_interval(
         &self,
         trial: IntervalTrial,
+        ports: Option<PortGhostFaces<'_, R>>,
     ) -> Result<Preparation<R>, EngineError> {
         let config = self.config();
         let client = &self.context.client;
@@ -123,7 +125,7 @@ where
         let state = &sources.state;
         self.finite(&state.qx, "post-source qx")?;
         self.finite(&state.qy, "post-source qy")?;
-        let flux = match transport::calculate(&self.context, state, source, config, area) {
+        let flux = match transport::calculate(&self.context, state, source, config, area, ports) {
             Ok(flux) => flux,
             Err(error @ EngineError::Boundary { .. }) => {
                 return Ok(Preparation::BoundaryRetry(error));

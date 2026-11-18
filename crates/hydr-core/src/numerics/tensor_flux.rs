@@ -76,6 +76,8 @@ where
         left_pressure: lp,
         right_pressure: rp,
         speed: homogeneous.speed,
+        lower: homogeneous.lower,
+        upper: homogeneous.upper,
     })
 }
 

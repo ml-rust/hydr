@@ -66,6 +66,57 @@ pub(in crate::solver) fn lake() -> TestResult<Solver<CpuRuntime>> {
     )?)
 }
 
+/// A walled 3 by 2 grid of 2 m by 3 m cells, 0.5 m deep at rest, with cell 4 inactive.
+pub(in crate::solver) fn ported_grid() -> TestResult<Solver<CpuRuntime>> {
+    let active = vec![true, true, true, true, false, true];
+    let domain = Domain::new(
+        CartesianGrid::new(3, 2, 2.0, 3.0)?,
+        vec![0.0; 6],
+        vec![0.0; 6],
+        active.clone(),
+        SpatialReference::new("projected".into(), "datum".into(), [0.0; 2])?,
+    )?;
+    let boundaries = BoundaryConditions::impermeable_walls();
+    let forcing = ForcingSchedule::new(
+        &domain,
+        &boundaries,
+        vec![ForcingInterval {
+            start: 0.0,
+            end: 10.0,
+            rain: vec![0.0; 6],
+            potential_evaporation: vec![0.0; 6],
+            withdrawal: vec![0.0; 6],
+            boundaries: Vec::new(),
+        }],
+    )?;
+    let land = LandModel::impervious(&domain);
+    let soil = SoilState::initialized(&land)?;
+    let cells = active
+        .iter()
+        .map(|active| CellState {
+            h: if *active { 0.5 } else { 0.0 },
+            qx: 0.0,
+            qy: 0.0,
+        })
+        .collect();
+    let flow = FlowState::new(&domain, cells)?;
+    Ok(Solver::<CpuRuntime>::new(
+        CpuClient::new(CpuDevice::new()).with_parallelism(ParallelismConfig::new(Some(1), None)),
+        SolverSetup {
+            domain,
+            land,
+            boundaries,
+            forcing,
+            config: SolverConfig::default(),
+        },
+        InitialState {
+            time: 0.0,
+            flow,
+            soil,
+        },
+    )?)
+}
+
 /// Builds exchange operands over `links` from host lanes.
 pub(in crate::solver) fn exchange(
     links: &SurfaceLinks<CpuRuntime>,
@@ -90,7 +141,7 @@ pub(in crate::solver) fn coupled_step(
     exchange: Option<&ExchangeSource<CpuRuntime>>,
     links: &SurfaceLinks<CpuRuntime>,
 ) -> TestResult<Solver<CpuRuntime>> {
-    let CouplingPreparation::Ready(stage) = solver.coupling_prepare(end, 0, links)? else {
+    let CouplingPreparation::Ready(stage) = solver.coupling_prepare(end, 0, links, None)? else {
         return Err("the lake step must prepare without retry".into());
     };
     match solver.coupling_complete(&stage, exchange)? {

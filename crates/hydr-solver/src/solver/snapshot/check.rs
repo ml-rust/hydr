@@ -2,6 +2,7 @@ use super::{SNAPSHOT_SCHEMA, SnapshotData};
 use crate::contract::{EngineError, package_identity};
 use crate::model::FlowState;
 use crate::soil::SoilState;
+use crate::solver::coupling::SurfacePorts;
 use crate::solver::engine::Accepted;
 use crate::solver::tensor::TensorState;
 use crate::solver::tensor::land::{TensorLand, static_error};
@@ -38,25 +39,35 @@ where
     /// Rejects incompatible identities, definitions, fields, accounting, face support, or
     /// coordinator exchange before changing accepted state.
     pub fn restore_data(&mut self, data: &SnapshotData) -> Result<(), EngineError> {
-        self.import_data(data, Exchange::Reject)
+        self.import_data(data, Exchange::Reject, None)
     }
 
     /// Imports a same-build checkpoint that can carry coordinator exchange water.
     ///
     /// Runs every [`Solver::restore_data`] check except the standalone exchange rejection.
+    /// `ports` names the port faces whose last-step volumes count as exchange water.
     ///
     /// # Errors
-    /// Rejects incompatible identities, definitions, fields, accounting, or face support before changing accepted state.
+    /// Rejects incompatible identities, definitions, fields, accounting, face support, or
+    /// ports for another engine before changing accepted state.
     #[doc(hidden)]
-    pub fn coupling_restore_data(&mut self, data: &SnapshotData) -> Result<(), EngineError> {
-        self.import_data(data, Exchange::Admit)
+    pub fn coupling_restore_data(
+        &mut self,
+        data: &SnapshotData,
+        ports: Option<&SurfacePorts<R>>,
+    ) -> Result<(), EngineError> {
+        self.import_data(data, Exchange::Admit, ports)
     }
 
     pub(in crate::solver) fn import_data(
         &mut self,
         data: &SnapshotData,
         exchange: Exchange,
+        ports: Option<&SurfacePorts<R>>,
     ) -> Result<(), EngineError> {
+        if let Some(ports) = ports {
+            ports.check(self)?;
+        }
         package_identity(
             "surface solver",
             &data.schema,
@@ -100,7 +111,7 @@ where
             ),
         )?;
         if let Some(step) = &data.last_step {
-            self.check_last(data, step, storage)?;
+            self.check_last(data, step, storage, ports)?;
         } else {
             let ledger = &data.ledger;
             require(
@@ -321,13 +332,17 @@ mod tests {
             .map(|error| error.to_string())
             .unwrap_or_default();
         assert!(message.contains(coordinator), "{message}");
-        standalone.coupling_restore_data(&data)?;
+        standalone.coupling_restore_data(&data, None)?;
         assert_eq!(standalone.snapshot().data()?, data);
         let mut trusted = lake()?;
         trusted.coupling_restore(&coupled.snapshot())?;
         assert_eq!(trusted.snapshot().data()?, data);
-        let resumed =
-            Solver::<CpuRuntime>::coupling_resume(client(), &data, data.setup.forcing.clone())?;
+        let resumed = Solver::<CpuRuntime>::coupling_resume(
+            client(),
+            &data,
+            data.setup.forcing.clone(),
+            None,
+        )?;
         assert_eq!(resumed.snapshot().data()?, data);
         // A standalone package still restores through the standalone import.
         let plain = coupled_step(&solver, 0.05, None, &links)?

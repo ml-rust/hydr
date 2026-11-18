@@ -13,6 +13,8 @@ pub mod solver;
 #[doc(hidden)]
 pub mod internal {
     pub use crate::solver::coupling::{
-        CouplingCompletion, CouplingPreparation, ExchangeSource, SurfaceCouplingStage, SurfaceLinks,
+        CouplingCompletion, CouplingPorts, CouplingPreparation, ExchangeSource, PortFluxes,
+        PortGhosts, PortReachEnd, SurfaceCouplingStage, SurfaceLinks, SurfacePortSpec,
+        SurfacePorts,
     };
 }

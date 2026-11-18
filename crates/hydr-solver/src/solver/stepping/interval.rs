@@ -85,7 +85,7 @@ where
                 dt,
                 retry,
             };
-            let prepared = match self.prepare_interval(trial)? {
+            let prepared = match self.prepare_interval(trial, None)? {
                 Preparation::Ready(prepared) => {
                     last_source_error = None;
                     prepared
@@ -237,7 +237,7 @@ mod tests {
                 dt,
                 retry,
             };
-            let Preparation::Ready(prepared) = split.prepare_interval(trial)? else {
+            let Preparation::Ready(prepared) = split.prepare_interval(trial, None)? else {
                 return Err("an accepted step must prepare without retry".into());
             };
             assert!(dt <= prepared.limit());
@@ -284,7 +284,8 @@ mod tests {
         let links = coupled.coupling_links(&[1])?;
         for (start, end, retry) in plan {
             assert_eq!(coupled.time().to_bits(), start.to_bits());
-            let CouplingPreparation::Ready(stage) = coupled.coupling_prepare(end, retry, &links)?
+            let CouplingPreparation::Ready(stage) =
+                coupled.coupling_prepare(end, retry, &links, None)?
             else {
                 return Err("an accepted step must prepare without retry".into());
             };

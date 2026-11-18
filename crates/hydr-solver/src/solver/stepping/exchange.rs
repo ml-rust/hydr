@@ -220,7 +220,8 @@ mod tests {
         let solver = lake()?;
         let links = solver.coupling_links(&[0, 2])?;
         let end = 0.05;
-        let CouplingPreparation::Ready(stage) = solver.coupling_prepare(end, 0, &links)? else {
+        let CouplingPreparation::Ready(stage) = solver.coupling_prepare(end, 0, &links, None)?
+        else {
             return Err("the lake step must prepare without retry".into());
         };
         let available = stage.available_volume_m3().try_to_vec::<f64>()?;
@@ -294,7 +295,7 @@ mod tests {
         // The restart checks replay the exchange through the coordinator import.
         let data = next.snapshot().data()?;
         let mut restored = lake()?;
-        restored.coupling_restore_data(&data)?;
+        restored.coupling_restore_data(&data, None)?;
         assert_eq!(restored.snapshot().data()?, data);
         Ok(())
     }
@@ -303,7 +304,8 @@ mod tests {
     fn exchange_withdrawal_beyond_available_rejects() -> TestResult {
         let solver = lake()?;
         let links = solver.coupling_links(&[1])?;
-        let CouplingPreparation::Ready(stage) = solver.coupling_prepare(0.05, 0, &links)? else {
+        let CouplingPreparation::Ready(stage) = solver.coupling_prepare(0.05, 0, &links, None)?
+        else {
             return Err("the lake step must prepare without retry".into());
         };
         let available = stage.available_volume_m3().try_to_vec::<f64>()?[0];

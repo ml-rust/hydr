@@ -3,7 +3,7 @@
 use super::super::Solver;
 use super::super::definition::Definition;
 use super::super::stepping::{Completion, IntervalTrial, Preparation, PreparedInterval};
-use super::{ExchangeSource, SurfaceLinks};
+use super::{ExchangeSource, PortFluxes, PortGhosts, SurfaceLinks, SurfacePorts};
 use crate::contract::EngineError;
 use numr::dtype::DType;
 use numr::ops::{
@@ -93,7 +93,18 @@ impl<R: Runtime<DType = DType>> SurfaceCouplingStage<R> {
         let [x, y] = &self.velocity_xy;
         [x, y]
     }
+
+    /// Returns the port face and per-port flux receipts. A stage without ports returns `None`.
+    ///
+    /// The fluxes come from the post-source surface state and the trial's ghost states.
+    /// Their speeds are in [`Self::cfl_limit`] and their outflow in [`Self::depletion_limit`].
+    pub fn port_fluxes(&self) -> Option<&PortFluxes<R>> {
+        self.prepared.flux.ports.as_ref()
+    }
 }
+
+/// Port faces with the ghost states of one trial.
+pub type CouplingPorts<'a, R> = (&'a SurfacePorts<R>, &'a PortGhosts<R>);
 
 /// Outcome of [`Solver::coupling_prepare`]. A retry variant asks the coordinator to shorten the step.
 #[doc(hidden)]
@@ -136,20 +147,29 @@ where
     /// Runs the forcing lookup, sources, face fluxes, and step limits of a standalone trial.
     /// `retry` is the retry count the accepted step records.
     ///
+    /// `ports` replaces the missing side of each port face with its ghost state before the
+    /// HLL flux. Port face speeds enter the CFL limit and port outflow the depletion limit.
+    /// Completion counts port water in the exchange totals.
+    ///
     /// # Errors
-    /// Rejects links for another grid, an `end` outside the covering forcing interval or past
-    /// `max_step`, a `retry` above `max_retries`, a retried step below `min_step`, and every
-    /// non-retryable source, transport, CFL, and depletion error.
+    /// Rejects links or ports for another grid, ghosts for other ports, an `end` outside the
+    /// covering forcing interval or past `max_step`, a `retry` above `max_retries`, a retried
+    /// step below `min_step`, and every non-retryable source, transport, CFL, and depletion error.
     #[doc(hidden)]
     pub fn coupling_prepare(
         &self,
         end: f64,
         retry: usize,
         links: &SurfaceLinks<R>,
+        ports: Option<CouplingPorts<'_, R>>,
     ) -> Result<CouplingPreparation<R>, EngineError> {
         let config = self.config();
         let time = self.time();
         links.check_grid(self.domain().grid().cell_count())?;
+        if let Some((ports, ghosts)) = ports {
+            ports.check(self)?;
+            ghosts.check(ports)?;
+        }
         let (index, forcing) = self.forcing_interval()?;
         let dt = end - time;
         if !end.is_finite()
@@ -174,7 +194,8 @@ where
             dt,
             retry,
         };
-        let prepared = match self.prepare_interval(trial)? {
+        let ports = ports.map(|(ports, ghosts)| (ports.faces.as_ref(), &ghosts.state));
+        let prepared = match self.prepare_interval(trial, ports)? {
             Preparation::Ready(prepared) => *prepared,
             Preparation::SourceRetry(error) => return Ok(CouplingPreparation::SourceRetry(error)),
             Preparation::BoundaryRetry(error) => {

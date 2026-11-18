@@ -220,7 +220,7 @@ where
         let start = self.time_s;
         let stage = match self
             .surface
-            .coupling_prepare(end, retries, &context.links)?
+            .coupling_prepare(end, retries, &context.links, None)?
         {
             CouplingPreparation::Ready(stage) => *stage,
             CouplingPreparation::SourceRetry(error) | CouplingPreparation::BoundaryRetry(error) => {

@@ -3,6 +3,7 @@
 use super::SnapshotData;
 use super::check::{finite, nonnegative, rejected, require};
 use crate::contract::{Axis, EngineError};
+use crate::solver::coupling::SurfacePorts;
 use crate::solver::{Solver, StepDiagnostics};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
@@ -29,6 +30,7 @@ where
         data: &SnapshotData,
         step: &StepDiagnostics,
         storage: f64,
+        ports: Option<&SurfacePorts<R>>,
     ) -> Result<(), EngineError> {
         let config = &data.setup.config;
         finite(&[step.start, step.end, step.dt], "last interval")?;
@@ -150,7 +152,7 @@ where
                 format!("last={last}, cumulative={total}"),
             )?;
         }
-        super::sources::check(self, data, step, index)?;
+        super::sources::check(self, data, step, index, ports)?;
         let mut boundary_in: f64 = 0.0;
         let mut boundary_out: f64 = 0.0;
         let open_faces: BTreeSet<_> = data.setup.boundaries.open_faces().iter().copied().collect();

@@ -1,6 +1,7 @@
 //! Forecast continuation under forcing spliced after the accepted history.
 
 use super::compatibility::same_interval;
+use super::coupling::SurfacePorts;
 use super::definition::{Definition, retained_index};
 use super::forcing_history::{self, ForcingPrefix};
 use super::receipts::{StepReceipt, rebase_forcing_index};
@@ -89,22 +90,24 @@ where
         data: &SnapshotData,
         forcing: ForcingSchedule,
     ) -> Result<Self, EngineError> {
-        Self::resume_with(client, data, forcing, Exchange::Reject)
+        Self::resume_with(client, data, forcing, Exchange::Reject, None)
     }
 
     /// Resumes a package that can carry coordinator exchange water.
     ///
     /// Runs every [`Solver::resume`] check except the standalone exchange rejection.
+    /// `ports` names the port faces whose last-step volumes count as exchange water.
     ///
     /// # Errors
-    /// Returns construction, import, and continuation errors.
+    /// Returns construction, import, port, and continuation errors.
     #[doc(hidden)]
     pub fn coupling_resume(
         client: R::Client,
         data: &SnapshotData,
         forcing: ForcingSchedule,
+        ports: Option<&SurfacePorts<R>>,
     ) -> Result<Self, EngineError> {
-        Self::resume_with(client, data, forcing, Exchange::Admit)
+        Self::resume_with(client, data, forcing, Exchange::Admit, ports)
     }
 
     fn resume_with(
@@ -112,6 +115,7 @@ where
         data: &SnapshotData,
         forcing: ForcingSchedule,
         exchange: Exchange,
+        ports: Option<&SurfacePorts<R>>,
     ) -> Result<Self, EngineError> {
         if exchange == Exchange::Reject {
             reject_exchange(&data.ledger, data.last_step.as_ref())?;
@@ -122,7 +126,7 @@ where
             Some(data.forcing_prefix.clone()),
             data.accepted.clone(),
         )?;
-        engine.import_data(data, exchange)?;
+        engine.import_data(data, exchange, ports)?;
         engine.continue_with_forcing(forcing)?;
         Ok(engine)
     }

@@ -104,7 +104,7 @@ where
         match self {
             Self::Destination(batch) => {
                 let mut engine = batch.surface.coupling_clone();
-                engine.coupling_restore_data(surface)?;
+                engine.coupling_restore_data(surface, None)?;
                 let reaches = reaches
                     .iter()
                     .zip(&batch.reaches)
@@ -131,6 +131,7 @@ where
                     (*client).clone(),
                     surface,
                     surface.setup.forcing.clone(),
+                    None,
                 )?;
                 let reaches = reaches
                     .iter()

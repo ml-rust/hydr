@@ -1,3 +1,4 @@
+use super::port_faces::{PortFaces, PortFluxes, TransportFaces};
 use super::{TensorDomain, TensorSources, TensorState};
 use crate::contract::{EngineError, SolverConfig};
 use crate::numerics::{TensorFaceState, hydrostatic_hll_tensor};
@@ -22,7 +23,12 @@ pub(crate) struct TensorTransport<R: Runtime<DType = DType>> {
     pub boundary_in_rate: f64,
     pub boundary_out_rate: f64,
     pub boundary_trace: Option<super::boundary::TensorBoundaryReceipt<R>>,
+    /// Coordinator port receipts. A transport without ports holds none.
+    pub ports: Option<PortFluxes<R>>,
 }
+
+/// Port faces with their ghost states for one trial.
+pub(crate) type PortGhostFaces<'a, R> = (&'a PortFaces<R>, &'a TensorFaceState<R>);
 
 pub(crate) fn calculate<R: Runtime<DType = DType>>(
     context: &TensorDomain<R>,
@@ -30,6 +36,7 @@ pub(crate) fn calculate<R: Runtime<DType = DType>>(
     source: &TensorSources<R>,
     config: &SolverConfig,
     area: f64,
+    ports: Option<PortGhostFaces<'_, R>>,
 ) -> Result<TensorTransport<R>, EngineError>
 where
     R::Client: BinaryOps<R>
@@ -66,6 +73,11 @@ where
     let (left, right, transmissive_state) = source
         .exterior
         .prepare(context, state, left, right, config)?;
+    // Port faces are not open faces, so the exterior replacement never touches them.
+    let (left, right) = match ports {
+        Some((faces, ghost)) => faces.replace(client, left, right, ghost)?,
+        None => (left, right),
+    };
     let zero_face = client.mul_scalar(&topology.widths, 0.0)?;
     let one_face = client.add_scalar(&zero_face, 1.0)?;
     let characteristic_speed = |state: &TensorFaceState<R>| -> Result<Tensor<R>, EngineError> {
@@ -141,6 +153,22 @@ where
             .max(&client.mul(&speed, &y_mask)?, &[0], false)?
             .item::<f64>()?,
     ];
+    let ports = match ports {
+        Some((faces, _)) => Some(faces.fluxes(
+            context,
+            TransportFaces {
+                left: &left,
+                right: &right,
+                result: &result,
+                flux: &flux,
+                normal: &normal_flux,
+                tangent: &tangent_flux,
+                pressures: [&pressure_left, &pressure_right],
+                speed: &speed,
+            },
+        )?),
+        None => None,
+    };
     let scatter = |ids: &Tensor<R>, values: &Tensor<R>| {
         client.scatter_reduce(&context.zero, 0, ids, values, ScatterReduceOp::Sum, true)
     };
@@ -220,6 +248,7 @@ where
         boundary_in_rate,
         boundary_out_rate,
         boundary_trace,
+        ports,
     })
 }
 

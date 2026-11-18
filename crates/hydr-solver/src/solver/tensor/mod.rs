@@ -5,6 +5,7 @@ mod boundary_trace;
 mod exterior;
 pub(crate) mod land;
 pub(crate) mod land_sources;
+pub(crate) mod port_faces;
 mod storage;
 mod topology;
 pub(crate) mod transport;

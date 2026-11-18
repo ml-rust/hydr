@@ -21,6 +21,10 @@ pub struct TensorFaceFlux<R: Runtime<DType = DType>> {
     pub left_pressure: Tensor<R>,
     pub right_pressure: Tensor<R>,
     pub speed: Tensor<R>,
+    /// Signed lower wave bound along the face normal, in m/s.
+    pub lower: Tensor<R>,
+    /// Signed upper wave bound along the face normal, in m/s.
+    pub upper: Tensor<R>,
 }
 
 pub fn constant<R>(like: &Tensor<R>, value: f64) -> Result<Tensor<R>, EngineError>

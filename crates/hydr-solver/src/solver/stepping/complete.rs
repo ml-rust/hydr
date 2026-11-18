@@ -137,7 +137,7 @@ where
         let water_adjustment_volume = sources.adjustment_volume;
         let boundary_in = flux.boundary_in_rate * dt;
         let boundary_out = flux.boundary_out_rate * dt;
-        let (exchange_in_volume, exchange_out_volume, exchange_representation_error) =
+        let (mut exchange_in_volume, mut exchange_out_volume, exchange_representation_error) =
             match &exchange {
                 Some(outcome) => (
                     outcome.inflow_volume,
@@ -146,6 +146,11 @@ where
                 ),
                 None => (0.0, 0.0, 0.0),
             };
+        // Port water is internal to the coordinated system, so it counts as exchange water.
+        if let Some(ports) = &flux.ports {
+            exchange_in_volume += ports.inflow_rate_m3_per_s * dt;
+            exchange_out_volume += ports.outflow_rate_m3_per_s * dt;
+        }
         // Exchange enters as a separate final term, so a `+0.0` exchange keeps the standalone bits.
         let residual = (storage_after - storage_before)
             - (rain_volume - infiltration_volume - evaporation_volume - withdrawal_volume
