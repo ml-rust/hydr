@@ -1,10 +1,13 @@
+mod division;
+#[cfg(test)]
+mod fixture;
+mod manning;
+mod selection;
+
 use super::source_diagnostics::FrictionGeometryState;
 use crate::channel::flow::{
-    ChannelError,
-    conserved_point::ConservedPoint,
-    conserved_update::{ExpansionClient, center, exact_over, expanded},
-    context::Context,
-    geometry::TensorGeometry,
+    ChannelError, conserved_point::ConservedPoint, conserved_update::ExpansionClient,
+    context::Context, geometry::TensorGeometry,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -139,174 +142,162 @@ where
             }),
         })
     }
+}
 
-    /// Divide the two-part momentum by the divisor and select the center once.
-    ///
-    /// Inactive rows keep both parts bit for bit with zero radius. The impulse is the
-    /// selected point minus the original point. The caller attaches the geometry state.
-    pub(in crate::channel::flow) fn surveyed_friction_division(
-        &self,
-        momentum: &ConservedPoint<R>,
-        divisor: &FrictionDivisor<R>,
-    ) -> Result<SurveyedFriction<R>, ChannelError> {
-        let c = &self.client;
-        let zero = self.constant(&momentum.high, 0.0)?;
-        let active = &divisor.active;
-        expanded::<R, _>(c, "surveyed Manning two-part division", |a| {
-            let value = exact_over(a, &momentum.high, &momentum.low, &zero)?;
-            let denominator = exact_over(a, &divisor.denominator, &zero, &zero)?;
-            let quotient = a.expansion_div_positive(&value, &denominator)?;
-            let high = c.where_cond(active, quotient.high(), &momentum.high)?;
-            let low = c.where_cond(active, quotient.low(), &momentum.low)?;
-            let division = c.where_cond(active, quotient.abs_error(), &zero)?;
-            let point = exact_over(a, &high, &low, &zero)?;
-            let impulse = a.expansion_sub(&point, &value)?;
-            let division = a.point(&division)?;
-            let subtraction = a.point(impulse.abs_error())?;
-            let radius = a.add(&division, &subtraction)?;
-            Ok(SurveyedFriction {
-                point: center(&point),
-                impulse: center(&impulse),
-                radius: radius.upper().clone(),
-                geometry: None,
-            })
-        })
+#[cfg(test)]
+mod tests {
+    use super::super::friction_test_data::ODE;
+    use super::fixture::{TestResult, reach, reach_with_client};
+    use super::*;
+    use numr::ops::HypotOps;
+    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+    use solvr::optimize::roots::BatchedBisectionAlgorithms;
+
+    #[test]
+    fn original_fixed_area_manning_matches_fourteen_exact_power_ode_references() -> TestResult {
+        let client = CpuClient::new(CpuDevice::new())
+            .with_parallelism(ParallelismConfig::new(Some(1), None));
+        check_ode_references::<CpuRuntime>(client)
     }
 
-    pub(in crate::channel::flow) fn surveyed_radius_selection_bound(
-        &self,
-        lower: &Tensor<R>,
-        upper: &Tensor<R>,
-        selected: &Tensor<R>,
-        magnitude: &Tensor<R>,
-        active: &Tensor<R>,
-    ) -> Result<Tensor<R>, ChannelError> {
-        let TensorGeometry::Surveyed(geometry) = &self.geometry else {
-            return Err(ChannelError::input(
-                "surveyed radius selection requires surveyed geometry: select the matching source method",
-            ));
-        };
-        let c = &self.client;
-        let zero = self.constant(magnitude, 0.0)?;
-        let one = self.constant(magnitude, 1.0)?;
-        let lower = c.where_cond(active, lower, &one)?;
-        let upper = c.where_cond(active, upper, &one)?;
-        let radius = c.where_cond(active, selected, &one)?;
-        let magnitude = c.where_cond(active, magnitude, &zero)?;
-        self.finite(&lower, "surveyed Manning radius lower bound")?;
-        self.finite(&upper, "surveyed Manning radius upper bound")?;
-        if !self.all(&c.gt(&lower, &zero)?)? {
-            return Err(ChannelError::numerical(
-                "active surveyed Manning radius lower bound is nonpositive: refine recovery or rescale the profile",
-            ));
-        }
-        let contained = c.mul(&c.ge(&radius, &lower)?, &c.le(&radius, &upper)?)?;
-        if !self.all(&contained)? {
-            return Err(ChannelError::numerical(
-                "surveyed Manning selected radius leaves its enclosure: refine recovery or rescale the profile",
-            ));
-        }
-        self.finite(&magnitude, "surveyed Manning original momentum magnitude")?;
-        if !self.all(&c.ge(&magnitude, &zero)?)? {
-            return Err(ChannelError::input(
-                "surveyed Manning momentum magnitude is negative: supply the original absolute momentum",
-            ));
-        }
-        let three = self.constant(&magnitude, 3.0)?;
-        let absolute = self.constant(
-            &magnitude,
-            geometry.numerical.friction_geometry_atol_m4_per_s,
-        )?;
-        let relative = self.constant(&magnitude, geometry.numerical.friction_geometry_rtol)?;
-        let (bound, allowance) = expanded::<R, _>(c, "surveyed Manning radius selection", |a| {
-            let selected = a.point(&radius)?;
-            let lo = a.point(&lower)?;
-            let hi = a.point(&upper)?;
-            let left = a.sub(&selected, &lo)?;
-            let right = a.sub(&hi, &selected)?;
-            let displacement = c.maximum(left.upper(), right.upper())?;
-            let displacement = c.maximum(&displacement, &zero)?;
-            let displacement = a.point(&displacement)?;
-            let relative_displacement = a.div_positive(&displacement, &lower)?;
-            let sensitivity = a.div_positive(&relative_displacement, &three)?;
-            let original_magnitude = a.point(&magnitude)?;
-            let bound = a.mul(&original_magnitude, &sensitivity)?;
-            let relative = a.point(&relative)?;
-            let relative_budget = a.mul(&relative, &original_magnitude)?;
-            let absolute = a.point(&absolute)?;
-            let allowance = a.add(&absolute, &relative_budget)?;
-            Ok((bound.upper().clone(), allowance.lower().clone()))
-        })?;
-        let bound = c.where_cond(active, &bound, &zero)?;
-        if !self.all(&c.le(&bound, &allowance)?)? {
-            return Err(ChannelError::numerical(
-                "surveyed Manning radius-selection bound exceeds its geometry allowance: refine recovery or review friction geometry tolerances",
-            ));
-        }
-        Ok(bound)
-    }
-
-    fn surveyed_manning_update(
-        &self,
-        volume: &Tensor<R>,
-        momentum: &Tensor<R>,
-        radius: &Tensor<R>,
-        active: &Tensor<R>,
-        dt: f64,
-    ) -> Result<(Tensor<R>, Tensor<R>), ChannelError> {
-        let c = &self.client;
-        let zero = self.constant(momentum, 0.0)?;
-        let one = self.constant(volume, 1.0)?;
-        let inactive = c.eq(active, &zero)?;
-        let roughness = c.where_cond(active, &self.manning, &zero)?;
-        let roughness_squared = c.mul(&roughness, &roughness)?;
-        let original_momentum = c.where_cond(active, momentum, &zero)?;
-        let safe_volume = c.where_cond(active, volume, &one)?;
-        let velocity = c.abs(&c.div(&original_momentum, &safe_volume)?)?;
-        let power = c.cr_pow_scalar(radius, 4.0 / 3.0)?;
-        let numerator = c.mul_scalar(
-            &c.mul_scalar(
-                &c.mul(&roughness_squared, &velocity)?,
-                self.definition.config.gravity,
-            )?,
-            dt,
-        )?;
-        for (value, name) in [
-            (&roughness_squared, "surveyed Manning squared roughness"),
-            (&velocity, "surveyed Manning original velocity"),
-            (&power, "surveyed Manning radius power"),
-            (&numerator, "surveyed Manning resistance"),
-        ] {
-            self.finite(value, name)?;
-            if !self.all(&c.maximum(&inactive, &c.gt(value, &zero)?)?)? {
-                return Err(ChannelError::numerical(format!(
-                    "active {name} underflows: rescale roughness, water, or interval"
-                )));
+    fn check_ode_references<R>(client: R::Client) -> TestResult
+    where
+        R: Runtime<DType = DType>,
+        R::Client: TensorOps<R>
+            + CompareOps<R>
+            + CorrectlyRoundedOps<R>
+            + HypotOps<R>
+            + MidpointOps<R>
+            + NextRepresentableOps<R>
+            + ScalarOps<R>
+            + TwoSumOps<R>
+            + BatchedBisectionAlgorithms<R>,
+    {
+        assert_eq!(ODE.len(), 14);
+        for row in ODE {
+            let operands = row.operands.map(f64::from_bits);
+            assert_eq!((operands[2] / operands[0]).to_bits(), row.operands[1]);
+            let reach = reach_with_client::<R>(client.clone(), row, operands[5])?;
+            let before = reach.snapshot_data()?;
+            let context = &reach.context;
+            let trial = context.friction_trial(
+                &reach.accepted.volume.high,
+                &reach.accepted.momentum.high,
+                operands[6],
+            )?;
+            let actual = trial.momentum.item::<f64>()?;
+            let geometry = trial.geometry.ok_or("Missing Manning geometry charge")?;
+            let charge = geometry.momentum_abs_bound.item::<f64>()?;
+            assert!(
+                charge.is_finite() && charge >= 0.0,
+                "{}: charge={charge}",
+                row.id
+            );
+            assert!(
+                charge <= 1e-9 + 1e-12 * operands[3].abs(),
+                "{}: charge={charge}",
+                row.id
+            );
+            let reference = row.reference.map(f64::from_bits);
+            if row.active {
+                let error = (actual - reference[0])
+                    .abs()
+                    .max((actual - reference[1]).abs());
+                let magnitude = reference[0].abs().min(reference[1].abs());
+                let allowance = 1e-10 + 1e-11 * magnitude;
+                assert!(
+                    error <= allowance,
+                    "{}: native={actual:e}, reference={reference:?}, error={error:e}, allowance={allowance:e}",
+                    row.id
+                );
+                assert_eq!(
+                    actual.is_sign_negative(),
+                    operands[3].is_sign_negative(),
+                    "{}",
+                    row.id
+                );
+                assert!(
+                    actual.abs() > 0.0 && actual.abs() <= operands[3].abs(),
+                    "{}",
+                    row.id
+                );
+            } else {
+                assert_eq!(actual.to_bits(), row.operands[3], "{}", row.id);
+                assert_eq!(charge.to_bits(), 0.0_f64.to_bits(), "{}", row.id);
             }
+            assert_eq!(reach.snapshot_data()?, before);
         }
-        let drag = c.div(&numerator, &power)?;
-        self.finite(&drag, "surveyed Manning drag")?;
-        if !self.all(&c.maximum(&inactive, &c.gt(&drag, &zero)?)?)? {
-            return Err(ChannelError::numerical(
-                "active surveyed Manning drag underflows: rescale roughness, water, or interval",
-            ));
+        Ok(())
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn configured_cuda_manning_matches_fourteen_exact_power_ode_references() -> TestResult {
+        use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+        check_ode_references::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+    }
+
+    #[test]
+    fn active_manning_retains_duration_and_arithmetic_rejections() -> TestResult {
+        let ordinary = ODE.first().ok_or("Missing ordinary Manning fixture")?;
+        let normal = reach(ordinary, 0.03)?;
+        for duration in [-1.0, f64::NAN, f64::INFINITY] {
+            let result = normal.context.friction_trial(
+                &normal.accepted.volume.high,
+                &normal.accepted.momentum.high,
+                duration,
+            );
+            let error = result
+                .err()
+                .ok_or("Invalid Manning duration requires rejection")?;
+            assert!(error.to_string().contains("duration"));
         }
-        let denominator = c.add_scalar(&drag, 1.0)?;
-        self.finite(&denominator, "surveyed Manning denominator")?;
-        let next = c.where_cond(active, &c.div(momentum, &denominator)?, momentum)?;
-        self.finite(&next, "surveyed Manning momentum")?;
-        let magnitude = c.abs(momentum)?;
-        let next_magnitude = c.abs(&next)?;
-        let sign_preserved = c.eq(&c.gt(momentum, &zero)?, &c.gt(&next, &zero)?)?;
-        let represented = c.mul(
-            &c.mul(&c.gt(&next_magnitude, &zero)?, &sign_preserved)?,
-            &c.le(&next_magnitude, &magnitude)?,
-        )?;
-        if !self.all(&c.maximum(&inactive, &represented)?)? {
-            return Err(ChannelError::numerical(
-                "surveyed Manning momentum loses sign, nonzero magnitude, or damping: reduce the interval or rescale inputs",
-            ));
+        for roughness in [f64::from_bits(1), f64::MAX] {
+            let reach = reach(ordinary, roughness)?;
+            let result = reach.context.friction_trial(
+                &reach.accepted.volume.high,
+                &reach.accepted.momentum.high,
+                0.1,
+            );
+            let error = result
+                .err()
+                .ok_or("Unrepresented active Manning arithmetic requires rejection")?;
+            assert!(error.to_string().contains("roughness"), "{error}");
         }
-        Ok((next, c.where_cond(active, &denominator, &one)?))
+        let result = normal.context.friction_trial(
+            &normal.accepted.volume.high,
+            &normal.accepted.momentum.high,
+            f64::from_bits(1),
+        );
+        let error = result
+            .err()
+            .ok_or("Unrepresented resistance requires rejection")?;
+        assert!(error.to_string().contains("resistance"), "{error}");
+        Ok(())
+    }
+
+    #[test]
+    fn normal_roughness_distinguishes_equal_area_bank_perimeters() -> TestResult {
+        let mut outputs = Vec::new();
+        for id in ["symmetric_equal_area", "asymmetric_equal_area"] {
+            let row = ODE
+                .iter()
+                .find(|row| row.id == id)
+                .ok_or("Missing equal-area Manning fixture")?;
+            let reach = reach(row, 0.03)?;
+            outputs.push(
+                reach
+                    .context
+                    .friction_trial(
+                        &reach.accepted.volume.high,
+                        &reach.accepted.momentum.high,
+                        0.1,
+                    )?
+                    .momentum
+                    .item::<f64>()?,
+            );
+        }
+        assert!((outputs[0] - outputs[1]).abs() > 1e-6);
+        Ok(())
     }
 }

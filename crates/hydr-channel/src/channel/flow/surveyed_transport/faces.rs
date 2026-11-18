@@ -160,5 +160,220 @@ where
 }
 
 #[cfg(test)]
-#[path = "faces_tests.rs"]
-mod tests;
+mod tests {
+    use crate::channel::flow::{
+        ChannelReach, ChannelTensorBoundary,
+        admission::Fields,
+        conserved_point::ConservedPoint,
+        geometry::TensorGeometry,
+        surveyed_update::tests::{Client, TestResult, cpu, moving_reach},
+    };
+    use numr::dtype::DType;
+    use numr::ops::ScalarOps;
+    use numr::runtime::Runtime;
+    use numr::runtime::cpu::CpuRuntime;
+    use numr::tensor::Tensor;
+    use solvr::common::arithmetic::CertifiedExpansion;
+
+    fn bits<R: Runtime<DType = DType>>(value: &Tensor<R>) -> TestResult<Vec<u64>> {
+        Ok(value
+            .try_to_vec::<f64>()?
+            .into_iter()
+            .map(f64::to_bits)
+            .collect())
+    }
+
+    fn reach<R>(client: R::Client) -> TestResult<ChannelReach<R>>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        moving_reach::<R>(client, &[20.0, 10.0, 15.0], &[4.0, -2.0, 3.0], &[0.0; 3])
+    }
+
+    /// Fields with nonzero normalized low parts on both points.
+    fn two_part_fields<R>(reach: &ChannelReach<R>) -> TestResult<Fields<R>>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        let context = &reach.context;
+        let fields = context.fields(&reach.accepted.volume, &reach.accepted.momentum)?;
+        // A high part scaled by 2^-60 is exact and far below half an ulp.
+        let low = |point: &ConservedPoint<R>| -> TestResult<ConservedPoint<R>> {
+            Ok(ConservedPoint {
+                high: point.high.clone(),
+                low: context.client.mul_scalar(&point.high, 2f64.powi(-60))?,
+            })
+        };
+        Ok(Fields {
+            area_point: low(&fields.area_point)?,
+            discharge_point: low(&fields.discharge_point)?,
+            ..fields
+        })
+    }
+
+    fn zero_radius<R: Runtime<DType = DType>>(value: &CertifiedExpansion<R>) -> TestResult {
+        assert!(
+            value
+                .abs_error()
+                .try_to_vec::<f64>()?
+                .iter()
+                .all(|r| r.to_bits() == 0)
+        );
+        Ok(())
+    }
+
+    fn interior_points_match_fields<R>(client: R::Client) -> TestResult
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        let reach = reach::<R>(client)?;
+        let context = &reach.context;
+        let TensorGeometry::Surveyed(geometry) = &context.geometry else {
+            return Err("surveyed geometry required".into());
+        };
+        let fields = two_part_fields(&reach)?;
+        assert!(
+            fields
+                .area_point
+                .low
+                .try_to_vec::<f64>()?
+                .iter()
+                .all(|v| *v != 0.0)
+        );
+        let wall = ChannelTensorBoundary::Wall;
+        let faces = context.surveyed_faces(geometry, &fields, &wall, &wall)?;
+        let n = context.count();
+        for (face, offset, point) in [
+            (&faces.left_area, 1, &fields.area_point),
+            (&faces.left_discharge, 1, &fields.discharge_point),
+            (&faces.right_area, 0, &fields.area_point),
+            (&faces.right_discharge, 0, &fields.discharge_point),
+        ] {
+            assert_eq!(
+                bits(&face.high().narrow(0, offset, n)?)?,
+                bits(&point.high)?
+            );
+            assert_eq!(bits(&face.low().narrow(0, offset, n)?)?, bits(&point.low)?);
+            zero_radius(face)?;
+        }
+        Ok(())
+    }
+
+    fn wall_mirror_negates_both_parts<R>(client: R::Client) -> TestResult
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        let reach = reach::<R>(client)?;
+        let context = &reach.context;
+        let TensorGeometry::Surveyed(geometry) = &context.geometry else {
+            return Err("surveyed geometry required".into());
+        };
+        let fields = two_part_fields(&reach)?;
+        let wall = ChannelTensorBoundary::Wall;
+        let faces = context.surveyed_faces(geometry, &fields, &wall, &wall)?;
+        let n = context.count();
+        let one = |value: &Tensor<R>, index: usize| -> TestResult<u64> {
+            Ok(value.narrow(0, index, 1)?.item::<f64>()?.to_bits())
+        };
+        let negated = |value: &Tensor<R>, index: usize| -> TestResult<u64> {
+            Ok((-value.narrow(0, index, 1)?.item::<f64>()?).to_bits())
+        };
+        let (area, discharge) = (&fields.area_point, &fields.discharge_point);
+        for (mirror_area, mirror_discharge, face, cell) in [
+            (&faces.left_area, &faces.left_discharge, 0, 0),
+            (&faces.right_area, &faces.right_discharge, n, n - 1),
+        ] {
+            assert_eq!(one(mirror_area.high(), face)?, one(&area.high, cell)?);
+            assert_eq!(one(mirror_area.low(), face)?, one(&area.low, cell)?);
+            assert_eq!(
+                one(mirror_discharge.high(), face)?,
+                negated(&discharge.high, cell)?
+            );
+            assert_eq!(
+                one(mirror_discharge.low(), face)?,
+                negated(&discharge.low, cell)?
+            );
+        }
+        Ok(())
+    }
+
+    fn exterior_faces_have_zero_low_and_radius<R>(client: R::Client) -> TestResult
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        let reach = reach::<R>(client)?;
+        let context = &reach.context;
+        let TensorGeometry::Surveyed(geometry) = &context.geometry else {
+            return Err("surveyed geometry required".into());
+        };
+        let fields = two_part_fields(&reach)?;
+        let exterior = |depth: f64, velocity: f64| -> TestResult<ChannelTensorBoundary<R>> {
+            Ok(ChannelTensorBoundary::Exterior {
+                depth_m: context.tensor(&[depth])?,
+                velocity_m_per_s: context.tensor(&[velocity])?,
+            })
+        };
+        let (left, right) = (exterior(1.5, 0.3)?, exterior(0.5, -0.7)?);
+        let faces = context.surveyed_faces(geometry, &fields, &left, &right)?;
+        let n = context.count();
+        for (area, discharge, face, depth, velocity) in [
+            (&faces.left_area, &faces.left_discharge, 0, 1.5_f64, 0.3_f64),
+            (&faces.right_area, &faces.right_discharge, n, 0.5, -0.7),
+        ] {
+            // The width-2 rectangular survey gives A = 2 h exactly.
+            let a = area.high().narrow(0, face, 1)?.item::<f64>()?;
+            assert_eq!(a.to_bits(), (2.0 * depth).to_bits());
+            let q = discharge.high().narrow(0, face, 1)?.item::<f64>()?;
+            assert_eq!(q.to_bits(), (a * velocity).to_bits());
+            for value in [area.low(), discharge.low()] {
+                assert_eq!(value.narrow(0, face, 1)?.item::<f64>()?.to_bits(), 0);
+            }
+            zero_radius(area)?;
+            zero_radius(discharge)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_interior_face_points_equal_the_field_points() -> TestResult {
+        interior_points_match_fields::<CpuRuntime>(cpu())
+    }
+
+    #[test]
+    fn cpu_wall_mirror_negates_both_discharge_parts() -> TestResult {
+        wall_mirror_negates_both_parts::<CpuRuntime>(cpu())
+    }
+
+    #[test]
+    fn cpu_exterior_faces_have_zero_low_parts_and_radius() -> TestResult {
+        exterior_faces_have_zero_low_and_radius::<CpuRuntime>(cpu())
+    }
+
+    #[cfg(feature = "cuda")]
+    mod cuda {
+        use super::*;
+        use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+
+        #[test]
+        fn cuda_interior_face_points_equal_the_field_points() -> TestResult {
+            interior_points_match_fields::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+        }
+
+        #[test]
+        fn cuda_wall_mirror_negates_both_discharge_parts() -> TestResult {
+            wall_mirror_negates_both_parts::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+        }
+
+        #[test]
+        fn cuda_exterior_faces_have_zero_low_parts_and_radius() -> TestResult {
+            exterior_faces_have_zero_low_and_radius::<CudaRuntime>(CudaClient::new(
+                CudaDevice::new(0),
+            )?)
+        }
+    }
+}

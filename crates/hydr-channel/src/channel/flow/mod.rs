@@ -39,8 +39,6 @@ mod speed_memo;
 mod stepping;
 mod surveyed_recovery;
 mod surveyed_residuals;
-#[cfg(test)]
-mod surveyed_state_tests;
 mod surveyed_transport;
 mod surveyed_update;
 mod transport;

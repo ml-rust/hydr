@@ -31,8 +31,6 @@ pub(crate) mod sampling;
 mod shock;
 #[cfg(test)]
 mod shock_case_data;
-#[cfg(test)]
-mod shock_tests;
 mod star_bracket;
 pub(crate) mod types;
 pub(crate) mod work;
@@ -44,33 +42,10 @@ pub use work::PrismaticRiemannWork;
 
 #[cfg(test)]
 mod derivative_data;
-#[cfg(test)]
-mod derivative_tests;
-#[cfg(test)]
-mod error_tests;
-#[cfg(test)]
-mod lane_quadrature_tests;
-
-#[cfg(test)]
-mod controller_resolution_tests;
 
 pub(crate) mod analytic_bottom;
-#[cfg(test)]
-mod analytic_bottom_tests;
 
 #[cfg(test)]
-mod curve_evaluation_tests;
+pub(crate) mod potential_difference_test_data;
 #[cfg(test)]
-mod potential_difference_derivative_tests;
-#[cfg(test)]
-mod potential_difference_test_data;
-#[cfg(test)]
-mod potential_difference_test_support;
-#[cfg(test)]
-mod potential_difference_tests;
-#[cfg(test)]
-mod potential_difference_weak_face_tests;
-#[cfg(test)]
-mod refinement_tests;
-#[cfg(test)]
-mod reflection_tests;
+pub(crate) mod potential_difference_test_support;

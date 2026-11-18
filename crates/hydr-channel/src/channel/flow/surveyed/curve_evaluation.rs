@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod fixture;
+
 use super::equation_ops::{scalar, select_interval};
 use super::error::{Arithmetic, HydraulicResult, checked};
 use super::integration::potential;
@@ -279,4 +282,147 @@ where
         wet_possible: c.index_select(&state.wet_possible, 0, rows)?,
         dry_possible: c.index_select(&state.dry_possible, 0, rows)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::error::{PrismaticRiemannError, into_public};
+    use super::super::work::WorkLedger;
+    use super::fixture::{callback_delta, eager, endpoints, fixture, matches_eager, oracle};
+    use super::*;
+    use numr::ops::{HypotOps, MidpointOps};
+
+    fn scheduling<R>(client: R::Client) -> HydraulicResult<()>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: TensorOps<R>
+            + HypotOps<R>
+            + MidpointOps<R>
+            + CompareOps<R>
+            + NextRepresentableOps<R>
+            + ScalarOps<R>
+            + TwoSumOps<R>
+            + RuntimeClient<R>
+            + CertifiedSimpsonAlgorithms<R>,
+    {
+        let shock = fixture::<R>(&client, &[9.0], &[10.0], [&[2.2], &[2.2]], &[0])?;
+        let before = shock.work.snapshot();
+        let result = pair_evaluation(
+            &oracle(&shock),
+            &shock.bands,
+            &shock.state,
+            &shock.left,
+            &shock.right,
+        )?;
+        assert_eq!(callback_delta(before, shock.work.snapshot()), [0, 0]);
+        matches_eager(&shock, &result)?;
+
+        let direct = fixture::<R>(&client, &[10.0], &[9.0], [&[1.99], &[1.99]], &[0])?;
+        let before = direct.work.snapshot();
+        let result = pair_evaluation(
+            &oracle(&direct),
+            &direct.bands,
+            &direct.state,
+            &direct.left,
+            &direct.right,
+        )?;
+        let actual_work = callback_delta(before, direct.work.snapshot());
+        let expected_work = WorkLedger::new(&direct.config);
+        let expected = direct_increment(
+            &direct.geometry,
+            &direct.bands,
+            &direct.left.original_area,
+            &direct.state.area,
+            &direct.config,
+            direct.config.initial_simpson_panels,
+            &expected_work,
+        )?;
+        assert_eq!(expected.available.try_to_vec::<f64>()?, [1.0]);
+        let counts = callback_delta(Default::default(), expected_work.snapshot());
+        assert!(counts[0] > 0 && counts[1] > 0);
+        assert_eq!(
+            actual_work, counts,
+            "direct rarefaction plus shock runs direct callbacks only"
+        );
+        matches_eager(&direct, &result)?;
+
+        let fallback = fixture::<R>(&client, &[10.0], &[12.0], [&[0.25], &[0.25]], &[0])?;
+        let before = fallback.work.snapshot();
+        let result = pair_evaluation(
+            &oracle(&fallback),
+            &fallback.bands,
+            &fallback.state,
+            &fallback.left,
+            &fallback.right,
+        )?;
+        let actual_work = callback_delta(before, fallback.work.snapshot());
+        let expected_work = WorkLedger::new(&fallback.config);
+        let _phi = potential(
+            &fallback.geometry,
+            &fallback.bands,
+            &fallback.state,
+            &fallback.config,
+            fallback.config.initial_simpson_panels,
+            &expected_work,
+        )?;
+        let counts = callback_delta(Default::default(), expected_work.snapshot());
+        assert!(counts[0] > 0 && counts[1] > 0);
+        assert_eq!(
+            actual_work, counts,
+            "two fallback rarefactions share one target potential"
+        );
+        let (_, available) = eager(&fallback)?;
+        assert_eq!(available, [vec![0.0], vec![0.0]]);
+        matches_eager(&fallback, &result)?;
+
+        let mixed = fixture::<R>(
+            &client,
+            &[10.0, 9.0, 10.0, 0.0, 10.0],
+            &[9.0, 10.0, 12.0, 10.0, 10.0],
+            [
+                &[1.99, 2.2, 0.25, 0.25, 1.99],
+                &[1.99, 2.2, 0.25, 0.25, 2.01],
+            ],
+            &[4, 0, 3, 2, 0, 1, 4, 2],
+        )?;
+        let result = pair_evaluation(
+            &oracle(&mixed),
+            &mixed.bands,
+            &mixed.state,
+            &mixed.left,
+            &mixed.right,
+        )?;
+        matches_eager(&mixed, &result)?;
+        let left = endpoints(&result.left_increment)?;
+        let right = endpoints(&result.right_increment)?;
+        for interval in [left, right] {
+            assert!(
+                interval[0][0] < 0.0 && interval[1][0] > 0.0,
+                "ambiguous area interval retains both increment signs"
+            );
+            assert_eq!(interval[0][0], interval[0][6]);
+            assert_eq!(interval[1][0], interval[1][6]);
+            assert_eq!(interval[0][3], interval[0][7]);
+            assert_eq!(interval[1][3], interval[1][7]);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn curve_demand_schedules_only_required_potentials_cpu() -> Result<(), PrismaticRiemannError> {
+        use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+        let client = CpuClient::new(CpuDevice::new())
+            .with_parallelism(ParallelismConfig::new(Some(1), None));
+        scheduling::<CpuRuntime>(client).map_err(|error| into_public(error, Default::default()))
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn curve_demand_schedules_only_required_potentials_cuda()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+        scheduling::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+            .map_err(|error| into_public(error, Default::default()))?;
+        Ok(())
+    }
 }

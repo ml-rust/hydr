@@ -232,3 +232,86 @@ pub(crate) fn resolve_acceptance(error: HydraulicError, root_work_limited: bool)
     }
     error
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solvr::common::arithmetic::ArithmeticError;
+
+    fn rejected(reason: PrismaticRiemannRejection) -> HydraulicError {
+        HydraulicError::Rejected {
+            reason,
+            query: Some(3),
+            section_owner: Some(7),
+            context: "retained callback cause".into(),
+        }
+    }
+
+    #[test]
+    fn root_work_limit_remaps_only_flux_width_rejection() {
+        let result = resolve_acceptance(
+            rejected(PrismaticRiemannRejection::FluxBudgetExceeded),
+            true,
+        );
+        assert!(matches!(result, HydraulicError::Rejected {
+            reason: PrismaticRiemannRejection::WorkLimit, context, ..
+        } if context.contains("FluxBudgetExceeded")));
+        let result = resolve_acceptance(
+            rejected(PrismaticRiemannRejection::FluxBudgetExceeded),
+            false,
+        );
+        assert!(matches!(
+            result,
+            HydraulicError::Rejected {
+                reason: PrismaticRiemannRejection::FluxBudgetExceeded,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn root_work_limit_preserves_fatal_acceptance_errors() {
+        let arithmetic = resolve_acceptance(
+            HydraulicError::Arithmetic(ArithmeticError::Range {
+                stage: "acceptance",
+            }),
+            true,
+        );
+        assert!(matches!(
+            arithmetic,
+            HydraulicError::Arithmetic(ArithmeticError::Range {
+                stage: "acceptance"
+            })
+        ));
+        let runtime = resolve_acceptance(
+            HydraulicError::Runtime(numr::error::Error::InvalidArgument {
+                arg: "acceptance",
+                reason: "backend rejection".into(),
+            }),
+            true,
+        );
+        assert!(matches!(runtime, HydraulicError::Runtime(_)));
+        let numerical = resolve_acceptance(
+            HydraulicError::Numerical {
+                context: "sticky completion".into(),
+            },
+            true,
+        );
+        assert!(
+            matches!(numerical, HydraulicError::Numerical { context } if context == "sticky completion")
+        );
+        let geometry = resolve_acceptance(
+            rejected(PrismaticRiemannRejection::GeometryUnresolved),
+            true,
+        );
+        assert!(matches!(
+            geometry,
+            HydraulicError::Rejected {
+                reason: PrismaticRiemannRejection::GeometryUnresolved,
+                query: Some(3),
+                section_owner: Some(7),
+                ..
+            }
+        ));
+    }
+}

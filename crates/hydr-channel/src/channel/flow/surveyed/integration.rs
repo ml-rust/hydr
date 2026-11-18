@@ -183,3 +183,91 @@ pub(super) fn complete_integration<T>(
         (Ok(value), None) => Ok(value),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn simpson_runtime_errors_retain_their_diagnostics() {
+        let diagnostic = "configured CUDA client rejected allocation";
+        let mapped = integration_error(IntegrateError::NumrError(diagnostic.into()));
+        assert!(
+            matches!(mapped, HydraulicError::Runtime(numr::error::Error::Backend(context)) if context == diagnostic)
+        );
+    }
+
+    #[test]
+    fn simpson_query_budget_errors_retain_the_work_limit() {
+        let diagnostic = "Certified Simpson needs 26 queries but max_points=25";
+        let mapped = integration_error(IntegrateError::InvalidParameter {
+            parameter: "max_points".into(),
+            message: diagnostic.into(),
+        });
+        assert!(
+            matches!(mapped, HydraulicError::Rejected { reason: PrismaticRiemannRejection::WorkLimit, context, .. } if context.contains(diagnostic))
+        );
+    }
+
+    #[test]
+    fn simpson_fatal_arithmetic_errors_precede_callback_causes() {
+        for actual in [
+            IntegrateError::ArithmeticRange {
+                stage: "combined Simpson arithmetic",
+            },
+            IntegrateError::UnsupportedArithmetic {
+                dtype: DType::F64,
+                failed_probes: vec!["provider_contract"],
+            },
+            IntegrateError::NumrError("configured client rejected reduction".into()),
+        ] {
+            let callback = HydraulicError::Rejected {
+                reason: PrismaticRiemannRejection::QuadratureUnresolved,
+                query: None,
+                section_owner: None,
+                context: "retained callback cause".into(),
+            };
+            let mapped = complete_integration::<()>(Err(actual), Some(callback));
+            assert!(matches!(
+                mapped,
+                Err(HydraulicError::Arithmetic(
+                    ArithmeticError::Range { .. } | ArithmeticError::UnsupportedArithmetic { .. }
+                )) | Err(HydraulicError::Runtime(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn simpson_callback_sentinel_restores_its_typed_cause() {
+        let callback = HydraulicError::Rejected {
+            reason: PrismaticRiemannRejection::WorkLimit,
+            query: None,
+            section_owner: None,
+            context: "retained callback work limit".into(),
+        };
+        let sentinel = IntegrateError::NumericalError {
+            message: "callback sentinel".into(),
+        };
+        assert!(matches!(
+            complete_integration::<()>(Err(sentinel), Some(callback)),
+            Err(HydraulicError::Rejected {
+                reason: PrismaticRiemannRejection::WorkLimit,
+                ..
+            })
+        ));
+        let unexpected = IntegrateError::NumericalError {
+            message: "invalid Simpson assembly".into(),
+        };
+        assert!(matches!(
+            complete_integration::<()>(Err(unexpected), None),
+            Err(HydraulicError::Numerical { .. })
+        ));
+        let callback = HydraulicError::Numerical {
+            context: "retained callback arithmetic".into(),
+        };
+        assert!(matches!(
+            complete_integration(Ok(()), Some(callback)),
+            Err(HydraulicError::Numerical { .. })
+        ));
+    }
+}

@@ -11,7 +11,7 @@ use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::Interval;
 
-pub(super) fn values<R, T>(
+pub(crate) fn values<R, T>(
     client: &R::Client,
     values: &[T],
     strided: bool,
@@ -47,7 +47,7 @@ where
     )?)
 }
 
-pub(super) fn batch<R>(
+pub(crate) fn batch<R>(
     client: &R::Client,
     profile: &Profile,
 ) -> HydraulicResult<PrismaticSectionBatch<R>>

@@ -49,6 +49,7 @@ mod hydraulic_geometry;
 mod point_riemann;
 mod point_riemann_input;
 mod riemann;
+mod riemann_capture;
 pub(crate) use hydraulic_geometry::{Constitutive, GatheredBands, HydraulicGeometry};
 
 pub(crate) use area_query::PressureEndpoint;

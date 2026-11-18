@@ -1,14 +1,14 @@
-use super::PrismaticRiemannConfig;
-use super::curve_evaluation::{PairEvaluation, pair_evaluation, select_state};
-use super::curves::{prepare_side, select_side};
-use super::equation_ops::choose;
-use super::error::{HydraulicResult, PrismaticRiemannError, checked, into_public};
-use super::integration::potential;
-use super::potential_difference::direct_increment;
-use super::potential_difference_test_data::PROFILES;
-use super::potential_difference_test_support::{batch, values};
-use super::types::{Oracle, SideState};
-use super::work::{PrismaticRiemannWork, WorkLedger};
+use super::super::PrismaticRiemannConfig;
+use super::super::curves::{prepare_side, select_side};
+use super::super::equation_ops::choose;
+use super::super::error::{HydraulicResult, checked};
+use super::super::integration::potential;
+use super::super::potential_difference::direct_increment;
+use super::super::potential_difference_test_data::PROFILES;
+use super::super::potential_difference_test_support::{batch, values};
+use super::super::types::{Oracle, SideState};
+use super::super::work::{PrismaticRiemannWork, WorkLedger};
+use super::{PairEvaluation, select_state};
 use crate::channel::section::{Constitutive, GatheredBands, HydraulicGeometry};
 use numr::dtype::DType;
 use numr::ops::{
@@ -18,17 +18,17 @@ use numr::runtime::{Runtime, RuntimeClient};
 use solvr::common::arithmetic::Interval;
 use solvr::integrate::CertifiedSimpsonAlgorithms;
 
-struct Fixture<R: Runtime<DType = DType>> {
-    geometry: HydraulicGeometry<R>,
-    bands: GatheredBands<R>,
-    left: SideState<R>,
-    right: SideState<R>,
-    state: Constitutive<R>,
-    config: PrismaticRiemannConfig,
-    work: WorkLedger,
+pub(super) struct Fixture<R: Runtime<DType = DType>> {
+    pub(super) geometry: HydraulicGeometry<R>,
+    pub(super) bands: GatheredBands<R>,
+    pub(super) left: SideState<R>,
+    pub(super) right: SideState<R>,
+    pub(super) state: Constitutive<R>,
+    pub(super) config: PrismaticRiemannConfig,
+    pub(super) work: WorkLedger,
 }
 
-fn fixture<R>(
+pub(super) fn fixture<R>(
     client: &R::Client,
     left: &[f64],
     right: &[f64],
@@ -103,7 +103,7 @@ where
     })
 }
 
-fn oracle<R: Runtime<DType = DType>>(fixture: &Fixture<R>) -> Oracle<'_, R> {
+pub(super) fn oracle<R: Runtime<DType = DType>>(fixture: &Fixture<R>) -> Oracle<'_, R> {
     Oracle {
         geometry: &fixture.geometry,
         bands: &fixture.bands,
@@ -115,14 +115,17 @@ fn oracle<R: Runtime<DType = DType>>(fixture: &Fixture<R>) -> Oracle<'_, R> {
     }
 }
 
-fn callback_delta(before: PrismaticRiemannWork, after: PrismaticRiemannWork) -> [usize; 2] {
+pub(super) fn callback_delta(
+    before: PrismaticRiemannWork,
+    after: PrismaticRiemannWork,
+) -> [usize; 2] {
     [
         after.simpson_value_points - before.simpson_value_points,
         after.simpson_derivative_points - before.simpson_derivative_points,
     ]
 }
 
-fn eager<R>(fixture: &Fixture<R>) -> HydraulicResult<(PairEvaluation<R>, [Vec<f64>; 2])>
+pub(super) fn eager<R>(fixture: &Fixture<R>) -> HydraulicResult<(PairEvaluation<R>, [Vec<f64>; 2])>
 where
     R: Runtime<DType = DType>,
     R::Client: TensorOps<R>
@@ -184,14 +187,19 @@ where
     ))
 }
 
-fn endpoints<R: Runtime<DType = DType>>(interval: &Interval<R>) -> HydraulicResult<[Vec<f64>; 2]> {
+pub(super) fn endpoints<R: Runtime<DType = DType>>(
+    interval: &Interval<R>,
+) -> HydraulicResult<[Vec<f64>; 2]> {
     Ok([
         interval.lower().try_to_vec::<f64>()?,
         interval.upper().try_to_vec::<f64>()?,
     ])
 }
 
-fn matches_eager<R>(fixture: &Fixture<R>, actual: &PairEvaluation<R>) -> HydraulicResult<()>
+pub(super) fn matches_eager<R>(
+    fixture: &Fixture<R>,
+    actual: &PairEvaluation<R>,
+) -> HydraulicResult<()>
 where
     R: Runtime<DType = DType>,
     R::Client: TensorOps<R>
@@ -247,139 +255,5 @@ where
             );
         }
     }
-    Ok(())
-}
-
-fn scheduling<R>(client: R::Client) -> HydraulicResult<()>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + HypotOps<R>
-        + MidpointOps<R>
-        + CompareOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>
-        + CertifiedSimpsonAlgorithms<R>,
-{
-    let shock = fixture::<R>(&client, &[9.0], &[10.0], [&[2.2], &[2.2]], &[0])?;
-    let before = shock.work.snapshot();
-    let result = pair_evaluation(
-        &oracle(&shock),
-        &shock.bands,
-        &shock.state,
-        &shock.left,
-        &shock.right,
-    )?;
-    assert_eq!(callback_delta(before, shock.work.snapshot()), [0, 0]);
-    matches_eager(&shock, &result)?;
-
-    let direct = fixture::<R>(&client, &[10.0], &[9.0], [&[1.99], &[1.99]], &[0])?;
-    let before = direct.work.snapshot();
-    let result = pair_evaluation(
-        &oracle(&direct),
-        &direct.bands,
-        &direct.state,
-        &direct.left,
-        &direct.right,
-    )?;
-    let actual_work = callback_delta(before, direct.work.snapshot());
-    let expected_work = WorkLedger::new(&direct.config);
-    let expected = direct_increment(
-        &direct.geometry,
-        &direct.bands,
-        &direct.left.original_area,
-        &direct.state.area,
-        &direct.config,
-        direct.config.initial_simpson_panels,
-        &expected_work,
-    )?;
-    assert_eq!(expected.available.try_to_vec::<f64>()?, [1.0]);
-    let counts = callback_delta(Default::default(), expected_work.snapshot());
-    assert!(counts[0] > 0 && counts[1] > 0);
-    assert_eq!(
-        actual_work, counts,
-        "direct rarefaction plus shock runs direct callbacks only"
-    );
-    matches_eager(&direct, &result)?;
-
-    let fallback = fixture::<R>(&client, &[10.0], &[12.0], [&[0.25], &[0.25]], &[0])?;
-    let before = fallback.work.snapshot();
-    let result = pair_evaluation(
-        &oracle(&fallback),
-        &fallback.bands,
-        &fallback.state,
-        &fallback.left,
-        &fallback.right,
-    )?;
-    let actual_work = callback_delta(before, fallback.work.snapshot());
-    let expected_work = WorkLedger::new(&fallback.config);
-    let _phi = potential(
-        &fallback.geometry,
-        &fallback.bands,
-        &fallback.state,
-        &fallback.config,
-        fallback.config.initial_simpson_panels,
-        &expected_work,
-    )?;
-    let counts = callback_delta(Default::default(), expected_work.snapshot());
-    assert!(counts[0] > 0 && counts[1] > 0);
-    assert_eq!(
-        actual_work, counts,
-        "two fallback rarefactions share one target potential"
-    );
-    let (_, available) = eager(&fallback)?;
-    assert_eq!(available, [vec![0.0], vec![0.0]]);
-    matches_eager(&fallback, &result)?;
-
-    let mixed = fixture::<R>(
-        &client,
-        &[10.0, 9.0, 10.0, 0.0, 10.0],
-        &[9.0, 10.0, 12.0, 10.0, 10.0],
-        [
-            &[1.99, 2.2, 0.25, 0.25, 1.99],
-            &[1.99, 2.2, 0.25, 0.25, 2.01],
-        ],
-        &[4, 0, 3, 2, 0, 1, 4, 2],
-    )?;
-    let result = pair_evaluation(
-        &oracle(&mixed),
-        &mixed.bands,
-        &mixed.state,
-        &mixed.left,
-        &mixed.right,
-    )?;
-    matches_eager(&mixed, &result)?;
-    let left = endpoints(&result.left_increment)?;
-    let right = endpoints(&result.right_increment)?;
-    for interval in [left, right] {
-        assert!(
-            interval[0][0] < 0.0 && interval[1][0] > 0.0,
-            "ambiguous area interval retains both increment signs"
-        );
-        assert_eq!(interval[0][0], interval[0][6]);
-        assert_eq!(interval[1][0], interval[1][6]);
-        assert_eq!(interval[0][3], interval[0][7]);
-        assert_eq!(interval[1][3], interval[1][7]);
-    }
-    Ok(())
-}
-
-#[test]
-fn curve_demand_schedules_only_required_potentials_cpu() -> Result<(), PrismaticRiemannError> {
-    use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
-    let client =
-        CpuClient::new(CpuDevice::new()).with_parallelism(ParallelismConfig::new(Some(1), None));
-    scheduling::<CpuRuntime>(client).map_err(|error| into_public(error, Default::default()))
-}
-
-#[cfg(feature = "cuda")]
-#[test]
-fn curve_demand_schedules_only_required_potentials_cuda() -> Result<(), Box<dyn std::error::Error>>
-{
-    use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    scheduling::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
-        .map_err(|error| into_public(error, Default::default()))?;
     Ok(())
 }

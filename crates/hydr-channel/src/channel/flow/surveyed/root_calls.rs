@@ -211,3 +211,70 @@ pub(crate) fn resolve_root<T>(
         Err(error) => Err(HydraulicError::Numerical { context: error.to_string() }),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::error::PrismaticRiemannRejection;
+    use super::*;
+
+    fn rejected(reason: PrismaticRiemannRejection) -> HydraulicError {
+        HydraulicError::Rejected {
+            reason,
+            query: Some(3),
+            section_owner: Some(7),
+            context: "retained callback cause".into(),
+        }
+    }
+
+    #[test]
+    fn root_completion_error_precedes_retained_callback_cause() {
+        let result: Result<(), _> = Err(OptimizeError::NumericalError {
+            message: "sticky arithmetic completion".into(),
+        });
+        let error = resolve_root(result, Some(rejected(PrismaticRiemannRejection::WorkLimit)));
+        assert!(
+            matches!(error, Err(HydraulicError::Numerical { context }) if context.contains("sticky arithmetic completion"))
+        );
+    }
+
+    #[test]
+    fn callback_wrapper_restores_typed_cause_and_identities() {
+        let result: Result<(), _> = Err(OptimizeError::NumrError("callback wrapper".into()));
+        let error = resolve_root(
+            result,
+            Some(rejected(PrismaticRiemannRejection::QuadratureUnresolved)),
+        );
+        assert!(matches!(error, Err(HydraulicError::Rejected {
+            reason: PrismaticRiemannRejection::QuadratureUnresolved,
+            query: Some(3), section_owner: Some(7), context,
+        }) if context == "retained callback cause"));
+    }
+
+    #[test]
+    fn backend_error_without_callback_cause_remains_runtime() {
+        let result: Result<(), _> = Err(OptimizeError::NumrError("native backend error".into()));
+        assert!(matches!(
+            resolve_root(result, None),
+            Err(HydraulicError::Runtime(_))
+        ));
+    }
+
+    #[test]
+    fn root_admission_point_ceiling_remains_work_limit() {
+        let result: Result<(), _> = Err(OptimizeError::InvalidParameter {
+            parameter: "max_points".into(),
+            message: "endpoint admission exceeds max_points=1".into(),
+        });
+        assert!(
+            matches!(resolve_root(result, None), Err(HydraulicError::Rejected {
+            reason: PrismaticRiemannRejection::WorkLimit, context, ..
+        }) if context.contains("max_points=1"))
+        );
+    }
+
+    #[test]
+    fn retained_callback_cause_never_allows_solver_success() {
+        let result = resolve_root(Ok(()), Some(rejected(PrismaticRiemannRejection::WorkLimit)));
+        assert!(matches!(result, Err(HydraulicError::Numerical { .. })));
+    }
+}
