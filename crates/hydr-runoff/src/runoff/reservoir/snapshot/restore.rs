@@ -9,7 +9,8 @@ use crate::runoff::{ReservoirBatch, ReservoirConfig, ReservoirElement, Reservoir
 use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, ReduceOps, ScalarOps,
+    TypeConversionOps, UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use std::sync::Arc;
@@ -20,6 +21,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + TypeConversionOps<R>

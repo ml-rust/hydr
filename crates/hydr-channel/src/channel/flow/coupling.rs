@@ -364,6 +364,7 @@ impl<R: Runtime<DType = DType>> ChannelReach<R>
 where
     R::Client: numr::ops::TensorOps<R>
         + CompareOps<R>
+        + numr::ops::CorrectlyRoundedOps<R>
         + MidpointOps<R>
         + numr::ops::NextRepresentableOps<R>
         + ScalarOps<R>

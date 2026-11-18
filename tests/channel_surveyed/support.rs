@@ -5,7 +5,8 @@ use hydr::channel::{
 };
 use numr::dtype::DType;
 use numr::ops::{
-    CompareOps, HypotOps, MidpointOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps,
+    CompareOps, CorrectlyRoundedOps, HypotOps, MidpointOps, NextRepresentableOps, ScalarOps,
+    TensorOps, TwoSumOps,
 };
 use numr::runtime::Runtime;
 use solvr::integrate::CertifiedSimpsonAlgorithms;
@@ -21,6 +22,7 @@ pub const DATUM: &str = "Synthetic SI datum";
 pub trait Client<R: Runtime<DType = DType>>:
     TensorOps<R>
     + CompareOps<R>
+    + CorrectlyRoundedOps<R>
     + HypotOps<R>
     + MidpointOps<R>
     + NextRepresentableOps<R>
@@ -39,6 +41,7 @@ where
     R: Runtime<DType = DType>,
     C: TensorOps<R>
         + CompareOps<R>
+        + CorrectlyRoundedOps<R>
         + HypotOps<R>
         + MidpointOps<R>
         + NextRepresentableOps<R>

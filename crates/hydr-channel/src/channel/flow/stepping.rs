@@ -7,8 +7,8 @@ use super::{
 };
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
-    ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, MidpointOps,
+    NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
@@ -26,6 +26,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>

@@ -6,8 +6,9 @@ use crate::coupling::{CoupledLevelPoolBatch, CoupledLevelPoolInitialState};
 use crate::runoff::SubcatchmentBatch;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,
-    ScalarOps, ShapeOps, SortingOps, TwoSumOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, IndexingOps,
+    MidpointOps, ReduceOps, ScalarOps, ShapeOps, SortingOps, TwoSumOps, TypeConversionOps,
+    UnaryOps,
 };
 use numr::runtime::Runtime;
 use solvr::interpolate::Interp1dAlgorithms;
@@ -38,6 +39,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + CumulativeOps<R>
         + IndexingOps<R>
         + MidpointOps<R>

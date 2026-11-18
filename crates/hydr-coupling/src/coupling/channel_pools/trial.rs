@@ -8,8 +8,8 @@ use crate::channel::ChannelError;
 use crate::storage::LevelPoolError;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
-    ShapeOps, SortingOps, TwoSumOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, MidpointOps,
+    ReduceOps, ScalarOps, ShapeOps, SortingOps, TwoSumOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use solvr::interpolate::Interp1dAlgorithms;
@@ -61,6 +61,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>

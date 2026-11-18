@@ -11,7 +11,10 @@ use super::{
 use crate::channel::flow::{ChannelError, context::Context, geometry::TriangleGeometry};
 use numr::{
     dtype::DType,
-    ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, ShapeOps, UnaryOps},
+    ops::{
+        BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, ReduceOps, ScalarOps, ShapeOps,
+        UnaryOps,
+    },
     runtime::Runtime,
     tensor::Tensor,
 };
@@ -22,6 +25,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + ShapeOps<R>

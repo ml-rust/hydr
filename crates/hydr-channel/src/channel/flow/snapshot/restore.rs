@@ -10,8 +10,8 @@ use crate::channel::flow::{
 use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, NextRepresentableOps,
-    ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, MidpointOps,
+    NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::{Device, Runtime, RuntimeClient};
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
@@ -77,6 +77,7 @@ where
     pub fn import_snapshot(&self, data: &ChannelSnapshotData) -> Result<Self, ChannelError>
     where
         R::Client: TensorOps<R>
+            + CorrectlyRoundedOps<R>
             + NextRepresentableOps<R>
             + CertifiedSimpsonAlgorithms<R>
             + CertifiedBisectionAlgorithms<R>
@@ -94,6 +95,7 @@ where
     pub fn coupling_import_snapshot(&self, data: &ChannelSnapshotData) -> Result<Self, ChannelError>
     where
         R::Client: TensorOps<R>
+            + CorrectlyRoundedOps<R>
             + NextRepresentableOps<R>
             + CertifiedSimpsonAlgorithms<R>
             + CertifiedBisectionAlgorithms<R>
@@ -106,6 +108,7 @@ where
     fn import_with(&self, data: &ChannelSnapshotData, replay: Replay) -> Result<Self, ChannelError>
     where
         R::Client: TensorOps<R>
+            + CorrectlyRoundedOps<R>
             + NextRepresentableOps<R>
             + CertifiedSimpsonAlgorithms<R>
             + CertifiedBisectionAlgorithms<R>
@@ -313,6 +316,7 @@ where
     fn replay_coupled(&self, interval: &ChannelIntervalSnapshotData) -> Result<Self, ChannelError>
     where
         R::Client: TensorOps<R>
+            + CorrectlyRoundedOps<R>
             + NextRepresentableOps<R>
             + CertifiedSimpsonAlgorithms<R>
             + CertifiedBisectionAlgorithms<R>

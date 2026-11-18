@@ -4,7 +4,8 @@ use super::super::{
 };
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, ReduceOps, ScalarOps,
+    TypeConversionOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
@@ -52,6 +53,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + TypeConversionOps<R>
@@ -75,6 +77,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + TypeConversionOps<R>

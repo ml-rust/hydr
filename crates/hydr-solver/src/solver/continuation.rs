@@ -11,8 +11,8 @@ use super::{SnapshotData, Solver};
 use crate::contract::{EngineError, ForcingInterval, ForcingSchedule};
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, ReduceOps, ScalarOps,
-    TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, HypotOps, IndexingOps, ReduceOps,
+    ScalarOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedNewtonAlgorithms};
@@ -23,6 +23,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + IndexingOps<R>
         + ReduceOps<R>
         + ScalarOps<R>

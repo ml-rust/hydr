@@ -5,8 +5,8 @@ use hydr::forcing::WaterAmount;
 use numr::dtype::DType;
 use numr::ops::NextRepresentableOps;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
-    ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, HypotOps, IndexingOps, MidpointOps,
+    ReduceOps, ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -258,6 +258,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + HypotOps<R>
         + IndexingOps<R>
         + MidpointOps<R>

@@ -12,8 +12,8 @@ use super::{
 };
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
-    ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, MidpointOps,
+    ReduceOps, ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -23,6 +23,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>
@@ -112,6 +113,7 @@ pub(super) mod tests {
 
     pub(in crate::channel::flow) trait Client<R: Runtime<DType = DType>>:
         ExpansionClient<R>
+        + CorrectlyRoundedOps<R>
         + HypotOps<R>
         + MidpointOps<R>
         + CertifiedSimpsonAlgorithms<R>
@@ -126,6 +128,7 @@ pub(super) mod tests {
     where
         R: Runtime<DType = DType>,
         C: ExpansionClient<R>
+            + CorrectlyRoundedOps<R>
             + HypotOps<R>
             + MidpointOps<R>
             + CertifiedSimpsonAlgorithms<R>

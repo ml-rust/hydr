@@ -6,7 +6,7 @@ use super::{
 };
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, HypotOps, IndexingOps, MidpointOps,
     NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
@@ -70,6 +70,7 @@ impl<R: Runtime<DType = DType>> ChannelReach<R>
 where
     R::Client: TensorOps<R>
         + CompareOps<R>
+        + CorrectlyRoundedOps<R>
         + MidpointOps<R>
         + NextRepresentableOps<R>
         + ScalarOps<R>

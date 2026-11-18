@@ -2,8 +2,8 @@ use super::state::{Accepted, BoundForcing, NativeEvaluation};
 use super::{ChannelPoolError, context_types::Context};
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
-    ShapeOps, SortingOps, TwoSumOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, MidpointOps,
+    ReduceOps, ScalarOps, ShapeOps, SortingOps, TwoSumOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -26,6 +26,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>

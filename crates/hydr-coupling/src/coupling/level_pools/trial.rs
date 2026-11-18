@@ -11,8 +11,9 @@ use crate::structures::{StructureError, StructureInputErrorKind};
 use hydr_storage::internal::LevelPoolSourcePlan;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,
-    ScalarOps, ShapeOps, SortingOps, TwoSumOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, IndexingOps,
+    MidpointOps, ReduceOps, ScalarOps, ShapeOps, SortingOps, TwoSumOps, TypeConversionOps,
+    UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -55,6 +56,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + CumulativeOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
@@ -346,6 +348,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + CumulativeOps<R>
         + IndexingOps<R>
         + MidpointOps<R>

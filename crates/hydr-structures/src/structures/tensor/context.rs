@@ -45,6 +45,7 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
     where
         R::Client: numr::ops::BinaryOps<R>
             + numr::ops::CompareOps<R>
+            + numr::ops::CorrectlyRoundedOps<R>
             + numr::ops::ReduceOps<R>
             + numr::ops::ScalarOps<R>
             + numr::ops::TypeConversionOps<R>

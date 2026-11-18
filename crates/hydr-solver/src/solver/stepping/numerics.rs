@@ -5,8 +5,8 @@ use super::super::tensor::TensorState;
 use crate::contract::EngineError;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, ReduceOps, ScalarOps,
-    TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, HypotOps, IndexingOps, ReduceOps,
+    ScalarOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -17,6 +17,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + IndexingOps<R>
         + ReduceOps<R>
         + ScalarOps<R>

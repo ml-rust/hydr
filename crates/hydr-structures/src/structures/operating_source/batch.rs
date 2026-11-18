@@ -84,6 +84,7 @@ impl<R: Runtime<DType = DType>> OperatingSourceBatch<R> {
             + numr::ops::BinaryOps<R>
             + numr::ops::CompareOps<R>
             + numr::ops::ConditionalOps<R>
+            + numr::ops::CorrectlyRoundedOps<R>
             + numr::ops::IndexingOps<R>
             + numr::ops::ReduceOps<R>
             + numr::ops::ScalarOps<R>

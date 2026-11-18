@@ -8,8 +8,8 @@ use crate::channel::flow::{
 };
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, MidpointOps, NextRepresentableOps, ScalarOps, TensorOps,
-    TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, MidpointOps, NextRepresentableOps,
+    ScalarOps, TensorOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -44,6 +44,7 @@ impl<R: Runtime<DType = DType>> Context<R>
 where
     R::Client: TensorOps<R>
         + CompareOps<R>
+        + CorrectlyRoundedOps<R>
         + MidpointOps<R>
         + NextRepresentableOps<R>
         + ScalarOps<R>

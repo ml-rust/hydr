@@ -96,6 +96,7 @@ where
     pub fn import_snapshot(&self, data: &ChannelPoolSnapshotData) -> Result<Self, ChannelPoolError>
     where
         R::Client: numr::ops::TensorOps<R>
+            + numr::ops::CorrectlyRoundedOps<R>
             + numr::ops::NextRepresentableOps<R>
             + solvr::integrate::CertifiedSimpsonAlgorithms<R>
             + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>
@@ -183,6 +184,7 @@ where
     ) -> Result<Self, ChannelPoolError>
     where
         R::Client: numr::ops::TensorOps<R>
+            + numr::ops::CorrectlyRoundedOps<R>
             + numr::ops::NextRepresentableOps<R>
             + solvr::integrate::CertifiedSimpsonAlgorithms<R>
             + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>

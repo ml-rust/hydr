@@ -9,7 +9,8 @@ use crate::channel::flow::{
 use numr::{
     dtype::DType,
     ops::{
-        BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
+        BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, ReduceOps, ScalarOps, ShapeOps,
+        TwoSumOps, UnaryOps,
     },
     runtime::Runtime,
 };
@@ -20,6 +21,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + ShapeOps<R>

@@ -4,8 +4,8 @@ use crate::numerics::water_transfers::{AggregationKind, finite};
 use hydr_channel::internal::{ChannelCouplingTrial, ChannelReservoirOperands};
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, MidpointOps, ReduceOps, ScalarOps,
-    ShapeOps, SortingOps, TwoSumOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, MidpointOps,
+    ReduceOps, ScalarOps, ShapeOps, SortingOps, TwoSumOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -17,6 +17,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
         + ReduceOps<R>

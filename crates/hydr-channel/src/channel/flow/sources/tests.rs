@@ -8,7 +8,7 @@ use super::*;
 use crate::forcing::WaterAmount;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, HypotOps, IndexingOps, MidpointOps,
     NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
@@ -78,6 +78,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + HypotOps<R>
         + IndexingOps<R>
         + MidpointOps<R>

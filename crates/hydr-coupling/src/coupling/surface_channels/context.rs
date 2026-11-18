@@ -15,9 +15,9 @@ use hydr_solver::internal::SurfaceLinks;
 use hydr_structures::internal::CouplingStructures;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, CumulativeOps, HypotOps, IndexingOps, MidpointOps,
-    NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, TypeConversionOps,
-    UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, HypotOps,
+    IndexingOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -32,6 +32,7 @@ pub(super) trait Ops<R: Runtime<DType = DType>>:
     BinaryOps<R>
     + CompareOps<R>
     + ConditionalOps<R>
+    + CorrectlyRoundedOps<R>
     + CumulativeOps<R>
     + HypotOps<R>
     + IndexingOps<R>
@@ -59,6 +60,7 @@ impl<R: Runtime<DType = DType>, T> Ops<R> for T where
     T: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + CumulativeOps<R>
         + HypotOps<R>
         + IndexingOps<R>
@@ -166,6 +168,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + IndexingOps<R>
         + ReduceOps<R>
         + ScalarOps<R>

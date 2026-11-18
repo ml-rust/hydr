@@ -13,9 +13,9 @@ use crate::channel::{ChannelError, ChannelSnapshotData};
 use crate::solver::{ForcingSchedule, Solver};
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, CumulativeOps, HypotOps, IndexingOps, MidpointOps,
-    NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps, TwoSumOps, TypeConversionOps,
-    UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, HypotOps,
+    IndexingOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps,
+    TwoSumOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedNewtonAlgorithms};
@@ -26,6 +26,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + CumulativeOps<R>
         + HypotOps<R>
         + IndexingOps<R>
@@ -139,6 +140,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + CumulativeOps<R>
         + HypotOps<R>
         + IndexingOps<R>

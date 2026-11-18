@@ -8,8 +8,9 @@ use crate::storage::LevelPoolSnapshotData;
 use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, MidpointOps, ReduceOps,
-    ScalarOps, ShapeOps, SortingOps, TwoSumOps, TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, IndexingOps,
+    MidpointOps, ReduceOps, ScalarOps, ShapeOps, SortingOps, TwoSumOps, TypeConversionOps,
+    UnaryOps,
 };
 use numr::runtime::Device;
 use numr::runtime::{Runtime, RuntimeClient};
@@ -75,6 +76,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + CumulativeOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
@@ -101,6 +103,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + CumulativeOps<R>
         + IndexingOps<R>
         + MidpointOps<R>

@@ -13,8 +13,8 @@ use crate::runoff::{
 use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
-    TypeConversionOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, ReduceOps, ScalarOps,
+    ShapeOps, TwoSumOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use std::sync::Arc;
@@ -25,6 +25,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + TypeConversionOps<R>

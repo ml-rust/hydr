@@ -5,7 +5,8 @@ use crate::channel::{
 };
 use numr::dtype::DType;
 use numr::ops::{
-    CompareOps, HypotOps, MidpointOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps,
+    CompareOps, CorrectlyRoundedOps, HypotOps, MidpointOps, NextRepresentableOps, ScalarOps,
+    TensorOps, TwoSumOps,
 };
 use numr::runtime::Runtime;
 use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
@@ -84,6 +85,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: TensorOps<R>
         + CompareOps<R>
+        + CorrectlyRoundedOps<R>
         + HypotOps<R>
         + MidpointOps<R>
         + NextRepresentableOps<R>
@@ -160,6 +162,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: TensorOps<R>
         + CompareOps<R>
+        + CorrectlyRoundedOps<R>
         + HypotOps<R>
         + MidpointOps<R>
         + NextRepresentableOps<R>

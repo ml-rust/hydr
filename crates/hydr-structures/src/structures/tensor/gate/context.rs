@@ -21,7 +21,10 @@ impl<R: Runtime<DType = DType>> TensorGateContext<R> {
         device: &R::Device,
     ) -> Result<Option<Self>, StructureError>
     where
-        R::Client: numr::ops::BinaryOps<R> + numr::ops::ScalarOps<R> + numr::ops::UnaryOps<R>,
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CorrectlyRoundedOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::UnaryOps<R>,
     {
         if !elements
             .iter()

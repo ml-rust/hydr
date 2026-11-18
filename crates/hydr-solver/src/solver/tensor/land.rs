@@ -2,8 +2,8 @@
 
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, TypeConversionOps,
-    UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, ReduceOps, ScalarOps,
+    TypeConversionOps, UnaryOps,
 };
 use numr::runtime::{Device, Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -46,6 +46,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
         + TypeConversionOps<R>

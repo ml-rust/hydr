@@ -8,8 +8,8 @@ use hydr::forcing::WaterAmount;
 use numr::dtype::DType;
 use numr::ops::NextRepresentableOps;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, HypotOps, IndexingOps, MidpointOps, ReduceOps,
-    ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, HypotOps, IndexingOps, MidpointOps,
+    ReduceOps, ScalarOps, ShapeOps, TwoSumOps, UnaryOps,
 };
 use numr::runtime::Runtime;
 use solvr::integrate::CertifiedSimpsonAlgorithms;
@@ -92,6 +92,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + HypotOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
@@ -262,6 +263,7 @@ where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
         + HypotOps<R>
         + IndexingOps<R>
         + MidpointOps<R>
