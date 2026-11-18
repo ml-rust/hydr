@@ -3,8 +3,8 @@
 use super::SurfaceChannelError;
 use super::context::Context;
 use crate::channel::{
-    ChannelBoundary, ChannelLateralInput, ChannelTensorBoundary, ChannelTensorLateralInput,
-    ChannelTensorWaterAmount,
+    ChannelBoundary, ChannelLateralInput, ChannelTensorBoundary, ChannelTensorFluxPort,
+    ChannelTensorLateralInput, ChannelTensorWaterAmount,
 };
 use crate::forcing::WaterAmount;
 use hydr_channel::internal::SURFACE_EXCHANGE_BINDING_PREFIX;
@@ -162,8 +162,8 @@ impl<R: Runtime<DType = DType>> BoundForcing<R> {
                 });
             }
             reaches.push(BoundReach {
-                left: tensor_boundary(&record.left, &scalar)?,
-                right: tensor_boundary(&record.right, &scalar)?,
+                left: tensor_boundary(id, &record.left, &scalar)?,
+                right: tensor_boundary(id, &record.right, &scalar)?,
                 lateral,
                 withdrawals,
             });
@@ -181,8 +181,9 @@ impl<R: Runtime<DType = DType>> BoundForcing<R> {
     }
 }
 
-/// Copies one host endpoint policy onto the configured device.
+/// Copies one host endpoint policy of reach `reach_id` onto the configured device.
 fn tensor_boundary<R: Runtime<DType = DType>>(
+    reach_id: &str,
     boundary: &ChannelBoundary,
     scalar: &impl Fn(f64) -> numr::error::Result<Tensor<R>>,
 ) -> Result<ChannelTensorBoundary<R>, SurfaceChannelError> {
@@ -208,5 +209,18 @@ fn tensor_boundary<R: Runtime<DType = DType>>(
             depth_m: scalar(*depth_m)?,
             velocity_m_per_s: scalar(*velocity_m_per_s)?,
         },
+        ChannelBoundary::FluxPort(port) => ChannelTensorBoundary::FluxPort(Box::new(
+            ChannelTensorFluxPort::new(
+                scalar(port.outward_water_rate_m3_per_s())?,
+                scalar(port.outward_momentum_rate_m4_per_s2())?,
+                scalar(port.signal_speed_m_per_s())?,
+                port.exterior_invariant_m_per_s().map(scalar).transpose()?,
+                port.provenance(),
+            )
+            .map_err(|source| SurfaceChannelError::Channel {
+                reach_id: reach_id.to_owned(),
+                source,
+            })?,
+        )),
     })
 }

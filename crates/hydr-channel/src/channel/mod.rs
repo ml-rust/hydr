@@ -5,16 +5,17 @@ mod section;
 
 pub use flow::{
     CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelBoundary, ChannelBoundaryConfig,
-    ChannelBoundaryTrace, ChannelCellResult, ChannelConfig, ChannelError, ChannelForcingInterval,
-    ChannelFrictionGeometryDiagnostics, ChannelGeometry, ChannelInitialState,
-    ChannelIntervalSnapshotData, ChannelLateralBinding, ChannelLateralDirection,
-    ChannelLateralInput, ChannelLateralLedger, ChannelLateralReceipt, ChannelLateralStateData,
-    ChannelReach, ChannelReachDefinition, ChannelReservoirTrace, ChannelRiemannDiagnostics,
-    ChannelSnapshot, ChannelSnapshotData, ChannelStep, ChannelStepDiagnostics,
-    ChannelSurveyedConfig, ChannelTensorBoundary, ChannelTensorForcingInterval,
-    ChannelTensorLateralInput, ChannelTensorWaterAmount, ChannelTriangularReconstruction,
-    ChannelWaterLedger, RectangularChannelCell, SurveyedChannelCell, TriangularChannelCell,
-    rectangular_reach_capabilities, surveyed_reach_capabilities, triangular_reach_capabilities,
+    ChannelBoundaryTrace, ChannelCellResult, ChannelConfig, ChannelError, ChannelFluxPort,
+    ChannelForcingInterval, ChannelFrictionGeometryDiagnostics, ChannelGeometry,
+    ChannelInitialState, ChannelIntervalSnapshotData, ChannelLateralBinding,
+    ChannelLateralDirection, ChannelLateralInput, ChannelLateralLedger, ChannelLateralReceipt,
+    ChannelLateralStateData, ChannelReach, ChannelReachDefinition, ChannelReservoirTrace,
+    ChannelRiemannDiagnostics, ChannelSnapshot, ChannelSnapshotData, ChannelStep,
+    ChannelStepDiagnostics, ChannelSurveyedConfig, ChannelTensorBoundary, ChannelTensorFluxPort,
+    ChannelTensorForcingInterval, ChannelTensorLateralInput, ChannelTensorWaterAmount,
+    ChannelTriangularReconstruction, ChannelWaterLedger, RectangularChannelCell,
+    SurveyedChannelCell, TriangularChannelCell, rectangular_reach_capabilities,
+    surveyed_reach_capabilities, triangular_reach_capabilities,
 };
 pub use section::{
     CrossSectionBatch, CrossSectionDefinition, CrossSectionError, CrossSectionPoint,

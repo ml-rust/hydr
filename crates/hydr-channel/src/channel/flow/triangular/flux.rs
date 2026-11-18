@@ -35,11 +35,9 @@ where
         right_boundary: &ChannelTensorBoundary<R>,
     ) -> Result<Flux<R>, ChannelError> {
         let faces = self.triangular_faces(geometry, fields, left_boundary, right_boundary)?;
-        let frame = self.scalar_boundary_frame(
-            &self.triangular_endpoint_interior(&faces)?,
-            left_boundary,
-            right_boundary,
-        )?;
+        let interior = self.triangular_endpoint_interior(&faces)?;
+        self.check_flux_ports(fields, &interior, left_boundary, right_boundary)?;
+        let frame = self.direct_boundary_frame(&interior, left_boundary, right_boundary)?;
         let (start, len) = numerical_range(self.count(), left_boundary, right_boundary);
         let numerical = if len > 0 {
             let left = narrow_face(&faces.left, start, len)?;
@@ -70,7 +68,7 @@ where
         let momentum = self.assemble_boundary_faces(
             frame.as_ref(),
             numerical.as_ref().map(|(sample, _)| &sample.momentum),
-            frame.as_ref().map(|f| &f.traces.momentum_flux_m4_per_s2),
+            frame.as_ref().map(|f| &f.momentum_flux_m4_per_s2),
         )?;
         let speed =
             self.assemble_face_speeds(frame.as_ref(), numerical.as_ref().map(|(_, speed)| speed))?;
@@ -90,26 +88,19 @@ where
             numerical
                 .as_ref()
                 .map(|(sample, _)| &sample.diagnostics.water_flux_width),
-            frame.as_ref().map(|f| &f.traces.water_flux_width_m3_per_s),
+            frame.as_ref().map(|f| &f.water_flux_width_m3_per_s),
         )?;
         let momentum_flux_width = self.assemble_boundary_faces(
             frame.as_ref(),
             numerical
                 .as_ref()
                 .map(|(sample, _)| &sample.diagnostics.momentum_flux_width),
-            frame
-                .as_ref()
-                .map(|f| &f.traces.momentum_flux_width_m4_per_s2),
+            frame.as_ref().map(|f| &f.momentum_flux_width_m4_per_s2),
         )?;
         let root_iterations = numerical
             .as_ref()
             .map_or(0, |(sample, _)| sample.diagnostics.root_iterations)
-            .max(
-                frame
-                    .as_ref()
-                    .and_then(|f| f.traces.root_iterations.iter().copied().max())
-                    .unwrap_or(0),
-            );
+            .max(frame.as_ref().map_or(0, |f| f.root_iterations));
         let zero = self.constant(&water, 0.0)?;
         let (left_pressure, left_pressure_bound) =
             self.triangular_pressure_value(&faces.left, &zero)?;
@@ -131,7 +122,7 @@ where
             }
         }
         Ok(Flux {
-            boundary_traces: frame.map(|frame| frame.traces),
+            boundary_traces: frame.and_then(|frame| frame.traces),
             surveyed: None,
             prescribed_water,
             water,

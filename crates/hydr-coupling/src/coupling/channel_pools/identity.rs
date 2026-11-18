@@ -176,6 +176,7 @@ fn same_boundary(a: Option<&ChannelBoundary>, b: Option<&ChannelBoundary>) -> bo
                 entrance_loss_coefficient: bk,
             }),
         ) => bits(&[*ah, *ak], &[*bh, *bk]),
+        (Some(ChannelBoundary::FluxPort(a)), Some(ChannelBoundary::FluxPort(b))) => a.same_bits(b),
         _ => false,
     }
 }

@@ -252,7 +252,7 @@ Each row names a component that also declares [capabilities](#read-component-cap
 | Component | Package type | Schema constant (value) | Contract constant (value) | Import call | Nested packages |
 | --- | --- | --- | --- | --- | --- |
 | Surface solver | `SnapshotData` | `SNAPSHOT_SCHEMA` (`hydr-checkpoint-3`) | `CONTRACT_VERSION` (`hydr-swe-numr-cpu-1`) | `Solver::restore_data` | none |
-| [Channel](channels.md) | `ChannelSnapshotData` | `CHANNEL_SNAPSHOT_SCHEMA` (`hydr-channel-checkpoint-1`) | `CHANNEL_CONTRACT_VERSION` (`hydr-channel-1d-numr-cpu-1`) | `ChannelReach::import_snapshot` | none |
+| [Channel](channels.md) | `ChannelSnapshotData` | `CHANNEL_SNAPSHOT_SCHEMA` (`hydr-channel-checkpoint-2`) | `CHANNEL_CONTRACT_VERSION` (`hydr-channel-1d-numr-cpu-2`) | `ChannelReach::import_snapshot` | none |
 | [Level pool](level-pool.md) | `LevelPoolSnapshotData` | `LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-level-pool-checkpoint-1`) | `LEVEL_POOL_CONTRACT_VERSION` (`hydr-level-pool-numr-cpu-1`) | `LevelPoolBatch::restore_data` | none |
 | [Subcatchment](subcatchment.md) | `SubcatchmentSnapshotData` | `SUBCATCHMENT_SNAPSHOT_SCHEMA` (`hydr-subcatchment-checkpoint-1`) | `SUBCATCHMENT_CONTRACT_VERSION` (`hydr-subcatchment-numr-cpu-1`) | `SubcatchmentBatch::restore_data` | none |
 | [Reservoir](reservoir.md) | `ReservoirSnapshotData` | `RESERVOIR_SNAPSHOT_SCHEMA` (`hydr-reservoir-checkpoint-1`) | `RESERVOIR_CONTRACT_VERSION` (`hydr-reservoir-numr-cpu-1`) | `ReservoirBatch::restore_data` | none |

@@ -302,13 +302,13 @@ fn level_pool_import_rejects_foreign_contract() -> Result {
 #[test]
 fn level_pool_import_rejects_channel_schema() -> Result {
     let mut changed = history()?.snapshot_data()?;
-    changed.schema = "hydr-channel-checkpoint-1".into();
+    changed.schema = "hydr-channel-checkpoint-2".into();
     let mut destination = single(constant()?, 0.0)?;
     let before = destination.snapshot_data()?;
     let error = rejection(destination.restore_data(&changed))?;
     let message = error.to_string();
     assert!(
-        message.contains("hydr-channel-checkpoint-1"),
+        message.contains("hydr-channel-checkpoint-2"),
         "missing found value: {message}"
     );
     assert_eq!(destination.snapshot_data()?, before);

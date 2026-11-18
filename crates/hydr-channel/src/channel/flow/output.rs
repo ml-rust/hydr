@@ -51,7 +51,7 @@ pub struct ChannelWaterLedger {
 /// Explicit host projection of the last accepted interval's bounded receipts.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChannelStepDiagnostics {
-    /// Scalar endpoint traces in left/right order. Wall and Exterior entries remain absent.
+    /// Scalar endpoint traces in left/right order. Wall, Exterior and FluxPort entries remain absent.
     pub boundary_traces: [Option<super::ChannelBoundaryTrace>; 2],
     /// Final Riemann flux brackets, absent for rectangular HLL intervals.
     pub riemann: Option<ChannelRiemannDiagnostics>,

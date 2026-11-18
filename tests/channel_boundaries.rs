@@ -1,9 +1,13 @@
-//! Frozen physical and lifecycle acceptance for scalar channel endpoints.
+//! Frozen physical and lifecycle acceptance for scalar and flux port channel endpoints.
 
 #[path = "channel_boundaries/admission.rs"]
 mod admission;
 #[path = "channel_boundaries/common.rs"]
 mod common;
+#[path = "channel_boundaries/flux_port.rs"]
+mod flux_port;
+#[path = "channel_boundaries/flux_port_lifecycle.rs"]
+mod flux_port_lifecycle;
 #[path = "channel_boundaries/lifecycle.rs"]
 mod lifecycle;
 #[path = "channel_boundaries/packing.rs"]

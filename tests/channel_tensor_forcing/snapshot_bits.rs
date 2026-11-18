@@ -370,6 +370,16 @@ impl FloatBits for ChannelBoundary {
                 depth_m.append_bits(bits);
                 velocity_m_per_s.append_bits(bits);
             }
+            Self::FluxPort(port) => {
+                port.outward_water_rate_m3_per_s().append_bits(bits);
+                port.outward_momentum_rate_m4_per_s2().append_bits(bits);
+                port.signal_speed_m_per_s().append_bits(bits);
+                let invariant = port.exterior_invariant_m_per_s();
+                bits.push(u64::from(invariant.is_some()));
+                if let Some(invariant) = invariant {
+                    invariant.append_bits(bits);
+                }
+            }
         }
     }
 }

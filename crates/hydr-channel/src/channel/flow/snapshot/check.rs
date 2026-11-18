@@ -87,6 +87,7 @@ fn boundary(a: &ChannelBoundary, b: &ChannelBoundary) -> bool {
                 velocity_m_per_s: bu,
             },
         ) => values(&[*ah, *au], &[*bh, *bu]),
+        (ChannelBoundary::FluxPort(a), ChannelBoundary::FluxPort(b)) => a.same_bits(b),
         _ => false,
     }
 }

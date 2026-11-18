@@ -65,6 +65,16 @@ pub fn native<R: Runtime<DType = DType>>(
             ChannelBoundary::Discharge { discharge_m3_per_s } => ChannelTensorBoundary::Discharge {
                 discharge_m3_per_s: value(*discharge_m3_per_s)?,
             },
+            ChannelBoundary::FluxPort(port) => ChannelTensorBoundary::FluxPort(Box::new(
+                ChannelTensorFluxPort::new(
+                    value(port.outward_water_rate_m3_per_s())?,
+                    value(port.outward_momentum_rate_m4_per_s2())?,
+                    value(port.signal_speed_m_per_s())?,
+                    port.exterior_invariant_m_per_s().map(value).transpose()?,
+                    port.provenance(),
+                )
+                .map_err(|error| numr::error::Error::Msg(error.to_string()))?,
+            )),
         })
     };
     let amount = |a: WaterAmount| -> Result<_, numr::error::Error> {
@@ -203,6 +213,18 @@ where
             }
             ChannelTensorBoundary::Discharge { discharge_m3_per_s } => {
                 client.copy_into(discharge_m3_per_s, &replacement)?;
+            }
+            ChannelTensorBoundary::FluxPort(port) => {
+                for tensor in [
+                    port.outward_water_rate_m3_per_s(),
+                    port.outward_momentum_rate_m4_per_s2(),
+                    port.signal_speed_m_per_s(),
+                ]
+                .into_iter()
+                .chain(port.exterior_invariant_m_per_s())
+                {
+                    client.copy_into(tensor, &replacement)?;
+                }
             }
         }
     }

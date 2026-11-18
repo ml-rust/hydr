@@ -68,6 +68,15 @@ fn native<R: Runtime<DType = DType>>(
                 elevation_m: value(*elevation_m)?,
                 entrance_loss_coefficient: value(*entrance_loss_coefficient)?,
             },
+            ChannelBoundary::FluxPort(port) => {
+                ChannelTensorBoundary::FluxPort(Box::new(ChannelTensorFluxPort::new(
+                    value(port.outward_water_rate_m3_per_s())?,
+                    value(port.outward_momentum_rate_m4_per_s2())?,
+                    value(port.signal_speed_m_per_s())?,
+                    port.exterior_invariant_m_per_s().map(value).transpose()?,
+                    port.provenance(),
+                )?))
+            }
         })
     };
     let amount = |a: WaterAmount| -> Result<ChannelTensorWaterAmount<R>> {

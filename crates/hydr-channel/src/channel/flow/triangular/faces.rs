@@ -134,7 +134,8 @@ where
         match boundary {
             ChannelTensorBoundary::Stage { .. }
             | ChannelTensorBoundary::Discharge { .. }
-            | ChannelTensorBoundary::QuiescentReservoir { .. } => Ok((area, discharge)),
+            | ChannelTensorBoundary::QuiescentReservoir { .. }
+            | ChannelTensorBoundary::FluxPort(_) => Ok((area, discharge)),
             ChannelTensorBoundary::Wall => Ok((area, self.client.neg(&discharge)?)),
             ChannelTensorBoundary::Exterior {
                 depth_m,

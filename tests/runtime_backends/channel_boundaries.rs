@@ -1,9 +1,8 @@
 use super::{Result, runtime};
-#[cfg(feature = "wgpu")]
-use hydr::channel::ChannelError;
 use hydr::channel::{
-    ChannelBoundary, ChannelConfig, ChannelForcingInterval, ChannelGeometry, ChannelInitialState,
-    ChannelReach, ChannelReachDefinition, RectangularChannelCell, TriangularChannelCell,
+    ChannelBoundary, ChannelConfig, ChannelError, ChannelFluxPort, ChannelForcingInterval,
+    ChannelGeometry, ChannelInitialState, ChannelReach, ChannelReachDefinition,
+    RectangularChannelCell, TriangularChannelCell,
 };
 use numr::dtype::DType;
 use numr::ops::NextRepresentableOps;
@@ -208,6 +207,139 @@ where
         }
     }
     Ok(())
+}
+
+/// Ports that supply the exact flux of uniform flow at unit depth and Froude number 0.5.
+fn uniform_ports(triangle: bool) -> std::result::Result<[ChannelBoundary; 2], ChannelError> {
+    let definition = definition(triangle);
+    let gravity = definition.config.gravity;
+    let h = 1.0_f64;
+    // The triangle has unit bank slopes: A = h², c = sqrt(g h / 2), p = g h³ / 3, φ = 4c.
+    let (area, sound, pressure, phi_factor) = if triangle {
+        (
+            h * h,
+            (gravity * h / 2.0).sqrt(),
+            gravity * h * h * h / 3.0,
+            4.0,
+        )
+    } else {
+        (
+            7.0 * h,
+            (gravity * h).sqrt(),
+            gravity * 7.0 * h * h / 2.0,
+            2.0,
+        )
+    };
+    let u = 0.5 * sound;
+    let q = area * u;
+    let momentum = q * u + pressure;
+    let speed = u + sound;
+    let phi = phi_factor * sound;
+    let port = |water, invariant| {
+        ChannelFluxPort::new(
+            water,
+            momentum,
+            speed,
+            Some(invariant),
+            "runtime port fixture",
+        )
+        .map(ChannelBoundary::FluxPort)
+    };
+    Ok([port(-q, u + phi)?, port(q, phi - u)?])
+}
+
+/// Advances uniform flow between flux ports, restarts it, and returns every accepted state.
+fn execute_ports<R>(client: R::Client) -> Result<Vec<String>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + HypotOps<R>
+        + IndexingOps<R>
+        + MidpointOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + UnaryOps<R>
+        + NextRepresentableOps<R>
+        + CertifiedSimpsonAlgorithms<R>
+        + CertifiedBisectionAlgorithms<R>
+        + CertifiedMappedBisectionAlgorithms<R>
+        + CertifiedUpperBracketAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
+{
+    let mut states = Vec::new();
+    for triangle in [false, true] {
+        let [left, right] = uniform_ports(triangle)?;
+        let forcing = |start_s, end_s| ChannelForcingInterval {
+            start_s,
+            end_s,
+            left: left.clone(),
+            right: right.clone(),
+            lateral_inputs: Vec::new(),
+        };
+        let mut layout = definition(triangle);
+        layout.provenance = "Explicit uniform flux port runtime fixture".into();
+        // Unit depth: the triangle holds 1 m² and the 7 m rectangle 7 m² in 4 m cells.
+        let area = if triangle { 1.0 } else { 7.0 };
+        let gravity = layout.config.gravity;
+        let sound = if triangle {
+            (gravity / 2.0).sqrt()
+        } else {
+            gravity.sqrt()
+        };
+        let volume = 4.0 * area;
+        let initial = ChannelInitialState {
+            time_s: 0.0,
+            volume_m3: vec![volume; 4],
+            longitudinal_momentum_m4_per_s: vec![volume * 0.5 * sound; 4],
+        };
+        let origin = ChannelReach::<R>::new(client.clone(), layout, initial)?;
+        let (first, second) = (1.0 / 64.0, 2.0 / 64.0);
+        let current = origin.step(first, &forcing(0.0, first))?.next;
+        let saved = current.snapshot_data()?;
+        let cold = origin.import_snapshot(&saved)?;
+        assert_eq!(cold.snapshot_data()?, saved);
+        let continued = current.step(second, &forcing(first, second))?.next;
+        assert_eq!(
+            cold.step(second, &forcing(first, second))?
+                .next
+                .snapshot_data()?,
+            continued.snapshot_data()?
+        );
+        let receipt = continued
+            .last_step()?
+            .ok_or("Missing runtime flux port receipt")?;
+        assert_eq!(receipt.boundary_traces, [None, None]);
+        let dt = receipt.end_s - receipt.start_s;
+        let ChannelBoundary::FluxPort(port) = &right else {
+            return Err("Runtime fixture lost its port".into());
+        };
+        assert_eq!(
+            receipt.face_volume_m3[4].to_bits(),
+            (port.outward_water_rate_m3_per_s() * dt).to_bits()
+        );
+        for accepted in [&current, &continued] {
+            states.push(format!("{:?}", accepted.state()?));
+        }
+    }
+    Ok(states)
+}
+
+#[test]
+fn selected_cpu_executes_flux_port_endpoints_and_complete_restart() -> Result {
+    execute_ports::<runtime::Runtime>(runtime::client()).map(|_| ())
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn selected_cuda_executes_flux_port_endpoints_and_complete_restart() -> Result {
+    use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+    let cpu = execute_ports::<runtime::Runtime>(runtime::client())?;
+    let cuda = execute_ports::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)?;
+    super::same_bits(&cpu, &cuda)
 }
 
 #[test]

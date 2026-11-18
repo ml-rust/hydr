@@ -1,7 +1,8 @@
 use super::{
-    EndpointInterior, NativeBoundaryTraces, ScalarBoundaryFrame,
+    DirectBoundaryFrame, EndpointInterior, NativeBoundaryTraces,
     algebra::{Bounds, Interior},
     depth::{Depth, DepthRequest},
+    port::PortLane,
 };
 use crate::channel::flow::{
     ChannelError, ChannelTensorBoundary, context::Context, geometry::TensorGeometry,
@@ -23,6 +24,9 @@ pub(super) struct Lane<R: Runtime<DType = DType>> {
     pub water_bound: Tensor<R>,
     pub momentum_bound: Tensor<R>,
 }
+/// Solved scalar lanes in endpoint order and their packed receipts.
+type ScalarLanes<R> = (Vec<Lane<R>>, Arc<NativeBoundaryTraces<R>>);
+
 struct Pending<R: Runtime<DType = DType>> {
     endpoint: usize,
     interior: Interior<R>,
@@ -44,12 +48,80 @@ where
         + TwoSumOps<R>
         + BatchedBisectionAlgorithms<R>,
 {
-    pub(in crate::channel::flow) fn scalar_boundary_frame(
+    /// Rates at the direct end faces, or `None` when both faces solve a face Riemann problem.
+    pub(in crate::channel::flow) fn direct_boundary_frame(
         &self,
         interior: &EndpointInterior<R>,
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
-    ) -> Result<Option<ScalarBoundaryFrame<R>>, ChannelError> {
+    ) -> Result<Option<DirectBoundaryFrame<R>>, ChannelError> {
+        let ports = self.port_lanes(left, right)?;
+        let scalar = self.scalar_lanes(interior, left, right)?;
+        if ports.is_empty() && scalar.is_none() {
+            return Ok(None);
+        }
+        let c = &self.client;
+        let (lanes, traces) = match scalar {
+            Some((lanes, traces)) => (lanes, Some(traces)),
+            None => (Vec::new(), None),
+        };
+        let mut endpoints = Vec::with_capacity(2);
+        let mut entries = Vec::with_capacity(2);
+        for endpoint in 0..2 {
+            if let Some(lane) = lanes.iter().find(|l| l.trace.endpoints == [endpoint]) {
+                entries.push([
+                    &lane.longitudinal,
+                    &lane.trace.momentum_flux_m4_per_s2,
+                    &lane.trace.signal_speed_bound_m_per_s,
+                    &lane.water_bound,
+                    &lane.momentum_bound,
+                    &lane.trace.water_flux_width_m3_per_s,
+                    &lane.trace.momentum_flux_width_m4_per_s2,
+                ]);
+            } else if let Some(port) = ports.iter().find(|p| p.endpoint == endpoint) {
+                entries.push([
+                    &port.longitudinal,
+                    &port.momentum,
+                    &port.speed,
+                    &port.zero,
+                    &port.zero,
+                    &port.zero,
+                    &port.zero,
+                ]);
+            } else {
+                continue;
+            }
+            endpoints.push(endpoint);
+        }
+        let pack = |field: usize| -> Result<Tensor<R>, ChannelError> {
+            let refs: Vec<_> = entries.iter().map(|entry| entry[field]).collect();
+            Ok(c.cat(&refs, 0)?)
+        };
+        Ok(Some(DirectBoundaryFrame {
+            endpoints,
+            longitudinal_water: pack(0)?,
+            momentum_flux_m4_per_s2: pack(1)?,
+            signal_speed_bound_m_per_s: pack(2)?,
+            water_underflow_bound: pack(3)?,
+            momentum_underflow_bound: pack(4)?,
+            water_flux_width_m3_per_s: pack(5)?,
+            momentum_flux_width_m4_per_s2: pack(6)?,
+            root_iterations: traces
+                .as_ref()
+                .and_then(|t| t.root_iterations.iter().copied().max())
+                .unwrap_or(0),
+            traces,
+            ports: ports.into_iter().map(PortLane::front).collect(),
+        }))
+    }
+
+    /// Solved scalar trace lanes and their packed receipts, or `None` without a scalar trace.
+    fn scalar_lanes(
+        &self,
+        interior: &EndpointInterior<R>,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
+    ) -> Result<Option<ScalarLanes<R>>, ChannelError> {
         let mut pending = Vec::with_capacity(2);
         for (endpoint, request) in [left, right].into_iter().enumerate() {
             if !super::assembly::is_scalar(request) {
@@ -177,15 +249,7 @@ where
                 .flat_map(|l| l.trace.root_iterations.iter().copied())
                 .collect(),
         };
-        let longitudinal: Vec<_> = lanes.iter().map(|l| &l.longitudinal).collect();
-        let water: Vec<_> = lanes.iter().map(|l| &l.water_bound).collect();
-        let momentum: Vec<_> = lanes.iter().map(|l| &l.momentum_bound).collect();
-        Ok(Some(ScalarBoundaryFrame {
-            longitudinal_water: c.cat(&longitudinal, 0)?,
-            water_underflow_bound: c.cat(&water, 0)?,
-            momentum_underflow_bound: c.cat(&momentum, 0)?,
-            traces: Arc::new(traces),
-        }))
+        Ok(Some((lanes, Arc::new(traces))))
     }
     fn boundary_prepare(
         &self,

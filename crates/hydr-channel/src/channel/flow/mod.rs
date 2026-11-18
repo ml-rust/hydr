@@ -20,6 +20,7 @@ mod definition;
 mod engine;
 mod error;
 mod flux;
+mod flux_port;
 mod forcing;
 mod friction;
 mod geometry;
@@ -58,6 +59,7 @@ pub use definition::{
 };
 pub use engine::{ChannelReach, ChannelStep};
 pub use error::ChannelError;
+pub use flux_port::ChannelFluxPort;
 pub use geometry::{ChannelSurveyedConfig, SurveyedChannelCell};
 pub use output::{
     ChannelCellResult, ChannelFrictionGeometryDiagnostics, ChannelLateralLedger,
@@ -70,8 +72,8 @@ pub use snapshot::{
 };
 
 pub use forcing::{
-    ChannelTensorBoundary, ChannelTensorForcingInterval, ChannelTensorLateralInput,
-    ChannelTensorWaterAmount,
+    ChannelTensorBoundary, ChannelTensorFluxPort, ChannelTensorForcingInterval,
+    ChannelTensorLateralInput, ChannelTensorWaterAmount,
 };
 
 pub(crate) mod surveyed;

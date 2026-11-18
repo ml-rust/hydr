@@ -1,8 +1,8 @@
-//! Face-side dry-front states for the channel CFL rule, with scalar boundary traces.
+//! Face-side dry-front states for the channel CFL rule, with scalar traces and flux ports.
 
 use super::{
     ChannelError,
-    boundary::{NativeBoundaryTraces, ScalarBoundaryFrame},
+    boundary::{DirectBoundaryFrame, NativeBoundaryTraces, PortFront},
     cfl_fronts::{DryFronts, SideFronts, has_dry_contact, side_fronts},
     context::Context,
 };
@@ -31,7 +31,7 @@ where
         &self,
         left: &TensorFaceState<R>,
         right: &TensorFaceState<R>,
-        frame: Option<&ScalarBoundaryFrame<R>>,
+        frame: Option<&DirectBoundaryFrame<R>>,
     ) -> Result<Option<DryFronts<R>>, ChannelError> {
         let c = &self.client;
         let gravity = self.definition.config.gravity;
@@ -52,18 +52,22 @@ where
         self.dry_fronts(side(left)?, side(right)?, frame, &trace)
     }
 
-    /// Fronts with each scalar trace in place of its exterior copy.
+    /// Fronts with each scalar trace and flux port exterior in place of its exterior copy.
     ///
     /// Returns `None` when no face has water on exactly one side.
     pub fn dry_fronts(
         &self,
         left: SideFronts<R>,
         right: SideFronts<R>,
-        frame: Option<&ScalarBoundaryFrame<R>>,
+        frame: Option<&DirectBoundaryFrame<R>>,
         trace: &TraceFronts<'_, R>,
     ) -> Result<Option<DryFronts<R>>, ChannelError> {
+        let (left, right) = match frame.and_then(|frame| frame.traces.as_deref()) {
+            Some(traces) => self.splice_traces(left, right, traces, trace)?,
+            None => (left, right),
+        };
         let (left, right) = match frame {
-            Some(frame) => self.splice_traces(left, right, &frame.traces, trace)?,
+            Some(frame) => self.splice_ports(left, right, &frame.ports)?,
             None => (left, right),
         };
         if !has_dry_contact(&self.client, &left.wet, &right.wet)? {
@@ -108,6 +112,43 @@ where
         } else {
             right
         };
+        Ok((left, right))
+    }
+
+    /// Replace the outer state at each flux port face with the port's exterior front.
+    ///
+    /// A wet exterior moves into the reach at most at its invariant `u + φ`. It joins the
+    /// adjacent wet run. Its front away from the reach enters no reach cell, so it holds zero.
+    fn splice_ports(
+        &self,
+        mut left: SideFronts<R>,
+        mut right: SideFronts<R>,
+        ports: &[PortFront<R>],
+    ) -> Result<(SideFronts<R>, SideFronts<R>), ChannelError> {
+        let c = &self.client;
+        for port in ports {
+            let zero = self.tensor(&[0.0])?;
+            let (inward, wet) = match &port.invariant {
+                Some(invariant) => (c.maximum(invariant, &zero)?, self.tensor(&[1.0])?),
+                None => (zero.clone(), zero.clone()),
+            };
+            if port.endpoint == 0 {
+                let source = SideFronts {
+                    rightward: inward,
+                    leftward: zero,
+                    wet,
+                };
+                left = self.splice_side(left, 0, &source, 0)?;
+            } else {
+                let source = SideFronts {
+                    rightward: zero,
+                    leftward: inward,
+                    wet,
+                };
+                let face = right.wet.numel().saturating_sub(1);
+                right = self.splice_side(right, face, &source, 0)?;
+            }
+        }
         Ok((left, right))
     }
 

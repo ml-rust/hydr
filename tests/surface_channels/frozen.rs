@@ -33,6 +33,15 @@ fn before_levelling(text: &str) -> String {
         )
 }
 
+/// The state text in the nested channel format before the FluxPort endpoint.
+///
+/// That format names channel schema and contract `1`. Without a port no other field changes,
+/// so this text reproduces the earlier digest bit for bit.
+fn before_flux_port(text: &str) -> String {
+    text.replace("hydr-channel-checkpoint-2", "hydr-channel-checkpoint-1")
+        .replace("hydr-channel-1d-numr-cpu-2", "hydr-channel-1d-numr-cpu-1")
+}
+
 /// The state text in the package format before the contraction step rule.
 ///
 /// That format lacks `contraction_target` and `contraction`, and names schema and contract
@@ -76,7 +85,9 @@ fn strip_field(text: &str, name: &str) -> String {
 
 /// Digests a state must also match in earlier package formats.
 struct Earlier {
-    /// Digest of the text before the contraction step rule.
+    /// Digest of the text before the channel FluxPort endpoint.
+    flux_port: u64,
+    /// Digest of that text before the contraction step rule.
     contraction: u64,
     /// Digest of that text before the levelling cap, where the cap never binds.
     levelling: Option<u64>,
@@ -87,6 +98,8 @@ fn check(batch: &Batch, expected: u64, earlier: Option<Earlier>) -> Result {
     let text = state(batch)?;
     let mut pairs = vec![(digest(&text), expected)];
     if let Some(earlier) = earlier {
+        let text = before_flux_port(&text);
+        pairs.push((digest(&text), earlier.flux_port));
         let text = before_contraction(&text);
         pairs.push((digest(&text), earlier.contraction));
         if let Some(frozen) = earlier.levelling {
@@ -125,10 +138,11 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
         }
     }
     let earlier = Earlier {
+        flux_port: 0x966d_d2ce_0df9_c27f,
         contraction: 0xc161_f544_a433_f567,
         levelling: None,
     };
-    check(&batch, 0x966d_d2ce_0df9_c27f, Some(earlier))
+    check(&batch, 0x66c4_6418_a052_98af, Some(earlier))
 }
 
 #[test]
@@ -156,8 +170,9 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
     // Neither the cap nor the contraction step rule changes a step here, so each earlier
     // format keeps its earlier digest.
     let earlier = Earlier {
+        flux_port: 0x7417_472e_02eb_3880,
         contraction: 0x5bc0_6ab1_e4a8_a937,
         levelling: Some(0xa448_16a4_840e_cdee),
     };
-    check(&batch, 0x7417_472e_02eb_3880, Some(earlier))
+    check(&batch, 0xb123_21ad_9264_82d0, Some(earlier))
 }

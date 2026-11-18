@@ -5,7 +5,7 @@
 
 use super::super::{
     ChannelError,
-    boundary::ScalarBoundaryFrame,
+    boundary::DirectBoundaryFrame,
     cfl_fronts::{DryFronts, SideFronts, side_fronts},
     context::Context,
     geometry::TriangleGeometry,
@@ -33,7 +33,7 @@ where
         &self,
         geometry: &TriangleGeometry<R>,
         faces: &TriangularFaces<R>,
-        frame: Option<&ScalarBoundaryFrame<R>>,
+        frame: Option<&DirectBoundaryFrame<R>>,
     ) -> Result<Option<DryFronts<R>>, ChannelError> {
         let c = &self.client;
         let bounds = |face: &Face<R>| -> Result<(Tensor<R>, Tensor<R>), ChannelError> {

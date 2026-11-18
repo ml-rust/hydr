@@ -10,7 +10,7 @@
 
 use super::{
     ChannelError,
-    boundary::ScalarBoundaryFrame,
+    boundary::DirectBoundaryFrame,
     cfl_fronts::{DryFronts, bound_dry_faces},
     context::Context,
     geometry::TensorGeometry,
@@ -80,15 +80,15 @@ where
         })
     }
 
-    /// Place scalar boundary speeds around the numerical face speeds.
+    /// Place direct boundary speeds around the numerical face speeds.
     ///
-    /// A scalar boundary trace holds one unsigned bound. It serves both directions.
+    /// A scalar trace or flux port holds one unsigned bound. It serves both directions.
     pub fn assemble_face_speeds(
         &self,
-        frame: Option<&ScalarBoundaryFrame<R>>,
+        frame: Option<&DirectBoundaryFrame<R>>,
         numerical: Option<&FaceSpeeds<R>>,
     ) -> Result<FaceSpeeds<R>, ChannelError> {
-        let scalar = frame.map(|f| &f.traces.signal_speed_bound_m_per_s);
+        let scalar = frame.map(|f| &f.signal_speed_bound_m_per_s);
         Ok(FaceSpeeds {
             rightward: self.assemble_boundary_faces(
                 frame,

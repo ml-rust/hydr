@@ -122,21 +122,23 @@ fn exact_rest_retains_original_depth_and_section_enclosure() -> TestResult {
                         (&wall, &policy)
                     };
                     let frame = ctx
-                        .scalar_boundary_frame(&inputs, left, right)?
+                        .direct_boundary_frame(&inputs, left, right)?
                         .ok_or("missing resting reservoir frame")?;
-                    assert_eq!(
-                        frame.traces.depth_m.item::<f64>()?.to_bits(),
-                        1.0_f64.to_bits()
-                    );
-                    assert_eq!(frame.traces.outward_discharge_m3_per_s.item::<f64>()?, 0.0);
+                    let traces = frame
+                        .traces
+                        .as_deref()
+                        .ok_or("missing resting reservoir trace")?;
+                    assert_eq!(traces.depth_m.item::<f64>()?.to_bits(), 1.0_f64.to_bits());
+                    assert_eq!(traces.outward_discharge_m3_per_s.item::<f64>()?, 0.0);
                     assert_eq!(frame.longitudinal_water.item::<f64>()?, 0.0);
-                    assert_eq!(
-                        frame.traces.momentum_flux_m4_per_s2.item::<f64>()?,
-                        if triangle { 1.0 / 3.0 } else { 0.5 }
-                    );
-                    assert_eq!(frame.traces.root_iterations, vec![0]);
-                    assert_eq!(frame.traces.endpoints, vec![endpoint]);
-                    assert!(frame.traces.reservoir.is_some());
+                    let momentum = if triangle { 1.0 / 3.0 } else { 0.5 };
+                    assert_eq!(traces.momentum_flux_m4_per_s2.item::<f64>()?, momentum);
+                    assert_eq!(frame.momentum_flux_m4_per_s2.item::<f64>()?, momentum);
+                    assert_eq!(traces.root_iterations, vec![0]);
+                    assert_eq!(traces.endpoints, vec![endpoint]);
+                    assert_eq!(frame.endpoints, vec![endpoint]);
+                    assert!(traces.reservoir.is_some());
+                    assert!(frame.ports.is_empty());
                 }
             }
         }

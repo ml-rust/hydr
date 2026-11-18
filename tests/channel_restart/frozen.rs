@@ -15,33 +15,55 @@ fn digest(text: &str) -> u64 {
     })
 }
 
-/// Digest of every snapshot over `INTERVALS` accepted intervals of `kind`.
-fn trajectory(kind: Kind) -> Result<u64> {
+/// The text in the package format before the FluxPort endpoint.
+///
+/// That format names schema and contract `1`. A trajectory without a port changes no other
+/// field, so this text reproduces the earlier digest bit for bit.
+fn before_flux_port(text: &str) -> String {
+    text.replace("hydr-channel-checkpoint-2", "hydr-channel-checkpoint-1")
+        .replace("hydr-channel-1d-numr-cpu-2", "hydr-channel-1d-numr-cpu-1")
+}
+
+/// Text of every snapshot over `INTERVALS` accepted intervals of `kind`.
+fn trajectory(kind: Kind) -> Result<String> {
     let mut current = reach(kind)?;
     let mut text = String::new();
     for _ in 0..INTERVALS {
         current = step(kind, &current)?;
         text.push_str(&format!("{:?}\n", current.snapshot_data()?));
     }
-    Ok(digest(&text))
+    Ok(text)
+}
+
+/// Each digest, labelled by kind, for comparison in one assertion.
+fn labelled(digests: impl IntoIterator<Item = u64>) -> Vec<String> {
+    Kind::ALL
+        .iter()
+        .zip(digests)
+        .map(|(kind, digest)| format!("{kind:?}={digest:#018x}"))
+        .collect()
 }
 
 #[test]
 fn standalone_trajectories_match_frozen_digests() -> Result {
     let expected = [
+        0x9c81_f00a_7ec3_3dab_u64,
+        0x06cd_2018_c5ab_bf01,
+        0xdda5_9c6f_523c_4f53,
+    ];
+    // Digests of the same text in the schema `1` format.
+    let earlier = [
         0x0028_56b5_bf80_d4e3_u64,
         0xb350_5b8d_d3bb_ef49,
         0x6de6_f32e_0966_47f3,
     ];
-    let found = Kind::ALL
+    let texts = Kind::ALL
         .iter()
-        .map(|&kind| trajectory(kind).map(|digest| format!("{kind:?}={digest:#018x}")))
+        .map(|&kind| trajectory(kind))
         .collect::<Result<Vec<_>>>()?;
-    let expected: Vec<_> = Kind::ALL
-        .iter()
-        .zip(expected)
-        .map(|(kind, digest)| format!("{kind:?}={digest:#018x}"))
-        .collect();
-    assert_eq!(found, expected);
+    let found = texts.iter().map(|text| digest(text));
+    assert_eq!(labelled(found), labelled(expected));
+    let before = texts.iter().map(|text| digest(&before_flux_port(text)));
+    assert_eq!(labelled(before), labelled(earlier));
     Ok(())
 }

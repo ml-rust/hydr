@@ -20,6 +20,7 @@ const SCALAR_REACH_ADMITTED: &[BoundaryKind] = &[
     BoundaryKind::Stage,
     BoundaryKind::Discharge,
     BoundaryKind::QuiescentReservoir,
+    BoundaryKind::FluxPort,
 ];
 
 /// Endpoint policies of surveyed reaches.
@@ -100,6 +101,19 @@ const SCALAR_REACH_REGIMES: &[RegimeSupport] = &[
     EXTERIOR_WET_SUBCRITICAL,
     EXTERIOR_SUPERCRITICAL,
     EXTERIOR_DRY,
+    regime(
+        RegimeScope::Boundary(BoundaryKind::FluxPort),
+        Regime::WetSubcritical,
+    ),
+    regime(
+        RegimeScope::Boundary(BoundaryKind::FluxPort),
+        Regime::Supercritical,
+    ),
+    regime(RegimeScope::Boundary(BoundaryKind::FluxPort), Regime::Dry),
+    regime(
+        RegimeScope::Boundary(BoundaryKind::FluxPort),
+        Regime::WetDryFront,
+    ),
     INTERIOR_WET_SUBCRITICAL,
     INTERIOR_SUPERCRITICAL,
     INTERIOR_DRY,
@@ -140,6 +154,18 @@ const RESERVOIR_OUTSIDE_WET_SUBCRITICAL: Unsupported = unsupported(
     "quiescent-reservoir-outside-wet-subcritical",
     UnsupportedReason::RejectedByAdmission,
     "QuiescentReservoir endpoints with a dry, critical or supercritical interior or trace reject.",
+    CHANNELS_DOC,
+);
+const FLUX_PORT_SLOW_SIGNAL: Unsupported = unsupported(
+    "flux-port-speed-below-interior",
+    UnsupportedReason::RejectedByAdmission,
+    "FluxPort endpoints whose signal speed lies below the end cell's |u| + c reject.",
+    CHANNELS_DOC,
+);
+const FLUX_PORT_DRY_EXPORT: Unsupported = unsupported(
+    "flux-port-dry-export",
+    UnsupportedReason::RejectedByAdmission,
+    "FluxPort endpoints that export water from a dry end cell reject.",
     CHANNELS_DOC,
 );
 const INTEGRATED_ENDPOINT_DISCHARGE: Unsupported = unsupported(
@@ -208,6 +234,8 @@ const SCALAR_REACH_UNSUPPORTED: &[Unsupported] = &[
     STAGE_OUTSIDE_WET_SUBCRITICAL,
     DISCHARGE_OUTSIDE_WET_SUBCRITICAL,
     RESERVOIR_OUTSIDE_WET_SUBCRITICAL,
+    FLUX_PORT_SLOW_SIGNAL,
+    FLUX_PORT_DRY_EXPORT,
     INTEGRATED_ENDPOINT_DISCHARGE,
     TRANSMISSIVE_ENDPOINTS,
     JUNCTIONS,
@@ -232,6 +260,11 @@ const LATERAL_OWNERSHIP: Limit = Limit {
 const RESERVOIR_HELD_ELEVATION: Limit = Limit {
     id: "quiescent-reservoir-held-elevation",
     summary: "QuiescentReservoir holds the supplied elevation and advances no reservoir storage.",
+    doc: CHANNELS_DOC,
+};
+const FLUX_PORT_PROVIDER: Limit = Limit {
+    id: "flux-port-provider-rates",
+    summary: "FluxPort rates and the exterior invariant come from the provider; the reach checks the speed bound against its end cell only.",
     doc: CHANNELS_DOC,
 };
 
@@ -267,6 +300,7 @@ static RECTANGULAR: ComponentCapabilities = ComponentCapabilities {
     limits: &[
         LATERAL_OWNERSHIP,
         RESERVOIR_HELD_ELEVATION,
+        FLUX_PORT_PROVIDER,
         Limit {
             id: "scalar-endpoint-square-roots",
             summary: "Stage, Discharge and QuiescentReservoir endpoints also need correctly rounded F64 square roots.",
@@ -276,7 +310,7 @@ static RECTANGULAR: ComponentCapabilities = ComponentCapabilities {
     summary: Summary {
         equations: "1D hydrostatic shallow-water equations for one unbranched rectangular reach with Manning resistance",
         method: "first-order finite volumes, Roberts-Wilson pressure reconstruction, width-aware HLL with bracketed wave bounds, forward Euler and split Manning friction",
-        assessment: "selected analytical, conservation, refinement, scalar-endpoint and restart cases; field accuracy remains unestablished",
+        assessment: "selected analytical, conservation, refinement, scalar-endpoint, flux-port and restart cases; field accuracy remains unestablished",
     },
 };
 
@@ -306,11 +340,15 @@ static TRIANGULAR: ComponentCapabilities = ComponentCapabilities {
     nested: &[],
     attachable_to: SCALAR_REACH_PARENTS,
     unsupported: SCALAR_REACH_UNSUPPORTED,
-    limits: &[LATERAL_OWNERSHIP, RESERVOIR_HELD_ELEVATION],
+    limits: &[
+        LATERAL_OWNERSHIP,
+        RESERVOIR_HELD_ELEVATION,
+        FLUX_PORT_PROVIDER,
+    ],
     summary: Summary {
         equations: "1D hydrostatic shallow-water equations for one unbranched prismatic triangular reach with Manning resistance",
         method: "finite volumes with limited-linear or first-order reconstruction, barotropic Godunov sampling with certified flux brackets, forward Euler and split Manning friction",
-        assessment: "selected analytical, conservation, refinement, scalar-endpoint and restart cases; field accuracy remains unestablished",
+        assessment: "selected analytical, conservation, refinement, scalar-endpoint, flux-port and restart cases; field accuracy remains unestablished",
     },
 };
 
@@ -345,6 +383,12 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
             "surveyed-scalar-boundaries",
             UnsupportedReason::RejectedByAdmission,
             "Stage, Discharge and QuiescentReservoir endpoints reject on surveyed reaches.",
+            CHANNELS_DOC,
+        ),
+        unsupported(
+            "surveyed-flux-port",
+            UnsupportedReason::RejectedByAdmission,
+            "FluxPort endpoints reject on surveyed reaches, standalone and coordinated.",
             CHANNELS_DOC,
         ),
         unsupported(

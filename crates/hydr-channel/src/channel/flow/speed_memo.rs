@@ -122,6 +122,15 @@ fn boundary_operands<R: Runtime<DType = DType>>(
             entrance_loss_coefficient,
         } => (3, vec![elevation_m, entrance_loss_coefficient]),
         ChannelTensorBoundary::Discharge { discharge_m3_per_s } => (4, vec![discharge_m3_per_s]),
+        // A dry exterior holds one operand fewer, so it takes its own kind code.
+        ChannelTensorBoundary::FluxPort(port) => {
+            let kind = if port.exterior_invariant_m_per_s().is_some() {
+                5
+            } else {
+                6
+            };
+            (kind, port.operands().into_iter().map(|(_, t)| t).collect())
+        }
     }
 }
 

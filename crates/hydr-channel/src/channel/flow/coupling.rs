@@ -42,6 +42,7 @@ fn endpoint_name<R: Runtime<DType = DType>>(endpoint: Option<&ChannelTensorBound
         Some(ChannelTensorBoundary::Stage { .. }) => "Stage",
         Some(ChannelTensorBoundary::QuiescentReservoir { .. }) => "QuiescentReservoir",
         Some(ChannelTensorBoundary::Discharge { .. }) => "Discharge",
+        Some(ChannelTensorBoundary::FluxPort(_)) => "FluxPort",
     }
 }
 

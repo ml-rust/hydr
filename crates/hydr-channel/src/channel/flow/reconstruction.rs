@@ -3,7 +3,7 @@ use super::{
     admission::Fields,
     boundary::{
         EndpointInterior,
-        assembly::{is_scalar, numerical_range},
+        assembly::{is_direct, numerical_range},
     },
     cfl_speeds::{CflSpeeds, FaceSpeeds},
     context::Context,
@@ -137,7 +137,7 @@ where
         let c = &self.client;
         let (start, len) = numerical_range(self.count(), left, right);
         let mut pieces = Vec::with_capacity(3);
-        if is_scalar(left) {
+        if is_direct(left) {
             pieces.push(self.constant(&depth.narrow(0, 0, 1)?, 0.0)?);
         }
         if len > 0 {
@@ -149,7 +149,7 @@ where
             self.represented(&required, &discharge, name)?;
             pieces.push(discharge);
         }
-        if is_scalar(right) {
+        if is_direct(right) {
             pieces.push(self.constant(&depth.narrow(0, self.count(), 1)?, 0.0)?);
         }
         if pieces.len() == 1 {
@@ -172,9 +172,11 @@ where
     ) -> Result<Tensor<R>, ChannelError> {
         let endpoint = field.narrow(0, index, 1)?;
         match boundary {
+            // A direct face copies the end cell, so its own side pressure cancels there.
             ChannelTensorBoundary::Stage { .. }
             | ChannelTensorBoundary::Discharge { .. }
-            | ChannelTensorBoundary::QuiescentReservoir { .. } => Ok(endpoint),
+            | ChannelTensorBoundary::QuiescentReservoir { .. }
+            | ChannelTensorBoundary::FluxPort(_) => Ok(endpoint),
             ChannelTensorBoundary::Wall => {
                 if velocity {
                     Ok(self.client.neg(&endpoint)?)
@@ -259,7 +261,7 @@ where
             )?;
             self.directional_speeds(&lower, &upper)
         };
-        let frame = self.scalar_boundary_frame(&reconstructed.endpoints, left, right)?;
+        let frame = self.direct_boundary_frame(&reconstructed.endpoints, left, right)?;
         let fronts =
             self.rectangular_fronts(&reconstructed.left, &reconstructed.right, frame.as_ref())?;
         if frame.is_none() {

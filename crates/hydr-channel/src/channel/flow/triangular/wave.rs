@@ -54,7 +54,7 @@ where
     ) -> Result<CflSpeeds<R>, ChannelError> {
         let faces = self.triangular_faces(geometry, fields, left, right)?;
         let frame =
-            self.scalar_boundary_frame(&self.triangular_endpoint_interior(&faces)?, left, right)?;
+            self.direct_boundary_frame(&self.triangular_endpoint_interior(&faces)?, left, right)?;
         let fronts = self.triangular_fronts(geometry, &faces, frame.as_ref())?;
         if frame.is_some() {
             let (start, len) = numerical_range(self.count(), left, right);

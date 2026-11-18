@@ -5,7 +5,8 @@ use crate::channel_fixture::{
     initial, interval, lateral_inputs, pool_outcome, reach, step_outcome,
 };
 use crate::channel_variants::{
-    ENDPOINTS, RECONSTRUCTIONS, boundary_kind, reconstruction_id, refusal, samples, source_kind,
+    ENDPOINTS, PORT_SPEED, RECONSTRUCTIONS, boundary_kind, port, reconstruction_id, refusal,
+    samples, source_kind,
 };
 use hydr::capability::{
     BoundaryKind, EndpointId, Regime, RegimeScope, RegimeSupport, UnsupportedReason,
@@ -44,6 +45,44 @@ fn outward(endpoint: EndpointId) -> f64 {
     } else {
         1.0
     }
+}
+
+/// Full-section pressure force per unit density at depth `h`, in m⁴/s².
+fn pressure(kind: Kind, h: f64) -> f64 {
+    let g = ChannelConfig::default().gravity;
+    match kind {
+        // Width 2 m: g b h² / 2.
+        Kind::Rectangular => g * h * h,
+        // Unit bank slopes: g h³ / 3.
+        Kind::Triangular | Kind::Surveyed => g * h * h * h / 3.0,
+    }
+}
+
+/// Gravity-wave speed at depth `h`: `sqrt(g h)` for the rectangle, `sqrt(g h / 2)` otherwise.
+fn sound(kind: Kind, h: f64) -> f64 {
+    let g = ChannelConfig::default().gravity;
+    match kind {
+        Kind::Rectangular => (g * h).sqrt(),
+        Kind::Triangular | Kind::Surveyed => (g * h / 2.0).sqrt(),
+    }
+}
+
+/// One cell with velocity `u` and a flux port at `endpoint`.
+fn port_cell(
+    kind: Kind,
+    h: f64,
+    u: f64,
+    endpoint: EndpointId,
+    rates: (f64, f64, f64, Option<f64>),
+) -> Outcome {
+    let (water, momentum, speed, invariant) = rates;
+    one_cell(
+        kind,
+        h,
+        u,
+        endpoint,
+        port(water, momentum, speed, invariant)?,
+    )
 }
 
 /// Minimal case at `endpoint` in which `scope` holds flow of `regime`.
@@ -103,6 +142,46 @@ fn regime_case(
         (RegimeScope::Boundary(BoundaryKind::Exterior), Regime::Dry) => {
             one_cell(kind, 1.0, 0.0, endpoint, exterior(0.0, 0.0))
         }
+        // Resting water against a port that supplies only the end cell's pressure.
+        (RegimeScope::Boundary(BoundaryKind::FluxPort), Regime::WetSubcritical) => port_cell(
+            kind,
+            1.0,
+            0.0,
+            endpoint,
+            (0.0, pressure(kind, 1.0), PORT_SPEED, Some(PORT_SPEED)),
+        ),
+        // Supercritical outflow at the end cell's own physical flux.
+        (RegimeScope::Boundary(BoundaryKind::FluxPort), Regime::Supercritical) => {
+            let q = FAST * kind.area(1.0);
+            port_cell(
+                kind,
+                1.0,
+                fast,
+                endpoint,
+                (
+                    q,
+                    q * FAST + pressure(kind, 1.0),
+                    FAST + sound(kind, 1.0) + 1.0,
+                    Some(0.0),
+                ),
+            )
+        }
+        // Outflow onto a dry exterior.
+        (RegimeScope::Boundary(BoundaryKind::FluxPort), Regime::Dry) => port_cell(
+            kind,
+            1.0,
+            0.0,
+            endpoint,
+            (0.125, pressure(kind, 1.0), PORT_SPEED, None),
+        ),
+        // A wet exterior fills a dry end cell.
+        (RegimeScope::Boundary(BoundaryKind::FluxPort), Regime::WetDryFront) => port_cell(
+            kind,
+            0.0,
+            0.0,
+            endpoint,
+            (-0.125, 0.0, PORT_SPEED, Some(PORT_SPEED)),
+        ),
         (RegimeScope::Interior, Regime::WetSubcritical) => two(
             [1.0, 1.0],
             [0.0, 0.0],
@@ -180,19 +259,56 @@ fn rejection_cases(kind: Kind, id: &str) -> Option<Vec<(Outcome, Variant, &'stat
             cases
         }
         "quiescent-reservoir-outside-wet-subcritical" => scalar(BoundaryKind::QuiescentReservoir),
-        "surveyed-scalar-boundaries" => samples()
+        "flux-port-speed-below-interior" => ENDPOINTS
             .into_iter()
-            .filter(|boundary| refusal(kind, boundary_kind(boundary)).is_some())
-            .flat_map(|boundary| {
-                ENDPOINTS.map(|endpoint| {
-                    (
-                        one_cell(kind, 1.0, 0.0, endpoint, boundary.clone()),
-                        Variant::Input,
-                        "surveyed scalar boundary is unsupported",
-                    )
-                })
+            .map(|endpoint| {
+                (
+                    port_cell(
+                        kind,
+                        1.0,
+                        0.0,
+                        endpoint,
+                        (0.0, pressure(kind, 1.0), 1.0, Some(1.0)),
+                    ),
+                    Variant::Input,
+                    "is below the end cell |u|+c",
+                )
             })
             .collect(),
+        "flux-port-dry-export" => ENDPOINTS
+            .into_iter()
+            .map(|endpoint| {
+                (
+                    port_cell(kind, 0.0, 0.0, endpoint, (0.125, 0.0, PORT_SPEED, None)),
+                    Variant::Input,
+                    "from a dry end cell",
+                )
+            })
+            .collect(),
+        "surveyed-scalar-boundaries" | "surveyed-flux-port" => {
+            let fragment = if id == "surveyed-flux-port" {
+                "surveyed FluxPort endpoint is unsupported"
+            } else {
+                "surveyed scalar boundary is unsupported"
+            };
+            let samples = match samples() {
+                Ok(samples) => samples,
+                Err(error) => return Some(vec![(Err(error.into()), Variant::Input, fragment)]),
+            };
+            samples
+                .into_iter()
+                .filter(|boundary| refusal(kind, boundary_kind(boundary)) == Some(id))
+                .flat_map(|boundary| {
+                    ENDPOINTS.map(|endpoint| {
+                        (
+                            one_cell(kind, 1.0, 0.0, endpoint, boundary.clone()),
+                            Variant::Input,
+                            fragment,
+                        )
+                    })
+                })
+                .collect()
+        }
         "surveyed-channel-pool-attachment" => vec![(
             pool_outcome(kind),
             Variant::Input,
@@ -211,7 +327,7 @@ fn channel_reaches_admit_declared_boundaries() -> TestResult {
                 .endpoint(id)
                 .ok_or(format!("{kind:?} declares no `{}`", id.id()))?;
             for admitted in endpoint.admitted {
-                let boundary = samples()
+                let boundary = samples()?
                     .into_iter()
                     .find(|sample| boundary_kind(sample) == *admitted)
                     .ok_or(format!(

@@ -34,6 +34,9 @@ impl<R: Runtime<DType = DType>> ChannelTensorBoundary<R> {
                 depth_m: make(*depth_m)?,
                 velocity_m_per_s: make(*velocity_m_per_s)?,
             },
+            ChannelBoundary::FluxPort(port) => Self::FluxPort(Box::new(
+                super::ChannelTensorFluxPort::from_host(client, port)?,
+            )),
         })
     }
 
@@ -60,6 +63,7 @@ impl<R: Runtime<DType = DType>> ChannelTensorBoundary<R> {
                 depth_m: depth_m.item::<f64>()?,
                 velocity_m_per_s: velocity_m_per_s.item::<f64>()?,
             },
+            Self::FluxPort(port) => ChannelBoundary::FluxPort(port.project()?),
         })
     }
 }
@@ -87,6 +91,22 @@ where
         }
         match self {
             Self::Wall => Ok(()),
+            Self::FluxPort(port) => {
+                if matches!(
+                    &definition.geometry,
+                    ChannelGeometry::PrismaticSurveyed { .. }
+                ) {
+                    return Err(reject(
+                        "surveyed FluxPort endpoint is unsupported: supply Wall or complete Exterior depth and velocity",
+                    ));
+                }
+                port.check(c).map_err(|error| match error {
+                    ChannelError::InvalidInput { context, .. } => {
+                        ChannelError::input(context).at(index)
+                    }
+                    other => other,
+                })
+            }
             Self::Stage { elevation_m } => {
                 check_scalar(c, elevation_m, "stage elevation")?;
                 if !finite(c, elevation_m)? {

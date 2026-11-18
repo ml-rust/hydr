@@ -124,14 +124,22 @@ pub enum ChannelTensorBoundary<R: Runtime<DType = DType>> {
         /// Original full-section discharge along the increasing reach coordinate, in cubic metres per second.
         discharge_m3_per_s: Tensor<R>,
     },
+    /// Direct water and momentum rates from a flux provider, inserted at the end face.
+    FluxPort(Box<super::ChannelTensorFluxPort<R>>),
 }
 
 impl<R: Runtime<DType = DType>> ChannelTensorBoundary<R> {
+    /// True for a scalar trace policy, whose face state comes from a solved trace.
     pub(in crate::channel::flow) fn is_scalar(&self) -> bool {
         matches!(
             self,
             Self::Stage { .. } | Self::Discharge { .. } | Self::QuiescentReservoir { .. }
         )
+    }
+
+    /// True when the end face takes its rates from the policy, not from a face Riemann problem.
+    pub(in crate::channel::flow) fn is_direct(&self) -> bool {
+        self.is_scalar() || matches!(self, Self::FluxPort(_))
     }
 }
 

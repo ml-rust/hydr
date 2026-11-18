@@ -78,6 +78,10 @@ pub enum ChannelBoundary {
         /// Exterior velocity in the reach's increasing direction in m/s.
         velocity_m_per_s: f64,
     },
+    /// Direct water and momentum rates from a flux provider, inserted at the end face.
+    ///
+    /// Rectangular and triangular reaches admit it. Surveyed reaches reject it.
+    FluxPort(super::ChannelFluxPort),
 }
 
 /// Fixed physical direction of a declared lateral boundary.

@@ -101,8 +101,14 @@ where
         let c = &self.client;
         let count = self.count();
         let reconstructed = self.reconstruct(fields, left_boundary, right_boundary)?;
+        self.check_flux_ports(
+            fields,
+            &reconstructed.endpoints,
+            left_boundary,
+            right_boundary,
+        )?;
         let frame =
-            self.scalar_boundary_frame(&reconstructed.endpoints, left_boundary, right_boundary)?;
+            self.direct_boundary_frame(&reconstructed.endpoints, left_boundary, right_boundary)?;
         let (start, len) = numerical_range(count, left_boundary, right_boundary);
         let left = reconstructed.left;
         let right = reconstructed.right;
@@ -142,7 +148,7 @@ where
         let momentum = self.assemble_boundary_faces(
             frame.as_ref(),
             numerical_momentum.as_ref(),
-            frame.as_ref().map(|f| &f.traces.momentum_flux_m4_per_s2),
+            frame.as_ref().map(|f| &f.momentum_flux_m4_per_s2),
         )?;
         let numerical_speed = homogeneous
             .as_ref()
@@ -217,7 +223,7 @@ where
             }
         }
         Ok(Flux {
-            boundary_traces: frame.map(|frame| frame.traces),
+            boundary_traces: frame.and_then(|frame| frame.traces),
             surveyed: None,
             prescribed_water,
             water_bound,

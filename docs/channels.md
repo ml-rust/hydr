@@ -68,7 +68,7 @@ A boundary trace gives the depth and velocity used to calculate flow across an e
 
 Scalar policies prescribe one hydraulic quantity and solve for the remaining trace state. They require a runtime that declares correctly rounded F64 square roots. Unsupported arithmetic rejects the interval without fallback.
 
-Surveyed reaches accept only `Wall` or complete `Exterior` data at both endpoints. `Stage`, `Discharge`, and `QuiescentReservoir` remain unsupported for surveyed geometry. The scalar-policy sections below apply to rectangular and triangular reaches.
+Surveyed reaches accept only `Wall` or complete `Exterior` data at both endpoints. `Stage`, `Discharge`, `QuiescentReservoir`, and `FluxPort` remain unsupported for surveyed geometry. The scalar-policy and flux port sections below apply to rectangular and triangular reaches.
 
 | Policy | Required input | Meaning |
 | --- | --- | --- |
@@ -77,6 +77,7 @@ Surveyed reaches accept only `Wall` or complete `Exterior` data at both endpoint
 | `Stage { elevation_m }` | Water-surface elevation in the reach datum | Solves a compatible wet-subcritical trace velocity |
 | `Discharge { discharge_m3_per_s }` | Full-section longitudinal discharge in m³/s | Solves compatible wet-subcritical depth and velocity |
 | `QuiescentReservoir` | Reservoir elevation and explicit entrance-loss coefficient | Includes entrance velocity head and complete exit mixing |
+| `FluxPort(ChannelFluxPort)` | Water and momentum rates, a signal-speed bound, and the exterior invariant | Inserts the supplied face flux at that end |
 
 Exterior depth uses metres above the local bed. Exterior velocity uses m/s in the channel's positive direction.
 
@@ -133,6 +134,48 @@ For rectangular or triangular channels whose pool levels respond to transfers, u
 Use this approximation only where rapid reservoir mixing is appropriate. Jets, seiches, dry connections, and critical transitions remain unsupported.
 
 Hydr rejects a result when it cannot establish whether the depth exceeds the declared maximum. Reservoir boundaries do not use the Discharge cap approximation.
+
+### Insert provider flux through a port
+
+Choose `FluxPort` when another model computes the flux across a reach end. A 2D surface that solves the end face Riemann problem is one such provider. Construct the port with `ChannelFluxPort::new`:
+
+| Argument | Unit | Meaning |
+| --- | --- | --- |
+| `outward_water_rate_m3_per_s` | m³/s | Water leaving the reach. A negative rate enters. |
+| `outward_momentum_rate_m4_per_s2` | m⁴/s² | Normal momentum flux along the outward normal, including normal pressure and every bed correction once |
+| `signal_speed_m_per_s` | m/s | Conservative absolute bound on every wave that crosses the face |
+| `exterior_invariant_m_per_s` | m/s | `Some(u + φ)` of the exterior water, measured into the reach. `None` when the exterior is dry. |
+| `provenance` | text | Provider, its compatible state, and the basis of the speed bound |
+
+Hydr inserts both rates at the end face. The end cell's own side pressure is zero there, so the supplied momentum is the whole momentum exchange. With `σ = -1` at the left end and `+1` at the right end:
+
+| Quantity | Left end | Right end |
+| --- | --- | --- |
+| Face water along the reach direction | `-outward_water_rate` | `+outward_water_rate` |
+| End-cell momentum gain per second | `+outward_momentum_rate` | `-outward_momentum_rate` |
+
+The end cell gains `-σ · outward_momentum_rate`. A uniform state at rest or in motion keeps its state when the port supplies its exact physical flux.
+
+The signal speed serves as the inward speed bound in both directions at that face. A wet exterior joins the dry-front run through its invariant. A dry end cell takes the larger of the invariant and the signal speed.
+
+Exported water counts in the face depletion limit. A step that would drain the end cell shortens. Port water counts in `boundary_in_m3` and `boundary_out_m3` of the ledger.
+
+Each rejection is an input error that names the endpoint, the value, and the fix:
+
+| Rejection | When | Fix |
+| --- | --- | --- |
+| Nonfinite operand | Any rate, the speed, or the invariant is not finite | Supply finite values |
+| Negative speed | `signal_speed_m_per_s < 0` | Supply a nonnegative bound |
+| Inflow from a dry exterior | A negative water rate with `None` invariant | Supply the invariant of the entering water |
+| Moving flux without speed | A nonzero water rate with zero speed | Supply a positive bound |
+| Empty provenance | Blank text or a control character | Name the provider and the basis of the bound |
+| Slow signal | The speed lies below `\|u\| + c` of the end cell | Supply a bound of at least the end cell's characteristic speed |
+| Dry export | A positive water rate from a dry end cell | Supply zero or entering water |
+| Surveyed reach | Any port on surveyed geometry, standalone or in a coordinator | Use `Wall` or complete `Exterior` |
+
+The reach checks the speed against its accepted-start end cell. Here `c = sqrt(g h)` for a rectangle and `sqrt(g h / 2)` for a triangle. The provider certifies the rates and their bound against its own state.
+
+`ChannelTensorFluxPort::new` builds the same port from F64 tensors of shape `[1]` for `step_tensor`. Binding checks every value on the reach device.
 
 ### Read scalar compatibility controls
 
@@ -267,7 +310,7 @@ A zero withdrawal from a dry cell has no applied velocity.
 
 ### Inspect scalar endpoint receipts
 
-`ChannelStepDiagnostics.boundary_traces` contains left/right optional `ChannelBoundaryTrace` values. Scalar policies produce traces. Wall and Exterior entries remain absent.
+`ChannelStepDiagnostics.boundary_traces` contains left/right optional `ChannelBoundaryTrace` values. Scalar policies produce traces. Wall, Exterior, and FluxPort entries remain absent.
 
 These traces describe the accepted interval's flux calculation.
 
@@ -368,6 +411,8 @@ Exact continuation requires the same build, dependency sources, runtime arithmet
 
 Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `CHANNEL_SNAPSHOT_SCHEMA` and `CHANNEL_CONTRACT_VERSION`. `import_snapshot` compares both before any other check and rejects a foreign value with an input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected. These include earlier layouts and packages with surveyed low parts.
 
+The current identities are `hydr-channel-checkpoint-2` and `hydr-channel-1d-numr-cpu-2`. Retained forcing can hold a `FluxPort`, with its provenance. Packages of schema `hydr-channel-checkpoint-1` reject by identity. Capture a new package to recover.
+
 Import checks continuation consistency. The application owns content hashes and the authenticity of earlier history.
 
 ## Understand the numerical method
@@ -394,7 +439,7 @@ Each face carries a signed wave-speed interval `[lower, upper]`. Hydr splits it 
 | Rightward | The cell right of the face | `max(upper, 0)` |
 | Leftward | The cell left of the face | `max(-lower, 0)` |
 
-The interval need not contain zero. A supercritical face gives zero speed toward its upstream cell. A scalar boundary trace supplies one unsigned bound. Hydr uses that bound for both directions.
+The interval need not contain zero. A supercritical face gives zero speed toward its upstream cell. A scalar boundary trace or a flux port supplies one unsigned bound. Hydr uses that bound for both directions.
 
 Each cell frequency is `(s_in_left + s_in_right) / (2 L)`. `s_in_left` is the rightward speed at its left face. `s_in_right` is the leftward speed at its right face. A wave that leaves the cell adds nothing.
 
@@ -411,7 +456,7 @@ Hydr raises the inward speed into each dry cell to the dry-front bound of that r
 | Right of the face | Contiguous wet states that end at the face | Maximum of `u + φ(A)` |
 | Left of the face | Contiguous wet states that start at the face | Maximum of `-(u - φ(A))` |
 
-The run includes both face states of each cell and a wet exterior or scalar boundary trace. A scalar trace widens its velocity by its compatibility defect. A dry cell takes the larger of this bound and its face speed. Water beyond the nearest dry cell does not restrict the step.
+The run includes both face states of each cell and a wet exterior, scalar boundary trace, or flux port exterior. A flux port exterior contributes its supplied invariant. A scalar trace widens its velocity by its compatibility defect. A dry cell takes the larger of this bound and its face speed. Water beyond the nearest dry cell does not restrict the step.
 
 | Geometry | `φ(A)` | Enclosure |
 | --- | --- | --- |

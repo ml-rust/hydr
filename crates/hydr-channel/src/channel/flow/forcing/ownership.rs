@@ -59,6 +59,9 @@ where
                 depth_m: detach_scalar(client, &depth_m, "exterior depth")?,
                 velocity_m_per_s: detach_scalar(client, &velocity_m_per_s, "exterior velocity")?,
             },
+            Self::FluxPort(port) => Self::FluxPort(Box::new(
+                port.into_owned(|tensor, name| detach_scalar(client, tensor, name))?,
+            )),
         })
     }
 }
