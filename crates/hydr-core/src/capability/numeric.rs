@@ -29,6 +29,12 @@ pub enum ArithmeticRequirement {
     RoundToNearestSqrt,
     /// Fused multiply-add with one rounding.
     FusedMulAdd,
+    /// F64 `exp`, `log`, `log1p` and `pow` through numr `CorrectlyRoundedOps`.
+    /// `exp`, `log` and `log1p` are correctly rounded to nearest.
+    /// `pow` is correctly rounded modulo the unknown hardest cases.
+    /// All four are deterministic on every runtime that meets the contracts.
+    /// Needs IEEE basic arithmetic and fused multiply-add.
+    CorrectlyRoundedElementary,
 }
 
 impl ArithmeticRequirement {
@@ -39,6 +45,7 @@ impl ArithmeticRequirement {
             Self::NearestEvenGradualUnderflow => "nearest-even-gradual-underflow",
             Self::RoundToNearestSqrt => "round-to-nearest-sqrt",
             Self::FusedMulAdd => "fused-mul-add",
+            Self::CorrectlyRoundedElementary => "correctly-rounded-elementary",
         }
     }
 }
@@ -120,6 +127,7 @@ mod tests {
             ArithmeticRequirement::NearestEvenGradualUnderflow,
             ArithmeticRequirement::RoundToNearestSqrt,
             ArithmeticRequirement::FusedMulAdd,
+            ArithmeticRequirement::CorrectlyRoundedElementary,
         ];
         assert_ids(&all.map(|a| a.id()));
     }

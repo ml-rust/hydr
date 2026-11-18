@@ -2,7 +2,7 @@
 
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, ScalarOps};
-use numr::runtime::{FloatArithmeticContract, Runtime, RuntimeClient};
+use numr::runtime::{FloatArithmeticContract, FusedMulAddContract, Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 
 pub enum F64EnvironmentError {
@@ -18,6 +18,11 @@ pub enum F64EnvironmentError {
         subnormal_input: f64,
         subnormal_output: f64,
     },
+    CorrectlyRounded {
+        name: &'static str,
+        basic: FloatArithmeticContract,
+        fused: FusedMulAddContract,
+    },
 }
 
 impl F64EnvironmentError {
@@ -29,6 +34,9 @@ impl F64EnvironmentError {
                 contract,
             } => format!(
                 "unsupported {name} arithmetic: computes_f64={computes_f64}, contract={contract:?}. Select a runtime providing F64 IEEE 754 basic arithmetic before creating the {component} context"
+            ),
+            Self::CorrectlyRounded { name, basic, fused } => format!(
+                "unsupported {name} arithmetic: basic={basic:?}, fused_mul_add={fused:?}. Select a runtime providing F64 IEEE 754 basic arithmetic and fused multiply-add before creating the {component} context"
             ),
             Self::Mode {
                 name,
@@ -86,5 +94,64 @@ where
             subnormal_input,
             subnormal_output,
         }))
+    }
+}
+
+fn correctly_rounded_error(
+    name: &'static str,
+    basic: FloatArithmeticContract,
+    fused: FusedMulAddContract,
+) -> Option<F64EnvironmentError> {
+    if basic == FloatArithmeticContract::Ieee754Basic && fused == FusedMulAddContract::Ieee754Fused
+    {
+        None
+    } else {
+        Some(F64EnvironmentError::CorrectlyRounded { name, basic, fused })
+    }
+}
+
+/// Rejects a runtime that lacks F64 IEEE basic arithmetic or fused multiply-add.
+pub fn probe_correctly_rounded<R: Runtime<DType = DType>>() -> Option<F64EnvironmentError> {
+    correctly_rounded_error(
+        R::name(),
+        R::float_arithmetic_contract(DType::F64),
+        R::fused_mul_add_contract(DType::F64),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use numr::runtime::cpu::CpuRuntime;
+
+    #[test]
+    fn cpu_meets_correctly_rounded_contracts() {
+        assert!(probe_correctly_rounded::<CpuRuntime>().is_none());
+    }
+
+    #[test]
+    fn missing_fused_contract_is_rejected_with_runtime_and_action() {
+        let error = correctly_rounded_error(
+            "stub",
+            FloatArithmeticContract::Ieee754Basic,
+            FusedMulAddContract::BackendDefined,
+        );
+        assert!(error.is_some());
+        let message = error.map(|e| e.message("Soil")).unwrap_or_default();
+        assert!(message.contains("stub"));
+        assert!(message.contains("Select a runtime"));
+        assert!(message.contains("Soil"));
+    }
+
+    #[test]
+    fn missing_basic_contract_is_rejected() {
+        assert!(
+            correctly_rounded_error(
+                "stub",
+                FloatArithmeticContract::BackendDefined,
+                FusedMulAddContract::Ieee754Fused,
+            )
+            .is_some()
+        );
     }
 }

@@ -2,4 +2,4 @@
 
 mod arithmetic;
 
-pub use arithmetic::probe_f64;
+pub use arithmetic::{probe_correctly_rounded, probe_f64};
