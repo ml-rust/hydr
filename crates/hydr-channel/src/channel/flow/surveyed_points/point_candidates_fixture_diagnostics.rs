@@ -8,7 +8,7 @@ use super::super::super::{
 use super::{Result, frozen, hydraulic, support};
 use numr::{dtype::DType, runtime::Runtime};
 
-pub(super) fn check<R>(
+pub(in crate::channel::flow::surveyed_points) fn check<R>(
     session: &PointRootSession<'_, '_, R>,
     result: &PointCandidateCertificates<R>,
 ) -> Result

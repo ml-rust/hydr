@@ -9,7 +9,7 @@ use frozen::Result;
 use numr::{dtype::DType, runtime::Runtime};
 use std::collections::BTreeMap;
 
-pub(super) fn check<R>(
+pub(in crate::channel::flow::surveyed_points) fn check<R>(
     session: &PointRootSession<'_, '_, R>,
     result: &PointFluxCertificates<R>,
 ) -> Result
@@ -27,7 +27,7 @@ where
 }
 
 /// Checks one selection, which can be older than the latest session call.
-pub(super) fn selection<R>(
+pub(in crate::channel::flow::surveyed_points) fn selection<R>(
     session: &PointRootSession<'_, '_, R>,
     result: &PointFluxCertificates<R>,
 ) -> Result

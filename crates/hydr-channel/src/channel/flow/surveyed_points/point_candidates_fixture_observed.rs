@@ -8,15 +8,15 @@ use crate::channel::flow::surveyed::error::checked;
 use numr::{dtype::DType, runtime::Runtime};
 
 #[derive(Debug)]
-pub(super) struct State {
-    pub(super) owner: i64,
-    pub(super) label: &'static str,
-    pub(super) area: [f64; 2],
-    pub(super) depth: [f64; 2],
-    pub(super) velocity: Option<[f64; 2]>,
-    pub(super) discharge: [f64; 2],
+pub(in crate::channel::flow::surveyed_points) struct State {
+    pub(in crate::channel::flow::surveyed_points) owner: i64,
+    pub(in crate::channel::flow::surveyed_points) label: &'static str,
+    pub(in crate::channel::flow::surveyed_points) area: [f64; 2],
+    pub(in crate::channel::flow::surveyed_points) depth: [f64; 2],
+    pub(in crate::channel::flow::surveyed_points) velocity: Option<[f64; 2]>,
+    pub(in crate::channel::flow::surveyed_points) discharge: [f64; 2],
 }
-pub(super) fn actual<R>(
+pub(in crate::channel::flow::surveyed_points) fn actual<R>(
     session: &PointRootSession<'_, '_, R>,
     result: &PointCandidateCertificates<R>,
 ) -> Result<Vec<State>>
@@ -155,14 +155,18 @@ where
     }
     Ok(states)
 }
-pub(super) fn contains(actual: [f64; 2], expected: [u64; 2], context: &str) {
+pub(in crate::channel::flow::surveyed_points) fn contains(
+    actual: [f64; 2],
+    expected: [u64; 2],
+    context: &str,
+) {
     let expected = expected.map(f64::from_bits);
     assert!(
         actual[0] <= expected[0] && expected[1] <= actual[1],
         "{context}: {actual:?} excludes {expected:?}"
     );
 }
-pub(super) fn label(label: &str) -> &str {
+pub(in crate::channel::flow::surveyed_points) fn label(label: &str) -> &str {
     match label {
         "vacuum" | "sonic-dry-limit" => "dry",
         x => x,
