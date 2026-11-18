@@ -46,6 +46,8 @@ mod runtime;
 mod structure_laws;
 #[path = "runtime_backends/subcatchment.rs"]
 mod subcatchment;
+#[path = "runtime_backends/surface_channel_pools.rs"]
+mod surface_channel_pools;
 #[path = "runtime_backends/surface_channels.rs"]
 mod surface_channels;
 #[path = "runtime_backends/triangular_channels.rs"]
