@@ -3,8 +3,6 @@
 pub(crate) mod analytic_bottom;
 mod analytic_bottom_arithmetic;
 mod analytic_endpoint;
-#[cfg(test)]
-mod analytic_endpoint_tests;
 mod chart_admission;
 mod chart_brackets;
 mod chart_root_callback;
@@ -101,8 +99,6 @@ mod source_sonic_tightening;
 mod source_sonic_types;
 mod source_terms;
 pub(crate) mod source_velocity;
-#[cfg(test)]
-mod source_velocity_binding_tests;
 pub(crate) mod types;
 mod wave_curve;
 #[cfg(test)]
@@ -143,12 +139,23 @@ mod wet_waves_side;
 pub use point_output::{PrismaticPointRiemannResult, PrismaticPointTraceKind};
 
 #[cfg(test)]
-#[path = "source_tests.rs"]
-mod source_tests;
+mod source_fixture_support;
 
 #[cfg(test)]
-#[path = "analytic_bottom_tests.rs"]
-mod analytic_bottom_tests;
+mod source_fixtures;
+
+#[cfg(test)]
+mod source_potential_fixtures;
+
+#[cfg(test)]
+mod source_tests {
+    pub(super) use super::source_fixture_support as support;
+}
+
+#[cfg(test)]
+mod analytic_bottom_tests {
+    pub(super) use super::source_potential_fixtures as fixtures;
+}
 
 #[cfg(test)]
 mod potential_analytic_tests;

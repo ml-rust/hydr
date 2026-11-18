@@ -1,4 +1,4 @@
-use super::fixtures::{PROFILES, Reference};
+use super::source_fixtures::{CASES, Case, PROFILES, Reference};
 use crate::channel::flow::surveyed::error::HydraulicResult;
 use crate::channel::section::{
     CrossSectionBatch, CrossSectionDefinition, CrossSectionPoint, PrismaticSectionBatch,
@@ -14,8 +14,8 @@ use solvr::common::arithmetic::{CertifiedExpansion, Interval, with_interval_arit
 pub(in crate::channel::flow::surveyed_points) type Result<T = ()> =
     std::result::Result<T, Box<dyn std::error::Error>>;
 
-pub(in crate::channel::flow::surveyed_points) fn cases() -> &'static [super::fixtures::Case] {
-    super::fixtures::CASES
+pub(in crate::channel::flow::surveyed_points) fn cases() -> &'static [Case] {
+    CASES
 }
 
 pub(in crate::channel::flow::surveyed_points) fn profiles()
