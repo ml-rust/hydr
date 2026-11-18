@@ -1,4 +1,4 @@
-//! Admission of operating children: structure context, ownership, freshness, time, and signals.
+//! Admission of operating children: ownership, common time, and signals.
 //!
 //! Every rejection names `operation-ownership` first, except a signal outside the surface datum,
 //! which names `datum-or-gravity-mismatch`.
@@ -6,14 +6,13 @@
 use super::interval::interval_operation;
 use super::signals::bind_signals;
 use super::{
-    ACTUATED, IntervalOperation, MANUAL, OperatingBinding, OperatingChildren, PRESCRIBED, PUMPED,
-    SurfaceChannelOperating,
+    ACTUATED, IntervalOperation, MANUAL, OperatingBatches, OperatingBinding, OperatingChildren,
+    PRESCRIBED, PUMPED, SurfaceChannelOperating, build_children,
 };
 use crate::coupling::surface_channels::context::Context;
 use crate::coupling::surface_channels::structures::SurfaceChannelOperationOwner;
 use crate::coupling::surface_channels::{SurfaceChannelDefinition, SurfaceChannelError};
 use crate::structures::{OperatingSourceBinding, StructureBatch, StructureElement};
-use hydr_structures::internal::same_elements;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, ReduceOps, ScalarOps,
@@ -57,15 +56,17 @@ pub(in super::super) fn check_manual(
     }
 }
 
-/// Checks `operating` against `definition` and its `context` at common time `time_s`.
+/// Builds the children `declared` holds on the structure links of `definition`, then checks them
+/// against `definition` and its `context` at common time `time_s`.
 ///
 /// # Errors
-/// Returns [`SurfaceChannelError::Input`] naming `operation-ownership` for:
-/// - a child whose structure context differs from the setup structures in ascending identity
+/// Returns [`SurfaceChannelError::Input`] naming the child for every child rejection, and
+/// naming `operation-ownership` for:
+/// - a declaration without any child
 /// - a structure with zero owners or two: its declared owner has no claiming child, or a child
 ///   claims a structure of another owner
-/// - a child that has accepted an interval, or whose time differs from `time_s`, or a trajectory
-///   whose support excludes `time_s`
+/// - a child whose initial time differs from `time_s`, a trajectory whose support excludes
+///   `time_s`, or a common operating support that excludes `time_s`
 /// - a controller identity in both children, a signal naming no controller signal, a signal
 ///   bound twice, a signal on a node outside the node table, or a controller signal without a
 ///   binding
@@ -75,7 +76,7 @@ pub(in super::super) fn admit<R: Runtime<DType = DType>>(
     definition: &SurfaceChannelDefinition,
     context: &Context<R>,
     time_s: f64,
-    operating: SurfaceChannelOperating<R>,
+    declared: &SurfaceChannelOperating,
 ) -> Result<OperatingChildren<R>, SurfaceChannelError>
 where
     R::Client: BinaryOps<R>
@@ -91,43 +92,36 @@ where
         + UnaryOps<R>
         + LinearInterp1dDiagnostics<R>,
 {
-    let SurfaceChannelOperating {
-        gate,
-        pump,
-        trajectory,
-        signals,
-    } = operating;
+    if declared.gates.is_none() && declared.pumps.is_none() && declared.trajectories.is_empty() {
+        return Err(rejected(
+            "operating declares no child: omit operating when every structure has a manual owner"
+                .into(),
+        ));
+    }
     let expected: Vec<StructureElement> = definition
         .structures
         .iter()
         .map(|s| s.structure.element.clone())
         .collect();
-    let mut contexts: Vec<(&str, &[StructureElement])> = Vec::new();
+    let OperatingBatches {
+        gate,
+        pump,
+        trajectory,
+    } = build_children::<R>(context.client.clone(), expected.clone(), declared)?;
     let mut claims: Vec<(&str, &str)> = Vec::new();
     if let Some(gate) = &gate {
-        contexts.push(("controlled-gate controls", gate.controls().elements()));
-        contexts.push(("controlled-gate actuators", gate.actuators().elements()));
         for actuator in gate.actuators().definitions() {
             claims.push((actuator.structure_id.as_str(), ACTUATED));
         }
     }
     if let Some(pump) = &pump {
-        contexts.push(("controlled-pump", pump.controls().elements()));
         for response in pump.definitions() {
             claims.push((response.structure_id.as_str(), PUMPED));
         }
     }
     if let Some(trajectory) = &trajectory {
-        contexts.push(("trajectory", trajectory.elements()));
         for assignment in trajectory.assignments() {
             claims.push((assignment.structure_id.as_str(), PRESCRIBED));
-        }
-    }
-    for (child, elements) in &contexts {
-        if !same_elements(elements, &expected) {
-            return Err(rejected(format!(
-                "child={child} structure context differs from the setup structure links: build every child on the structure links in ascending identity"
-            )));
         }
     }
     let mut claimed: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
@@ -149,15 +143,19 @@ where
             )));
         }
     }
-    check_fresh(gate.as_ref(), pump.as_ref(), trajectory.as_ref(), time_s)?;
+    check_time(gate.as_ref(), pump.as_ref(), trajectory.as_ref(), time_s)?;
     let gate_controls = gate
         .as_ref()
         .map_or(&[][..], |g| g.controls().definitions());
     let pump_controls = pump
         .as_ref()
         .map_or(&[][..], |p| p.controls().definitions());
-    let (gate_signals, pump_signals) =
-        bind_signals(definition, context, (gate_controls, pump_controls), signals)?;
+    let (gate_signals, pump_signals) = bind_signals(
+        definition,
+        context,
+        (gate_controls, pump_controls),
+        &declared.signals,
+    )?;
     let client = context.client.clone();
     let structures = StructureBatch::<R>::new(client, expected)
         .map_err(|error| rejected(format!("operating structures: {error}")))?;
@@ -235,28 +233,22 @@ where
     })
 }
 
-/// Rejects a child that has accepted an interval or stands off `time_s`.
-fn check_fresh<R: Runtime<DType = DType>>(
+/// Rejects a fresh child whose initial time stands off `time_s`.
+fn check_time<R: Runtime<DType = DType>>(
     gate: Option<&crate::structures::ControlledGateBatch<R>>,
     pump: Option<&crate::structures::ControlledPumpBatch<R>>,
     trajectory: Option<&crate::structures::GateTrajectoryBatch<R>>,
     time_s: f64,
 ) -> Result<(), SurfaceChannelError> {
-    let mut children: Vec<(&str, usize, f64)> = Vec::new();
+    let mut children: Vec<(&str, f64)> = Vec::new();
     if let Some(gate) = gate {
-        let steps = gate.accepted_steps().max(gate.actuators().accepted_steps());
-        children.push(("controlled-gate", steps, gate.time()));
-        children.push(("controlled-gate actuators", steps, gate.actuators().time()));
+        children.push(("controlled-gate", gate.time()));
+        children.push(("controlled-gate actuators", gate.actuators().time()));
     }
     if let Some(pump) = pump {
-        children.push(("controlled-pump", pump.accepted_steps(), pump.time()));
+        children.push(("controlled-pump", pump.time()));
     }
-    for (child, steps, time) in children {
-        if steps != 0 {
-            return Err(rejected(format!(
-                "child={child} accepted_steps={steps} is not fresh: supply the child before its first interval"
-            )));
-        }
+    for (child, time) in children {
         if time.to_bits() != time_s.to_bits() {
             return Err(rejected(format!(
                 "child={child} time={time}, common time_s={time_s}: start the child at the common time"
@@ -277,22 +269,19 @@ fn check_fresh<R: Runtime<DType = DType>>(
 
 #[cfg(test)]
 mod tests {
-    use super::super::SurfaceChannelOperating;
-    use super::super::scenario::{
-        Cpu, build, context, controlled_gate, operating, signal, trajectory,
-    };
+    use super::super::scenario::{build, controlled_gate, operating, signal, trajectory};
+    use super::super::{SurfaceChannelControlledGates, SurfaceChannelOperating};
     use crate::coupling::surface_channels::pools::SurfaceChannelPools;
     use crate::coupling::surface_channels::pools::scenario::{
-        build as manual_build, channel, declaration, link, long_weir, pond, pool, surface,
+        build as manual_build, channel, declaration, link, long_weir, nodes_setup, pond, pool,
+        surface,
     };
     use crate::coupling::surface_channels::structures::scenario::{Tanks, TestResult, gate_law};
     use crate::coupling::surface_channels::structures::{
         SurfaceChannelOperationOwner, SurfaceChannelStructure,
     };
     use crate::coupling::surface_channels::{SurfaceChannelDefinition, SurfaceChannelError};
-    use crate::structures::{
-        ControlledGateBatch, DirectionPolicy, StructureBatch, StructureOperatingPoint,
-    };
+    use crate::structures::{DirectionPolicy, StructureOperatingPoint};
 
     const TIMES: [f64; 3] = [1.0, 2.0, 3.0];
 
@@ -326,20 +315,14 @@ mod tests {
         ))
     }
 
-    fn gate(context: &StructureBatch<Cpu>, start: f64) -> TestResult<ControlledGateBatch<Cpu>> {
-        controlled_gate(
-            context,
-            "outlet",
-            [0.4, 0.6],
-            (0.3, 0.1),
-            (start, &TIMES, 4.0),
-        )
+    fn gate(start: f64) -> SurfaceChannelControlledGates {
+        controlled_gate("outlet", [0.4, 0.6], (0.3, 0.1), (start, &TIMES, 4.0))
     }
 
     /// The input message of a coordinator with `structures` and `operating`.
     fn rejection(
         structures: Vec<SurfaceChannelStructure>,
-        operating: SurfaceChannelOperating<Cpu>,
+        operating: SurfaceChannelOperating,
     ) -> TestResult<String> {
         match build(Tanks::at(0.0, 0.2), pools()?, &[2.0], structures, operating) {
             Err(SurfaceChannelError::Input(message)) => Ok(message),
@@ -349,54 +332,63 @@ mod tests {
     }
 
     /// Operating children holding `gate` and the pond signal.
-    fn with_gate(gate: ControlledGateBatch<Cpu>) -> SurfaceChannelOperating<Cpu> {
+    fn with_gate(gate: SurfaceChannelControlledGates) -> SurfaceChannelOperating {
         SurfaceChannelOperating {
-            gate: Some(gate),
+            gates: Some(gate),
             ..operating(vec![signal("outlet", pool("pond"))])
         }
     }
 
     /// Frozen criteria, fixed before the first run:
     /// - The valid coordinator builds.
-    /// - Each `operation-ownership` row of the plan rejects, and its message names the entry
-    ///   first: child context, zero owners, two owners, a dynamic owner on another law, an
-    ///   unknown signal node, an unbound or unknown controller signal, a signal bound twice, a
-    ///   child that is not fresh, and a child off the common time.
+    /// - Each `operation-ownership` row of the plan that a declaration can hold rejects, and its
+    ///   message names the entry first: a declaration without a child, zero owners, two owners,
+    ///   a dynamic owner on another law, an unknown signal node, an unbound or unknown controller
+    ///   signal, a signal bound twice, and a child off the common time.
+    /// - The coordinator builds every child on its own structure links, fresh, so a child
+    ///   context that differs and a child that is not fresh have no representation.
     #[test]
     fn each_operation_ownership_row_rejects() -> TestResult {
         let actuated = || structures(SurfaceChannelOperationOwner::Actuated);
-        let shared = context(&actuated()?)?;
         build(
             Tanks::at(0.0, 0.2),
             pools()?,
             &[2.0],
             actuated()?,
-            with_gate(gate(&shared, 0.0)?),
+            with_gate(gate(0.0)),
         )?;
         let mut cases: Vec<(&str, String)> = Vec::new();
+        cases.push((
+            "operating declares no child",
+            rejection(actuated()?, operating(Vec::new()))?,
+        ));
         let mut wider = actuated()?;
-        wider.push(link(
+        let mut extra = link(
             "extra",
             gate_law(0.0)?,
             DirectionPolicy::Bidirectional,
             StructureOperatingPoint::GateOpening { opening_m: 0.0 },
             (pool("pond"), 0.0),
             (channel(), 0.0),
-        ));
-        cases.push((
-            "structure context differs",
-            rejection(actuated()?, with_gate(gate(&context(&wider)?, 0.0)?))?,
-        ));
+        );
+        extra.operation = SurfaceChannelOperationOwner::Prescribed;
+        wider.push(extra);
         cases.push((
             "owner=Actuated claimed by children=[]",
-            rejection(actuated()?, operating(Vec::new()))?,
+            rejection(
+                wider,
+                SurfaceChannelOperating {
+                    trajectories: vec![trajectory("extra", &[(0.0, 0.0), (4.0, 0.2)])?],
+                    ..operating(Vec::new())
+                },
+            )?,
         ));
         let manual = structures(SurfaceChannelOperationOwner::Manual(
             StructureOperatingPoint::GateOpening { opening_m: 0.1 },
         ))?;
         cases.push((
             "claimed by children=[\"actuated\"]",
-            rejection(manual, with_gate(gate(&shared, 0.0)?))?,
+            rejection(manual, with_gate(gate(0.0)))?,
         ));
         let prescribed = structures(SurfaceChannelOperationOwner::Prescribed)?;
         cases.push((
@@ -404,22 +396,23 @@ mod tests {
             rejection(
                 prescribed,
                 SurfaceChannelOperating {
-                    trajectory: Some(trajectory(&shared, "outlet", &[(0.0, 0.0), (4.0, 0.2)])?),
-                    ..with_gate(gate(&shared, 0.0)?)
+                    trajectories: vec![trajectory("outlet", &[(0.0, 0.0), (4.0, 0.2)])?],
+                    ..with_gate(gate(0.0))
                 },
             )?,
         ));
         let mut pumped = actuated()?;
         pumped[0].operation = SurfaceChannelOperationOwner::ControlledPump;
-        let (setup, _) = Tanks::at(0.0, 0.2).parts()?;
-        let law = match SurfaceChannelDefinition::with_nodes(setup, pools()?, pumped) {
+        let (mut setup, _) = Tanks::at(0.0, 0.2).parts()?;
+        setup.operating = Some(operating(Vec::new()));
+        let law = match SurfaceChannelDefinition::new(nodes_setup(setup, pools()?, pumped)) {
             Err(SurfaceChannelError::Input(message)) => message,
             other => return Err(format!("a pump owner on a gate rejects: {other:?}").into()),
         };
         cases.push(("does not drive its law", law));
         let unknown = SurfaceChannelOperating {
             signals: vec![signal("outlet", channel())],
-            ..with_gate(gate(&shared, 0.0)?)
+            ..with_gate(gate(0.0))
         };
         cases.push((
             "node=\"reach:r:cell:0\" is no coordinator node",
@@ -427,12 +420,12 @@ mod tests {
         ));
         let unbound = SurfaceChannelOperating {
             signals: Vec::new(),
-            ..with_gate(gate(&shared, 0.0)?)
+            ..with_gate(gate(0.0))
         };
         cases.push(("has no binding", rejection(actuated()?, unbound)?));
         let stranger = SurfaceChannelOperating {
             signals: vec![signal("spill", pool("pond"))],
-            ..with_gate(gate(&shared, 0.0)?)
+            ..with_gate(gate(0.0))
         };
         cases.push((
             "names no controller signal",
@@ -440,17 +433,12 @@ mod tests {
         ));
         let twice = SurfaceChannelOperating {
             signals: vec![signal("outlet", pool("pond")), signal("outlet", surface())],
-            ..with_gate(gate(&shared, 0.0)?)
+            ..with_gate(gate(0.0))
         };
         cases.push(("is bound twice", rejection(actuated()?, twice)?));
-        let advanced = gate(&shared, 0.0)?.trial_to(0.5, &[])?.into_next();
-        cases.push((
-            "accepted_steps=1 is not fresh",
-            rejection(actuated()?, with_gate(advanced))?,
-        ));
         cases.push((
             "time=0.5, common time_s=0",
-            rejection(actuated()?, with_gate(gate(&shared, 0.5)?))?,
+            rejection(actuated()?, with_gate(gate(0.5)))?,
         ));
         for (reason, message) in &cases {
             assert!(message.starts_with("operation-ownership"), "{message}");
@@ -460,8 +448,8 @@ mod tests {
     }
 
     /// Frozen criteria, fixed before the first run:
-    /// - A dynamic owner without operating children rejects with `operation-ownership` through
-    ///   the manual pool constructor.
+    /// - A dynamic owner without operating children rejects with `operation-ownership` at the
+    ///   definition.
     #[test]
     fn a_dynamic_owner_needs_its_operating_child() -> TestResult {
         let error = manual_build(

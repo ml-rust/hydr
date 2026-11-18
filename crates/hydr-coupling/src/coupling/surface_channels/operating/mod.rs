@@ -1,9 +1,9 @@
 //! Controlled structures: operating children that set structure operations interval by interval.
 //!
-//! [`SurfaceChannelOperating`] holds fresh children. A prescribed gate follows a
-//! [`GateTrajectoryBatch`], an actuated gate a [`ControlledGateBatch`], and a controlled pump a
-//! [`ControlledPumpBatch`]. Each [`SurfaceChannelSignal`] binds one controller signal to the node
-//! whose stage it samples.
+//! [`SurfaceChannelOperating`] declares the children as data. Construction builds them fresh: a
+//! prescribed gate follows a [`GateTrajectoryBatch`], an actuated gate a [`ControlledGateBatch`],
+//! and a controlled pump a [`ControlledPumpBatch`]. Each [`SurfaceChannelSignal`] binds one
+//! controller signal to the node whose stage it samples.
 //!
 //! Each common interval runs these steps:
 //! 1. The end is the smallest of the requested end, the start plus `maximum_step_s`, the surface
@@ -24,16 +24,23 @@
 mod admission;
 mod batch;
 mod decision;
+mod declaration;
 mod interval;
 #[cfg(test)]
 mod scenario;
 mod signals;
+mod snapshot;
 
 pub(super) use admission::{admit, check_manual};
 pub(super) use decision::CandidateNodes;
+pub(super) use declaration::build_children;
+pub use declaration::{
+    SurfaceChannelActuators, SurfaceChannelControlledGates, SurfaceChannelControlledPumps,
+    SurfaceChannelControls, SurfaceChannelOperating, SurfaceChannelSignal,
+};
 pub(super) use interval::{AttemptOperation, StepOperation};
+pub use snapshot::SurfaceChannelOperatingData;
 
-use super::structures::SurfaceChannelNode;
 use crate::structures::{
     ControlledGateBatch, ControlledPumpBatch, GateTrajectoryBatch, OperatingSourceBatch,
     OperatingSourceInterval, OperatingSourceIntervalFrame, StructureError,
@@ -52,37 +59,16 @@ const ACTUATED: &str = "actuated";
 /// Registry source of the controlled-pump child.
 const PUMPED: &str = "controlled-pump";
 
-/// One controller signal bound to the node whose stage it samples.
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "in-crate callers construct operating children")
-)]
-pub(crate) struct SurfaceChannelSignal {
-    /// Identity of the controller in its operating child.
-    pub controller_id: String,
-    /// Identity of the controller's stage signal.
-    pub signal_id: String,
-    /// Node whose stage the signal samples.
-    pub node: SurfaceChannelNode,
-}
-
-/// Fresh operating children of a coordinator, with their signal bindings.
+/// Fresh operating children built from a [`SurfaceChannelOperating`] declaration.
 ///
-/// Each child's structure context equals the setup's structure links in ascending identity.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "in-crate callers construct operating children")
-)]
-pub(crate) struct SurfaceChannelOperating<R: Runtime<DType = DType>> {
+/// Each child sits on the setup's structure links in ascending identity.
+pub(super) struct OperatingBatches<R: Runtime<DType = DType>> {
     /// Gates of every `Actuated` owner, or `None` without one.
     pub gate: Option<ControlledGateBatch<R>>,
     /// Pumps of every `ControlledPump` owner, or `None` without one.
     pub pump: Option<ControlledPumpBatch<R>>,
     /// Gates of every `Prescribed` owner, or `None` without one.
     pub trajectory: Option<GateTrajectoryBatch<R>>,
-    /// One binding per controller signal of `gate` and `pump`.
-    pub signals: Vec<SurfaceChannelSignal>,
 }
 
 /// Interval operation of one event-free interval from its prepared frames.
@@ -139,19 +125,12 @@ impl<R: Runtime<DType = DType>> Clone for OperatingChildren<R> {
 }
 
 impl<R: Runtime<DType = DType>> OperatingChildren<R> {
-    /// True when `other` holds the same binding.
-    pub fn same_binding(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.binding, &other.binding)
-    }
-
     /// Accepted controlled-gate child, or `None` without one.
-    #[cfg_attr(not(test), expect(dead_code, reason = "tests read the accepted child"))]
     pub fn gate(&self) -> Option<&ControlledGateBatch<R>> {
         self.gate.as_ref()
     }
 
     /// Accepted controlled-pump child, or `None` without one.
-    #[cfg_attr(not(test), expect(dead_code, reason = "tests read the accepted child"))]
     pub fn pump(&self) -> Option<&ControlledPumpBatch<R>> {
         self.pump.as_ref()
     }

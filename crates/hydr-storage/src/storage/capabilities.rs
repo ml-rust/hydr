@@ -68,7 +68,11 @@ static LEVEL_POOL: ComponentCapabilities = ComponentCapabilities {
     ],
     options: &[],
     nested: &[],
-    attachable_to: &[ComponentId::CoupledLevelPools, ComponentId::ChannelPools],
+    attachable_to: &[
+        ComponentId::CoupledLevelPools,
+        ComponentId::ChannelPools,
+        ComponentId::SurfaceChannels,
+    ],
     unsupported: &[
         unsupported(
             "curve-extrapolation",
@@ -91,7 +95,7 @@ static LEVEL_POOL: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "outlet-structures",
             UnsupportedReason::NotAttached,
-            "Outlet structures and controls attach through coupled level pools.",
+            "Outlet structures and controls attach through coupled level pools or the surface/channel coordinator.",
             "docs/coupled-level-pools.md",
         ),
         unsupported(

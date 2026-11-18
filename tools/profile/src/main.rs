@@ -130,6 +130,8 @@ fn forcing(
         start_s: start,
         end_s: end,
         reaches,
+        pool_sources: None,
+        pool_inflows: Vec::new(),
     }
 }
 

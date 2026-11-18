@@ -212,12 +212,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::SurfaceChannelOperating;
-    use super::super::scenario::{bits, build, children, context, controlled_gate, signal};
+    use super::super::scenario::{bits, build, children, controlled_gate, signal};
     use crate::coupling::surface_channels::SurfaceChannelError;
-    use crate::coupling::surface_channels::pools::SurfaceChannelPoolForcing;
     use crate::coupling::surface_channels::pools::scenario::{
-        advance, check, declaration, inflow_binding, inflow_input, link, pond, pool, stages,
-        surface,
+        PoolForcing, advance, check, declaration, inflow_binding, inflow_input, link, pond, pool,
+        stages, surface,
     };
     use crate::coupling::surface_channels::structures::scenario::{
         Batch, Tanks, TestResult, gate_law,
@@ -251,17 +250,11 @@ mod tests {
         );
         outlet.operation = SurfaceChannelOperationOwner::Actuated;
         let structures = vec![outlet];
-        let gate = controlled_gate(
-            &context(&structures)?,
-            "outlet",
-            THRESHOLDS,
-            (0.3, 0.1),
-            (0.0, &DECISIONS, 20.0),
-        )?;
+        let gate = controlled_gate("outlet", THRESHOLDS, (0.3, 0.1), (0.0, &DECISIONS, 20.0));
         let operating = SurfaceChannelOperating {
-            gate: Some(gate),
-            pump: None,
-            trajectory: None,
+            gates: Some(gate),
+            pumps: None,
+            trajectories: Vec::new(),
             signals: vec![signal("outlet", node)],
         };
         let pools = declaration(
@@ -278,8 +271,8 @@ mod tests {
         )?)
     }
 
-    fn forcing() -> SurfaceChannelPoolForcing {
-        SurfaceChannelPoolForcing {
+    fn forcing() -> PoolForcing {
+        PoolForcing {
             sources: None,
             inflows: vec![inflow_input("feed", INFLOW)],
         }
@@ -385,7 +378,7 @@ mod tests {
         let mut batch = pond_outlet(surface())?;
         let error = loop {
             let before = (children(&batch)?, batch.time(), batch.accepted_steps());
-            match batch.trial_with_pools_to(1.0, &step_forcing(&batch, 1.0), &forcing()) {
+            match batch.trial_to(1.0, &forcing().apply(step_forcing(&batch, 1.0))) {
                 Ok(trial) => {
                     assert!(trial.time() < 1.0, "the decision at 1 s rejects");
                     batch = trial.into_next();
@@ -432,6 +425,8 @@ mod tests {
                 right: Some(ChannelBoundary::Wall),
                 lateral_inputs: vec![reach_inflow(0.0), withdrawal(0.0)],
             }],
+            pool_sources: None,
+            pool_inflows: Vec::new(),
         }
     }
 
@@ -450,19 +445,19 @@ mod tests {
         let before = children(&batch)?;
         let reach = step_forcing(&batch, 1.0);
         let end = batch.time() + 1.0;
-        let first = batch.trial_with_pools_to(end, &reach, &forcing())?;
+        let first = batch.trial_to(end, &forcing().apply(reach.clone()))?;
         let accepted = children(&first.next)?;
         let receipt = bits(&first.diagnostics()?);
         assert_ne!(accepted, before);
         drop(first);
         assert_eq!(children(&batch)?, before);
-        let wrong = SurfaceChannelPoolForcing {
-            sources: None,
-            inflows: Vec::new(),
-        };
-        assert!(batch.trial_with_pools_to(end, &reach, &wrong).is_err());
+        assert!(
+            batch
+                .trial_to(end, &PoolForcing::none().apply(reach.clone()))
+                .is_err()
+        );
         assert_eq!(children(&batch)?, before);
-        let again = batch.trial_with_pools_to(end, &reach, &forcing())?;
+        let again = batch.trial_to(end, &forcing().apply(reach))?;
         assert_eq!(children(&again.next)?, accepted);
         assert_eq!(bits(&again.diagnostics()?), receipt);
         Ok(())

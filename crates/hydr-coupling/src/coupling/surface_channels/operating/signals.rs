@@ -29,7 +29,7 @@ pub(super) fn bind_signals<R: Runtime<DType = DType>>(
     definition: &SurfaceChannelDefinition,
     context: &Context<R>,
     controls: (&[OperatingControlDefinition], &[OperatingControlDefinition]),
-    signals: Vec<SurfaceChannelSignal>,
+    signals: &[SurfaceChannelSignal],
 ) -> Result<(Vec<BoundSignal>, Vec<BoundSignal>), SurfaceChannelError> {
     let datum = definition
         .setup()

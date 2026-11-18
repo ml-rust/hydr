@@ -14,6 +14,7 @@ use crate::solver::{
     Axis, BoundaryConditions, BoundaryFace, ForcingInterval, ForcingSchedule, InitialState,
     SolverConfig, SolverSetup,
 };
+use crate::storage::LevelPoolConfig;
 use crate::structures::WeirApplicability;
 use hydr_core::grid::CartesianGrid;
 use hydr_core::model::{CellState, Domain, FlowState, SpatialReference};
@@ -213,6 +214,14 @@ pub fn case(inactive: &[usize]) -> TestResult<(SurfaceChannelSetup, SurfaceChann
             ],
             links: vec![link()],
             ports: Vec::new(),
+            pools: Vec::new(),
+            pool_support: Vec::new(),
+            pool_sources: None,
+            pool_inflows: Vec::new(),
+            storage: LevelPoolConfig::default(),
+            structures: Vec::new(),
+            pool_ends: Vec::new(),
+            operating: None,
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: SurfaceChannelConfig {
                 head_absolute_m: 1e-12,
@@ -235,6 +244,7 @@ pub fn case(inactive: &[usize]) -> TestResult<(SurfaceChannelSetup, SurfaceChann
                 (ALPHA.into(), reach_state.clone()),
                 (BETA.into(), reach_state),
             ],
+            pools: Vec::new(),
         },
     ))
 }

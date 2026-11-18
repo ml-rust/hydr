@@ -6,35 +6,44 @@ use super::pools::PoolChild;
 use super::state::{LinkCounters, StoredStep};
 use super::{
     SurfaceChannelConfig, SurfaceChannelDefinition, SurfaceChannelForcingInterval,
-    SurfaceChannelInitialState, SurfaceChannelLink, SurfaceChannelLinkLedger, SurfaceChannelPort,
-    SurfaceChannelPortLedger, SurfaceChannelReach, SurfaceChannelSetup,
-    SurfaceChannelStepDiagnostics,
+    SurfaceChannelInitialState, SurfaceChannelLink, SurfaceChannelLinkLedger,
+    SurfaceChannelOperating, SurfaceChannelOperatingData, SurfaceChannelPoolEnd,
+    SurfaceChannelPoolEndLedger, SurfaceChannelPort, SurfaceChannelPortLedger, SurfaceChannelReach,
+    SurfaceChannelSetup, SurfaceChannelStepDiagnostics, SurfaceChannelStructure,
+    SurfaceChannelStructureLedger,
 };
 use crate::channel::{ChannelSnapshot, ChannelSnapshotData};
 use crate::coupling::checkpoint;
+use crate::coupling::level_pools::{
+    CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolSupport,
+};
 use crate::solver::{Snapshot, SnapshotData, SolverSetup};
+use crate::storage::{
+    LevelPoolConfig, LevelPoolElement, LevelPoolSnapshotData, LevelPoolSourcePolicy,
+};
 use hydr_core::contract::package_identity;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Schema identity of the surface/channel snapshot package.
-pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-4";
+pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-5";
 /// Numerical contract identity of the surface/channel snapshot package.
-pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-6";
+pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-7";
 
 /// Complete caller-owned continuation. Preserve every floating-point bit when encoding.
 ///
 /// The nested surface package holds the surface definition and its bounded forcing window.
-/// Import checks consistency and replays the last interval. Port ghost states rebuild from the
-/// start-frame reach packages, so no package holds them. It establishes no authenticity.
+/// Import checks consistency and replays the last interval, decision completion included.
+/// Port ghost states rebuild from the start-frame reach packages, so no package holds them.
+/// It establishes no authenticity.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelSnapshotData {
     /// Package schema identity.
     pub schema: String,
     /// Numerical contract identity.
     pub contract: String,
-    /// Reaches, links, evidence, and common controls. The surface setup lives in `surface`.
+    /// Every setup part except the surface definition, which lives in `surface`.
     pub setup: SurfaceChannelSetupData,
     /// Original common epoch and authoritative original child states.
     pub initial: SurfaceChannelInitialState,
@@ -42,7 +51,12 @@ pub struct SurfaceChannelSnapshotData {
     pub surface: SnapshotData,
     /// Complete accepted `(reach id, package)` pairs in setup order.
     pub reaches: Vec<(String, ChannelSnapshotData)>,
-    /// Lifetime link and port counters, accepted count, and common time.
+    /// Complete accepted pool package, or `None` without pools.
+    pub pools: Option<LevelPoolSnapshotData>,
+    /// Complete accepted operating packages, or `None` without operating children.
+    pub operating: Option<SurfaceChannelOperatingData>,
+    /// Lifetime link, structure, port, pool-end, and pool inflow counters, accepted count, and
+    /// common time.
     pub counters: SurfaceChannelCounterData,
     /// Last common interval with its start frame, absent before the first accepted interval.
     pub last_interval: Option<SurfaceChannelIntervalSnapshotData>,
@@ -57,7 +71,23 @@ pub struct SurfaceChannelSetupData {
     pub links: Vec<SurfaceChannelLink>,
     /// Reach-end ports in declaration order.
     pub ports: Vec<SurfaceChannelPort>,
-    /// Evidence that surface cells and channel cells store no water twice.
+    /// Level pools in declaration order.
+    pub pools: Vec<LevelPoolElement>,
+    /// Storage support of every pool, in pool order.
+    pub pool_support: Vec<CoupledPoolSupport>,
+    /// Local source policy of every pool, in pool order, or `None` without pool sources.
+    pub pool_sources: Option<Vec<LevelPoolSourcePolicy>>,
+    /// External pool inflow bindings in declaration order.
+    pub pool_inflows: Vec<CoupledPoolInflowBinding>,
+    /// Dimensional controls of the pool child.
+    pub storage: LevelPoolConfig,
+    /// Structure links in declaration order.
+    pub structures: Vec<SurfaceChannelStructure>,
+    /// Pool ends in declaration order.
+    pub pool_ends: Vec<SurfaceChannelPoolEnd>,
+    /// Operating children as declared, or `None` without them.
+    pub operating: Option<SurfaceChannelOperating>,
+    /// Evidence that surface cells, channel cells, and pools store no water twice.
     pub storage_exclusion_evidence: String,
     /// Explicit tolerances, duration limits, and work limits.
     pub config: SurfaceChannelConfig,
@@ -70,6 +100,14 @@ impl SurfaceChannelSetupData {
             reaches: setup.reaches.clone(),
             links: setup.links.clone(),
             ports: setup.ports.clone(),
+            pools: setup.pools.clone(),
+            pool_support: setup.pool_support.clone(),
+            pool_sources: setup.pool_sources.clone(),
+            pool_inflows: setup.pool_inflows.clone(),
+            storage: setup.storage.clone(),
+            structures: setup.structures.clone(),
+            pool_ends: setup.pool_ends.clone(),
+            operating: setup.operating.clone(),
             storage_exclusion_evidence: setup.storage_exclusion_evidence.clone(),
             config: setup.config.clone(),
         }
@@ -82,6 +120,14 @@ impl SurfaceChannelSetupData {
             reaches: self.reaches.clone(),
             links: self.links.clone(),
             ports: self.ports.clone(),
+            pools: self.pools.clone(),
+            pool_support: self.pool_support.clone(),
+            pool_sources: self.pool_sources.clone(),
+            pool_inflows: self.pool_inflows.clone(),
+            storage: self.storage.clone(),
+            structures: self.structures.clone(),
+            pool_ends: self.pool_ends.clone(),
+            operating: self.operating.clone(),
             storage_exclusion_evidence: self.storage_exclusion_evidence.clone(),
             config: self.config.clone(),
         }
@@ -89,16 +135,24 @@ impl SurfaceChannelSetupData {
 }
 
 /// Authoritative coordinator counters at one accepted time.
+///
+/// Every value is `+0.0` before the first accepted interval.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelCounterData {
     /// Common accepted time, in seconds.
     pub time_s: f64,
     /// Number of accepted common intervals.
     pub accepted_steps: usize,
-    /// Lifetime directional link volumes in ascending link identity.
+    /// Lifetime directional bank link volumes in ascending link identity.
     pub links: Vec<SurfaceChannelLinkLedger>,
     /// Lifetime port volumes and port totals. Empty and zero without ports.
     pub ports: SurfaceChannelPortCounterData,
+    /// Lifetime directional structure volumes in ascending structure identity.
+    pub structures: Vec<SurfaceChannelStructureLedger>,
+    /// Lifetime directional pool-end volumes in ascending pool-end identity.
+    pub pool_ends: Vec<SurfaceChannelPoolEndLedger>,
+    /// Lifetime external pool inflow ledgers in declared binding order.
+    pub pool_inflows: Vec<CoupledPoolInflowLedger>,
 }
 
 /// Authoritative port counters at one accepted time.
@@ -127,20 +181,26 @@ pub struct SurfaceChannelPreviousData {
     pub surface: SnapshotData,
     /// Complete `(reach id, package)` pairs at the interval start, in setup order.
     pub reaches: Vec<(String, ChannelSnapshotData)>,
+    /// Complete pool package at the interval start, or `None` without pools.
+    pub pools: Option<LevelPoolSnapshotData>,
+    /// Complete operating packages at the interval start, or `None` without operating children.
+    pub operating: Option<SurfaceChannelOperatingData>,
     /// Coordinator counters at the interval start.
     pub counters: SurfaceChannelCounterData,
 }
 
 /// Last common interval: its start frame, caller forcing, and accepted receipt.
 ///
-/// Import recalculates the interval from `previous` and compares every result bit.
+/// Import recalculates the interval from `previous`, decision completion included, and compares
+/// every result bit.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelIntervalSnapshotData {
     /// Accepted children and counters before the interval.
     pub previous: SurfaceChannelPreviousData,
-    /// Caller channel forcing exactly as the trial received it.
+    /// Caller channel and pool forcing exactly as the trial received it.
     pub forcing: SurfaceChannelForcingInterval,
-    /// Requested and accepted end, retries, iterations, per-link transfers, and midpoint stages.
+    /// Requested and accepted end, retries, iterations, per-link, per-structure, per-port, and
+    /// per-pool-end transfers, pools, and midpoint stages.
     pub diagnostics: SurfaceChannelStepDiagnostics,
 }
 
@@ -154,23 +214,31 @@ impl SurfaceChannelSnapshotData {
             &self.contract,
             SURFACE_CHANNEL_CONTRACT_VERSION,
         )?;
-        check_frame("", &self.surface, &self.reaches)?;
+        check_frame(
+            "",
+            (&self.surface, &self.reaches),
+            (self.pools.as_ref(), self.operating.as_ref()),
+        )?;
         if let Some(last) = &self.last_interval {
+            let previous = &last.previous;
             check_frame(
                 "last_interval.previous.",
-                &last.previous.surface,
-                &last.previous.reaches,
+                (&previous.surface, &previous.reaches),
+                (previous.pools.as_ref(), previous.operating.as_ref()),
             )?;
         }
         Ok(())
     }
 }
 
-/// Checks the surface and reach package identities of one frame.
+/// Checks the surface, reach, pool, and operating package identities of one frame.
 fn check_frame(
     prefix: &str,
-    surface: &SnapshotData,
-    reaches: &[(String, ChannelSnapshotData)],
+    (surface, reaches): (&SnapshotData, &[(String, ChannelSnapshotData)]),
+    (pools, operating): (
+        Option<&LevelPoolSnapshotData>,
+        Option<&SurfaceChannelOperatingData>,
+    ),
 ) -> Result<(), String> {
     checkpoint::surface(
         &format!("surface-channel checkpoint {prefix}surface"),
@@ -181,6 +249,12 @@ fn check_frame(
             &format!("surface-channel checkpoint {prefix}reaches[{index}] ({id:?})"),
             reach,
         )?;
+    }
+    if let Some(pools) = pools {
+        checkpoint::level_pool(&format!("surface-channel checkpoint {prefix}pools"), pools)?;
+    }
+    if let Some(operating) = operating {
+        operating.check_identities(&format!("surface-channel checkpoint {prefix}operating"))?;
     }
     Ok(())
 }

@@ -43,17 +43,15 @@ fn surface_channels_admit_declared_endpoints_regimes_and_sources() -> Result {
     let (_, reverse) = one_interval(&pair(1.1, 1.5))?;
     assert!(spill.links[0].signed_volume_m3 > 0.0, "{spill:?}");
     assert!(reverse.links[0].signed_volume_m3 < 0.0, "{reverse:?}");
-    // Port endpoints and regimes carry their own evidence in `surface_channel_ports`.
+    // Port endpoints and regimes carry their own evidence in `surface_channel_ports`, and pool,
+    // structure, and pool-end endpoints in `surface_channel_pools`.
     for endpoint in declared.endpoints {
         for &kind in endpoint.admitted {
-            if kind == BoundaryKind::FluxPort {
+            if kind != BoundaryKind::SuppressedRectangularWeir
+                || !matches!(endpoint.id, EndpointId::SurfaceCell | EndpointId::Lateral)
+            {
                 continue;
             }
-            assert_eq!(
-                kind,
-                BoundaryKind::SuppressedRectangularWeir,
-                "{endpoint:?}"
-            );
             let moved = match endpoint.id {
                 EndpointId::SurfaceCell => [
                     spill.surface_exchange_out_m3,
@@ -73,14 +71,9 @@ fn surface_channels_admit_declared_endpoints_regimes_and_sources() -> Result {
         }
     }
     for claim in declared.regimes {
-        if claim.scope == RegimeScope::Boundary(BoundaryKind::FluxPort) {
+        if claim.scope != RegimeScope::Boundary(BoundaryKind::SuppressedRectangularWeir) {
             continue;
         }
-        assert_eq!(
-            claim.scope,
-            RegimeScope::Boundary(BoundaryKind::SuppressedRectangularWeir),
-            "{claim:?}"
-        );
         let [surface, channel] =
             regime_stages(claim.regime).ok_or(format!("no case for {claim:?}"))?;
         let (_, step) = one_interval(&pair(surface, channel))?;
@@ -131,6 +124,9 @@ fn source_moves_water(source: SourceKind) -> Result<bool> {
         SourceKind::Evaporation => surface(0.0, 1e-3, 0.0)?.evaporation > 0.0,
         SourceKind::Withdrawal => surface(0.0, 0.0, 1e-3)?.withdrawal > 0.0,
         SourceKind::LateralInflow | SourceKind::LateralWithdrawal => lateral_moves_water(source)?,
+        SourceKind::LocalPoolRain | SourceKind::LocalPoolLoss => {
+            crate::surface_channel_pools::pool_source_moves_water(source)?
+        }
         other => return Err(format!("surface/channel: no case for `{}`", other.id()).into()),
     })
 }
@@ -243,6 +239,11 @@ fn surface_channels_nest_and_attach_declared_components() -> Result {
             ComponentId::ChannelReachRectangular => hydr::channel::rectangular_reach_capabilities(),
             ComponentId::ChannelReachTriangular => hydr::channel::triangular_reach_capabilities(),
             ComponentId::ChannelReachSurveyed => hydr::channel::surveyed_reach_capabilities(),
+            ComponentId::LevelPool => hydr::storage::level_pool_capabilities(),
+            ComponentId::OperatingControl => hydr::structures::operating_control_capabilities(),
+            ComponentId::GateActuator => hydr::structures::gate_actuator_capabilities(),
+            ComponentId::ControlledGate => hydr::structures::controlled_gate_capabilities(),
+            ComponentId::ControlledPump => hydr::structures::controlled_pump_capabilities(),
             other => return Err(format!("surface/channel: no case for {other:?}").into()),
         };
         assert!(child.attachable_to.contains(&ComponentId::SurfaceChannels));
@@ -430,7 +431,10 @@ fn rejection_cases(id: &str) -> Option<Vec<Rejection>> {
                 "maximum_step_s or the surface forcing interval ends before the integrated span",
             ),
         ],
-        id => return crate::surface_channel_ports::rejection_cases(id),
+        id => {
+            return crate::surface_channel_ports::rejection_cases(id)
+                .or_else(|| crate::surface_channel_pools::rejection_cases(id));
+        }
     })
 }
 

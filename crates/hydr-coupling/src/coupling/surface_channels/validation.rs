@@ -4,10 +4,11 @@ use super::bank_links::check_links;
 use super::bindings::{
     LinkBindings, STRUCTURE_EXCHANGE_BINDING_PREFIX, binding_ids, coordinated_definition,
 };
+use super::operating::check_manual;
 use super::pool_ends::{CheckedPoolEnd, check_pool_ends};
 use super::pools::{CheckedPools, SurfaceChannelPools, check_attached, check_pools};
 use super::ports::{CheckedPort, check_ports};
-use super::structures::{CheckedStructure, SurfaceChannelStructure, check_structures};
+use super::structures::{CheckedStructure, check_structures};
 use super::{SurfaceChannelError, SurfaceChannelLink, SurfaceChannelSetup};
 use crate::channel::ChannelReachDefinition;
 use crate::solver::ForcingSchedule;
@@ -58,19 +59,24 @@ pub struct SurfaceChannelDefinition {
 }
 
 impl SurfaceChannelDefinition {
-    /// Checks `setup` and synthesizes two coordinator lateral bindings per link.
+    /// Checks `setup` and synthesizes two coordinator lateral bindings per bank link and per
+    /// structure link with a channel endpoint.
     ///
     /// Each linked reach receives `surface-exchange:<link id>:inflow` and
-    /// `surface-exchange:<link id>:withdrawal` at the link's channel cell.
-    /// They follow the caller bindings, in ascending link-identity order.
-    /// Ports synthesize no bindings.
+    /// `surface-exchange:<link id>:withdrawal` at a bank link's channel cell, and
+    /// `structure-exchange:<id>:inflow` and `structure-exchange:<id>:withdrawal` at a structure
+    /// link's channel cell. They follow the caller bindings, in ascending link identity, bank and
+    /// structure links together. Ports and pool ends synthesize no bindings.
+    ///
+    /// Operating children build and admit at batch construction, since they need a runtime.
     ///
     /// # Errors
     /// Returns [`SurfaceChannelError::Surface`] when the surface config fails its own check.
     /// Returns [`SurfaceChannelError::Input`] for any rule below:
     /// - config tolerances, durations, or work limits fail [`super::SurfaceChannelConfig::check`]
     /// - evidence or identity text is empty or holds control characters
-    /// - no reaches, no links and no ports, or a repeated reach or link identity
+    /// - no reaches, no links, ports, structures, or pool ends, or a repeated reach or link
+    ///   identity
     /// - a repeated `(surface_cell, reach_id, channel_cell)` triple
     /// - a surface cell outside the grid or inactive
     /// - an unknown reach identity or a channel cell out of range
@@ -96,56 +102,33 @@ impl SurfaceChannelDefinition {
     /// - an unknown reach, a second port on one reach end, a face with no active cell or two,
     ///   a caller open face, a face in two ports, faces off one axis, face line, or surface
     ///   side, or a gap in the face line (`port-face-ownership`)
-    pub fn new(setup: SurfaceChannelSetup) -> Result<Self, SurfaceChannelError> {
-        Self::with_structures(setup, Vec::new())
-    }
-
-    /// Checks `setup` with structure links `structures` beside its bank links and ports.
     ///
-    /// Each structure synthesizes `structure-exchange:<id>:inflow` and
-    /// `structure-exchange:<id>:withdrawal` at its channel cell. Every link's bindings follow the
-    /// caller bindings in ascending link identity, bank and structure links together.
-    ///
-    /// # Errors
-    /// Returns every [`Self::new`] rejection. Links, ports, and structures together must be
-    /// nonempty. Each structure also rejects for:
-    /// - an empty or repeated identity, one equal to a link or port identity, or a repeated
-    ///   scenario identity (`duplicate-links`)
+    /// Each structure also rejects for:
+    /// - an empty or repeated identity, one equal to a link, port, or pool identity, or a
+    ///   repeated scenario identity (`duplicate-links`)
     /// - empty scenario or connection evidence (`missing-link-evidence`)
-    /// - an endpoint A that is no active surface cell, an endpoint B that is no existing channel
-    ///   cell, or an element endpoint that differs from its node identity
+    /// - an endpoint on no active surface cell, no existing channel cell, or no pool, both
+    ///   endpoints on one node, or an element endpoint that differs from its node identity
     ///   (`structure-endpoint-identity`)
     /// - an element datum other than the surface datum, or a gate or orifice gravity other than
     ///   the surface gravity (`datum-or-gravity-mismatch`)
-    /// - an attachment bed below its node bed, or a weir crest, gate sill, or orifice sill below
-    ///   either attachment bed (`unobstructed-pool-connection`)
+    /// - an attachment bed below its node bed or pool origin, or a weir crest, gate sill, or
+    ///   orifice sill below either attachment bed (`unobstructed-pool-connection`)
     /// - a bidirectional pump, or a bidirectional law without symmetric reversal evidence
     ///   (`non-symmetric-structure`)
-    /// - an operation that does not drive its law (`operation-ownership`)
-    pub(super) fn with_structures(
-        setup: SurfaceChannelSetup,
-        structures: Vec<SurfaceChannelStructure>,
-    ) -> Result<Self, SurfaceChannelError> {
-        Self::with_nodes(setup, SurfaceChannelPools::default(), structures)
-    }
-
-    /// Checks `setup` with pools `pools` and structure links `structures`.
+    /// - an operation that does not drive its law, or a dynamic owner without `operating`
+    ///   (`operation-ownership`)
     ///
-    /// Structure endpoints join a surface cell and a channel cell, a surface cell or a channel cell
-    /// and a pool, or two pools. A structure with a channel endpoint synthesizes its bindings at
-    /// that cell.
-    ///
-    /// # Errors
-    /// Returns every [`Self::with_structures`] rejection. A structure endpoint also rejects for an
-    /// unknown pool (`structure-endpoint-identity`) or an attachment bed below its pool origin
-    /// (`unobstructed-pool-connection`). Pools reject for:
+    /// Pools reject for:
     /// - an empty or repeated identity, or one equal to a link or port identity
     ///   (`duplicate-links`, `missing-link-evidence`)
     /// - a curve outside the surface datum (`datum-or-gravity-mismatch`)
     /// - a repeated storage support, or support, source policy, or origin that differs from the
-    ///   pools, or a pool that joins no structure and no pool end (`pool-support`)
+    ///   pools, support, sources, or inflows without pools, or a pool that joins no structure and
+    ///   no pool end (`pool-support`)
+    /// - a `storage` config that fails its own check
     ///
-    /// Each pool end of `pools.ends` rejects for:
+    /// Each pool end rejects for:
     /// - an empty or repeated identity, one equal to a link, port, structure, or pool identity,
     ///   or empty evidence (`duplicate-links`, `missing-link-evidence`)
     /// - an unknown reach or pool, or a reach without cells (`structure-endpoint-identity`)
@@ -153,11 +136,9 @@ impl SurfaceChannelDefinition {
     /// - an end cell bed below the pool origin (`unobstructed-pool-connection`)
     /// - a reach end with a port or a second pool end (`reach-end-ownership`)
     /// - a nonfinite or negative entrance loss (`pool-end-regime`)
-    pub(super) fn with_nodes(
-        setup: SurfaceChannelSetup,
-        pools: SurfaceChannelPools,
-        structures: Vec<SurfaceChannelStructure>,
-    ) -> Result<Self, SurfaceChannelError> {
+    pub fn new(setup: SurfaceChannelSetup) -> Result<Self, SurfaceChannelError> {
+        let pools = SurfaceChannelPools::of(&setup);
+        let structures = setup.structures.clone();
         setup.config.check()?;
         text(
             "storage_exclusion_evidence",
@@ -283,7 +264,7 @@ impl SurfaceChannelDefinition {
                 coordinated_definition(reach, &links, &setup.storage_exclusion_evidence)
             })
             .collect();
-        Ok(Self {
+        let definition = Self {
             setup,
             coordinated,
             links,
@@ -292,7 +273,11 @@ impl SurfaceChannelDefinition {
             structures,
             pools,
             pool_ends,
-        })
+        };
+        if definition.setup.operating.is_none() {
+            check_manual(&definition)?;
+        }
+        Ok(definition)
     }
 
     /// Immutable caller setup.

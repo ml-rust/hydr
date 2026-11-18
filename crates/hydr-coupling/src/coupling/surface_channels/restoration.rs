@@ -5,24 +5,25 @@
 //! children restore directly. Otherwise the start frame restores, the interval recalculates once,
 //! and the result replaces the current children after a bitwise comparison with the package.
 
-use super::batch::{SurfaceChannelBatch, order_reach_states};
+use super::batch::{SurfaceChannelBatch, order_reach_states, pool_parts};
 use super::context::Context;
-use super::frames::{Children, Parts, checked, rejected};
+use super::frames::{Children, Frame, NodePackages, Parts, checked, node_children, rejected};
 use super::identity;
+use super::operating::admit;
 use super::snapshot::{
     SurfaceChannelSetupData, SurfaceChannelSnapshot, SurfaceChannelSnapshotData,
 };
 use super::{SurfaceChannelDefinition, SurfaceChannelError};
-use crate::channel::{ChannelReach, ChannelSnapshotData};
+use crate::channel::ChannelSnapshotData;
 use crate::solver::{ForcingSchedule, SnapshotData, Solver};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, HypotOps,
-    IndexingOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, TensorOps,
-    TwoSumOps, TypeConversionOps, UnaryOps,
+    IndexingOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
+    TensorOps, TwoSumOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::{Device, Runtime, RuntimeClient};
-use solvr::interpolate::Interp1dAlgorithms;
+use solvr::interpolate::{Interp1dAlgorithms, LinearInterp1dDiagnostics};
 use solvr::optimize::roots::{
     AndersonAlgorithms, BatchedBisectionAlgorithms, BatchedNewtonAlgorithms,
 };
@@ -84,26 +85,6 @@ where
             ),
             "differs from the destination setup",
         )?;
-        if snapshot.definition.structures != self.definition.structures {
-            return Err(rejected(
-                "structures",
-                "differs from the destination structure links",
-            ));
-        }
-        if snapshot.definition.pools != self.definition.pools {
-            return Err(rejected("pools", "differs from the destination pools"));
-        }
-        let same_operating = match (&snapshot.operating, &self.operating) {
-            (Some(trusted), Some(own)) => trusted.same_binding(own),
-            (None, None) => true,
-            _ => false,
-        };
-        if !same_operating {
-            return Err(rejected(
-                "operating",
-                "differs from the destination operating children",
-            ));
-        }
         checked(
             identity::initial(&snapshot.initial, &self.initial),
             "differs from the destination original state",
@@ -157,19 +138,25 @@ where
             identity::setup(&data.setup, &SurfaceChannelSetupData::of(self.setup())),
             "differs from the destination setup",
         )?;
-        if !self.definition.structures.is_empty() {
-            return Err(rejected(
-                "structures",
-                "holds no structure links of the destination",
-            ));
-        }
         checked(
             identity::initial(&data.initial, &self.initial),
             "differs from the destination original state",
         )?;
         check_definitions(&self.definition, data)?;
-        let (prefix, surface, reaches) = start_frame(data);
-        let frame = Children::Destination(self).children(prefix, surface, reaches)?;
+        check_pool_epoch(&self.definition, data)?;
+        let (prefix, surface, reaches, nodes) = start_frame(data);
+        let (surface, reaches) = Children::Destination(self).children(prefix, surface, reaches)?;
+        let bases = (
+            self.pools.as_ref().map(|pools| &pools.batch),
+            self.operating.as_ref(),
+        );
+        let (pools, operating) = node_children(&self.context, prefix, bases, nodes)?;
+        let frame = Frame {
+            surface,
+            reaches,
+            pools,
+            operating,
+        };
         let parts = Parts {
             definition: Arc::clone(&self.definition),
             context: Arc::clone(&self.context),
@@ -178,59 +165,15 @@ where
         Self::replay(&parts, data, frame)
     }
 
-    /// Builds a batch on `client` from a caller-owned package, then continues the surface forcing.
-    ///
-    /// The surface definition comes from the nested surface package. Pass
-    /// `data.surface.setup.forcing.clone()` as `surface_forcing` for a plain restart.
-    /// See [`SurfaceChannelBatch::continue_surface_forcing`] for the splice rule.
-    ///
-    /// # Errors
-    /// Returns every [`SurfaceChannelDefinition::new`] and
-    /// [`SurfaceChannelBatch::import_snapshot`] rejection, and every continuation rejection.
-    pub fn resume(
-        client: R::Client,
-        data: &SurfaceChannelSnapshotData,
-        surface_forcing: ForcingSchedule,
-    ) -> Result<Self, SurfaceChannelError> {
-        data.check_identities()
-            .map_err(SurfaceChannelError::Input)?;
-        let definition = Arc::new(SurfaceChannelDefinition::new(
-            data.setup.with_surface(data.surface.setup.clone()),
-        )?);
-        check_definitions(&definition, data)?;
-        let initial = &data.initial;
-        if initial.surface.time.to_bits() != initial.time_s.to_bits() {
-            return Err(rejected(
-                "initial.surface.time",
-                "differs from initial.time_s",
-            ));
-        }
-        let states =
-            order_reach_states(definition.setup(), initial.reaches.clone(), initial.time_s)?;
-        let (prefix, surface, reaches) = start_frame(data);
-        let frame = Children::Fresh {
-            client: &client,
-            definition: &definition,
-            states,
-        }
-        .children(prefix, surface, reaches)?;
-        check_epoch(&frame.0, data)?;
-        let parts = Parts {
-            context: Arc::new(Context::new(client.clone(), &definition, &frame.0, None)?),
-            definition: Arc::clone(&definition),
-            initial: Arc::new(initial.clone()),
-        };
-        Self::replay(&parts, data, frame)?.continue_surface_forcing(surface_forcing)
-    }
-
     /// Assembles the restored start frame, then recalculates the last interval from it.
     ///
     /// Without a last interval the start frame is the current frame. Otherwise the recalculated
-    /// batch becomes the current state once every result matches the package bit for bit.
+    /// batch becomes the current state once every result matches the package bit for bit. The
+    /// recalculation runs decision completion of every operating child at a decision end.
     fn replay(
         parts: &Parts<R>,
         data: &SurfaceChannelSnapshotData,
-        frame: (Solver<R>, Vec<ChannelReach<R>>),
+        frame: Frame<R>,
     ) -> Result<Self, SurfaceChannelError> {
         let steps = data.counters.accepted_steps;
         if (steps == 0) != data.last_interval.is_none() {
@@ -278,6 +221,105 @@ where
     }
 }
 
+impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
+        + CumulativeOps<R>
+        + HypotOps<R>
+        + IndexingOps<R>
+        + MidpointOps<R>
+        + NextRepresentableOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + ShapeOps<R>
+        + SortingOps<R>
+        + TensorOps<R>
+        + TwoSumOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>
+        + BatchedNewtonAlgorithms<R>
+        + Interp1dAlgorithms<R>
+        + LinearInterp1dDiagnostics<R>
+        + AndersonAlgorithms<R>
+        + solvr::integrate::CertifiedSimpsonAlgorithms<R>
+        + solvr::optimize::roots::CertifiedBisectionAlgorithms<R>
+        + solvr::optimize::CertifiedMappedBisectionAlgorithms<R>
+        + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
+{
+    /// Builds a batch on `client` from a caller-owned package, then continues the surface forcing.
+    ///
+    /// The surface definition comes from the nested surface package. The pools and operating
+    /// children build fresh from the setup and original states, then restore their packages.
+    /// Pass `data.surface.setup.forcing.clone()` as `surface_forcing` for a plain restart.
+    /// See [`SurfaceChannelBatch::continue_surface_forcing`] for the splice rule.
+    ///
+    /// # Errors
+    /// Returns every [`SurfaceChannelBatch::new`] and [`SurfaceChannelBatch::import_snapshot`]
+    /// rejection, and every continuation rejection.
+    pub fn resume(
+        client: R::Client,
+        data: &SurfaceChannelSnapshotData,
+        surface_forcing: ForcingSchedule,
+    ) -> Result<Self, SurfaceChannelError> {
+        data.check_identities()
+            .map_err(SurfaceChannelError::Input)?;
+        let definition = Arc::new(SurfaceChannelDefinition::new(
+            data.setup.with_surface(data.surface.setup.clone()),
+        )?);
+        check_definitions(&definition, data)?;
+        check_pool_epoch(&definition, data)?;
+        let initial = &data.initial;
+        if initial.surface.time.to_bits() != initial.time_s.to_bits() {
+            return Err(rejected(
+                "initial.surface.time",
+                "differs from initial.time_s",
+            ));
+        }
+        let states =
+            order_reach_states(definition.setup(), initial.reaches.clone(), initial.time_s)?;
+        let fresh_pools = pool_parts(&client, &definition, initial)?;
+        let (prefix, surface, reaches, nodes) = start_frame(data);
+        let (surface, reaches) = Children::Fresh {
+            client: &client,
+            definition: &definition,
+            states,
+        }
+        .children(prefix, surface, reaches)?;
+        check_epoch(&surface, data)?;
+        let context = Arc::new(Context::new(
+            client.clone(),
+            &definition,
+            &surface,
+            fresh_pools.as_ref(),
+        )?);
+        let fresh_operating = match &definition.setup().operating {
+            Some(declared) => Some(admit(&definition, &context, initial.time_s, declared)?),
+            None => None,
+        };
+        let bases = (
+            fresh_pools.as_ref().map(|parts| &parts.batch),
+            fresh_operating.as_ref(),
+        );
+        let (pools, operating) = node_children(&context, prefix, bases, nodes)?;
+        let frame = Frame {
+            surface,
+            reaches,
+            pools,
+            operating,
+        };
+        let parts = Parts {
+            context,
+            definition: Arc::clone(&definition),
+            initial: Arc::new(initial.clone()),
+        };
+        Self::replay(&parts, data, frame)?.continue_surface_forcing(surface_forcing)
+    }
+}
+
 /// Path prefix of the last-interval start frame.
 const PREVIOUS: &str = "last_interval.previous.";
 
@@ -288,11 +330,69 @@ fn start_frame(
     &'static str,
     &SnapshotData,
     &[(String, ChannelSnapshotData)],
+    NodePackages<'_>,
 ) {
     match &data.last_interval {
-        Some(last) => (PREVIOUS, &last.previous.surface, &last.previous.reaches),
-        None => ("", &data.surface, &data.reaches),
+        Some(last) => {
+            let previous = &last.previous;
+            (
+                PREVIOUS,
+                &previous.surface,
+                &previous.reaches,
+                (previous.pools.as_ref(), previous.operating.as_ref()),
+            )
+        }
+        None => (
+            "",
+            &data.surface,
+            &data.reaches,
+            (data.pools.as_ref(), data.operating.as_ref()),
+        ),
     }
+}
+
+/// Checks the original pool volume of every pool package against `data.initial.pools`.
+///
+/// Each element ledger's `initial_volume_m3` must equal the original state of its pool bit for
+/// bit. The ledgers follow ascending pool identity.
+fn check_pool_epoch(
+    definition: &SurfaceChannelDefinition,
+    data: &SurfaceChannelSnapshotData,
+) -> Result<(), SurfaceChannelError> {
+    let Some(pools) = &definition.pools else {
+        return Ok(());
+    };
+    if data.initial.pools.len() != pools.ids.len() {
+        return Err(rejected(
+            "initial.pools",
+            "differs from the setup pool count",
+        ));
+    }
+    let original = pools.ordered(&data.initial.pools);
+    let mut frames = vec![("pools", data.pools.as_ref())];
+    if let Some(last) = &data.last_interval {
+        frames.push(("last_interval.previous.pools", last.previous.pools.as_ref()));
+    }
+    for (path, package) in frames {
+        let Some(package) = package else {
+            return Err(rejected(path, "is absent for a setup with pools"));
+        };
+        let same = package.element_ledgers.len() == original.len()
+            && package
+                .element_ledgers
+                .iter()
+                .zip(&original)
+                .all(|(ledger, state)| {
+                    ledger.initial_volume_m3.to_bits() == state.volume_m3.to_bits()
+                });
+        if !same {
+            return Err(rejected(
+                &format!("{path}.element_ledgers"),
+                "holds original volumes other than initial.pools",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Checks the original surface state against the epoch the nested surface package records.

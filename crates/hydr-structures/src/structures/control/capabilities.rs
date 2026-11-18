@@ -56,7 +56,11 @@ static OPERATING_CONTROL: ComponentCapabilities = ComponentCapabilities {
     sources: &[],
     options: &[],
     nested: &[],
-    attachable_to: &[ComponentId::ControlledGate, ComponentId::ControlledPump],
+    attachable_to: &[
+        ComponentId::ControlledGate,
+        ComponentId::ControlledPump,
+        ComponentId::SurfaceChannels,
+    ],
     unsupported: &[
         unsupported(
             "inverted-thresholds",

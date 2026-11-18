@@ -3,6 +3,7 @@
 use super::SurfaceChannelError;
 use super::batch::SurfaceChannelBatch;
 use super::context::Context;
+use super::pools::{PoolChild, pool_error};
 use super::snapshot::{
     SURFACE_CHANNEL_CONTRACT_VERSION, SURFACE_CHANNEL_SNAPSHOT_SCHEMA, SurfaceChannelCounterData,
     SurfaceChannelIntervalSnapshotData, SurfaceChannelPreviousData, SurfaceChannelSetupData,
@@ -11,6 +12,7 @@ use super::snapshot::{
 use super::state::{LinkCounters, PreviousFrame, StoredStep};
 use crate::channel::{ChannelError, ChannelSnapshotData};
 use crate::solver::{ForcingSchedule, Solver};
+use crate::storage::LevelPoolSnapshotData;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, HypotOps,
@@ -117,9 +119,9 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
                 reaches: self.previous.reaches.clone(),
                 counters: self.previous.counters.clone(),
                 pools: self.previous.pools.clone(),
+                operating: self.previous.operating.clone(),
             },
             forcing: self.forcing.clone(),
-            pool_forcing: self.pool_forcing.clone(),
             start_s: self.start_s,
             end_s: self.end_s,
             requested_end_s: self.requested_end_s,
@@ -169,11 +171,6 @@ where
     pub fn data(&self) -> Result<SurfaceChannelSnapshotData, SurfaceChannelError> {
         let setup = self.definition.setup();
         let context = &self.context;
-        if !self.definition.structures.is_empty() {
-            return Err(SurfaceChannelError::input(
-                "snapshot data: the package holds no structure links: keep the native snapshot of a coordinator with structure links",
-            ));
-        }
         let reaches = self
             .reaches
             .iter()
@@ -194,19 +191,22 @@ where
                     .iter()
                     .map(|reach| reach.snapshot_data())
                     .collect::<Vec<_>>();
+                let frame = &step.previous;
                 Some(SurfaceChannelIntervalSnapshotData {
                     previous: SurfaceChannelPreviousData {
-                        surface: step.previous.surface.snapshot().data()?,
+                        surface: frame.surface.snapshot().data()?,
                         reaches: named(setup, previous)?,
+                        pools: pool_data(context, frame.pools.as_ref())?,
+                        operating: frame.operating.as_ref().map(|o| o.data()).transpose()?,
                         counters: counter_data(
-                            &step.previous.counters,
+                            (&frame.counters, frame.pools.as_ref()),
                             context,
                             step.start_s,
                             steps,
                         )?,
                     },
                     forcing: step.forcing.clone(),
-                    diagnostics: step.diagnostics(context)?,
+                    diagnostics: step.diagnostics(context, self.pools.as_ref())?,
                 })
             }
         };
@@ -217,10 +217,30 @@ where
             initial: (*self.initial).clone(),
             surface: self.surface.data()?,
             reaches: named(setup, reaches)?,
-            counters: counter_data(&self.counters, context, self.time_s, self.accepted_steps)?,
+            pools: pool_data(context, self.pools.as_ref())?,
+            operating: self.operating.as_ref().map(|o| o.data()).transpose()?,
+            counters: counter_data(
+                (&self.counters, self.pools.as_ref()),
+                context,
+                self.time_s,
+                self.accepted_steps,
+            )?,
             last_interval,
         })
     }
+}
+
+/// The package of the accepted `pools` of `context`, or `None` without pools.
+fn pool_data<R: Runtime<DType = DType>>(
+    context: &Context<R>,
+    pools: Option<&PoolChild<R>>,
+) -> Result<Option<LevelPoolSnapshotData>, SurfaceChannelError> {
+    pools
+        .map(|pools| {
+            let snapshot = context.pool_topology()?.fns.snapshot;
+            snapshot(&pools.batch).map_err(pool_error)
+        })
+        .transpose()
 }
 
 /// Pairs each projected reach package with its setup identity.
@@ -243,17 +263,33 @@ fn named(
         .collect()
 }
 
-/// Host counters at `time_s` after `accepted_steps` intervals.
+/// Host counters and the inflow ledgers of `pools` at `time_s` after `accepted_steps`
+/// intervals.
 fn counter_data<R: Runtime<DType = DType>>(
-    counters: &LinkCounters<R>,
+    (counters, pools): (&LinkCounters<R>, Option<&PoolChild<R>>),
     context: &Context<R>,
     time_s: f64,
     accepted_steps: usize,
-) -> Result<SurfaceChannelCounterData, SurfaceChannelError> {
+) -> Result<SurfaceChannelCounterData, SurfaceChannelError>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + IndexingOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
     Ok(SurfaceChannelCounterData {
         time_s,
         accepted_steps,
         links: counters.ledgers(context)?,
         ports: counters.ports.data(context.port_ids()),
+        structures: counters.structure_ledgers(context)?,
+        pool_ends: counters.pool_ends.ledgers(&context.pool_end_ids()),
+        pool_inflows: context.pool_inflow_ledgers(pools)?,
     })
 }

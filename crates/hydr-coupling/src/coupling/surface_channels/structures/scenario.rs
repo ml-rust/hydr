@@ -12,14 +12,15 @@ use crate::channel::{
     ChannelLateralDirection, ChannelLateralInput, ChannelReachDefinition, RectangularChannelCell,
 };
 use crate::coupling::surface_channels::{
-    SurfaceChannelBatch, SurfaceChannelConfig, SurfaceChannelDefinition, SurfaceChannelError,
-    SurfaceChannelForcingInterval, SurfaceChannelInitialState, SurfaceChannelReach,
-    SurfaceChannelReachForcing, SurfaceChannelSetup,
+    SurfaceChannelBatch, SurfaceChannelConfig, SurfaceChannelError, SurfaceChannelForcingInterval,
+    SurfaceChannelInitialState, SurfaceChannelReach, SurfaceChannelReachForcing,
+    SurfaceChannelSetup,
 };
 use crate::forcing::WaterAmount;
 use crate::solver::{
     BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, SolverConfig, SolverSetup,
 };
+use crate::storage::LevelPoolConfig;
 use crate::structures::{
     DirectionPolicy, GateApplicability, GateParameters, OrificeApplicability, PumpApplicability,
     PumpCurve, PumpCurveKnot, PumpFreeOutlet, PumpParameters, PumpSpeedPolicy, StructureElement,
@@ -290,6 +291,14 @@ impl Tanks {
             }],
             links: Vec::new(),
             ports: Vec::new(),
+            pools: Vec::new(),
+            pool_support: Vec::new(),
+            pool_sources: None,
+            pool_inflows: Vec::new(),
+            storage: LevelPoolConfig::default(),
+            structures: Vec::new(),
+            pool_ends: Vec::new(),
+            operating: None,
             storage_exclusion_evidence: "The reach tank lies outside the surface cell".into(),
             config: SurfaceChannelConfig {
                 head_absolute_m: HEAD_ALLOWANCE,
@@ -320,19 +329,16 @@ impl Tanks {
                     longitudinal_momentum_m4_per_s: vec![0.0],
                 },
             )],
+            pools: Vec::new(),
         };
         Ok((setup, initial))
     }
 
     /// The batch of these tanks joined by `structures`.
     pub fn build(&self, structures: Vec<SurfaceChannelStructure>) -> TestResult<Batch> {
-        let (setup, initial) = self.parts()?;
-        let definition = SurfaceChannelDefinition::with_structures(setup, structures)?;
-        Ok(SurfaceChannelBatch::from_definition(
-            client(),
-            definition,
-            initial,
-        )?)
+        let (mut setup, initial) = self.parts()?;
+        setup.structures = structures;
+        Ok(SurfaceChannelBatch::new(client(), setup, initial)?)
     }
 }
 
@@ -369,6 +375,8 @@ pub fn step(
             right: Some(ChannelBoundary::Wall),
             lateral_inputs: inputs,
         }],
+        pool_sources: None,
+        pool_inflows: Vec::new(),
     };
     Ok(batch.trial_to(end, &forcing)?.into_next())
 }

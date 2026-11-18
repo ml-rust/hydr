@@ -79,6 +79,8 @@ fn forcing(setup: &SurfaceChannelSetup, start: f64, end: f64) -> SurfaceChannelF
                 lateral_inputs: Vec::new(),
             })
             .collect(),
+        pool_sources: None,
+        pool_inflows: Vec::new(),
     }
 }
 

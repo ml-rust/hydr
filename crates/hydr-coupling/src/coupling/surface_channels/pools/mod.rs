@@ -8,6 +8,7 @@
 mod admission;
 mod capacity;
 mod child;
+mod fns;
 mod topology;
 
 #[cfg(test)]
@@ -15,20 +16,20 @@ pub(super) mod scenario;
 
 pub(super) use admission::{check_attached, check_pools};
 pub(super) use child::{
-    PoolAttempt, PoolChild, PoolCompletion, PoolParts, PoolStart, charge, inflow_error, pool_error,
+    PoolAttempt, PoolChild, PoolCompletion, PoolStart, charge, inflow_error, pool_error,
 };
+pub(super) use fns::PoolParts;
 pub(super) use topology::{LinkSides, PoolTopology};
 
+use super::SurfaceChannelSetup;
 use super::pool_ends::SurfaceChannelPoolEnd;
-use crate::coupling::level_pools::{
-    CoupledPoolInflow, CoupledPoolInflowBinding, CoupledPoolSupport,
-};
-use crate::storage::{LevelPoolConfig, LevelPoolElement, LevelPoolSourcePolicy, LevelPoolSources};
+use crate::coupling::level_pools::{CoupledPoolInflowBinding, CoupledPoolSupport};
+use crate::storage::{LevelPoolConfig, LevelPoolElement, LevelPoolSourcePolicy};
 
-/// Every pool of a coordinator with its support evidence, source policy, and external inflows.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct SurfaceChannelPools {
-    /// Pool definitions in any order. Their curves use the surface vertical datum.
+/// The pool declarations of one setup: pools, support, sources, inflows, controls, and ends.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct SurfaceChannelPools {
+    /// Pool definitions in setup order. Their curves use the surface vertical datum.
     pub pools: Vec<LevelPoolElement>,
     /// One support declaration per pool, in the order of `pools`.
     pub support: Vec<CoupledPoolSupport>,
@@ -38,25 +39,20 @@ pub(crate) struct SurfaceChannelPools {
     pub inflows: Vec<CoupledPoolInflowBinding>,
     /// Dimensional controls of the pool child.
     pub storage: LevelPoolConfig,
-    /// Reach ends joined to the pools in any order.
+    /// Reach ends joined to the pools in setup order.
     pub ends: Vec<SurfaceChannelPoolEnd>,
 }
 
-/// Pool forcing over one common interval.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SurfaceChannelPoolForcing {
-    /// One source rate set per pool, in setup pool order, exactly when the pools have sources.
-    pub sources: Option<Vec<LevelPoolSources>>,
-    /// One input per declared external inflow binding, including zeros.
-    pub inflows: Vec<CoupledPoolInflow>,
-}
-
-impl SurfaceChannelPoolForcing {
-    /// Forcing of pools without sources or external inflows.
-    pub(crate) fn none() -> Self {
+impl SurfaceChannelPools {
+    /// The pool declarations of `setup`.
+    pub fn of(setup: &SurfaceChannelSetup) -> Self {
         Self {
-            sources: None,
-            inflows: Vec::new(),
+            pools: setup.pools.clone(),
+            support: setup.pool_support.clone(),
+            sources: setup.pool_sources.clone(),
+            inflows: setup.pool_inflows.clone(),
+            storage: setup.storage.clone(),
+            ends: setup.pool_ends.clone(),
         }
     }
 }
@@ -102,10 +98,9 @@ impl CheckedPools {
 #[cfg(test)]
 mod tests {
     use super::scenario::{
-        FREE_WEIR, advance, build, channel, check, declaration, inflow_binding, inflow_input, link,
-        long_weir, pond, pool, stages, surface, surface_stage, volumes,
+        FREE_WEIR, PoolForcing, advance, build, channel, check, declaration, inflow_binding,
+        inflow_input, link, long_weir, pond, pool, stages, surface, surface_stage, volumes,
     };
-    use super::*;
     use crate::coupling::surface_channels::structures::scenario::{
         AREA, EQUAL_HEADS, PUMP_CURVE, Tanks, TestResult, allowance, gate_law, orifice_law,
         pump_curve, pump_law, receipt, weir_law,
@@ -159,7 +154,7 @@ mod tests {
         let pools = declaration(vec![pond("pond", 0.0, AREA, 2.0)?], false, Vec::new());
         let mut batch = build(Tanks::at(0.6, 0.0), pools, &[0.6 * AREA], structures)?;
         let start = [surface_stage(&batch)?, stages(&batch)?[0]];
-        let none = SurfaceChannelPoolForcing::none();
+        let none = PoolForcing::none();
         for _ in 0..50 {
             batch = advance(&batch, DT, &none)?;
             check(&batch, &[0.0])?;
@@ -203,7 +198,7 @@ mod tests {
             reach_stage: 0.0,
         };
         let mut batch = build(tanks, pools, &[AREA], structures)?;
-        let none = SurfaceChannelPoolForcing::none();
+        let none = PoolForcing::none();
         let mut moved = 0.0;
         let mut elapsed = 0.0;
         for index in 0..20 {
@@ -257,7 +252,7 @@ mod tests {
         let ponds = vec![pond("high", 0.0, AREA, 2.0)?, pond("low", 0.0, AREA, 2.0)?];
         let pools = declaration(ponds, false, Vec::new());
         let mut batch = build(Tanks::at(0.0, 0.0), pools, &[AREA, 0.5 * AREA], structures)?;
-        let none = SurfaceChannelPoolForcing::none();
+        let none = PoolForcing::none();
         let mut moved = 0.0;
         let mut levelled = false;
         for _ in 0..200 {
@@ -300,7 +295,7 @@ mod tests {
         )];
         let pools = declaration(vec![pond("sump", 0.0, AREA, 2.0)?], false, Vec::new());
         let mut batch = build(Tanks::at(0.0, 0.5), pools, &[AREA], structures)?;
-        let none = SurfaceChannelPoolForcing::none();
+        let none = PoolForcing::none();
         for index in 0..10 {
             batch = advance(&batch, DT, &none)?;
             check(&batch, &[0.0])?;
@@ -345,7 +340,7 @@ mod tests {
         );
         let mut batch = build(Tanks::at(0.0, 0.0), pools, &[0.5 * AREA], structures)?;
         let (rain, rate) = (1e-3, 0.01);
-        let forcing = SurfaceChannelPoolForcing {
+        let forcing = PoolForcing {
             sources: Some(vec![crate::storage::LevelPoolSources {
                 rain_rate_m_per_s: rain,
                 potential_evaporation_rate_m_per_s: 0.0,
@@ -415,7 +410,7 @@ mod tests {
             potential_evaporation_rate_m_per_s: 0.0,
             bottom_loss_rate_m3_per_s: 0.0,
         };
-        let forcing = SurfaceChannelPoolForcing {
+        let forcing = PoolForcing {
             sources: Some(vec![sources, sources]),
             inflows: vec![inflow_input("pipe", rate)],
         };

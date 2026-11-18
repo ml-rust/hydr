@@ -1,7 +1,7 @@
 //! Pool test fixtures: constant-area ponds beside the structure tanks of
 //! [`super::super::structures::scenario`].
 
-use super::{SurfaceChannelPoolForcing, SurfaceChannelPools};
+use super::SurfaceChannelPools;
 use crate::channel::{ChannelBoundary, ChannelLateralInput};
 use crate::coupling::level_pools::{
     CoupledPoolInflow, CoupledPoolInflowBinding, CoupledPoolSupport,
@@ -15,13 +15,13 @@ use crate::coupling::surface_channels::structures::{
     SurfaceChannelStructure,
 };
 use crate::coupling::surface_channels::{
-    SurfaceChannelBatch, SurfaceChannelDefinition, SurfaceChannelError,
-    SurfaceChannelForcingInterval, SurfaceChannelReachForcing,
+    SurfaceChannelBatch, SurfaceChannelError, SurfaceChannelForcingInterval,
+    SurfaceChannelInitialState, SurfaceChannelReachForcing, SurfaceChannelSetup,
 };
 use crate::forcing::WaterAmount;
 use crate::storage::{
     LevelPoolConfig, LevelPoolCurve, LevelPoolElement, LevelPoolKnot, LevelPoolSourcePolicy,
-    LevelPoolState,
+    LevelPoolSources, LevelPoolState,
 };
 use crate::structures::{
     DirectionPolicy, PumpApplicability, PumpCurve, PumpCurveKnot, PumpParameters, PumpSpeedPolicy,
@@ -199,6 +199,64 @@ pub fn long_weir(crest: f64, length: f64) -> TestResult<StructureLaw> {
     ))
 }
 
+/// Pool forcing of one common interval: source rates and external inflow inputs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PoolForcing {
+    /// One source rate set per pool, in setup pool order, exactly when the pools have sources.
+    pub sources: Option<Vec<LevelPoolSources>>,
+    /// One input per declared external inflow binding, including zeros.
+    pub inflows: Vec<CoupledPoolInflow>,
+}
+
+impl PoolForcing {
+    /// Forcing of pools without sources or external inflows.
+    pub fn none() -> Self {
+        Self {
+            sources: None,
+            inflows: Vec::new(),
+        }
+    }
+
+    /// `forcing` with this pool forcing.
+    pub fn apply(&self, forcing: SurfaceChannelForcingInterval) -> SurfaceChannelForcingInterval {
+        SurfaceChannelForcingInterval {
+            pool_sources: self.sources.clone(),
+            pool_inflows: self.inflows.clone(),
+            ..forcing
+        }
+    }
+}
+
+/// `setup` with `pools` and `structures`.
+pub fn nodes_setup(
+    mut setup: SurfaceChannelSetup,
+    pools: SurfaceChannelPools,
+    structures: Vec<SurfaceChannelStructure>,
+) -> SurfaceChannelSetup {
+    setup.pools = pools.pools;
+    setup.pool_support = pools.support;
+    setup.pool_sources = pools.sources;
+    setup.pool_inflows = pools.inflows;
+    setup.storage = pools.storage;
+    setup.pool_ends = pools.ends;
+    setup.structures = structures;
+    setup
+}
+
+/// `setup` and `initial` with `pools` at `volumes`, in declaration order, and `structures`.
+pub fn with_nodes(
+    (setup, mut initial): (SurfaceChannelSetup, SurfaceChannelInitialState),
+    pools: SurfaceChannelPools,
+    volumes: &[f64],
+    structures: Vec<SurfaceChannelStructure>,
+) -> (SurfaceChannelSetup, SurfaceChannelInitialState) {
+    initial.pools = volumes
+        .iter()
+        .map(|&volume_m3| LevelPoolState { volume_m3 })
+        .collect();
+    (nodes_setup(setup, pools, structures), initial)
+}
+
 /// The batch of `tanks` with `pools` at `volumes`, in declaration order, joined by `structures`.
 pub fn build(
     tanks: Tanks,
@@ -206,27 +264,19 @@ pub fn build(
     volumes: &[f64],
     structures: Vec<SurfaceChannelStructure>,
 ) -> Result<Batch, SurfaceChannelError> {
-    let (setup, initial) = tanks
+    let parts = tanks
         .parts()
         .map_err(|error| SurfaceChannelError::Input(error.to_string()))?;
-    let definition = SurfaceChannelDefinition::with_nodes(setup, pools, structures)?;
-    let states: Vec<LevelPoolState> = volumes
-        .iter()
-        .map(|&volume_m3| LevelPoolState { volume_m3 })
-        .collect();
-    SurfaceChannelBatch::with_pools(client(), definition, initial, &states)
+    let (setup, initial) = with_nodes(parts, pools, volumes, structures);
+    SurfaceChannelBatch::new(client(), setup, initial)
 }
 
 /// One accepted interval toward `start + dt` with zero caller reach inputs and `pools` forcing.
-pub fn advance(
-    batch: &Batch,
-    dt: f64,
-    pools: &SurfaceChannelPoolForcing,
-) -> Result<Batch, SurfaceChannelError> {
+pub fn advance(batch: &Batch, dt: f64, pools: &PoolForcing) -> Result<Batch, SurfaceChannelError> {
     let start = batch.time();
     let end = start + dt;
     let lateral: Vec<ChannelLateralInput> = vec![inflow(0.0), withdrawal(0.0)];
-    let forcing = SurfaceChannelForcingInterval {
+    let forcing = pools.apply(SurfaceChannelForcingInterval {
         start_s: start,
         end_s: end,
         reaches: vec![SurfaceChannelReachForcing {
@@ -235,8 +285,10 @@ pub fn advance(
             right: Some(ChannelBoundary::Wall),
             lateral_inputs: lateral,
         }],
-    };
-    Ok(batch.trial_with_pools_to(end, &forcing, pools)?.into_next())
+        pool_sources: None,
+        pool_inflows: Vec::new(),
+    });
+    Ok(batch.trial_to(end, &forcing)?.into_next())
 }
 
 /// Accepted volume of every pool in ascending identity, in m³.

@@ -2,6 +2,8 @@
 
 use super::batch::SurfaceChannelBatch;
 use super::context::Context;
+use super::node_projection::{LinkValues, pool_end_transfers};
+use super::pools::PoolChild;
 use super::state::{LinkCounters, StoredStep};
 use super::{
     SurfaceChannelError, SurfaceChannelLinkLedger, SurfaceChannelLinkTransfer,
@@ -29,7 +31,7 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
     pub fn last_step(&self) -> Result<Option<SurfaceChannelStepDiagnostics>, SurfaceChannelError> {
         self.last
             .as_ref()
-            .map(|step| step.diagnostics(&self.context))
+            .map(|step| step.diagnostics(&self.context, self.pools.as_ref()))
             .transpose()
     }
 
@@ -54,34 +56,40 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
 }
 
 impl<R: Runtime<DType = DType>> StoredStep<R> {
-    /// Host receipt of this interval, with the bank links of `context` in identity order.
+    /// Host receipt of this interval, with `pools` the accepted pools at its end.
     ///
-    /// Structure links stay in the interval totals and leave the per-link list.
+    /// Bank links of `context` fill the per-link list and structure links the per-structure
+    /// list, each in identity order.
     pub(super) fn diagnostics(
         &self,
         context: &Context<R>,
+        pools: Option<&PoolChild<R>>,
     ) -> Result<SurfaceChannelStepDiagnostics, SurfaceChannelError> {
         let step = self;
-        let signed = step.signed_m3.try_to_vec::<f64>()?;
-        let weir = step.weir_m3.try_to_vec::<f64>()?;
-        let level = step.level.try_to_vec::<f64>()?;
-        let factor = step.factor.try_to_vec::<f64>()?;
-        let regime = step.regime.try_to_vec::<f64>()?;
-        let surface = step.midpoint_surface_m.try_to_vec::<f64>()?;
-        let channel = step.midpoint_channel_m.try_to_vec::<f64>()?;
+        let values = LinkValues {
+            signed: step.signed_m3.try_to_vec::<f64>()?,
+            law: step.weir_m3.try_to_vec::<f64>()?,
+            level: step.level.try_to_vec::<f64>()?,
+            factor: step.factor.try_to_vec::<f64>()?,
+            regime: step.regime.try_to_vec::<f64>()?,
+            midpoint_a: step.midpoint_surface_m.try_to_vec::<f64>()?,
+            midpoint_b: step.midpoint_channel_m.try_to_vec::<f64>()?,
+        };
         let mut links = Vec::with_capacity(context.bank.len());
         for &index in &context.bank {
             links.push(SurfaceChannelLinkTransfer {
                 link_id: context.link_ids[index].clone(),
-                signed_volume_m3: signed[index],
-                weir_volume_m3: weir[index],
-                level_factor: level[index],
-                donor_factor: factor[index],
-                regime: weir_regime(regime[index])?,
-                midpoint_surface_stage_m: surface[index],
-                midpoint_channel_stage_m: channel[index],
+                signed_volume_m3: values.signed[index],
+                weir_volume_m3: values.law[index],
+                level_factor: values.level[index],
+                donor_factor: values.factor[index],
+                regime: weir_regime(values.regime[index])?,
+                midpoint_surface_stage_m: values.midpoint_a[index],
+                midpoint_channel_stage_m: values.midpoint_b[index],
             });
         }
+        let structures = step.structure_transfers(context, &values)?;
+        let pool_ends = pool_end_transfers(&context.pool_end_ids(), &step.pool_ends)?;
         let totals = step.totals;
         Ok(SurfaceChannelStepDiagnostics {
             start_s: step.start_s,
@@ -104,6 +112,9 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
             links,
             ports: step.ports.transfers.clone(),
             port_paired_bound_m3: step.ports.paired_bound_m3,
+            structures,
+            pool_ends,
+            pools: context.pool_steps(pools)?,
         })
     }
 }
@@ -157,7 +168,7 @@ where
         + solvr::optimize::CertifiedMappedBisectionAlgorithms<R>
         + solvr::optimize::roots::CertifiedUpperBracketAlgorithms<R>,
 {
-    /// Lifetime water balance of the surface and every reach as one system.
+    /// Lifetime water balance of the surface, every reach, and the pools as one system.
     ///
     /// # Errors
     /// Returns runtime errors.

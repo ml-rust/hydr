@@ -110,94 +110,16 @@ mod surface_channels;
 #[path = "component_capabilities/surface_channel_ports.rs"]
 mod surface_channel_ports;
 
-use hydr::capability::{ComponentCapabilities, ComponentId, RegimeScope, RuntimeKind};
+#[path = "component_capabilities/surface_channel_pools.rs"]
+mod surface_channel_pools;
+
+#[path = "component_capabilities/declarations.rs"]
+mod declarations;
+
+use declarations::declarations;
+use hydr::capability::{ComponentId, RegimeScope, RuntimeKind};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-
-/// One component's declaration with the identity constants it must carry.
-struct Declared {
-    capabilities: &'static ComponentCapabilities,
-    contract: Option<&'static str>,
-    snapshot_schema: Option<&'static str>,
-}
-
-fn declarations() -> Vec<Declared> {
-    let channel = |capabilities| Declared {
-        capabilities,
-        contract: Some(hydr::channel::CHANNEL_CONTRACT_VERSION),
-        snapshot_schema: Some(hydr::channel::CHANNEL_SNAPSHOT_SCHEMA),
-    };
-    vec![
-        Declared {
-            capabilities: hydr::solver::surface_solver_capabilities(),
-            contract: Some(hydr::solver::CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::solver::SNAPSHOT_SCHEMA),
-        },
-        channel(hydr::channel::rectangular_reach_capabilities()),
-        channel(hydr::channel::triangular_reach_capabilities()),
-        channel(hydr::channel::surveyed_reach_capabilities()),
-        Declared {
-            capabilities: hydr::storage::level_pool_capabilities(),
-            contract: Some(hydr::storage::LEVEL_POOL_CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::storage::LEVEL_POOL_SNAPSHOT_SCHEMA),
-        },
-        Declared {
-            capabilities: hydr::coupling::coupled_level_pool_capabilities(),
-            contract: Some(hydr::coupling::COUPLED_LEVEL_POOL_CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::coupling::COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA),
-        },
-        Declared {
-            capabilities: hydr::coupling::channel_pool_capabilities(),
-            contract: Some(hydr::coupling::CHANNEL_POOL_CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::coupling::CHANNEL_POOL_SNAPSHOT_SCHEMA),
-        },
-        Declared {
-            capabilities: hydr::soil::soil_capabilities(),
-            contract: None,
-            snapshot_schema: None,
-        },
-        Declared {
-            capabilities: hydr::runoff::reservoir_capabilities(),
-            contract: Some(hydr::runoff::RESERVOIR_CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::runoff::RESERVOIR_SNAPSHOT_SCHEMA),
-        },
-        Declared {
-            capabilities: hydr::runoff::subcatchment_capabilities(),
-            contract: Some(hydr::runoff::SUBCATCHMENT_CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::runoff::SUBCATCHMENT_SNAPSHOT_SCHEMA),
-        },
-        Declared {
-            capabilities: hydr::coupling::runoff_pool_capabilities(),
-            contract: Some(hydr::coupling::RUNOFF_POOL_CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::coupling::RUNOFF_POOL_SNAPSHOT_SCHEMA),
-        },
-        Declared {
-            capabilities: hydr::structures::operating_control_capabilities(),
-            contract: Some(hydr::structures::OPERATING_CONTROL_CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::structures::OPERATING_CONTROL_SNAPSHOT_SCHEMA),
-        },
-        Declared {
-            capabilities: hydr::structures::gate_actuator_capabilities(),
-            contract: Some(hydr::structures::GATE_ACTUATOR_CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::structures::GATE_ACTUATOR_SNAPSHOT_SCHEMA),
-        },
-        Declared {
-            capabilities: hydr::structures::controlled_gate_capabilities(),
-            contract: Some(hydr::structures::CONTROLLED_GATE_CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::structures::CONTROLLED_GATE_SNAPSHOT_SCHEMA),
-        },
-        Declared {
-            capabilities: hydr::structures::controlled_pump_capabilities(),
-            contract: Some(hydr::structures::CONTROLLED_PUMP_CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::structures::CONTROLLED_PUMP_SNAPSHOT_SCHEMA),
-        },
-        Declared {
-            capabilities: hydr::coupling::surface_channel_capabilities(),
-            contract: Some(hydr::coupling::SURFACE_CHANNEL_CONTRACT_VERSION),
-            snapshot_schema: Some(hydr::coupling::SURFACE_CHANNEL_SNAPSHOT_SCHEMA),
-        },
-    ]
-}
 
 fn root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))

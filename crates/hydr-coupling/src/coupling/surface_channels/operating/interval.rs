@@ -41,13 +41,8 @@ pub(in super::super) struct PreparedOperation<R: Runtime<DType = DType>> {
 /// Interval operation of one accepted interval.
 pub(in super::super) struct StepOperation<R: Runtime<DType = DType>> {
     /// Operation receipts of every structure from the operating sources.
-    #[cfg_attr(not(test), expect(dead_code, reason = "tests read the receipts"))]
     pub interval: OperatingSourceInterval<R>,
     /// Operation of every link in table order.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "tests read the link operations")
-    )]
     pub points: Vec<StructureOperatingPoint>,
 }
 
@@ -233,19 +228,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::SurfaceChannelOperating;
-    use super::super::scenario::{build, context, controlled_pump, signal, trajectory};
-    use crate::coupling::surface_channels::pools::SurfaceChannelPoolForcing;
-    use crate::coupling::surface_channels::pools::SurfaceChannelPools;
+    use super::super::scenario::{build, controlled_pump, signal, trajectory};
     use crate::coupling::surface_channels::pools::scenario::{
-        advance, check as pool_check, declaration, inflow_binding, inflow_input, link, pond, pool,
-        stages, surface,
+        PoolForcing, advance, check as pool_check, declaration, inflow_binding, inflow_input, link,
+        pond, pool, stages, surface,
     };
     use crate::coupling::surface_channels::structures::SurfaceChannelOperationOwner;
     use crate::coupling::surface_channels::structures::scenario::{
-        Batch, Tanks, TestResult, check, gate_law, pump_law, step, structure,
+        Batch, Tanks, TestResult, check, client, gate_law, pump_law, step, structure,
     };
     use crate::structures::{
-        ControlLatch, DirectionPolicy, OperatingSourceIntervalDetail, StructureOperatingPoint,
+        ControlLatch, DirectionPolicy, OperatingSourceIntervalDetail, StructureBatch,
+        StructureOperatingPoint,
     };
 
     /// Receipt detail and table operation of link `id` over the last accepted interval.
@@ -292,21 +286,25 @@ mod tests {
             [0.0, 0.0],
         );
         gate.operation = SurfaceChannelOperationOwner::Prescribed;
-        let structures = vec![gate];
-        let path = trajectory(&context(&structures)?, "gate", &knots)?;
+        let assignment = trajectory("gate", &knots)?;
+        let path = StructureBatch::<numr::runtime::cpu::CpuRuntime>::new(
+            client(),
+            vec![gate.element.clone()],
+        )?
+        .with_gate_trajectory_subset(vec![assignment.clone()])?;
         let opening =
             |time: f64| -> TestResult<f64> { Ok(path.evaluate(time)?.outputs()?[0].opening_m) };
         let operating = SurfaceChannelOperating {
-            gate: None,
-            pump: None,
-            trajectory: Some(path.clone()),
+            gates: None,
+            pumps: None,
+            trajectories: vec![assignment],
             signals: Vec::new(),
         };
         let mut batch = build(
             Tanks::at(1.0, 0.3),
-            SurfaceChannelPools::default(),
+            declaration(Vec::new(), false, Vec::new()),
             &[],
-            structures,
+            vec![gate],
             operating,
         )?;
         let mut ends = Vec::new();
@@ -375,16 +373,11 @@ mod tests {
         pump.operation = SurfaceChannelOperationOwner::ControlledPump;
         let structures = vec![pump];
         let decisions: Vec<f64> = (1..=20).map(|k| 2.0 * f64::from(k)).collect();
-        let child = controlled_pump(
-            &context(&structures)?,
-            "pump",
-            [0.4, 0.6],
-            (0.0, &decisions, 40.0),
-        )?;
+        let child = controlled_pump("pump", [0.4, 0.6], (0.0, &decisions, 40.0));
         let operating = SurfaceChannelOperating {
-            gate: None,
-            pump: Some(child),
-            trajectory: None,
+            gates: None,
+            pumps: Some(child),
+            trajectories: Vec::new(),
             signals: vec![signal("pump", pool("sump"))],
         };
         let pools = declaration(
@@ -399,7 +392,7 @@ mod tests {
             structures,
             operating,
         )?;
-        let forcing = SurfaceChannelPoolForcing {
+        let forcing = PoolForcing {
             sources: None,
             inflows: vec![inflow_input("feed", 0.06)],
         };

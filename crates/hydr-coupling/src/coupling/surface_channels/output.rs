@@ -1,5 +1,9 @@
 //! Host projections of accepted common intervals, link counters, and the composite balance.
 
+use super::{
+    SurfaceChannelPoolEndTransfer, SurfaceChannelPoolStep, SurfaceChannelStructureTransfer,
+};
+
 /// Weir regime of one link at its accepted midpoint heads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SurfaceChannelWeirRegime {
@@ -119,9 +123,9 @@ pub struct SurfaceChannelStepDiagnostics {
     pub head_residual_m: f64,
     /// Largest signed-volume change of the last fixed-point update, in cubic metres.
     pub transfer_residual_m3: f64,
-    /// Surface plus channel storage at the start, in cubic metres.
+    /// Surface, channel, and pool storage at the start, in cubic metres.
     pub storage_before_m3: f64,
-    /// Surface plus channel storage at the end, in cubic metres.
+    /// Surface, channel, and pool storage at the end, in cubic metres.
     pub storage_after_m3: f64,
     /// Link water the surface received, in cubic metres. Port water stays out.
     pub surface_exchange_in_m3: f64,
@@ -137,12 +141,18 @@ pub struct SurfaceChannelStepDiagnostics {
     pub mass_residual_m3: f64,
     /// Admitted magnitude of `mass_residual_m3`, in cubic metres.
     pub mass_bound_m3: f64,
-    /// Per-link exchange in ascending link identity.
+    /// Per-link exchange of every bank link in ascending link identity.
     pub links: Vec<SurfaceChannelLinkTransfer>,
     /// Per-port exchange in ascending port identity. Empty without ports.
     pub ports: Vec<SurfaceChannelPortTransfer>,
     /// Sum of every port's `paired_bound_m3`, in cubic metres. It joins `mass_bound_m3`.
     pub port_paired_bound_m3: f64,
+    /// Per-structure exchange in ascending structure identity. Empty without structure links.
+    pub structures: Vec<SurfaceChannelStructureTransfer>,
+    /// Per-pool-end exchange in ascending pool-end identity. Empty without pool ends.
+    pub pool_ends: Vec<SurfaceChannelPoolEndTransfer>,
+    /// Every pool at the interval end, in ascending pool identity. Empty without pools.
+    pub pools: Vec<SurfaceChannelPoolStep>,
 }
 
 /// Lifetime directional exchange through one link.
@@ -158,19 +168,21 @@ pub struct SurfaceChannelLinkLedger {
     pub roundoff_bound_m3: f64,
 }
 
-/// Lifetime water accounting of the surface and every reach as one system.
+/// Lifetime water accounting of the surface, every reach, and the pools as one system.
 ///
-/// Exchange stays inside the system. It enters only the separate exchange totals.
+/// Link, structure, and pool-end exchange stays inside the system. It enters only the separate
+/// exchange totals.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelWaterBalance {
-    /// Original surface plus channel storage, in cubic metres.
+    /// Original surface, channel, and pool storage, in cubic metres.
     pub initial_storage_m3: f64,
-    /// Current surface plus channel storage, in cubic metres.
+    /// Current surface, channel, and pool storage, in cubic metres.
     pub storage_m3: f64,
-    /// Rain, inward ports, channel endpoint inflow, and caller lateral inflow, in m³.
+    /// Rain, inward ports, channel endpoint inflow, caller lateral inflow, pool rain, and
+    /// external pool inflow, in m³.
     pub external_in_m3: f64,
     /// Land withdrawal, infiltration, evaporation, outward ports, channel endpoint outflow,
-    /// and caller lateral withdrawal, in cubic metres.
+    /// caller lateral withdrawal, and pool bottom loss and evaporation, in cubic metres.
     pub external_out_m3: f64,
     /// Signed surface numerical water adjustments, in cubic metres.
     pub water_adjustment_m3: f64,

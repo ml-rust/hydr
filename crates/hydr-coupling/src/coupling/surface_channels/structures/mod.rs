@@ -20,13 +20,9 @@ pub(super) use operations::LinkOperations;
 
 use crate::structures::{StructureElement, StructureOperatingPoint};
 
-/// One coordinator node a structure attaches to.
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "in-crate callers construct structure links")
-)]
-pub(crate) enum SurfaceChannelNode {
+/// One coordinator node a structure attaches to or a control signal samples.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SurfaceChannelNode {
     /// Active global row-major surface cell index.
     SurfaceCell(usize),
     /// Ordered cell index inside the named setup reach.
@@ -42,7 +38,9 @@ pub(crate) enum SurfaceChannelNode {
 
 impl SurfaceChannelNode {
     /// `surface-cell:<n>`, `reach:<id>:cell:<k>`, or `pool:<id>`.
-    pub(crate) fn identity(&self) -> String {
+    ///
+    /// A structure element's endpoint strings must equal the identities of its nodes.
+    pub fn identity(&self) -> String {
         match self {
             Self::SurfaceCell(cell) => format!("surface-cell:{cell}"),
             Self::ChannelCell { reach_id, cell } => format!("reach:{reach_id}:cell:{cell}"),
@@ -53,58 +51,75 @@ impl SurfaceChannelNode {
 
 /// One structure endpoint: its node and the bed of its connection.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SurfaceChannelAttachment {
+pub struct SurfaceChannelAttachment {
+    /// Node the endpoint joins.
     pub node: SurfaceChannelNode,
-    /// Connection bed in the common datum, in metres. At least the node bed or pool origin.
+    /// Finite connection bed in the common datum, in metres.
+    ///
+    /// It sits at or above the node bed, or at or above the curve origin of a pool. A weir
+    /// crest, gate sill, or orifice sill sits at or above both attachment beds.
     pub bed_elevation_m: f64,
     /// Evidence that the structure connects to the node at this bed.
     pub physical_connection_assertion: String,
 }
 
 /// The fixed blockage or condition scenario whose geometry the law parameters hold.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct StructureScenario {
-    /// Unique nonempty scenario identity.
+///
+/// A scenario is caller geometry with evidence. The coordinator infers no blockage and changes
+/// no geometry over time.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StructureScenario {
+    /// Nonempty scenario identity, unique across the structure links.
     pub id: String,
-    /// Evidence for the scenario geometry.
+    /// Nonempty evidence for the scenario geometry.
     pub evidence: String,
 }
 
 /// Owner of a structure's operation.
 ///
-/// A dynamic owner binds the structure to one operating child of the coordinator. See
-/// [`crate::coupling::surface_channels::operating`].
+/// A dynamic owner binds the structure to one child of the setup's
+/// [`super::SurfaceChannelOperating`]. Each structure has exactly one owner.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "in-crate callers construct structure links")
-)]
-pub(crate) enum SurfaceChannelOperationOwner {
-    /// One supplied operation held over every interval.
+pub enum SurfaceChannelOperationOwner {
+    /// One supplied operation held over every interval. It must drive the law: `Passive` for a
+    /// weir or an orifice, a gate opening for a gate, a running or stopped pump for a pump.
     Manual(StructureOperatingPoint),
-    /// A gate on the trajectory child. Each interval takes the midpoint of its linear path.
+    /// A gate on a prescribed trajectory. Each interval takes the midpoint of its linear path.
     Prescribed,
-    /// A gate on the controlled-gate child. Each interval takes the midpoint of its actuator path.
+    /// A gate on a controlled actuator. Each interval takes the midpoint of its actuator path.
     Actuated,
-    /// A pump on the controlled-pump child. Each interval holds its accepted operation.
+    /// A pump on a sampled controller. Each interval holds its accepted operation.
     ControlledPump,
 }
 
 impl SurfaceChannelOperationOwner {
     /// True for an owner bound to an operating child.
-    pub(crate) fn is_dynamic(&self) -> bool {
+    pub fn is_dynamic(&self) -> bool {
         !matches!(self, Self::Manual(_))
     }
 }
 
-/// One structure link between two coordinator nodes.
+/// One structure link between two distinct coordinator nodes.
+///
+/// The two endpoints join a surface cell and a channel cell, a surface cell or a channel cell and
+/// a pool, or two pools, in either order. Water enters either side with zero velocity. A channel
+/// endpoint synthesizes `structure-exchange:<id>:inflow` and `structure-exchange:<id>:withdrawal`
+/// at its cell.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SurfaceChannelStructure {
-    /// Law, direction, and datum. Its endpoint strings equal the node identities.
+pub struct SurfaceChannelStructure {
+    /// Unique identity, law, direction, and datum.
+    ///
+    /// Its endpoint strings equal the node identities of `endpoint_a` and `endpoint_b`. Its datum
+    /// equals the surface vertical datum. A pump takes `Forward`; a bidirectional law needs
+    /// symmetric reversal evidence.
     pub element: StructureElement,
+    /// Endpoint A. Positive signed volumes move water from A to B.
     pub endpoint_a: SurfaceChannelAttachment,
+    /// Endpoint B.
     pub endpoint_b: SurfaceChannelAttachment,
+    /// Fixed scenario whose geometry the law parameters hold.
     pub scenario: StructureScenario,
+    /// Owner of the structure's operation.
     pub operation: SurfaceChannelOperationOwner,
 }
 

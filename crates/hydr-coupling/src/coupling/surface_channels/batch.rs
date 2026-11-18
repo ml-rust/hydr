@@ -1,5 +1,5 @@
 use super::context::Context;
-use super::operating::{OperatingChildren, SurfaceChannelOperating, admit, check_manual};
+use super::operating::{OperatingChildren, admit};
 use super::pools::{PoolChild, PoolParts, inflow_error};
 use super::state::{LinkCounters, StoredStep};
 use super::{
@@ -7,7 +7,8 @@ use super::{
 };
 use crate::channel::{ChannelInitialState, ChannelReach};
 use crate::solver::Solver;
-use crate::storage::LevelPoolState;
+use crate::storage::LevelPoolBatch;
+use crate::structures::{ControlledGateBatch, ControlledPumpBatch};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, HypotOps,
@@ -19,10 +20,11 @@ use solvr::interpolate::{Interp1dAlgorithms, LinearInterp1dDiagnostics};
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedNewtonAlgorithms};
 use std::sync::Arc;
 
-/// Accepted surface and channel states sharing one runtime and one accepted time.
+/// Accepted surface, channel, pool, and operating states sharing one runtime and one accepted
+/// time.
 ///
 /// Construction checks the definition and builds every child. Linked reaches use their
-/// coordinator definitions with synthesized surface-exchange bindings.
+/// coordinator definitions with synthesized surface-exchange and structure-exchange bindings.
 pub struct SurfaceChannelBatch<R: Runtime<DType = DType>> {
     pub(super) definition: Arc<SurfaceChannelDefinition>,
     pub(super) context: Arc<Context<R>>,
@@ -96,6 +98,21 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
             .position(|reach| reach.id == id)
             .and_then(|index| self.reaches.get(index))
     }
+
+    /// Read-only pool child, every pool in ascending identity, or `None` without pools.
+    pub fn pools(&self) -> Option<&LevelPoolBatch<R>> {
+        self.pools.as_ref().map(|pools| &pools.batch)
+    }
+
+    /// Read-only controlled-gate child, or `None` without controlled gates.
+    pub fn controlled_gates(&self) -> Option<&ControlledGateBatch<R>> {
+        self.operating.as_ref().and_then(OperatingChildren::gate)
+    }
+
+    /// Read-only controlled-pump child, or `None` without controlled pumps.
+    pub fn controlled_pumps(&self) -> Option<&ControlledPumpBatch<R>> {
+        self.operating.as_ref().and_then(OperatingChildren::pump)
+    }
 }
 
 impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R>
@@ -116,10 +133,14 @@ where
         + TwoSumOps<R>
         + TypeConversionOps<R>
         + UnaryOps<R>
+        + SortingOps<R>
         + BatchedBisectionAlgorithms<R>
-        + BatchedNewtonAlgorithms<R>,
+        + BatchedNewtonAlgorithms<R>
+        + Interp1dAlgorithms<R>
+        + LinearInterp1dDiagnostics<R>,
 {
-    /// Checks `setup` and `initial`, then builds the surface engine and every reach on `client`.
+    /// Checks `setup` and `initial`, then builds the surface engine, every reach, the pools, and
+    /// the operating children on `client`.
     ///
     /// # Errors
     /// Returns every [`SurfaceChannelDefinition::new`] rejection.
@@ -127,7 +148,13 @@ where
     /// - a nonfinite common time
     /// - a surface or reach time that differs from `time_s` bit for bit
     /// - a reach state that is missing, repeated, or names no setup reach
-    /// - a link weir law the structures crate rejects on `client`
+    /// - a pool state count other than the setup pool count, or a pool state the pool child
+    ///   rejects
+    /// - a link law the structures crate rejects on `client`
+    /// - an operating child the structures crate rejects, naming the child
+    /// - every `operation-ownership` rejection of the operating children: a declaration without a
+    ///   child, a structure with zero owners or two, a child off the common time, and a signal
+    ///   naming no controller signal, bound twice, bound to no coordinator node, or missing
     ///
     /// Returns [`SurfaceChannelError::Surface`] or [`SurfaceChannelError::Channel`] when a
     /// child rejects its definition or state.
@@ -136,42 +163,22 @@ where
         setup: SurfaceChannelSetup,
         initial: SurfaceChannelInitialState,
     ) -> Result<Self, SurfaceChannelError> {
-        Self::from_definition(client, SurfaceChannelDefinition::new(setup)?, initial)
+        Self::build(client, SurfaceChannelDefinition::new(setup)?, initial)
     }
 
-    /// Checks `initial` against a checked `definition` without pools, then builds every child on
-    /// `client`.
-    ///
-    /// # Errors
-    /// Returns every [`Self::new`] rejection after the definition checks, and
-    /// [`SurfaceChannelError::Input`] for a definition with pools or a structure with a dynamic
-    /// owner (`operation-ownership`).
-    pub(super) fn from_definition(
+    /// Builds every child of a checked `definition` at `initial` on `client`.
+    pub(super) fn build(
         client: R::Client,
         definition: SurfaceChannelDefinition,
         initial: SurfaceChannelInitialState,
     ) -> Result<Self, SurfaceChannelError> {
-        if definition.pools.is_some() {
-            return Err(SurfaceChannelError::input(
-                "pool states: build a coordinator with pools through its pool constructor",
-            ));
-        }
-        check_manual(&definition)?;
-        Self::build(client, definition, initial, None)
-    }
-
-    /// Builds every child of `definition` at `initial` on `client`, with the pool child `pools`.
-    fn build(
-        client: R::Client,
-        definition: SurfaceChannelDefinition,
-        initial: SurfaceChannelInitialState,
-        pools: Option<PoolParts<R>>,
-    ) -> Result<Self, SurfaceChannelError> {
+        let pools = pool_parts(&client, &definition, &initial)?;
         let original = Arc::new(initial.clone());
         let SurfaceChannelInitialState {
             time_s,
             surface,
             reaches,
+            pools: _,
         } = initial;
         if !time_s.is_finite() {
             return Err(SurfaceChannelError::input(format!(
@@ -214,6 +221,10 @@ where
             }),
             None => None,
         };
+        let operating = match &definition.setup().operating {
+            Some(declared) => Some(admit(&definition, &context, time_s, declared)?),
+            None => None,
+        };
         Ok(Self {
             definition: Arc::new(definition),
             context: Arc::new(context),
@@ -225,110 +236,48 @@ where
             counters,
             last: None,
             pools,
-            operating: None,
+            operating,
         })
     }
 }
 
-impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R>
+/// The pool child of `definition` at the pool states of `initial` on `client`, or `None`
+/// without pools.
+///
+/// # Errors
+/// Returns [`SurfaceChannelError::Input`] for a state count other than the pool count, and
+/// every pool child rejection.
+pub(super) fn pool_parts<R: Runtime<DType = DType>>(
+    client: &R::Client,
+    definition: &SurfaceChannelDefinition,
+    initial: &SurfaceChannelInitialState,
+) -> Result<Option<PoolParts<R>>, SurfaceChannelError>
 where
     R::Client: BinaryOps<R>
         + CompareOps<R>
         + ConditionalOps<R>
-        + CorrectlyRoundedOps<R>
-        + CumulativeOps<R>
-        + HypotOps<R>
-        + IndexingOps<R>
-        + MidpointOps<R>
-        + NextRepresentableOps<R>
         + ReduceOps<R>
         + ScalarOps<R>
-        + ShapeOps<R>
-        + SortingOps<R>
-        + TensorOps<R>
-        + TwoSumOps<R>
         + TypeConversionOps<R>
         + UnaryOps<R>
-        + BatchedBisectionAlgorithms<R>
-        + BatchedNewtonAlgorithms<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
         + Interp1dAlgorithms<R>,
 {
-    /// Checks `initial` and the pool `states` against a checked `definition`, then builds every
-    /// child on `client`.
-    ///
-    /// `states` holds one accepted volume per declared pool, in declaration order. A definition
-    /// without pools takes none.
-    ///
-    /// # Errors
-    /// Returns every [`Self::from_definition`] rejection, every pool child rejection, and
-    /// [`SurfaceChannelError::Input`] for a state count that differs from the pool count.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "in-crate callers construct pool coordinators")
-    )]
-    pub(crate) fn with_pools(
-        client: R::Client,
-        definition: SurfaceChannelDefinition,
-        initial: SurfaceChannelInitialState,
-        states: &[LevelPoolState],
-    ) -> Result<Self, SurfaceChannelError> {
-        check_manual(&definition)?;
-        Self::pooled(client, definition, initial, states)
-    }
-
-    /// Builds every child of `definition` at `initial` and the pool `states` on `client`, then
-    /// binds the fresh operating children `operating`.
-    ///
-    /// # Errors
-    /// Returns every [`Self::with_pools`] rejection except the manual-owner check, and every
-    /// `operation-ownership` rejection of the operating children. See
-    /// [`super::operating::admit`].
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "in-crate callers construct operating coordinators"
-        )
-    )]
-    pub(crate) fn with_operating(
-        client: R::Client,
-        definition: SurfaceChannelDefinition,
-        initial: SurfaceChannelInitialState,
-        states: &[LevelPoolState],
-        operating: SurfaceChannelOperating<R>,
-    ) -> Result<Self, SurfaceChannelError>
-    where
-        R::Client: LinearInterp1dDiagnostics<R>,
-    {
-        let time_s = initial.time_s;
-        let mut batch = Self::pooled(client, definition, initial, states)?;
-        batch.operating = Some(admit(&batch.definition, &batch.context, time_s, operating)?);
-        Ok(batch)
-    }
-
-    /// Builds every child of `definition` at `initial` and the pool `states` on `client`.
-    fn pooled(
-        client: R::Client,
-        definition: SurfaceChannelDefinition,
-        initial: SurfaceChannelInitialState,
-        states: &[LevelPoolState],
-    ) -> Result<Self, SurfaceChannelError> {
-        let parts = match &definition.pools {
-            Some(pools) => Some(PoolParts::new(
-                client.clone(),
-                pools,
-                states,
-                initial.time_s,
-            )?),
-            None if states.is_empty() => None,
-            None => {
-                return Err(SurfaceChannelError::input(format!(
-                    "initial pool state count={}, pools=0: supply no pool states without pools",
-                    states.len()
-                )));
-            }
-        };
-        Self::build(client, definition, initial, parts)
+    match &definition.pools {
+        Some(pools) => Ok(Some(PoolParts::new(
+            client.clone(),
+            pools,
+            &initial.pools,
+            initial.time_s,
+        )?)),
+        None if initial.pools.is_empty() => Ok(None),
+        None => Err(SurfaceChannelError::input(format!(
+            "initial pool state count={}, pools=0: supply no pool states without pools",
+            initial.pools.len()
+        ))),
     }
 }
 

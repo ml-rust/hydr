@@ -1,5 +1,5 @@
 //! Surface/channel coordinator definitions, construction checks, common intervals, reach-end
-//! ports, and checkpoints.
+//! ports, pools, structure links, pool ends, operating children, and checkpoints.
 
 #[allow(dead_code)]
 #[path = "support/analytic.rs"]
@@ -22,6 +22,15 @@ mod levelling;
 mod lifecycle;
 #[path = "surface_channels/physics.rs"]
 mod physics;
+#[path = "surface_channels/pools_definition.rs"]
+mod pools_definition;
+#[allow(dead_code)]
+#[path = "surface_channels/pools_fixture.rs"]
+mod pools_fixture;
+#[path = "surface_channels/pools_order.rs"]
+mod pools_order;
+#[path = "surface_channels/pools_restart.rs"]
+mod pools_restart;
 #[path = "surface_channels/ports_dam_break.rs"]
 mod ports_dam_break;
 #[path = "surface_channels/ports_definition.rs"]

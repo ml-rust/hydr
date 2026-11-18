@@ -2,8 +2,8 @@
 
 use super::SurfaceChannelPoolEnd;
 use crate::channel::{ChannelBoundary, ChannelEnd, ChannelLateralInput};
+use crate::coupling::surface_channels::pools::SurfaceChannelPools;
 use crate::coupling::surface_channels::pools::scenario::{declaration, pond};
-use crate::coupling::surface_channels::pools::{SurfaceChannelPoolForcing, SurfaceChannelPools};
 use crate::coupling::surface_channels::structures::scenario::{
     Batch, REACH, TestResult, inflow, withdrawal,
 };
@@ -55,6 +55,8 @@ pub fn forcing(
             right,
             lateral_inputs: lateral,
         }],
+        pool_sources: None,
+        pool_inflows: Vec::new(),
     }
 }
 
@@ -64,9 +66,7 @@ pub fn advance(batch: &Batch, dt: f64, rates: [f64; 2]) -> Result<Batch, Surface
     let start = batch.time();
     let end = start + dt;
     let held = forcing(start, end, None, rates);
-    Ok(batch
-        .trial_with_pools_to(end, &held, &SurfaceChannelPoolForcing::none())?
-        .into_next())
+    Ok(batch.trial_to(end, &held)?.into_next())
 }
 
 /// Pool-end volumes of the last accepted interval, positive into the pools, in m³.

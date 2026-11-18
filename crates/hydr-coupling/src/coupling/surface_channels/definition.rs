@@ -1,6 +1,10 @@
-use super::SurfaceChannelError;
+use super::{
+    SurfaceChannelError, SurfaceChannelOperating, SurfaceChannelPoolEnd, SurfaceChannelStructure,
+};
 use crate::channel::{ChannelEnd, ChannelInitialState, ChannelReachDefinition};
+use crate::coupling::level_pools::{CoupledPoolInflowBinding, CoupledPoolSupport};
 use crate::solver::{BoundaryFace, InitialState, SolverSetup};
+use crate::storage::{LevelPoolConfig, LevelPoolElement, LevelPoolSourcePolicy, LevelPoolState};
 use crate::structures::WeirApplicability;
 
 /// Largest admitted `|hypot(reach_tangent) - 1|` for a link's unit reach tangent.
@@ -175,17 +179,38 @@ impl SurfaceChannelConfig {
 }
 
 /// Immutable surface/channel topology with link evidence and common numerical controls.
+///
+/// Links, ports, structures, and pool ends together are nonempty.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelSetup {
     /// Complete surface engine definition.
     pub surface: SolverSetup,
     /// Nonempty reach definitions with unique identities, in child-output order.
     pub reaches: Vec<SurfaceChannelReach>,
-    /// Bank-overflow links in declaration order. Empty only when `ports` is nonempty.
+    /// Bank-overflow links in declaration order.
     pub links: Vec<SurfaceChannelLink>,
-    /// Reach-end ports in declaration order. Links and ports together are nonempty.
+    /// Reach-end ports in declaration order.
     pub ports: Vec<SurfaceChannelPort>,
-    /// Evidence that surface cells and channel cells store no water twice.
+    /// Level pools in declaration order. Their curves use the surface vertical datum.
+    ///
+    /// Every pool joins at least one structure link or pool end.
+    pub pools: Vec<LevelPoolElement>,
+    /// One storage support declaration per pool, in pool order.
+    pub pool_support: Vec<CoupledPoolSupport>,
+    /// One local source policy per pool, in pool order, or `None` without pool sources.
+    pub pool_sources: Option<Vec<LevelPoolSourcePolicy>>,
+    /// External inflow bindings into the pools, in any order.
+    pub pool_inflows: Vec<CoupledPoolInflowBinding>,
+    /// Dimensional controls of the pool child. Without pools it enters no check.
+    pub storage: LevelPoolConfig,
+    /// Structure links between coordinator nodes, in declaration order.
+    pub structures: Vec<SurfaceChannelStructure>,
+    /// Reach ends joined to pools, in declaration order.
+    pub pool_ends: Vec<SurfaceChannelPoolEnd>,
+    /// Operating children of every dynamically owned structure, or `None` when every structure
+    /// has a manual owner.
+    pub operating: Option<SurfaceChannelOperating>,
+    /// Evidence that surface cells, channel cells, and pools store no water twice.
     pub storage_exclusion_evidence: String,
     /// Explicit dimensional tolerances, common duration limits, and work limits.
     pub config: SurfaceChannelConfig,
@@ -202,4 +227,6 @@ pub struct SurfaceChannelInitialState {
     pub surface: InitialState,
     /// One `(reach id, state)` pair per setup reach, in any order.
     pub reaches: Vec<(String, ChannelInitialState)>,
+    /// One accepted volume per setup pool, in setup pool order. Empty without pools.
+    pub pools: Vec<LevelPoolState>,
 }

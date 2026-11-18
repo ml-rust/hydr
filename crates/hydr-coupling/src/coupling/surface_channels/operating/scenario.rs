@@ -1,39 +1,30 @@
 //! Operating-child fixtures: relays, actuators, trajectories, and coordinators that bind them.
 //!
-//! Every child sits on the coordinator's structure links in ascending identity.
+//! The coordinator builds every child on its structure links in ascending identity.
 
-use super::{SurfaceChannelOperating, SurfaceChannelSignal};
-use crate::coupling::surface_channels::SurfaceChannelDefinition;
+use super::{
+    SurfaceChannelActuators, SurfaceChannelControlledGates, SurfaceChannelControlledPumps,
+    SurfaceChannelControls, SurfaceChannelOperating, SurfaceChannelSignal,
+};
 use crate::coupling::surface_channels::SurfaceChannelError;
 use crate::coupling::surface_channels::pools::SurfaceChannelPools;
+use crate::coupling::surface_channels::pools::scenario::with_nodes;
 use crate::coupling::surface_channels::structures::SurfaceChannelNode;
 use crate::coupling::surface_channels::structures::SurfaceChannelStructure;
 use crate::coupling::surface_channels::structures::scenario::{
     Batch, DATUM, Tanks, TestResult, client,
 };
-use crate::storage::LevelPoolState;
 use crate::structures::{
     ControlCommand, ControlDecisionSchedule, ControlInitialState, ControlLatch, ControlStageSignal,
-    ControlledGateBatch, ControlledPumpBatch, GateActuatorAccuracy, GateActuatorBatch,
-    GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule, GateMotionLimits,
-    GateOpeningKnot, GateOpeningTrajectory, GateTrajectoryAccuracy, GateTrajectoryAssignment,
-    GateTrajectoryBatch, OperatingControlBatch, OperatingControlDefinition, PumpResponseDefinition,
-    PumpResponseModel, SampledControlTiming, StructureBatch,
+    GateActuatorAccuracy, GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule,
+    GateMotionLimits, GateOpeningKnot, GateOpeningTrajectory, GateTrajectoryAccuracy,
+    GateTrajectoryAssignment, OperatingControlDefinition, PumpResponseDefinition,
+    PumpResponseModel, SampledControlTiming,
 };
-use numr::runtime::cpu::CpuRuntime;
-
-pub type Cpu = CpuRuntime;
 
 /// Debug text: equal text means equal bits for every finite field.
 pub fn bits<T: std::fmt::Debug>(value: &T) -> String {
     format!("{value:?}")
-}
-
-/// Structure batch of `structures` in ascending identity, the context of every child.
-pub fn context(structures: &[SurfaceChannelStructure]) -> TestResult<StructureBatch<Cpu>> {
-    let mut elements: Vec<_> = structures.iter().map(|s| s.element.clone()).collect();
-    elements.sort_by(|a, b| a.id.cmp(&b.id));
-    Ok(StructureBatch::<Cpu>::new(client(), elements)?)
 }
 
 /// Controller identity of structure `id`.
@@ -59,14 +50,13 @@ pub fn signal(id: &str, node: SurfaceChannelNode) -> SurfaceChannelSignal {
 ///
 /// The stage at a decision latches high at or above `upper` and low at or below `lower`.
 pub fn relay(
-    context: &StructureBatch<Cpu>,
     id: &str,
     [lower, upper]: [f64; 2],
     [low, high]: [ControlCommand; 2],
     (start, times, end): (f64, &[f64], f64),
-) -> TestResult<OperatingControlBatch<Cpu>> {
-    Ok(context.with_operating_controls(
-        vec![OperatingControlDefinition {
+) -> SurfaceChannelControls {
+    SurfaceChannelControls {
+        definitions: vec![OperatingControlDefinition {
             controller_id: controller(id),
             structure_id: id.into(),
             signal: ControlStageSignal {
@@ -82,35 +72,34 @@ pub fn relay(
             high_command: high,
             provenance: "Synthetic sampled relay".into(),
         }],
-        vec![ControlInitialState {
+        initial_states: vec![ControlInitialState {
             controller_id: controller(id),
             latch: ControlLatch::Low,
             pending: None,
             antecedent_sample: None,
             last_transition_at_s: None,
         }],
-        ControlDecisionSchedule {
+        schedule: ControlDecisionSchedule {
             initial_time_s: start,
             decision_times_s: times.to_vec(),
             end_s: end,
         },
-        SampledControlTiming {
+        timing: SampledControlTiming {
             maximum_decision_gap_s: end - start,
             maximum_timer_lateness_s: end - start,
             sampled_applicability: "Synthetic sampled policy".into(),
         },
-    )?)
+    }
 }
 
 /// Actuator on gate `id` at `rate` m/s each way, closed at `start`, with targets at `times`.
 pub fn actuator(
-    context: &StructureBatch<Cpu>,
     id: &str,
     rate: f64,
     (start, times, end): (f64, &[f64], f64),
-) -> TestResult<GateActuatorBatch<Cpu>> {
-    Ok(context.with_gate_actuators(
-        vec![GateActuatorDefinition {
+) -> SurfaceChannelActuators {
+    SurfaceChannelActuators {
+        definitions: vec![GateActuatorDefinition {
             actuator_id: format!("actuator-{id}"),
             structure_id: id.into(),
             opening_rate_m_per_s: rate,
@@ -123,65 +112,59 @@ pub fn actuator(
             rate_provenance: "Synthetic rates".into(),
             ideal_response_applicability: "Ideal rate response".into(),
         }],
-        vec![GateActuatorInitialState {
+        initial_states: vec![GateActuatorInitialState {
             actuator_id: format!("actuator-{id}"),
             opening_m: 0.0,
             target_opening_m: 0.0,
         }],
-        GateActuatorSchedule {
+        schedule: GateActuatorSchedule {
             initial_time_s: start,
             target_times_s: times.to_vec(),
             end_s: end,
         },
-    )?)
+    }
 }
 
 /// Controlled gate `id`: closed when low, `target` m open when high, starting closed and low.
 pub fn controlled_gate(
-    context: &StructureBatch<Cpu>,
     id: &str,
     thresholds: [f64; 2],
     (target, rate): (f64, f64),
     schedule: (f64, &[f64], f64),
-) -> TestResult<ControlledGateBatch<Cpu>> {
+) -> SurfaceChannelControlledGates {
     let commands = [
         ControlCommand::GateTarget { opening_m: 0.0 },
         ControlCommand::GateTarget { opening_m: target },
     ];
-    Ok(ControlledGateBatch::new(
-        relay(context, id, thresholds, commands, schedule)?,
-        actuator(context, id, rate, schedule)?,
-    )?)
+    SurfaceChannelControlledGates {
+        controls: relay(id, thresholds, commands, schedule),
+        actuators: actuator(id, rate, schedule),
+    }
 }
 
 /// Controlled pump `id`: stopped when low, running at reference speed when high.
 pub fn controlled_pump(
-    context: &StructureBatch<Cpu>,
     id: &str,
     thresholds: [f64; 2],
     schedule: (f64, &[f64], f64),
-) -> TestResult<ControlledPumpBatch<Cpu>> {
+) -> SurfaceChannelControlledPumps {
     let commands = [
         ControlCommand::PumpStoppedIsolated,
         ControlCommand::PumpRunning { speed_ratio: 1.0 },
     ];
-    Ok(ControlledPumpBatch::new(
-        relay(context, id, thresholds, commands, schedule)?,
-        vec![PumpResponseDefinition {
+    SurfaceChannelControlledPumps {
+        controls: relay(id, thresholds, commands, schedule),
+        responses: vec![PumpResponseDefinition {
             structure_id: id.into(),
             model: PumpResponseModel::IdealInstantaneous,
             response_provenance: "Synthetic instantaneous operation".into(),
             ideal_response_applicability: "No startup delay".into(),
         }],
-    )?)
+    }
 }
 
 /// Linear opening path of gate `id` through `(time, opening)` knots.
-pub fn trajectory(
-    context: &StructureBatch<Cpu>,
-    id: &str,
-    knots: &[(f64, f64)],
-) -> TestResult<GateTrajectoryBatch<Cpu>> {
+pub fn trajectory(id: &str, knots: &[(f64, f64)]) -> TestResult<GateTrajectoryAssignment> {
     let trajectory = GateOpeningTrajectory::new(
         knots
             .iter()
@@ -197,20 +180,18 @@ pub fn trajectory(
         },
         "Synthetic linear trajectory".into(),
     )?;
-    Ok(
-        context.with_gate_trajectory_subset(vec![GateTrajectoryAssignment {
-            structure_id: id.into(),
-            trajectory,
-        }])?,
-    )
+    Ok(GateTrajectoryAssignment {
+        structure_id: id.into(),
+        trajectory,
+    })
 }
 
 /// Operating children with only `signals` bound.
-pub fn operating(signals: Vec<SurfaceChannelSignal>) -> SurfaceChannelOperating<Cpu> {
+pub fn operating(signals: Vec<SurfaceChannelSignal>) -> SurfaceChannelOperating {
     SurfaceChannelOperating {
-        gate: None,
-        pump: None,
-        trajectory: None,
+        gates: None,
+        pumps: None,
+        trajectories: Vec::new(),
         signals,
     }
 }
@@ -221,17 +202,14 @@ pub fn build(
     pools: SurfaceChannelPools,
     volumes: &[f64],
     structures: Vec<SurfaceChannelStructure>,
-    operating: SurfaceChannelOperating<Cpu>,
+    operating: SurfaceChannelOperating,
 ) -> Result<Batch, SurfaceChannelError> {
-    let (setup, initial) = tanks
+    let parts = tanks
         .parts()
         .map_err(|error| SurfaceChannelError::Input(error.to_string()))?;
-    let definition = SurfaceChannelDefinition::with_nodes(setup, pools, structures)?;
-    let states: Vec<LevelPoolState> = volumes
-        .iter()
-        .map(|&volume_m3| LevelPoolState { volume_m3 })
-        .collect();
-    Batch::with_operating(client(), definition, initial, &states, operating)
+    let (mut setup, initial) = with_nodes(parts, pools, volumes, structures);
+    setup.operating = Some(operating);
+    Batch::new(client(), setup, initial)
 }
 
 /// Debug text of every accepted operating child: time, counters, states, outputs, last step.

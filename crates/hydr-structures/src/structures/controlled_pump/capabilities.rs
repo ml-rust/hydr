@@ -60,7 +60,7 @@ static CONTROLLED_PUMP: ComponentCapabilities = ComponentCapabilities {
         default: None,
     }],
     nested: &[ComponentId::OperatingControl],
-    attachable_to: &[],
+    attachable_to: &[ComponentId::SurfaceChannels],
     unsupported: &[
         unsupported(
             "incomplete-response-definitions",

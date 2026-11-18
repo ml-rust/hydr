@@ -10,6 +10,7 @@ use hydr::soil::{LandModel, SoilState};
 use hydr::solver::{
     BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, SolverConfig, SolverSetup,
 };
+use hydr::storage::LevelPoolConfig;
 
 pub type Batch = SurfaceChannelBatch<crate::runtime::Runtime>;
 
@@ -170,6 +171,14 @@ impl Spec {
                 reaches,
                 links: self.links.clone(),
                 ports: Vec::new(),
+                pools: Vec::new(),
+                pool_support: Vec::new(),
+                pool_sources: None,
+                pool_inflows: Vec::new(),
+                storage: LevelPoolConfig::default(),
+                structures: Vec::new(),
+                pool_ends: Vec::new(),
+                operating: None,
                 storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
                 config: self.config.clone(),
             },
@@ -181,6 +190,7 @@ impl Spec {
                     soil,
                 },
                 reaches: states,
+                pools: Vec::new(),
             },
         ))
     }
@@ -311,6 +321,8 @@ pub fn forcing(
         start_s: batch.time(),
         end_s: end,
         reaches,
+        pool_sources: None,
+        pool_inflows: Vec::new(),
     }
 }
 

@@ -9,3 +9,7 @@ pub mod scenario;
 #[allow(dead_code)]
 #[path = "../surface_channels/ports_fixture.rs"]
 pub mod ports_fixture;
+
+#[allow(dead_code)]
+#[path = "../surface_channels/pools_fixture.rs"]
+pub mod pools_fixture;

@@ -24,6 +24,7 @@ use hydr::solver::{
     AdvanceStatus, BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, Solver,
     SolverConfig, SolverSetup,
 };
+use hydr::storage::LevelPoolConfig;
 
 pub type Twin = Solver<crate::runtime::Runtime>;
 
@@ -115,6 +116,14 @@ impl Line {
             }],
             links: Vec::new(),
             ports: vec![face],
+            pools: Vec::new(),
+            pool_support: Vec::new(),
+            pool_sources: None,
+            pool_inflows: Vec::new(),
+            storage: LevelPoolConfig::default(),
+            structures: Vec::new(),
+            pool_ends: Vec::new(),
+            operating: None,
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: crate::fixture::config(),
         };
@@ -133,6 +142,7 @@ impl Line {
                     longitudinal_momentum_m4_per_s: vec![0.0; n],
                 },
             )],
+            pools: Vec::new(),
         };
         Ok(Batch::new(crate::runtime::client(), setup, initial)?)
     }

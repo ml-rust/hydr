@@ -143,7 +143,7 @@ where
                     &c.midpoint(&start_b, &channel)?,
                 ],
                 [&wet_a, &wet_b],
-                &levelling.level,
+                (&levelling.level, false),
             )?;
             let weir = structures.held_volumes(&law, attempt.dt).map_err(|error| {
                 SurfaceChannelError::Numerical(format!("link volumes: {error}"))

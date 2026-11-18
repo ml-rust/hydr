@@ -13,6 +13,11 @@
 //! Correctly rounded `exp`, `log` and `pow` bump the surface/channel, channel and surface solver
 //! contract identities, so both current digests move. No accepted bit moves in either case: the
 //! text mapped back to the format before ports still reproduces that format's digest.
+//!
+//! Pools, structure links, pool ends, and operating children change the package format and bump
+//! the schema to `5` and the contract to `7`. Each case maps its text back to the format before
+//! pools and reproduces the digest of contract `6`, then maps on to the format before ports.
+//! No accepted bit moves.
 
 use crate::fixture::Result;
 use crate::restoration::{network, state};
@@ -57,14 +62,48 @@ fn before_ports(text: &str) -> String {
     .replace("right: Some(Wall)", "right: Wall")
 }
 
-/// Fails unless `batch` matches the frozen `expected` digest, and its text in the format before
-/// ports matches the `earlier` digest of that format.
-fn check(batch: &Batch, expected: u64, earlier: u64) -> Result {
+/// The text in the package format before pools, structure links, and pool ends.
+///
+/// That format names schema `4` and contract `6`. It holds no pool, structure, pool-end, or
+/// operating fields. A case without them changes no other field, so this text reproduces the
+/// digest of that format bit for bit.
+fn before_pools(text: &str) -> String {
+    text.replace(
+        "hydr-surface-channel-checkpoint-5",
+        "hydr-surface-channel-checkpoint-4",
+    )
+    .replace(
+        "hydr-surface-channel-numr-cpu-7",
+        "hydr-surface-channel-numr-cpu-6",
+    )
+    .replace(
+        ", pools: [], pool_support: [], pool_sources: None, pool_inflows: [], storage: LevelPoolConfig { volume_absolute: 1e-9, volume_relative: 1e-12 }, structures: [], pool_ends: [], operating: None",
+        "",
+    )
+    .replace(")], pools: [] }, surface: ", ")] }, surface: ")
+    .replace(", pools: None, operating: None, counters: ", ", counters: ")
+    .replace(", structures: [], pool_ends: [], pool_inflows: []", "")
+    .replace(", pool_sources: None, pool_inflows: []", "")
+    .replace(", structures: [], pool_ends: [], pools: []", "")
+}
+
+/// Fails unless `batch` matches the frozen `expected` digest, its text in the format before
+/// pools matches the `current` digest of that format, and its text in the format before ports
+/// matches the `earlier` digest of that format.
+fn check(batch: &Batch, expected: u64, current: u64, earlier: u64) -> Result {
     let text = state(batch)?;
     let actual = digest(&text);
     if actual != expected {
         return Err(format!(
             "state digest={actual:#018x}, frozen={expected:#018x}: an accepted bit changed"
+        )
+        .into());
+    }
+    let text = before_pools(&text);
+    let pooled = digest(&text);
+    if pooled != current {
+        return Err(format!(
+            "digest before pools={pooled:#018x}, frozen={current:#018x}: a field other than the identities and pool fields changed"
         )
         .into());
     }
@@ -99,7 +138,12 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
             assert_eq!(link.level_factor, 1.0, "{link:?}");
         }
     }
-    check(&batch, 0xba64_0fc6_cc65_ea08, 0xf6d4_a84c_2e66_ef34)
+    check(
+        &batch,
+        0x169a_8c05_9590_e7c0,
+        0xba64_0fc6_cc65_ea08,
+        0xf6d4_a84c_2e66_ef34,
+    )
 }
 
 #[test]
@@ -129,5 +173,10 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
         let interval = forcing(&batch, end, &[("river", inflow)]);
         batch = batch.trial_to(end, &interval)?.into_next();
     }
-    check(&batch, 0x84a2_1234_ef25_3316, 0xcfe8_ea92_adc0_edf6)
+    check(
+        &batch,
+        0x6e58_b9a2_e2d8_5cd6,
+        0x84a2_1234_ef25_3316,
+        0xcfe8_ea92_adc0_edf6,
+    )
 }

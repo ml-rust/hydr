@@ -56,7 +56,7 @@ static CONTROLLED_GATE: ComponentCapabilities = ComponentCapabilities {
     sources: &[],
     options: &[],
     nested: &[ComponentId::OperatingControl, ComponentId::GateActuator],
-    attachable_to: &[],
+    attachable_to: &[ComponentId::SurfaceChannels],
     unsupported: &[
         unsupported(
             "advanced-child",

@@ -369,8 +369,9 @@ mod tests {
 
     /// Input message of a definition of resting tanks with `structures`.
     fn rejection(structures: Vec<SurfaceChannelStructure>) -> TestResult<String> {
-        let (setup, _) = Tanks::at(0.6, 0.6).parts()?;
-        match SurfaceChannelDefinition::with_structures(setup, structures) {
+        let (mut setup, _) = Tanks::at(0.6, 0.6).parts()?;
+        setup.structures = structures;
+        match SurfaceChannelDefinition::new(setup) {
             Err(SurfaceChannelError::Input(message)) => Ok(message),
             Err(other) => Err(format!("expected an input rejection, got {other}").into()),
             Ok(_) => Err("the definition admitted an invalid structure".into()),
@@ -379,8 +380,9 @@ mod tests {
 
     #[test]
     fn structure_bindings_follow_the_caller_bindings() -> TestResult {
-        let (setup, _) = Tanks::at(0.6, 0.6).parts()?;
-        let definition = SurfaceChannelDefinition::with_structures(setup, vec![culvert()?])?;
+        let (mut setup, _) = Tanks::at(0.6, 0.6).parts()?;
+        setup.structures = vec![culvert()?];
+        let definition = SurfaceChannelDefinition::new(setup)?;
         let reach = definition.coordinated_reach(REACH).ok_or("the reach")?;
         let ids: Vec<&str> = reach
             .lateral_bindings
@@ -460,7 +462,7 @@ mod tests {
     fn callers_never_use_the_structure_exchange_prefix() -> TestResult {
         let (mut setup, _) = Tanks::at(0.6, 0.6).parts()?;
         setup.reaches[0].definition.lateral_bindings[0].boundary_id = "structure-exchange:x".into();
-        let message = match SurfaceChannelDefinition::with_structures(setup, Vec::new()) {
+        let message = match SurfaceChannelDefinition::new(setup) {
             Err(SurfaceChannelError::Input(message)) => message,
             other => return Err(format!("expected an input rejection, got {other:?}").into()),
         };

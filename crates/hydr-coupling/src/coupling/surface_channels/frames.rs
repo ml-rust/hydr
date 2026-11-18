@@ -5,13 +5,16 @@ use super::accounting::within;
 use super::batch::SurfaceChannelBatch;
 use super::context::Context;
 use super::identity::{self, Check};
+use super::operating::OperatingChildren;
 use super::pool_ends::PoolEndCounters;
+use super::pools::PoolChild;
 use super::ports::{PortCounters, PortTopology};
 use super::snapshot::SurfaceChannelCounterData;
 use super::state::LinkCounters;
-use super::{SurfaceChannelDefinition, SurfaceChannelInitialState};
+use super::{SurfaceChannelDefinition, SurfaceChannelInitialState, SurfaceChannelOperatingData};
 use crate::channel::{ChannelInitialState, ChannelReach, ChannelSnapshotData};
 use crate::solver::{SnapshotData, Solver};
+use crate::storage::{LevelPoolBatch, LevelPoolSnapshotData};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, HypotOps,
@@ -51,6 +54,64 @@ pub(super) struct Parts<R: Runtime<DType = DType>> {
     pub definition: Arc<SurfaceChannelDefinition>,
     pub context: Arc<Context<R>>,
     pub initial: Arc<SurfaceChannelInitialState>,
+}
+
+/// Restored children of one checkpoint frame, before its counters.
+pub(super) struct Frame<R: Runtime<DType = DType>> {
+    pub surface: Solver<R>,
+    /// Reaches in setup order.
+    pub reaches: Vec<ChannelReach<R>>,
+    /// Pool storage without its inflow ledgers, or `None` without pools.
+    pub pools: Option<LevelPoolBatch<R>>,
+    pub operating: Option<OperatingChildren<R>>,
+}
+
+/// Pool and operating packages of one frame.
+pub(super) type NodePackages<'a> = (
+    Option<&'a LevelPoolSnapshotData>,
+    Option<&'a SurfaceChannelOperatingData>,
+);
+
+/// Restored pool storage and operating children of one frame.
+pub(super) type NodeChildren<R> = (Option<LevelPoolBatch<R>>, Option<OperatingChildren<R>>);
+
+/// Restores the pool and operating packages of one frame into copies of `bases`.
+///
+/// Each base holds the immutable model the package must match: the destination's children,
+/// or fresh children of a resumed definition.
+pub(super) fn node_children<R: Runtime<DType = DType>>(
+    context: &Context<R>,
+    prefix: &str,
+    (pool_base, operating_base): (Option<&LevelPoolBatch<R>>, Option<&OperatingChildren<R>>),
+    (pools, operating): NodePackages<'_>,
+) -> Result<NodeChildren<R>, SurfaceChannelError>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
+    let detail = "presence differs from the destination children";
+    let pools = match (pool_base, pools) {
+        (Some(base), Some(data)) => {
+            let restored = context.pool_topology()?.fns.restored;
+            Some(restored(base, data).map_err(|error| {
+                rejected(&format!("{prefix}pools"), &format!("rejects: {error}"))
+            })?)
+        }
+        (None, None) => None,
+        _ => return Err(rejected(&format!("{prefix}pools"), detail)),
+    };
+    let operating = match (operating_base, operating) {
+        (Some(base), Some(data)) => Some(base.restored(&format!("{prefix}operating"), data)?),
+        (None, None) => None,
+        _ => return Err(rejected(&format!("{prefix}operating"), detail)),
+    };
+    Ok((pools, operating))
 }
 
 /// Source of the child engines of a frame.
@@ -197,12 +258,17 @@ where
     /// frame, and the composite lifetime water balance.
     pub(super) fn assemble(
         parts: &Parts<R>,
-        children: (Solver<R>, Vec<ChannelReach<R>>),
+        frame: Frame<R>,
         surface_steps: usize,
         counters: &SurfaceChannelCounterData,
         prefix: &str,
     ) -> Result<Self, SurfaceChannelError> {
-        let (surface, reaches) = children;
+        let Frame {
+            surface,
+            reaches,
+            pools,
+            operating,
+        } = frame;
         let time = counters.time_s;
         let steps = counters.accepted_steps;
         let path = |field: &str| format!("{prefix}{field}");
@@ -222,11 +288,46 @@ where
                 "time or accepted count differs from the coordinator counters",
             )?;
         }
+        if let Some(pools) = &pools {
+            require(
+                pools.time().to_bits() == time.to_bits() && pools.accepted_steps() == steps,
+                &path("pools"),
+                "time or accepted count differs from the coordinator counters",
+            )?;
+        }
+        for (child, child_time, child_steps) in operating.iter().flat_map(|o| o.clocks()) {
+            require(
+                child_time.to_bits() == time.to_bits() && child_steps == steps,
+                &path(child),
+                "time or accepted count differs from the coordinator counters",
+            )?;
+        }
         require(
             steps > 0 || time.to_bits() == parts.initial.time_s.to_bits(),
             &path("counters.time_s"),
             "differs from the original epoch before the first interval",
         )?;
+        let context = &parts.context;
+        let pools = match pools {
+            Some(batch) => {
+                let external = context
+                    .pool_topology()?
+                    .inflows
+                    .import_state(&context.client, &counters.pool_inflows, steps)
+                    .map_err(|error| {
+                        rejected(&path("counters.pool_inflows"), &format!("rejects: {error}"))
+                    })?;
+                Some(PoolChild { batch, external })
+            }
+            None => {
+                require(
+                    counters.pool_inflows.is_empty(),
+                    &path("counters.pool_inflows"),
+                    "holds ledgers without pools",
+                )?;
+                None
+            }
+        };
         let batch = Self {
             definition: Arc::clone(&parts.definition),
             context: Arc::clone(&parts.context),
@@ -237,8 +338,8 @@ where
             accepted_steps: steps,
             counters: import_counters(&parts.context, counters, prefix)?,
             last: None,
-            pools: None,
-            operating: None,
+            pools,
+            operating,
         };
         let balance = batch.ledger()?;
         require(
@@ -253,59 +354,119 @@ where
     }
 }
 
-/// Device link counters and host port counters from host values in ascending identity.
+/// Device link counters and host port and pool-end counters from host values in ascending
+/// identity.
 ///
-/// Every volume is finite and nonnegative. Before the first interval every value is `+0.0`.
+/// Bank and structure ledgers together fill the link table. Every volume is finite and
+/// nonnegative. Before the first interval every value is `+0.0`.
 fn import_counters<R: Runtime<DType = DType>>(
     context: &Context<R>,
     data: &SurfaceChannelCounterData,
     prefix: &str,
 ) -> Result<LinkCounters<R>, SurfaceChannelError> {
+    let advanced = data.accepted_steps > 0;
+    let valid = |values: [f64; 3]| {
+        values
+            .iter()
+            .all(|value| value.is_finite() && value.is_sign_positive())
+            && (advanced || values.iter().all(|value| value.to_bits() == 0))
+    };
+    let invalid =
+        "holds a negative or nonfinite value, or a nonzero value before the first interval";
+    let count = context.link_count;
+    let mut table = vec![[0.0; 3]; count];
+    let bank: Vec<(&str, [f64; 3])> = data
+        .links
+        .iter()
+        .map(|l| {
+            let values = [
+                l.surface_to_channel_m3,
+                l.channel_to_surface_m3,
+                l.roundoff_bound_m3,
+            ];
+            (l.link_id.as_str(), values)
+        })
+        .collect();
+    let structures: Vec<(&str, [f64; 3])> = data
+        .structures
+        .iter()
+        .map(|s| {
+            let values = [s.a_to_b_m3, s.b_to_a_m3, s.roundoff_bound_m3];
+            (s.structure_id.as_str(), values)
+        })
+        .collect();
+    for (field, ledgers, positions) in [
+        ("links", bank, context.bank.clone()),
+        (
+            "structures",
+            structures,
+            context.structure_positions().collect::<Vec<_>>(),
+        ),
+    ] {
+        require(
+            ledgers.len() == positions.len()
+                && ledgers
+                    .iter()
+                    .zip(&positions)
+                    .all(|((id, _), &index)| *id == context.link_ids[index]),
+            &format!("{prefix}counters.{field}"),
+            "differs from the links of its kind in ascending identity",
+        )?;
+        for (index, ((id, values), &position)) in ledgers.iter().zip(&positions).enumerate() {
+            require(
+                valid(*values),
+                &format!("{prefix}counters.{field}[{index}] ({id:?})"),
+                invalid,
+            )?;
+            table[position] = *values;
+        }
+    }
+    let ports = PortCounters::import(&data.ports, context.port_ids(), advanced).map_err(|field| {
+        rejected(
+            &format!("{prefix}counters.ports.{field}"),
+            "differs from the ports in ascending identity, holds a negative or nonfinite value, or holds a nonzero value before the first interval",
+        )
+    })?;
+    let ids = context.pool_end_ids();
     require(
-        data.links.len() == context.link_ids.len()
+        data.pool_ends.len() == ids.len()
             && data
-                .links
+                .pool_ends
                 .iter()
-                .zip(&context.link_ids)
-                .all(|(link, id)| link.link_id == *id),
-        &format!("{prefix}counters.links"),
-        "differs from the links in ascending identity",
+                .zip(&ids)
+                .all(|(ledger, id)| ledger.pool_end_id == *id),
+        &format!("{prefix}counters.pool_ends"),
+        "differs from the pool ends in ascending identity",
     )?;
-    for (index, link) in data.links.iter().enumerate() {
+    let mut pool_ends = PoolEndCounters::zero(ids.len());
+    for (index, ledger) in data.pool_ends.iter().enumerate() {
         let values = [
-            link.surface_to_channel_m3,
-            link.channel_to_surface_m3,
-            link.roundoff_bound_m3,
+            ledger.reach_to_pool_m3,
+            ledger.pool_to_reach_m3,
+            ledger.roundoff_bound_m3,
         ];
         require(
-            values
-                .iter()
-                .all(|value| value.is_finite() && value.is_sign_positive())
-                && (data.accepted_steps > 0 || values.iter().all(|value| value.to_bits() == 0)),
-            &format!("{prefix}counters.links[{index}] ({:?})", link.link_id),
-            "holds a negative or nonfinite value, or a nonzero value before the first interval",
+            valid(values),
+            &format!(
+                "{prefix}counters.pool_ends[{index}] ({:?})",
+                ledger.pool_end_id
+            ),
+            invalid,
         )?;
+        pool_ends.to_pool_m3[index] = values[0];
+        pool_ends.to_reach_m3[index] = values[1];
+        pool_ends.roundoff_bound_m3[index] = values[2];
     }
-    let ports = PortCounters::import(&data.ports, context.port_ids(), data.accepted_steps > 0)
-        .map_err(|field| {
-            rejected(
-                &format!("{prefix}counters.ports.{field}"),
-                "differs from the ports in ascending identity, holds a negative or nonfinite value, or holds a nonzero value before the first interval",
-            )
-        })?;
-    // The package holds no pool-end ledgers, so only a frame before the first interval restores.
-    require(
-        context.pool_end_count() == 0 || data.accepted_steps == 0,
-        &format!("{prefix}counters"),
-        "holds no pool-end ledgers for an advanced frame",
-    )?;
     let device = context.client.device();
-    let tensor = |values: Vec<f64>| Tensor::<R>::from_slice(&values, &[values.len()], device);
+    let tensor = |lane: usize| {
+        let values: Vec<f64> = table.iter().map(|values| values[lane]).collect();
+        Tensor::<R>::from_slice(&values, &[values.len()], device)
+    };
     Ok(LinkCounters {
-        to_channel_m3: tensor(data.links.iter().map(|l| l.surface_to_channel_m3).collect())?,
-        to_surface_m3: tensor(data.links.iter().map(|l| l.channel_to_surface_m3).collect())?,
-        roundoff_bound_m3: tensor(data.links.iter().map(|l| l.roundoff_bound_m3).collect())?,
+        to_channel_m3: tensor(0)?,
+        to_surface_m3: tensor(1)?,
+        roundoff_bound_m3: tensor(2)?,
         ports,
-        pool_ends: PoolEndCounters::zero(context.pool_end_count()),
+        pool_ends,
     })
 }

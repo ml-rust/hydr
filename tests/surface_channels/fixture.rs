@@ -6,6 +6,7 @@ use hydr::soil::{LandModel, SoilState};
 use hydr::solver::{
     BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, SolverConfig, SolverSetup,
 };
+use hydr::storage::LevelPoolConfig;
 use hydr::structures::WeirApplicability;
 
 pub type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -179,6 +180,14 @@ pub fn case() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
                 link("link-c", 2, 2),
             ],
             ports: Vec::new(),
+            pools: Vec::new(),
+            pool_support: Vec::new(),
+            pool_sources: None,
+            pool_inflows: Vec::new(),
+            storage: LevelPoolConfig::default(),
+            structures: Vec::new(),
+            pool_ends: Vec::new(),
+            operating: None,
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: config(),
         },
@@ -189,6 +198,7 @@ pub fn case() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
                 (SPARE.into(), reach_state(2)),
                 (REACH.into(), reach_state(4)),
             ],
+            pools: Vec::new(),
         },
     ))
 }

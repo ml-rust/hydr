@@ -56,7 +56,7 @@ static GATE_ACTUATOR: ComponentCapabilities = ComponentCapabilities {
     sources: &[],
     options: &[],
     nested: &[],
-    attachable_to: &[ComponentId::ControlledGate],
+    attachable_to: &[ComponentId::ControlledGate, ComponentId::SurfaceChannels],
     unsupported: &[
         unsupported(
             "non-gate-structure",

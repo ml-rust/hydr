@@ -315,9 +315,9 @@ where
         let regime = self
             .weir(
                 &attempt.operations,
-                &start.stage,
-                &start.wet,
+                (&start.stage, &start.wet),
                 &self.level_heads(&start.stage)?,
+                true,
             )?
             .regime;
         // Layout: end stages, signed volumes, end wet masks, link regimes, then pool-end support.

@@ -171,7 +171,7 @@ pub(in super::super) fn check_pool_ends(
 mod tests {
     use super::super::scenario::{ponded, pool_end};
     use crate::channel::ChannelEnd;
-    use crate::coupling::surface_channels::pools::scenario::{channel, link, surface};
+    use crate::coupling::surface_channels::pools::scenario::{channel, link, nodes_setup, surface};
     use crate::coupling::surface_channels::ports::fixture::x_face;
     use crate::coupling::surface_channels::structures::scenario::{
         REACH, Tanks, TestResult, orifice_law,
@@ -200,7 +200,8 @@ mod tests {
     fn a_pool_joined_only_by_a_pool_end_admits() -> TestResult {
         let (setup, _) = Tanks::at(0.0, 0.5).parts()?;
         let pools = ponded(vec![pool_end("outfall", "pond")])?;
-        let definition = SurfaceChannelDefinition::with_nodes(setup, pools, vec![culvert()?])?;
+        let definition =
+            SurfaceChannelDefinition::new(nodes_setup(setup, pools, vec![culvert()?]))?;
         assert_eq!(definition.pool_ends.len(), 1);
         assert_eq!(definition.pool_ends[0].pool, 0);
         assert_eq!(definition.pool_ends[0].end, ChannelEnd::Right);
@@ -231,7 +232,7 @@ mod tests {
             ),
         ];
         for (setup, pools) in cases {
-            match SurfaceChannelDefinition::with_nodes(setup, pools, vec![culvert()?]) {
+            match SurfaceChannelDefinition::new(nodes_setup(setup, pools, vec![culvert()?])) {
                 Err(SurfaceChannelError::Input(message)) => {
                     assert!(message.starts_with("reach-end-ownership"), "{message}");
                 }

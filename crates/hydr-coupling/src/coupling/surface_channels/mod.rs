@@ -1,10 +1,17 @@
-//! Couple the 2D surface engine with 1D channel reaches through lateral bank-overflow weirs
-//! and reach-end ports.
+//! Couple the 2D surface engine with 1D channel reaches and level pools through lateral
+//! bank-overflow weirs, structure links, reach-end ports, and pool ends.
 //!
 //! [`SurfaceChannelDefinition`] checks a [`SurfaceChannelSetup`] and synthesizes the
-//! coordinator bindings. [`SurfaceChannelBatch`] builds the surface engine and every reach.
+//! coordinator bindings. [`SurfaceChannelBatch`] builds the surface engine, every reach, one
+//! level-pool child over every pool, and the operating children.
 //! [`SurfaceChannelBatch::trial_to`] calculates one common interval as a
 //! [`SurfaceChannelTrial`]. Accepting it replaces every child at once.
+//!
+//! A [`SurfaceChannelStructure`] joins two nodes (surface cells, channel cells, pools) through
+//! one structure law: a weir, an orifice, a gate, or a pump. It shares the link table with the
+//! bank links. A [`SurfaceChannelPoolEnd`] joins a reach end to a pool at the pool's iterated
+//! midpoint stage. A [`SurfaceChannelOperating`] declares the children that set the operations
+//! of prescribed and actuated gates and controlled pumps, one interval at a time.
 //!
 //! Each interval iterates on end stages and signed link volumes from the accepted state:
 //! - Midpoint heads give each weir's discharge over the interval.
@@ -26,7 +33,8 @@
 //!
 //! [`SurfaceChannelBatch::snapshot_data`] projects a [`SurfaceChannelSnapshotData`] package.
 //! [`SurfaceChannelBatch::import_snapshot`] and [`SurfaceChannelBatch::resume`] recalculate its
-//! last interval and compare every bit. The nested surface package restores only through them.
+//! last interval, decision completion included, and compare every bit. The nested surface
+//! package restores only through them.
 //!
 //! [`surface_channel_capabilities`] returns the declared scope.
 
@@ -48,7 +56,10 @@ mod identity;
 mod iteration;
 mod level_cap;
 mod levelling;
+mod link_law;
 mod memo;
+mod node_output;
+mod node_projection;
 mod operating;
 mod ops;
 mod outcome;
@@ -80,15 +91,29 @@ pub use definition::{
 };
 pub use error::SurfaceChannelError;
 pub use forcing::{SurfaceChannelForcingInterval, SurfaceChannelReachForcing};
+pub use node_output::{
+    SurfaceChannelOperationReceipt, SurfaceChannelPoolEndLedger, SurfaceChannelPoolEndTransfer,
+    SurfaceChannelPoolStep, SurfaceChannelStructureLedger, SurfaceChannelStructureTransfer,
+};
+pub use operating::{
+    SurfaceChannelActuators, SurfaceChannelControlledGates, SurfaceChannelControlledPumps,
+    SurfaceChannelControls, SurfaceChannelOperating, SurfaceChannelOperatingData,
+    SurfaceChannelSignal,
+};
 pub use output::{
     SurfaceChannelLinkLedger, SurfaceChannelLinkTransfer, SurfaceChannelPortLedger,
     SurfaceChannelPortRegime, SurfaceChannelPortTransfer, SurfaceChannelStepDiagnostics,
     SurfaceChannelWaterBalance, SurfaceChannelWeirRegime,
 };
+pub use pool_ends::SurfaceChannelPoolEnd;
 pub use snapshot::{
     SURFACE_CHANNEL_CONTRACT_VERSION, SURFACE_CHANNEL_SNAPSHOT_SCHEMA, SurfaceChannelCounterData,
     SurfaceChannelIntervalSnapshotData, SurfaceChannelPortCounterData, SurfaceChannelPreviousData,
     SurfaceChannelSetupData, SurfaceChannelSnapshot, SurfaceChannelSnapshotData,
+};
+pub use structures::{
+    StructureScenario, SurfaceChannelAttachment, SurfaceChannelNode, SurfaceChannelOperationOwner,
+    SurfaceChannelStructure,
 };
 pub use trial::SurfaceChannelTrial;
 pub use validation::SurfaceChannelDefinition;

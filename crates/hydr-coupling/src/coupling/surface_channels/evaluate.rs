@@ -236,7 +236,12 @@ where
             (None, self.no_exchange()?)
         } else {
             let wet = c.maximum(&start.wet, &end_wet)?;
-            let law = self.weir(&attempt.operations, &midpoint, &wet, &levelling.level)?;
+            let law = self.weir(
+                &attempt.operations,
+                (&midpoint, &wet),
+                &levelling.level,
+                false,
+            )?;
             let proposed = attempt
                 .operations
                 .structures()?

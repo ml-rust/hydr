@@ -143,7 +143,7 @@ pub(in super::super) fn check_attached(
 
 #[cfg(test)]
 mod tests {
-    use super::super::scenario::{channel, declaration, link, pond, pool, surface};
+    use super::super::scenario::{channel, declaration, link, nodes_setup, pond, pool, surface};
     use super::*;
     use crate::coupling::surface_channels::SurfaceChannelDefinition;
     use crate::coupling::surface_channels::structures::SurfaceChannelStructure;
@@ -159,7 +159,7 @@ mod tests {
         structures: Vec<SurfaceChannelStructure>,
     ) -> TestResult<String> {
         let (setup, _) = Tanks::at(0.0, 0.0).parts()?;
-        match SurfaceChannelDefinition::with_nodes(setup, pools, structures) {
+        match SurfaceChannelDefinition::new(nodes_setup(setup, pools, structures)) {
             Err(SurfaceChannelError::Input(message)) => Ok(message),
             Err(other) => Err(format!("expected an input rejection, got {other}").into()),
             Ok(_) => Err("the definition admitted invalid pools".into()),

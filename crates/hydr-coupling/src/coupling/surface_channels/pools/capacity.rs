@@ -118,9 +118,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::SurfaceChannelPoolForcing;
     use super::super::scenario::{
-        advance, build, check, declaration, link, pond, pool, steep_pump, surface, volumes,
+        PoolForcing, advance, build, check, declaration, link, pond, pool, steep_pump, surface,
+        volumes,
     };
     use crate::coupling::surface_channels::SurfaceChannelError;
     use crate::coupling::surface_channels::structures::scenario::{
@@ -174,7 +174,7 @@ mod tests {
         ];
         let pools = declaration(ponds, false, Vec::new());
         let batch = build(Tanks::at(0.0, 0.0), pools, &[1.5 * AREA, 0.6], structures)?;
-        let batch = advance(&batch, dt, &SurfaceChannelPoolForcing::none())?;
+        let batch = advance(&batch, dt, &PoolForcing::none())?;
         let interval = batch.last_step()?.ok_or("an accepted interval")?;
         assert_eq!(interval.retries, 0, "{interval:?}");
         assert_eq!((interval.end_s - interval.start_s).to_bits(), dt.to_bits());
@@ -206,7 +206,7 @@ mod tests {
         )];
         let pools = declaration(vec![pond("pond", 0.0, AREA, 1.0)?], false, Vec::new());
         let batch = build(Tanks::at(1.0, 0.0), pools, &[3.98], structures)?;
-        let result = advance(&batch, DT, &SurfaceChannelPoolForcing::none());
+        let result = advance(&batch, DT, &PoolForcing::none());
         capacity_rejection(result, "at the converged interval")
     }
 
@@ -228,7 +228,7 @@ mod tests {
         )];
         let pools = declaration(vec![pond("pond", 0.0, AREA, 1.0)?], true, Vec::new());
         let batch = build(Tanks::at(0.0, 0.0), pools, &[3.99], structures)?;
-        let forcing = SurfaceChannelPoolForcing {
+        let forcing = PoolForcing {
             sources: Some(vec![crate::storage::LevelPoolSources {
                 rain_rate_m_per_s: 0.01,
                 potential_evaporation_rate_m_per_s: 0.0,

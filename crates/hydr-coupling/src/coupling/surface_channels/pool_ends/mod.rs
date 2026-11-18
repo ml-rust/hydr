@@ -26,8 +26,12 @@ pub(super) use topology::PoolEndTopology;
 use crate::channel::ChannelEnd;
 
 /// One reach end joined to a coordinator pool through a quiescent reservoir head.
+///
+/// The reach end takes `QuiescentReservoir` at the pool's temporal midpoint stage, and the
+/// reach's own transport sets the end volume. The coordinator never scales it. The pool owns
+/// the end: the caller supplies no policy there, and no port binds it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SurfaceChannelPoolEnd {
+pub struct SurfaceChannelPoolEnd {
     /// Unique nonempty pool-end identity, distinct from every link, port, structure, and pool.
     pub id: String,
     /// Exact identity of a rectangular or triangular setup reach.
@@ -70,7 +74,6 @@ mod tests {
     };
     use crate::channel::ChannelBoundary;
     use crate::coupling::surface_channels::SurfaceChannelError;
-    use crate::coupling::surface_channels::pools::SurfaceChannelPoolForcing;
     use crate::coupling::surface_channels::pools::scenario::{
         build, channel, check, link, pool, surface, volumes,
     };
@@ -208,7 +211,7 @@ mod tests {
         right: Option<ChannelBoundary>,
     ) -> TestResult<String> {
         let held = forcing(0.0, DT, right, [0.0, 0.0]);
-        match batch.trial_with_pools_to(DT, &held, &SurfaceChannelPoolForcing::none()) {
+        match batch.trial_to(DT, &held) {
             Err(SurfaceChannelError::Input(message)) => Ok(message),
             Err(other) => Err(format!("expected an input rejection, got {other}").into()),
             Ok(_) => Err("the trial admitted an invalid pool end".into()),

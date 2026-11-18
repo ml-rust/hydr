@@ -1,265 +1,25 @@
 //! The pool child: accepted storage, trial forcing, attempt operands, and completion.
 //!
-//! Pool calls that sort or interpolate run through [`PoolFns`]. The crate-private constructor
-//! binds them where the client supplies those operations, so the coordinator's public bounds stay
-//! unchanged.
+//! Pool calls that sort or interpolate run through [`super::PoolFns`], bound at construction.
 
-use super::super::SurfaceChannelError;
 use super::super::context::{Context, Ops};
 use super::super::memo::{TrialKey, TrialMemo};
+use super::super::{SurfaceChannelError, SurfaceChannelForcingInterval};
+use super::CheckedPools;
 use super::capacity::PoolOverflow;
-use super::{CheckedPools, SurfaceChannelPoolForcing};
 use crate::coupling::CoupledLevelPoolError;
 use crate::coupling::level_pools::{BoundInflows, InflowState, PreparedInflows};
-use crate::coupling::links::pool_plan::PoolPlan;
-use crate::storage::{
-    LevelPoolBatch, LevelPoolError, LevelPoolSources, LevelPoolState, LevelPoolTotals,
-};
-use hydr_storage::internal::LevelPoolCut;
+use crate::storage::{LevelPoolBatch, LevelPoolError, LevelPoolSources};
 use numr::dtype::DType;
-use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, SortingOps,
-    TwoSumOps, TypeConversionOps, UnaryOps,
-};
+use numr::ops::ShapeOps;
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
-use solvr::interpolate::Interp1dAlgorithms;
 
 /// Accepted pool storage and external inflow ledgers.
 #[derive(Clone)]
 pub(in super::super) struct PoolChild<R: Runtime<DType = DType>> {
     pub batch: LevelPoolBatch<R>,
     pub external: InflowState<R>,
-}
-
-/// Source rates in ascending pool identity, or `None` without sources.
-type Sources<'a> = Option<&'a [LevelPoolSources]>;
-
-/// A pool call result.
-type PoolResult<T> = Result<T, LevelPoolError>;
-
-/// Post-source water of an interval ending at the given time.
-type AvailableFn<R> = fn(&LevelPoolBatch<R>, f64, Sources<'_>) -> PoolResult<Tensor<R>>;
-
-/// The accepted candidate of an interval with incoming and outgoing volumes.
-type TrialFn<R> = fn(
-    &LevelPoolBatch<R>,
-    f64,
-    Sources<'_>,
-    &Tensor<R>,
-    &Tensor<R>,
-) -> PoolResult<LevelPoolBatch<R>>;
-
-/// Upper volume bound at every cut.
-type CutVolumesFn<R> = fn(&LevelPoolBatch<R>, &[LevelPoolCut]) -> PoolResult<Tensor<R>>;
-
-/// Pool calls that sort or interpolate, bound to one runtime.
-pub(in super::super) struct PoolFns<R: Runtime<DType = DType>> {
-    /// Accepted stage of every pool. A dry pool takes its curve origin.
-    pub stages: fn(&LevelPoolBatch<R>) -> PoolResult<Tensor<R>>,
-    /// Checked aggregate accounting.
-    pub totals: fn(&LevelPoolBatch<R>) -> PoolResult<LevelPoolTotals>,
-    pub available: AvailableFn<R>,
-    pub trial: TrialFn<R>,
-    pub cut_volumes: CutVolumesFn<R>,
-}
-
-impl<R: Runtime<DType = DType>> Clone for PoolFns<R> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<R: Runtime<DType = DType>> Copy for PoolFns<R> {}
-
-/// The pool child and its bound calls at construction.
-pub(in super::super) struct PoolParts<R: Runtime<DType = DType>> {
-    pub batch: LevelPoolBatch<R>,
-    pub fns: PoolFns<R>,
-    /// Plan areas of every pool in ascending identity.
-    pub plans: Vec<PoolPlan>,
-}
-
-impl<R: Runtime<DType = DType>> PoolParts<R>
-where
-    R::Client: BinaryOps<R>
-        + CompareOps<R>
-        + ConditionalOps<R>
-        + ReduceOps<R>
-        + ScalarOps<R>
-        + TypeConversionOps<R>
-        + UnaryOps<R>
-        + IndexingOps<R>
-        + ShapeOps<R>
-        + TwoSumOps<R>
-        + SortingOps<R>
-        + Interp1dAlgorithms<R>,
-{
-    /// The pool child of `pools` at `states`, in setup pool order, and accepted time `time`.
-    pub fn new(
-        client: R::Client,
-        pools: &CheckedPools,
-        states: &[LevelPoolState],
-        time: f64,
-    ) -> Result<Self, SurfaceChannelError> {
-        let count = pools.ids.len();
-        if states.len() != count {
-            return Err(SurfaceChannelError::input(format!(
-                "initial pool state count={}, pools={count}: supply one state per pool in pool order",
-                states.len()
-            )));
-        }
-        let elements = pools.elements();
-        let states = pools.ordered(states);
-        let storage = pools.declared.storage.clone();
-        let batch = match &pools.declared.sources {
-            None => LevelPoolBatch::new(client, elements, states, time, storage),
-            Some(policies) => LevelPoolBatch::new_with_sources(
-                client,
-                elements,
-                states,
-                time,
-                storage,
-                pools.ordered(policies),
-            ),
-        }
-        .map_err(pool_error)?;
-        let plans = batch
-            .elements()
-            .iter()
-            .map(|e| PoolPlan::new(&e.curve))
-            .collect();
-        Ok(Self {
-            batch,
-            fns: PoolFns {
-                stages: stages::<R>,
-                totals: totals::<R>,
-                available: available::<R>,
-                trial: trial::<R>,
-                cut_volumes: cut_volumes::<R>,
-            },
-            plans,
-        })
-    }
-}
-
-fn stages<R: Runtime<DType = DType>>(batch: &LevelPoolBatch<R>) -> Result<Tensor<R>, LevelPoolError>
-where
-    R::Client: BinaryOps<R>
-        + CompareOps<R>
-        + ConditionalOps<R>
-        + ReduceOps<R>
-        + ScalarOps<R>
-        + TypeConversionOps<R>
-        + UnaryOps<R>
-        + IndexingOps<R>
-        + ShapeOps<R>
-        + TwoSumOps<R>
-        + SortingOps<R>
-        + Interp1dAlgorithms<R>,
-{
-    batch.stages_tensor()
-}
-
-fn totals<R: Runtime<DType = DType>>(
-    batch: &LevelPoolBatch<R>,
-) -> Result<LevelPoolTotals, LevelPoolError>
-where
-    R::Client: BinaryOps<R>
-        + CompareOps<R>
-        + ConditionalOps<R>
-        + ReduceOps<R>
-        + ScalarOps<R>
-        + TypeConversionOps<R>
-        + UnaryOps<R>
-        + IndexingOps<R>
-        + ShapeOps<R>
-        + TwoSumOps<R>
-        + SortingOps<R>
-        + Interp1dAlgorithms<R>,
-{
-    batch.totals()
-}
-
-fn available<R: Runtime<DType = DType>>(
-    batch: &LevelPoolBatch<R>,
-    end: f64,
-    sources: Sources<'_>,
-) -> Result<Tensor<R>, LevelPoolError>
-where
-    R::Client: BinaryOps<R>
-        + CompareOps<R>
-        + ConditionalOps<R>
-        + ReduceOps<R>
-        + ScalarOps<R>
-        + TypeConversionOps<R>
-        + UnaryOps<R>
-        + IndexingOps<R>
-        + ShapeOps<R>
-        + TwoSumOps<R>
-        + SortingOps<R>
-        + Interp1dAlgorithms<R>,
-{
-    match sources {
-        None => Ok(batch.volumes_tensor().clone()),
-        Some(sources) => {
-            let plan = batch.bind_source_rates(sources)?;
-            Ok(plan.prepare(end)?.available_volume().clone())
-        }
-    }
-}
-
-fn trial<R: Runtime<DType = DType>>(
-    batch: &LevelPoolBatch<R>,
-    end: f64,
-    sources: Sources<'_>,
-    incoming: &Tensor<R>,
-    outgoing: &Tensor<R>,
-) -> Result<LevelPoolBatch<R>, LevelPoolError>
-where
-    R::Client: BinaryOps<R>
-        + CompareOps<R>
-        + ConditionalOps<R>
-        + ReduceOps<R>
-        + ScalarOps<R>
-        + TypeConversionOps<R>
-        + UnaryOps<R>
-        + IndexingOps<R>
-        + ShapeOps<R>
-        + TwoSumOps<R>
-        + SortingOps<R>
-        + Interp1dAlgorithms<R>,
-{
-    Ok(match sources {
-        None => batch.trial_to_tensors(end, incoming, outgoing)?.into_next(),
-        Some(sources) => {
-            let plan = batch.bind_source_rates(sources)?;
-            plan.prepare(end)?
-                .trial_to_tensors(incoming, outgoing)?
-                .into_next()
-        }
-    })
-}
-
-fn cut_volumes<R: Runtime<DType = DType>>(
-    batch: &LevelPoolBatch<R>,
-    cuts: &[LevelPoolCut],
-) -> Result<Tensor<R>, LevelPoolError>
-where
-    R::Client: BinaryOps<R>
-        + CompareOps<R>
-        + ConditionalOps<R>
-        + ReduceOps<R>
-        + ScalarOps<R>
-        + TypeConversionOps<R>
-        + UnaryOps<R>
-        + IndexingOps<R>
-        + ShapeOps<R>
-        + TwoSumOps<R>
-        + SortingOps<R>
-        + Interp1dAlgorithms<R>,
-{
-    Ok(batch.bind_coupling_cuts(cuts)?.upper_volume_m3().clone())
 }
 
 /// Pool operands of one trial.
@@ -319,24 +79,24 @@ impl<R: Runtime<DType = DType>> Context<R>
 where
     R::Client: Ops<R>,
 {
-    /// Pool operands of a trial under `forcing`.
+    /// Pool operands of a trial under the pool forcing of `forcing`.
     ///
     /// Source rates are present exactly when the pools declare source policies. External inputs
     /// cover every declared inflow binding.
     pub fn pool_start(
         &self,
-        forcing: &SurfaceChannelPoolForcing,
+        forcing: &SurfaceChannelForcingInterval,
         pools: Option<&CheckedPools>,
     ) -> Result<Option<PoolStart<R>>, SurfaceChannelError> {
         let (Some(topology), Some(pools)) = (&self.pools, pools) else {
-            if forcing.sources.is_some() || !forcing.inflows.is_empty() {
+            if forcing.pool_sources.is_some() || !forcing.pool_inflows.is_empty() {
                 return Err(SurfaceChannelError::input(
                     "pool forcing without pools: omit pool sources and inflows",
                 ));
             }
             return Ok(None);
         };
-        let sources = match (&forcing.sources, topology.sources) {
+        let sources = match (&forcing.pool_sources, topology.sources) {
             (None, false) => None,
             (Some(sources), true) if sources.len() == topology.ids.len() => {
                 Some(pools.ordered(sources))
@@ -344,14 +104,14 @@ where
             _ => {
                 return Err(SurfaceChannelError::input(format!(
                     "pool sources={:?} with source policies={}: supply one source rate set per pool exactly when the pools declare source policies",
-                    forcing.sources.as_ref().map(Vec::len),
+                    forcing.pool_sources.as_ref().map(Vec::len),
                     topology.sources
                 )));
             }
         };
         let inflows = topology
             .inflows
-            .bind_inputs(&self.client, &forcing.inflows)
+            .bind_inputs(&self.client, &forcing.pool_inflows)
             .map_err(inflow_error)?;
         Ok(Some(PoolStart { sources, inflows }))
     }

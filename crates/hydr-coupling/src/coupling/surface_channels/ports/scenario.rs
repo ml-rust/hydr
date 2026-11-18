@@ -18,6 +18,7 @@ use crate::channel::{ChannelBoundary, ChannelInitialState};
 use crate::solver::{
     BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, SolverConfig, SolverSetup,
 };
+use crate::storage::LevelPoolConfig;
 use hydr_core::grid::CartesianGrid;
 use hydr_core::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr_soil::soil::{LandModel, SoilState};
@@ -174,6 +175,14 @@ impl Scenario {
             ],
             links: if self.link { vec![link()] } else { Vec::new() },
             ports: self.ports.clone(),
+            pools: Vec::new(),
+            pool_support: Vec::new(),
+            pool_sources: None,
+            pool_inflows: Vec::new(),
+            storage: LevelPoolConfig::default(),
+            structures: Vec::new(),
+            pool_ends: Vec::new(),
+            operating: None,
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: SurfaceChannelConfig {
                 head_absolute_m: 1e-12,
@@ -200,6 +209,7 @@ impl Scenario {
                 (ALPHA.into(), reach_state(&self.alpha)),
                 (BETA.into(), reach_state(&self.beta)),
             ],
+            pools: Vec::new(),
         };
         Ok((setup, initial))
     }
@@ -235,6 +245,8 @@ pub fn forcing(
         start_s: start,
         end_s: end,
         reaches: vec![reach(ALPHA), reach(BETA)],
+        pool_sources: None,
+        pool_inflows: Vec::new(),
     }
 }
 

@@ -104,7 +104,6 @@ fn surface_channel_ports_admit_declared_endpoints_and_regimes() -> Result {
             continue;
         }
         ported += 1;
-        assert_eq!(endpoint.admitted, [BoundaryKind::FluxPort], "{endpoint:?}");
         let moved = match endpoint.id {
             EndpointId::ReachLeft | EndpointId::ReachRight => {
                 let case = match endpoint.id {

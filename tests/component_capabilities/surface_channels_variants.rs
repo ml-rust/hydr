@@ -9,6 +9,7 @@ use hydr::coupling::{
     SurfaceChannelError, SurfaceChannelPortRegime, SurfaceChannelWeirRegime,
     surface_channel_capabilities,
 };
+use hydr::structures::StructureRegime;
 
 /// Rejection kind of each public coordinator error variant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,6 +82,44 @@ pub const PORT_REGIMES: [SurfaceChannelPortRegime; 6] = [
     SurfaceChannelPortRegime::Dry,
 ];
 
+/// Declared regime of each public structure regime, with the law volume of the interval.
+///
+/// A running pump at zero law volume sits at shutoff. A gate below its sill and a weir below
+/// its crest carry no water and claim no flow regime.
+pub fn structure_regime(regime: StructureRegime, law_volume_m3: f64) -> Regime {
+    match regime {
+        StructureRegime::SubmergedOrifice => Regime::SubmergedOrificeFlow,
+        StructureRegime::FreeWeirOverflow => Regime::FreeWeirFlow,
+        StructureRegime::SubmergedWeirOverflow | StructureRegime::EqualHeads => {
+            Regime::SubmergedWeirFlow
+        }
+        StructureRegime::BelowCrest | StructureRegime::GateBelowSill => Regime::BelowCrest,
+        StructureRegime::FreeGateAperture => Regime::FreeGateAperture,
+        StructureRegime::MixedGateAperture => Regime::MixedGateAperture,
+        StructureRegime::SubmergedGateAperture => Regime::SubmergedGateAperture,
+        StructureRegime::GateClosed => Regime::GateClosed,
+        StructureRegime::PumpCurve if law_volume_m3 == 0.0 => Regime::PumpShutoff,
+        StructureRegime::PumpCurve => Regime::PumpCurve,
+        StructureRegime::PumpIsolated => Regime::PumpIsolated,
+    }
+}
+
+/// Every public structure regime.
+pub const STRUCTURE_REGIMES: [StructureRegime; 12] = [
+    StructureRegime::GateClosed,
+    StructureRegime::GateBelowSill,
+    StructureRegime::FreeGateAperture,
+    StructureRegime::MixedGateAperture,
+    StructureRegime::SubmergedGateAperture,
+    StructureRegime::PumpCurve,
+    StructureRegime::PumpIsolated,
+    StructureRegime::SubmergedOrifice,
+    StructureRegime::FreeWeirOverflow,
+    StructureRegime::SubmergedWeirOverflow,
+    StructureRegime::BelowCrest,
+    StructureRegime::EqualHeads,
+];
+
 /// Nested reach of a linked geometry.
 pub fn geometry_component(geometry: &ChannelGeometry) -> ComponentId {
     match geometry {
@@ -124,6 +163,15 @@ fn surface_channel_public_variants_are_classified() -> Result<(), String> {
                 claim.regime == Regime::ReversalInBranch
                     || PORT_REGIMES.iter().any(|r| port_regime(*r) == claim.regime)
             }
+            // A pool end runs only wet subcritical; drier or faster ends reject.
+            RegimeScope::Boundary(BoundaryKind::QuiescentReservoir) => {
+                claim.regime == Regime::WetSubcritical
+            }
+            RegimeScope::Boundary(_) => STRUCTURE_REGIMES.iter().any(|r| {
+                [0.0, 1.0]
+                    .iter()
+                    .any(|v| structure_regime(*r, *v) == claim.regime)
+            }),
             _ => false,
         };
         if !public {

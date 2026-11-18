@@ -54,7 +54,33 @@ pub(super) fn setup(a: &SurfaceChannelSetupData, b: &SurfaceChannelSetupData) ->
     for (index, (a, b)) in a.ports.iter().zip(&b.ports).enumerate() {
         require(a == b, || format!("setup.ports[{index}] ({:?})", a.id))?;
     }
-    Ok(())
+    require(same_value(&a.pools, &b.pools), || "setup.pools".into())?;
+    require(same_value(&a.pool_support, &b.pool_support), || {
+        "setup.pool_support".into()
+    })?;
+    require(same_value(&a.pool_sources, &b.pool_sources), || {
+        "setup.pool_sources".into()
+    })?;
+    require(same_value(&a.pool_inflows, &b.pool_inflows), || {
+        "setup.pool_inflows".into()
+    })?;
+    require(same_value(&a.storage, &b.storage), || {
+        "setup.storage".into()
+    })?;
+    require(a.structures.len() == b.structures.len(), || {
+        "setup.structures".into()
+    })?;
+    for (index, (a, b)) in a.structures.iter().zip(&b.structures).enumerate() {
+        require(same_value(a, b), || {
+            format!("setup.structures[{index}] ({:?})", a.element.id)
+        })?;
+    }
+    require(same_value(&a.pool_ends, &b.pool_ends), || {
+        "setup.pool_ends".into()
+    })?;
+    require(same_value(&a.operating, &b.operating), || {
+        "setup.operating".into()
+    })
 }
 
 fn same_config(a: &SurfaceChannelConfig, b: &SurfaceChannelConfig) -> bool {
@@ -111,7 +137,7 @@ pub(super) fn initial(a: &SurfaceChannelInitialState, b: &SurfaceChannelInitialS
             format!("initial.reaches[{index}] ({a_id:?})")
         })?;
     }
-    Ok(())
+    require(same_value(&a.pools, &b.pools), || "initial.pools".into())
 }
 
 /// Compares an original surface state with a zero-history accepted surface state.
@@ -181,6 +207,10 @@ pub(super) fn replayed(
     for (index, ((id, a), (_, b))) in found.reaches.iter().zip(&given.reaches).enumerate() {
         require(a.same_bits(b), || format!("reaches[{index}] ({id:?})"))?;
     }
+    require(same_value(&found.pools, &given.pools), || "pools".into())?;
+    require(same_value(&found.operating, &given.operating), || {
+        "operating".into()
+    })?;
     counters("counters", &found.counters, &given.counters)?;
     match (&found.last_interval, &given.last_interval) {
         (Some(a), Some(b)) => {
@@ -241,7 +271,16 @@ fn counters(path: &str, a: &SurfaceChannelCounterData, b: &SurfaceChannelCounter
             require(x.to_bits() == y.to_bits(), || format!("{}.{name}", link()))?;
         }
     }
-    port_counters(&format!("{path}.ports"), &a.ports, &b.ports)
+    port_counters(&format!("{path}.ports"), &a.ports, &b.ports)?;
+    require(same_value(&a.structures, &b.structures), || {
+        format!("{path}.structures")
+    })?;
+    require(same_value(&a.pool_ends, &b.pool_ends), || {
+        format!("{path}.pool_ends")
+    })?;
+    require(same_value(&a.pool_inflows, &b.pool_inflows), || {
+        format!("{path}.pool_inflows")
+    })
 }
 
 fn port_counters(
@@ -374,7 +413,18 @@ fn diagnostics(
             format!("{path}.ports[{index}] ({:?})", a.port_id)
         })?;
     }
-    Ok(())
+    require(a.structures.len() == b.structures.len(), || {
+        format!("{path}.structures")
+    })?;
+    for (index, (a, b)) in a.structures.iter().zip(&b.structures).enumerate() {
+        require(same_value(a, b), || {
+            format!("{path}.structures[{index}] ({:?})", a.structure_id)
+        })?;
+    }
+    require(same_value(&a.pool_ends, &b.pool_ends), || {
+        format!("{path}.pool_ends")
+    })?;
+    require(same_value(&a.pools, &b.pools), || format!("{path}.pools"))
 }
 
 fn same_port_transfer(a: &SurfaceChannelPortTransfer, b: &SurfaceChannelPortTransfer) -> bool {

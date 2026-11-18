@@ -9,7 +9,7 @@ use super::iteration::Stall;
 use super::operating::AttemptOperation;
 use super::outcome::LinkOutcome;
 use super::pool_ends::PoolEndInterval;
-use super::pools::{PoolChild, SurfaceChannelPoolForcing};
+use super::pools::PoolChild;
 use super::retry::{recompute, shortening};
 use super::start::Start;
 use super::state::{PreviousFrame, StoredStep};
@@ -92,45 +92,38 @@ where
 {
     /// Calculates one common interval toward `requested_end_s` without changing this batch.
     ///
-    /// The end is the smallest of `requested_end_s`, the start plus `maximum_step_s`, and the
-    /// end of the covering surface forcing interval. An attempt above the surface or channel
+    /// The end is the smallest of `requested_end_s`, the start plus `maximum_step_s`, the end of
+    /// the covering surface forcing interval, and the next operating event. No interval then
+    /// contains an event, and a retry only shortens it. An attempt above the surface or channel
     /// step limit restarts at 0.95 of the smallest limit. A stalled fixed point keeps `1/2`,
     /// `1/4`, or `1/8` of the interval by its measured contraction. Every other retryable
     /// rejection halves the common interval, or uses a shorter end a reach suggests.
-    ///
-    /// # Errors
-    /// Returns [`SurfaceChannelError::Input`] for invalid forcing or an uncovered surface time.
-    /// A caller policy at a ported end and a missing policy at an unported end are invalid
-    /// forcing (`port-endpoint-policy`).
-    /// Returns [`SurfaceChannelError::RecomputeInterval`] when caller integrated lateral volumes
-    /// need a shorter span. Returns [`SurfaceChannelError::Unresolved`] when retries or the
-    /// minimum step stop recalculation. Returns every non-retryable child rejection unchanged.
-    pub fn trial_to(
-        &self,
-        requested_end_s: f64,
-        forcing: &SurfaceChannelForcingInterval,
-    ) -> Result<SurfaceChannelTrial<R>, SurfaceChannelError> {
-        self.trial_with_pools_to(requested_end_s, forcing, &SurfaceChannelPoolForcing::none())
-    }
-
-    /// Calculates one common interval toward `requested_end_s` with pool forcing `pools`.
-    ///
-    /// A coordinator with operating children also ends the interval at its next operating event.
-    /// See [`super::operating`].
     ///
     /// Pool sources hold one rate set per pool exactly when the pools declare source policies.
     /// Pool inflows hold one input per declared binding. An integrated pool inflow fixes the
     /// interval to the requested span, as a caller integrated lateral volume does.
     ///
     /// # Errors
-    /// Returns every [`Self::trial_to`] rejection. Returns [`SurfaceChannelError::Input`] for pool
-    /// forcing that differs from the declared pools, and `pool-capacity-exceeded` for a pool
-    /// that fills past its top curve knot. Neither retries.
-    pub(crate) fn trial_with_pools_to(
+    /// Returns [`SurfaceChannelError::Input`] for invalid forcing or an uncovered surface time.
+    /// A caller policy at a ported end and a missing policy at an unported end are invalid
+    /// forcing (`port-endpoint-policy`). A caller policy at a pool end is invalid forcing
+    /// (`reach-end-ownership`). Pool forcing that differs from the declared pools is invalid.
+    /// Returns [`SurfaceChannelError::Input`] without retry for:
+    /// - a pool that fills past its top curve knot (`pool-capacity-exceeded`)
+    /// - a running pump at or below suction at the start (`pump-without-suction`)
+    /// - a running pump that delivers to a dry receiver without a declared outlet
+    ///   (`pump-dry-delivery`)
+    /// - a dry pool end at the accepted start (`pool-end-regime`)
+    /// - a dry control signal node at a decision, and every operating child rejection
+    ///
+    /// Returns [`SurfaceChannelError::RecomputeInterval`] when caller integrated lateral or pool
+    /// inflow volumes need a shorter span. Returns [`SurfaceChannelError::Unresolved`] when
+    /// retries or the minimum step stop recalculation. Returns every non-retryable child
+    /// rejection unchanged.
+    pub fn trial_to(
         &self,
         requested_end_s: f64,
         forcing: &SurfaceChannelForcingInterval,
-        pools: &SurfaceChannelPoolForcing,
     ) -> Result<SurfaceChannelTrial<R>, SurfaceChannelError> {
         let setup = self.definition.setup();
         let config = &setup.config;
@@ -140,7 +133,7 @@ where
         let mut bound = BoundForcing::bind(&self.context, &reach_ids, (start, requested), forcing)?;
         let pool_start = self
             .context
-            .pool_start(pools, self.definition.pools.as_ref())?;
+            .pool_start(forcing, self.definition.pools.as_ref())?;
         if let Some(pool_start) = &pool_start {
             bound.requires_exact_span |= pool_start.inflows.has_interval_volumes();
         }
@@ -204,7 +197,7 @@ where
                 retries,
                 (&operands, &stalled, operation),
                 &reach_ids,
-                (forcing, pools),
+                forcing,
             );
             let error = match attempted {
                 Ok(next) => return Ok(SurfaceChannelTrial { next }),
@@ -266,7 +259,7 @@ where
         retries: usize,
         (operands, stalled, operation): (&Start<R>, &Cell<Option<Stall>>, AttemptOperation<R>),
         reach_ids: &[&str],
-        (forcing, pool_forcing): (&SurfaceChannelForcingInterval, &SurfaceChannelPoolForcing),
+        forcing: &SurfaceChannelForcingInterval,
     ) -> Result<Self, SurfaceChannelError> {
         let context = &self.context;
         let config = &self.definition.setup().config;
@@ -452,9 +445,9 @@ where
                 reaches: self.reaches.clone(),
                 counters: self.counters.clone(),
                 pools: self.pools.clone(),
+                operating: self.operating.clone(),
             },
             forcing: forcing.clone(),
-            pool_forcing: self.pools.as_ref().map(|_| pool_forcing.clone()),
             start_s: start,
             end_s: end,
             requested_end_s: requested,

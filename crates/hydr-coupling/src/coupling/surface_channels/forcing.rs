@@ -9,7 +9,9 @@ use crate::channel::{
     ChannelBoundary, ChannelLateralInput, ChannelTensorBoundary, ChannelTensorFluxPort,
     ChannelTensorLateralInput, ChannelTensorWaterAmount,
 };
+use crate::coupling::level_pools::CoupledPoolInflow;
 use crate::forcing::WaterAmount;
+use crate::storage::LevelPoolSources;
 use hydr_channel::internal::SURFACE_EXCHANGE_BINDING_PREFIX;
 use numr::dtype::DType;
 use numr::runtime::{Runtime, RuntimeClient};
@@ -33,7 +35,7 @@ pub struct SurfaceChannelReachForcing {
     pub lateral_inputs: Vec<ChannelLateralInput>,
 }
 
-/// Held channel forcing over one common interval.
+/// Held channel and pool forcing over one common interval.
 ///
 /// Surface forcing stays in the surface setup's forcing schedule.
 #[derive(Clone, Debug, PartialEq)]
@@ -44,6 +46,13 @@ pub struct SurfaceChannelForcingInterval {
     pub end_s: f64,
     /// Exactly one record per setup reach, in any order.
     pub reaches: Vec<SurfaceChannelReachForcing>,
+    /// One local source rate set per setup pool, in setup pool order, exactly when the setup
+    /// declares pool source policies. `None` otherwise.
+    pub pool_sources: Option<Vec<LevelPoolSources>>,
+    /// One input per declared pool inflow binding, including zeros. Empty without bindings.
+    ///
+    /// An integrated volume fixes the interval to the requested span.
+    pub pool_inflows: Vec<CoupledPoolInflow>,
 }
 
 /// One caller withdrawal at a linked slot. The coordinator reserves it before exchange.
