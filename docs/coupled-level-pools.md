@@ -204,7 +204,7 @@ Every package carries `schema` and `contract` identity fields. `snapshot_data()`
 
 ### Hydraulic support still applies
 
-- Running pumps require wet support.
+- Running pumps require a wet donor. The receiver must be wet, or the pump must declare a free outlet at or above the dry receiver's bed.
 - Submerged orifices require water above the opening's top elevation at both endpoints.
 - Positive water requires a represented positive midpoint depth.
 

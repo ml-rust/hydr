@@ -18,7 +18,10 @@ impl PumpHydraulicOperands {
     pub fn speed_ratio(&self) -> f64 {
         self.speed_ratio
     }
-    /// High component of original oriented stage subtraction, in metres.
+    /// High component of the oriented lift, in metres.
+    ///
+    /// The lift is receiving stage minus donor stage. With a free outlet the receiving term is
+    /// `max(receiving stage, outlet)`, and a dry receiver's bed stands in for its stage.
     pub fn receiving_minus_donor_head_m(&self) -> f64 {
         self.receiving_minus_donor_head_m
     }

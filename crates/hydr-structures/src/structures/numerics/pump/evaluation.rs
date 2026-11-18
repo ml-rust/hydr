@@ -72,7 +72,8 @@ where
         &c.mul_scalar(&operation.isolated, codes::PUMP_ISOLATED)?,
     )?;
     // `Q = N Q_ref(Δ / N²)` with lift `Δ`, so `|dQ/dΔ| / Q = |dQ_ref/dh| / (N Q)`.
-    // Either endpoint head moves `Δ` one for one.
+    // The donor head moves `Δ` one for one. The receiver head does too, except where a free
+    // outlet above it sets the lift. There the receiver moves nothing, so the bound still holds.
     let sensitivity = c.where_cond(
         &positive,
         &c.div(
@@ -109,8 +110,8 @@ mod tests {
         Lane, MARGIN, STEP, TestResult, check_bound, evaluate, grid, structures,
     };
     use crate::structures::{
-        DirectionPolicy, PumpApplicability, PumpCurve, PumpCurveKnot, PumpParameters,
-        PumpSpeedPolicy, StructureLaw, StructureOperatingPoint,
+        DirectionPolicy, PumpApplicability, PumpCurve, PumpCurveKnot, PumpFreeOutlet,
+        PumpParameters, PumpSpeedPolicy, StructureLaw, StructureOperatingPoint,
     };
 
     /// Curve over `[-4, 3]` m: two falling segments, a flat one, and a fall to shutoff.
@@ -187,6 +188,70 @@ mod tests {
         )?;
         let flowing = check_bound(&structures, &cases)?;
         assert_eq!(flowing, cases.len());
+        Ok(())
+    }
+
+    /// The analytical pump with a free outlet at `elevation_m`.
+    fn outlet_pump(elevation_m: f64) -> TestResult<StructureLaw> {
+        let StructureLaw::Pump(parameters) = pump()? else {
+            return Err("analytical law is not a pump".into());
+        };
+        Ok(StructureLaw::Pump(parameters.with_free_outlet(
+            PumpFreeOutlet {
+                elevation_m,
+                evidence: "Analytical free outlet".into(),
+            },
+        )?))
+    }
+
+    #[test]
+    fn outlet_sensitivity_bounds_the_donor_and_the_receiver_below_the_outlet_moves_nothing()
+    -> TestResult {
+        let outlet = 4.0;
+        let knots = [-1.0, 1.0, 2.0];
+        let mut cases = Vec::new();
+        let mut speeds = Vec::new();
+        for speed in [1.0, 0.5] {
+            let square = speed * speed;
+            for q in grid(-3.99, 2.99, 40) {
+                let ends = (q + 4.0).min(3.0 - q);
+                let distance = knots.iter().map(|k| (q - k).abs()).fold(ends, f64::min);
+                if distance < MARGIN {
+                    continue;
+                }
+                let donor = outlet - q * square;
+                // A wet receiver one metre below the outlet, then a dry one on the fixture bed.
+                for wet in [true, false] {
+                    cases.push(Lane {
+                        stage: [donor, outlet - 1.0],
+                        wet: [true, wet],
+                        step: STEP * distance * square,
+                    });
+                    speeds.push(speed);
+                }
+            }
+        }
+        let law = outlet_pump(outlet)?;
+        let structures = structures(
+            |index| {
+                (
+                    law.clone(),
+                    DirectionPolicy::AtoBOnly,
+                    StructureOperatingPoint::PumpRunning {
+                        speed_ratio: speeds[index],
+                    },
+                )
+            },
+            cases.len(),
+        )?;
+        assert_eq!(check_bound(&structures, &cases)?, cases.len());
+        let centre = evaluate(&structures, &cases, None)?;
+        for sign in [1.0, -1.0] {
+            let moved = evaluate(&structures, &cases, Some((1, sign)))?;
+            for (index, (&a, &b)) in centre.discharge.iter().zip(&moved.discharge).enumerate() {
+                assert_eq!(a.to_bits(), b.to_bits(), "lane {index}");
+            }
+        }
         Ok(())
     }
 

@@ -29,6 +29,10 @@ pub(crate) struct TensorPumpContext<R: Runtime<DType = DType>> {
     pub mask: Tensor<R>,
     pub orientation: Tensor<R>,
     pub minimum_suction: Tensor<R>,
+    /// One where the pump declares a free outlet, else zero.
+    pub has_outlet: Tensor<R>,
+    /// Free outlet elevation, zero where none is declared.
+    pub outlet: Tensor<R>,
     pub minimum_speed: Tensor<R>,
     pub maximum_speed: Tensor<R>,
     pub groups: Vec<TensorPumpGroup<R>>,
@@ -54,6 +58,7 @@ impl<R: Runtime<DType = DType>> TensorPumpContext<R> {
             vec![1.0; n],
             vec![1.0; n],
         );
+        let (mut has_outlet, mut outlet) = (vec![0.0; n], vec![0.0; n]);
         for (index, e) in elements.iter().enumerate() {
             if let StructureLaw::Pump(p) = &e.law {
                 if e.direction == DirectionPolicy::Bidirectional {
@@ -70,6 +75,10 @@ impl<R: Runtime<DType = DType>> TensorPumpContext<R> {
                     -1.0
                 };
                 suction[index] = p.minimum_suction_stage_m();
+                if let Some(free) = p.free_outlet() {
+                    has_outlet[index] = 1.0;
+                    outlet[index] = free.elevation_m;
+                }
                 let (lo, hi) = p.speed_policy().range();
                 speed_min[index] = lo;
                 speed_max[index] = hi;
@@ -137,6 +146,8 @@ impl<R: Runtime<DType = DType>> TensorPumpContext<R> {
             mask: tensor(&mask)?,
             orientation: tensor(&orientation)?,
             minimum_suction: tensor(&suction)?,
+            has_outlet: tensor(&has_outlet)?,
+            outlet: tensor(&outlet)?,
             minimum_speed: tensor(&speed_min)?,
             maximum_speed: tensor(&speed_max)?,
             groups: cached,

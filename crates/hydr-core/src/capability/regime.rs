@@ -24,6 +24,22 @@ pub enum Regime {
     SubmergedWeirFlow,
     /// Both sides of a weir at or below the crest, with no flow.
     BelowCrest,
+    /// Orifice flow with both sides above the crown.
+    SubmergedOrificeFlow,
+    /// Gate flow with the downstream side at or below the sill.
+    FreeGateAperture,
+    /// Gate flow with the downstream side between the sill and the opening top.
+    MixedGateAperture,
+    /// Gate flow with both sides above the opening top.
+    SubmergedGateAperture,
+    /// Gate at zero opening, with no flow.
+    GateClosed,
+    /// Running pump on its curve, with positive flow.
+    PumpCurve,
+    /// Running pump at a lift where its curve gives zero flow.
+    PumpShutoff,
+    /// Stopped pump that isolates its two sides, with no flow.
+    PumpIsolated,
 }
 
 impl Regime {
@@ -39,6 +55,14 @@ impl Regime {
             Self::FreeWeirFlow => "free-weir-flow",
             Self::SubmergedWeirFlow => "submerged-weir-flow",
             Self::BelowCrest => "below-crest",
+            Self::SubmergedOrificeFlow => "submerged-orifice-flow",
+            Self::FreeGateAperture => "free-gate-aperture",
+            Self::MixedGateAperture => "mixed-gate-aperture",
+            Self::SubmergedGateAperture => "submerged-gate-aperture",
+            Self::GateClosed => "gate-closed",
+            Self::PumpCurve => "pump-curve",
+            Self::PumpShutoff => "pump-shutoff",
+            Self::PumpIsolated => "pump-isolated",
         }
     }
 }
@@ -90,8 +114,32 @@ mod tests {
             Regime::FreeWeirFlow,
             Regime::SubmergedWeirFlow,
             Regime::BelowCrest,
+            Regime::SubmergedOrificeFlow,
+            Regime::FreeGateAperture,
+            Regime::MixedGateAperture,
+            Regime::SubmergedGateAperture,
+            Regime::GateClosed,
+            Regime::PumpCurve,
+            Regime::PumpShutoff,
+            Regime::PumpIsolated,
         ];
         assert_ids(&all.map(|r| r.id()));
+    }
+
+    #[test]
+    fn structure_regime_ids_are_frozen() {
+        for (regime, id) in [
+            (Regime::SubmergedOrificeFlow, "submerged-orifice-flow"),
+            (Regime::FreeGateAperture, "free-gate-aperture"),
+            (Regime::MixedGateAperture, "mixed-gate-aperture"),
+            (Regime::SubmergedGateAperture, "submerged-gate-aperture"),
+            (Regime::GateClosed, "gate-closed"),
+            (Regime::PumpCurve, "pump-curve"),
+            (Regime::PumpShutoff, "pump-shutoff"),
+            (Regime::PumpIsolated, "pump-isolated"),
+        ] {
+            assert_eq!(regime.id(), id);
+        }
     }
 
     #[test]

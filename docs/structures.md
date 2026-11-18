@@ -204,7 +204,7 @@ Unused intermediates can overflow or underflow while final discharge remains rep
 
 ### Supply a bounded curve
 
-`PumpCurve::new` uses receiving stage minus donor stage as its head argument.
+`PumpCurve::new` uses the lift as its head argument. The lift is receiving stage minus donor stage. A pump with a free outlet lifts to the outlet instead when the receiver lies below it.
 
 | Curve property | Requirement |
 | --- | --- |
@@ -235,13 +235,43 @@ Pump orientation requires `AtoBOnly` or `BtoAOnly`. `Bidirectional` rejects. A r
 
 There is no default speed, suction bound, curve, or operating point.
 
+### Declare a free outlet
+
+A free outlet is the elevation where the delivery pipe discharges to air. `PumpParameters::new` creates a pump without one. Add one with `with_free_outlet`:
+
+```rust
+let parameters = PumpParameters::new(curve, minimum_suction_stage_m, speed_policy, applicability)?
+    .with_free_outlet(PumpFreeOutlet {
+        elevation_m: 4.0,
+        evidence: "Delivery pipe discharges to air at 4.0 m on the common datum".into(),
+    })?;
+```
+
+| Field | Requirement |
+| --- | --- |
+| `elevation_m` | Finite, on the common datum |
+| `evidence` | Nonempty, without control characters. States that the outlet discharges freely there and that the curve's head argument holds there. |
+
+A second call replaces the first outlet. `free_outlet()` returns the declared outlet, or `None`.
+
+With an outlet, the lift is `max(receiving stage, outlet) - donor stage`. A dry receiver counts at its bed elevation.
+
+| Receiver | Lift |
+| --- | --- |
+| Wet, at or above the outlet | Receiving stage minus donor stage, bit for bit as without an outlet |
+| Wet, below the outlet | Outlet minus donor stage. The receiving stage has no effect on flow. |
+| Dry, bed at or below the outlet | Outlet minus donor stage |
+| Dry, bed above the outlet | Rejects as an unsupported regime. Raise the outlet or supply a wet receiver. |
+
+Two pump definitions match only when both lack an outlet, or both carry the same outlet elevation bits and evidence text.
+
 ### Check running and stopped support
 
 | Operation | Required support and result |
 | --- | --- |
-| Running | Known wet donor and receiver, including at declared shutoff |
+| Running | Known wet donor, and a known wet receiver or a declared free outlet, including at declared shutoff |
 | Suction | Donor stage strictly above its finite common-datum minimum suction stage |
-| Dry delivery | Requires a separate outlet-head contract |
+| Dry delivery | Needs a free outlet at or above the receiver's bed. Without one, a running pump into a dry receiver rejects as an unsupported regime. |
 | Stopped isolation | Explicitly excludes forward siphoning and reverse flow. Dry or unknown heads can be uninfluential. |
 
 Isolation still requires correct identity, datum, quiescent-stage convention, and valid known values. Energy-head packets reject even while isolated.
@@ -260,7 +290,7 @@ Original operation and support remain attached to projected and held-volume prop
 
 Pumps reuse grouped Solvr Linear interpolation on the selected Numr runtime. Hydr copies no interpolation or search algorithm.
 
-Numr TwoSum retains the oriented stage difference as `headHigh+headLow`. The query uses two ordered divisions:
+Numr TwoSum retains the oriented lift as `headHigh+headLow`. The query uses two ordered divisions:
 
 ```text
 q1 = headHigh / speed
@@ -315,7 +345,7 @@ Held products retain overflow/underflow checks. Numerical support establishes no
 
 `PumpHydraulicOperands` exposes the calculation used for the proposal:
 
-- Original head high/low and speed.
+- Lift head high/low and speed. With a free outlet the lift uses the outlet where it lies above the receiver.
 - Normalized query, uncertainty bound/interval, and division certificate.
 - Reference-speed flow.
 
@@ -616,6 +646,22 @@ Actual Numr execution passes 26 independently frozen exact-rational cases.
 | Independent comparisons | TwoSum head witnesses, transformed-head bounds/intervals, zero-region classification, final flow, and held products |
 
 Cases include nonbinary speeds, nonzero head-low contributions, and tiny/huge speeds with unrepresentable unused squares.
+
+Thirteen further rows, frozen before execution, cover the free outlet in both orientations:
+
+| Rows | Criterion |
+| --- | --- |
+| Wet receiver below, at, and above the outlet. Dry receiver below and at the outlet. Half, reference, and double speed. | Exact expected flow and held-volume bits |
+| Inexact stages, wet and dry receiver | `64*EPSILON*max(abs(reference),abs(output))` |
+| Shutoff lift at the outlet | Exact zero, `PumpShutoff` |
+| Dry bed above the outlet, dry donor, donor at suction | Unsupported-regime rejection |
+| All admitted rows | Head high and low bits equal an independent TwoSum of the lifted stage and donor stage |
+
+A wet receiver at or above the outlet returns the same output bits as the pump without an outlet. Moving a receiver below the outlet changes no flow bit.
+
+```sh
+cargo test --test pump_laws outlet
+```
 
 This evidence establishes no manufacturer-curve accuracy, efficiency, control behavior, or native SWMM parity.
 

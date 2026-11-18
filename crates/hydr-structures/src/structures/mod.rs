@@ -58,8 +58,8 @@ pub use output::{
 pub use parameters::{SubmergedOrificeParameters, SuppressedRectangularWeirParameters};
 pub use proposal::StructureProposal;
 pub use pump::{
-    PumpApplicability, PumpCurve, PumpCurveKnot, PumpHydraulicOperands, PumpParameters,
-    PumpSpeedPolicy,
+    PumpApplicability, PumpCurve, PumpCurveKnot, PumpFreeOutlet, PumpHydraulicOperands,
+    PumpParameters, PumpSpeedPolicy,
 };
 
 pub use control::{

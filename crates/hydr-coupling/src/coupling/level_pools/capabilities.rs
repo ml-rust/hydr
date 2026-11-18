@@ -149,7 +149,7 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
         },
         Limit {
             id: "structure-hydraulic-support",
-            summary: "Running pumps need wet support, and submerged orifices need water above the crown at both endpoints.",
+            summary: "Running pumps need a wet donor and a wet receiver or a free outlet at or above a dry receiver's bed. Submerged orifices need water above the crown at both endpoints.",
             doc: COUPLED_DOC,
         },
         Limit {

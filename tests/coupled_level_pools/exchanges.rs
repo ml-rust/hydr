@@ -4,6 +4,7 @@ use hydr::coupling::{
     CoupledLevelPoolBatch, CoupledLevelPoolInitialState, CoupledLevelPoolSetup,
     CoupledLevelPoolStepDiagnostics,
 };
+use hydr::structures::{PumpFreeOutlet, StructureElement, StructureLaw};
 
 fn advance(
     setup: CoupledLevelPoolSetup,
@@ -217,6 +218,67 @@ fn known_dry_receiver_uses_explicit_support_until_it_wets() -> Result {
             .midpoint_stage_b_m
             .ok_or("Missing wetted midpoint")?,
         -9.75,
+    );
+    Ok(())
+}
+
+fn pump_with_outlet(
+    id: &str,
+    a: &str,
+    b: &str,
+    knots: &[(f64, f64)],
+    elevation_m: f64,
+) -> Result<StructureElement> {
+    let mut element = pump(id, a, b, knots)?;
+    let StructureLaw::Pump(parameters) = element.law else {
+        return Err("fixture pump law is not a pump".into());
+    };
+    element.law = StructureLaw::Pump(parameters.with_free_outlet(PumpFreeOutlet {
+        elevation_m,
+        evidence:
+            "Synthetic delivery pipe discharging to atmosphere above the receiving bed".into(),
+    })?);
+    Ok(element)
+}
+
+#[test]
+fn free_outlet_pump_fills_a_dry_pool_and_a_plain_pump_rejects_dry_delivery() -> Result {
+    // A plateau curve over the whole lift range: one cubic metre per second.
+    let knots = [(-20.0, 1.0), (20.0, 1.0)];
+    let (setup, initial) = assemble(
+        &[("a", 0.0), ("b", -10.0)],
+        &[4.0, 0.0],
+        vec![pump_with_outlet("pump", "a", "b", &knots, 0.0)?],
+        vec![running("pump")],
+    )?;
+    let (next, step) = advance(setup, initial, 0.5, &[0.5], &[3.5, 0.5])?;
+    near(step.transfers[0].donor_limit_factor, 1.0);
+    near(
+        next.pools().outputs()?[1]
+            .stage_m
+            .ok_or("Receiver remains dry")?,
+        -9.5,
+    );
+    let (setup, initial) = assemble(
+        &[("a", 0.0), ("b", -10.0)],
+        &[4.0, 0.0],
+        vec![pump("pump", "a", "b", &knots)?],
+        vec![running("pump")],
+    )?;
+    let batch = CoupledLevelPoolBatch::<crate::runtime::Runtime>::new(
+        crate::runtime::client(),
+        setup,
+        initial,
+    )?;
+    let error = batch
+        .trial_to(0.5)
+        .err()
+        .ok_or("plain pump delivered to a dry pool")?;
+    assert!(
+        error
+            .to_string()
+            .contains("a known wet receiver or a declared free outlet"),
+        "{error}"
     );
     Ok(())
 }

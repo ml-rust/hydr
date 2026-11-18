@@ -68,6 +68,12 @@ pub enum BoundaryKind {
     PumpRunning,
     /// Gate held at a fixed opening.
     GateFixedOpening,
+    /// Gate whose opening follows a prescribed trajectory over time.
+    GatePrescribedOpening,
+    /// Gate whose opening follows an actuator driven by operating controls.
+    GateActuatedOpening,
+    /// Pump whose operation follows controls that sample endpoint stages.
+    PumpSampledControl,
     /// Prescribed inflow rate.
     PrescribedInflowRate,
     /// Prescribed inflow volume over an interval.
@@ -93,6 +99,9 @@ impl BoundaryKind {
             Self::PumpStoppedIsolated => "pump-stopped-isolated",
             Self::PumpRunning => "pump-running",
             Self::GateFixedOpening => "gate-fixed-opening",
+            Self::GatePrescribedOpening => "gate-prescribed-opening",
+            Self::GateActuatedOpening => "gate-actuated-opening",
+            Self::PumpSampledControl => "pump-sampled-control",
             Self::PrescribedInflowRate => "prescribed-inflow-rate",
             Self::PrescribedInflowVolume => "prescribed-inflow-volume",
             Self::RunoffOutletNoFeedback => "runoff-outlet-no-feedback",
@@ -152,11 +161,28 @@ mod tests {
             BoundaryKind::PumpStoppedIsolated,
             BoundaryKind::PumpRunning,
             BoundaryKind::GateFixedOpening,
+            BoundaryKind::GatePrescribedOpening,
+            BoundaryKind::GateActuatedOpening,
+            BoundaryKind::PumpSampledControl,
             BoundaryKind::PrescribedInflowRate,
             BoundaryKind::PrescribedInflowVolume,
             BoundaryKind::RunoffOutletNoFeedback,
         ];
         assert_ids(&all.map(|b| b.id()));
+    }
+
+    #[test]
+    fn controlled_structure_boundary_ids_are_frozen() {
+        for (kind, id) in [
+            (
+                BoundaryKind::GatePrescribedOpening,
+                "gate-prescribed-opening",
+            ),
+            (BoundaryKind::GateActuatedOpening, "gate-actuated-opening"),
+            (BoundaryKind::PumpSampledControl, "pump-sampled-control"),
+        ] {
+            assert_eq!(kind.id(), id);
+        }
     }
 
     #[test]

@@ -12,6 +12,8 @@ mod fixture;
 mod layouts;
 #[path = "pump_laws/lifecycle.rs"]
 mod lifecycle;
+#[path = "pump_laws/outlet.rs"]
+mod outlet;
 #[path = "pump_laws/reference_inputs.rs"]
 mod reference_inputs;
 #[path = "pump_laws/reference_limits.rs"]

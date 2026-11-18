@@ -72,6 +72,13 @@ fn same_law(a: &StructureLaw, b: &StructureLaw) -> bool {
             a.applicability() == b.applicability()
                 && a.minimum_suction_stage_m().to_bits() == b.minimum_suction_stage_m().to_bits()
                 && a.curve().key() == b.curve().key()
+                && match (a.free_outlet(), b.free_outlet()) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) => {
+                        a.evidence == b.evidence && bits(&[a.elevation_m], &[b.elevation_m])
+                    }
+                    _ => false,
+                }
                 && match (a.speed_policy(), b.speed_policy()) {
                     (PumpSpeedPolicy::ReferenceOnly, PumpSpeedPolicy::ReferenceOnly) => true,
                     (
@@ -96,4 +103,52 @@ fn same_law(a: &StructureLaw, b: &StructureLaw) -> bool {
 #[inline]
 pub fn bits(a: &[f64], b: &[f64]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.to_bits() == b.to_bits())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::same_elements;
+    use crate::structures::interval_fixture::{TestResult, pump};
+    use crate::structures::{PumpFreeOutlet, StructureElement, StructureLaw};
+
+    fn with_outlet(elevation_m: f64, evidence: &str) -> TestResult<StructureElement> {
+        let mut element = pump("p")?;
+        let StructureLaw::Pump(parameters) = element.law else {
+            return Err("fixture law is not a pump".into());
+        };
+        element.law = StructureLaw::Pump(parameters.with_free_outlet(PumpFreeOutlet {
+            elevation_m,
+            evidence: evidence.into(),
+        })?);
+        Ok(element)
+    }
+
+    #[test]
+    fn free_outlet_presence_elevation_bits_and_evidence_distinguish_pumps() -> TestResult {
+        let plain = pump("p")?;
+        let outlet = with_outlet(1.0, "Free outlet")?;
+        assert!(same_elements(
+            std::slice::from_ref(&plain),
+            std::slice::from_ref(&plain)
+        ));
+        assert!(same_elements(
+            std::slice::from_ref(&outlet),
+            &[with_outlet(1.0, "Free outlet")?]
+        ));
+        for other in [
+            plain,
+            with_outlet(1.0_f64.next_up(), "Free outlet")?,
+            with_outlet(1.0, "Other outlet")?,
+        ] {
+            assert!(!same_elements(
+                std::slice::from_ref(&outlet),
+                std::slice::from_ref(&other)
+            ));
+            assert!(!same_elements(
+                std::slice::from_ref(&other),
+                std::slice::from_ref(&outlet)
+            ));
+        }
+        Ok(())
+    }
 }
