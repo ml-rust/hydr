@@ -43,7 +43,7 @@ fn coupled_level_pool_package_carries_identity() -> Result {
     );
     assert_eq!(
         COUPLED_LEVEL_POOL_CONTRACT_VERSION,
-        "hydr-coupled-level-pool-numr-cpu-1"
+        "hydr-coupled-level-pool-numr-cpu-2"
     );
     let package = advanced()?.snapshot_data()?;
     assert_eq!(package.schema, COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA);

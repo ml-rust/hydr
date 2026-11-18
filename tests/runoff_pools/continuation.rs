@@ -36,7 +36,7 @@ fn assert_rejected(changed: &RunoffPoolSnapshotData, needles: &[&str]) -> Result
 #[test]
 fn runoff_pool_package_carries_identity() -> Result {
     assert_eq!(RUNOFF_POOL_SNAPSHOT_SCHEMA, "hydr-runoff-pool-checkpoint-1");
-    assert_eq!(RUNOFF_POOL_CONTRACT_VERSION, "hydr-runoff-pool-numr-cpu-1");
+    assert_eq!(RUNOFF_POOL_CONTRACT_VERSION, "hydr-runoff-pool-numr-cpu-2");
     let package = advanced()?.snapshot_data()?;
     assert_eq!(package.schema, RUNOFF_POOL_SNAPSHOT_SCHEMA);
     assert_eq!(package.contract, RUNOFF_POOL_CONTRACT_VERSION);

@@ -44,7 +44,7 @@ fn reject_identity(changed: &ReservoirSnapshotData) -> Result<String> {
 #[test]
 fn reservoir_package_carries_identity() -> Result {
     assert_eq!(RESERVOIR_SNAPSHOT_SCHEMA, "hydr-reservoir-checkpoint-1");
-    assert_eq!(RESERVOIR_CONTRACT_VERSION, "hydr-reservoir-numr-cpu-1");
+    assert_eq!(RESERVOIR_CONTRACT_VERSION, "hydr-reservoir-numr-cpu-2");
     let package = identity_package()?;
     assert_eq!(package.schema, RESERVOIR_SNAPSHOT_SCHEMA);
     assert_eq!(package.contract, RESERVOIR_CONTRACT_VERSION);

@@ -133,9 +133,12 @@ const SURVEYED_REGIMES: &[RegimeSupport] = &[
 
 const SOURCES: &[SourceKind] = &[SourceKind::LateralInflow, SourceKind::LateralWithdrawal];
 
-const BASIC_ARITHMETIC: &[ArithmeticRequirement] = &[
+/// Arithmetic of rectangular and surveyed reaches: IEEE basic, FMA and the Manning power.
+const MANNING_ARITHMETIC: &[ArithmeticRequirement] = &[
     ArithmeticRequirement::F64Ieee754Basic,
     ArithmeticRequirement::NearestEvenGradualUnderflow,
+    ArithmeticRequirement::FusedMulAdd,
+    ArithmeticRequirement::CorrectlyRoundedElementary,
 ];
 
 const STAGE_OUTSIDE_WET_SUBCRITICAL: Unsupported = unsupported(
@@ -284,7 +287,7 @@ static RECTANGULAR: ComponentCapabilities = ComponentCapabilities {
     contract: Some(CHANNEL_CONTRACT_VERSION),
     snapshot_schema: Some(CHANNEL_SNAPSHOT_SCHEMA),
     precision: &[Precision::F64],
-    arithmetic: BASIC_ARITHMETIC,
+    arithmetic: MANNING_ARITHMETIC,
     runtimes: &runtimes(
         "selected_cpu_client_advances_rectangular_channels_and_complete_restart",
         "selected_cuda_client_advances_rectangular_channels_and_complete_restart",
@@ -323,6 +326,8 @@ static TRIANGULAR: ComponentCapabilities = ComponentCapabilities {
         ArithmeticRequirement::F64Ieee754Basic,
         ArithmeticRequirement::NearestEvenGradualUnderflow,
         ArithmeticRequirement::RoundToNearestSqrt,
+        ArithmeticRequirement::FusedMulAdd,
+        ArithmeticRequirement::CorrectlyRoundedElementary,
     ],
     runtimes: &runtimes(
         "selected_cpu_client_advances_triangular_channels_sources_and_complete_restart",
@@ -357,7 +362,7 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
     contract: Some(CHANNEL_CONTRACT_VERSION),
     snapshot_schema: Some(CHANNEL_SNAPSHOT_SCHEMA),
     precision: &[Precision::F64],
-    arithmetic: BASIC_ARITHMETIC,
+    arithmetic: MANNING_ARITHMETIC,
     runtimes: &runtimes(
         "native_strided_sources_copy_operands_and_replay_complete_packages",
         "cuda_surveyed_sources_and_restart_use_actual_selected_device",

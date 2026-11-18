@@ -20,7 +20,7 @@ use std::sync::Arc;
 /// Schema identity of the coupled level pool snapshot package.
 pub const COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA: &str = "hydr-coupled-level-pool-checkpoint-1";
 /// Numerical contract identity of the coupled level pool snapshot package.
-pub const COUPLED_LEVEL_POOL_CONTRACT_VERSION: &str = "hydr-coupled-level-pool-numr-cpu-1";
+pub const COUPLED_LEVEL_POOL_CONTRACT_VERSION: &str = "hydr-coupled-level-pool-numr-cpu-2";
 
 /// One native pool and external ledger frame, without recursive coupled history.
 #[derive(Clone, Debug, PartialEq)]

@@ -8,7 +8,7 @@ use hydr_core::capability::{
 };
 
 /// Version of the public numerical semantics and in-memory snapshot contract.
-pub const CONTRACT_VERSION: &str = "hydr-swe-numr-cpu-1";
+pub const CONTRACT_VERSION: &str = "hydr-swe-numr-cpu-2";
 
 /// Summary of a component that exists on its own but has no attachment to this solver.
 const STANDALONE: &str = "exists as a standalone component; not attached to this solver";
@@ -30,6 +30,8 @@ static CAPABILITIES: ComponentCapabilities = ComponentCapabilities {
     arithmetic: &[
         ArithmeticRequirement::F64Ieee754Basic,
         ArithmeticRequirement::NearestEvenGradualUnderflow,
+        ArithmeticRequirement::FusedMulAdd,
+        ArithmeticRequirement::CorrectlyRoundedElementary,
     ],
     runtimes: &[
         RuntimeSupport {

@@ -101,14 +101,17 @@ where
     let coefficient = c.where_cond(&newton_mask, &c1, &context.zero)?;
     let duration_rate = c.where_cond(&newton_mask, &ks_ts, &context.zero)?;
     let c2 = c.sub(
-        &c.mul(&coefficient, &c.log(&c.add(&initial, &coefficient)?)?)?,
+        &c.mul(&coefficient, &c.cr_log(&c.add(&initial, &coefficient)?)?)?,
         &duration_rate,
     )?;
     let result = c.newton_batched(
         |x| {
             let sum = c.add(x, &coefficient)?;
             let numerator = c.add(
-                &c.sub(&c.sub(x, &initial)?, &c.mul(&coefficient, &c.log(&sum)?)?)?,
+                &c.sub(
+                    &c.sub(x, &initial)?,
+                    &c.mul(&coefficient, &c.cr_log(&sum)?)?,
+                )?,
                 &c2,
             )?;
             let denominator = c.rsub_scalar(&c.div(&coefficient, &sum)?, 1.0)?;

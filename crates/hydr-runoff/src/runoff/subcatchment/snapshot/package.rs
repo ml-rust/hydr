@@ -14,7 +14,7 @@ use solvr::optimize::roots::BatchedNewtonAlgorithms;
 /// Schema identity of the subcatchment snapshot package.
 pub const SUBCATCHMENT_SNAPSHOT_SCHEMA: &str = "hydr-subcatchment-checkpoint-1";
 /// Numerical contract identity of the subcatchment snapshot package.
-pub const SUBCATCHMENT_CONTRACT_VERSION: &str = "hydr-subcatchment-numr-cpu-1";
+pub const SUBCATCHMENT_CONTRACT_VERSION: &str = "hydr-subcatchment-numr-cpu-2";
 
 /// Caller-owned complete storage, soil, and accounting continuation values.
 ///

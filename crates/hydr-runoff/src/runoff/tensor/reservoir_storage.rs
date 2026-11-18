@@ -70,6 +70,9 @@ where
         if let Some(error) = crate::tensor::probe_f64::<R, _>(&client)? {
             return Err(ReservoirError::input(error.message("reservoir")));
         }
+        if let Some(error) = crate::tensor::probe_correctly_rounded::<R>() {
+            return Err(ReservoirError::input(error.message("reservoir")));
+        }
         let tensor = |values: Vec<f64>| Tensor::<R>::from_slice(&values, &[values.len()], &device);
         Ok(Self {
             area: tensor(elements.iter().map(|e| e.parameters.area_m2()).collect())?,

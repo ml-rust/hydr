@@ -54,6 +54,8 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         ArithmeticRequirement::F64Ieee754Basic,
         ArithmeticRequirement::NearestEvenGradualUnderflow,
         ArithmeticRequirement::RoundToNearestSqrt,
+        ArithmeticRequirement::FusedMulAdd,
+        ArithmeticRequirement::CorrectlyRoundedElementary,
     ],
     runtimes: &[
         RuntimeSupport {

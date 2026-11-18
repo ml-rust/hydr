@@ -265,7 +265,7 @@ fn subcatchment_package_carries_identity() -> Result {
     );
     assert_eq!(
         SUBCATCHMENT_CONTRACT_VERSION,
-        "hydr-subcatchment-numr-cpu-1"
+        "hydr-subcatchment-numr-cpu-2"
     );
     let package = identity_package()?;
     assert_eq!(package.schema, SUBCATCHMENT_SNAPSHOT_SCHEMA);

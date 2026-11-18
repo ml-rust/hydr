@@ -6,6 +6,7 @@ use super::start::Start;
 use super::{SurfaceChannelConfig, SurfaceChannelError};
 use crate::channel::ChannelReach;
 use crate::solver::Solver;
+use numr::algorithm::correctly_rounded;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, UnaryOps};
 use numr::runtime::Runtime;
@@ -326,7 +327,8 @@ impl Stall {
 ///
 /// `r_k` is the latest norm and `k` the updates so far. The contraction `ρ = sqrt(r_k / r_{k-2})`
 /// spans two updates, so a 2-cycle shows its true rate. Convergence needs `r <= 1`, so it takes
-/// `ln(r_k) / -ln(ρ)` more updates. A forecast past `limit` updates stalls.
+/// `ln(r_k) / -ln(ρ)` more updates. A forecast past `limit` updates stalls. Both logarithms are
+/// correctly rounded, so the forecast is identical on every host.
 fn stall(norms: &[f64], limit: usize) -> Option<Stall> {
     let [.., earlier, _, latest] = norms else {
         return None;
@@ -336,7 +338,7 @@ fn stall(norms: &[f64], limit: usize) -> Option<Stall> {
         return None;
     }
     let contraction = (latest / earlier).sqrt();
-    let needed = latest.ln() / -contraction.ln();
+    let needed = correctly_rounded::log(*latest) / -correctly_rounded::log(contraction);
     let stalls = contraction >= 1.0 || updates as f64 + needed > limit as f64;
     stalls.then_some(Stall {
         updates,

@@ -36,6 +36,8 @@ static CHANNEL_POOLS: ComponentCapabilities = ComponentCapabilities {
         ArithmeticRequirement::F64Ieee754Basic,
         ArithmeticRequirement::NearestEvenGradualUnderflow,
         ArithmeticRequirement::RoundToNearestSqrt,
+        ArithmeticRequirement::FusedMulAdd,
+        ArithmeticRequirement::CorrectlyRoundedElementary,
     ],
     runtimes: &[
         RuntimeSupport {

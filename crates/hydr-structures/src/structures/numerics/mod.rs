@@ -6,6 +6,7 @@ mod direction;
 mod evaluation;
 pub(crate) mod gate;
 pub(crate) mod held;
+mod log_add_exp;
 mod orifice;
 pub(crate) mod pump;
 mod weir;

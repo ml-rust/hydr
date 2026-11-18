@@ -133,8 +133,8 @@ where
             &c.ge(&residual(&initial_upper)?.lower, &zero)?,
             "upper depth does not certify a positive residual",
         )?;
-        let log_lower = c.log(&initial_lower)?;
-        let log_upper = c.log(&initial_upper)?;
+        let log_lower = c.cr_log(&initial_lower)?;
+        let log_upper = c.cr_log(&initial_upper)?;
         let center = c.add(
             &c.mul_scalar(&log_lower, 0.5)?,
             &c.mul_scalar(&log_upper, 0.5)?,
@@ -156,7 +156,7 @@ where
         let root = c.bisect_batched(
             |x| {
                 let result = (|| -> Result<Tensor<R>, ChannelError> {
-                    let h = c.exp(&c.add(&center, x)?)?;
+                    let h = c.cr_exp(&c.add(&center, x)?)?;
                     Ok(c.where_cond(
                         active,
                         &self.triangular_residual_nominal(geometry, &left, &right, &h)?,
@@ -200,8 +200,8 @@ where
             match error { OptimizeError::NumrError(_) => ChannelError::Runtime { cell: None, context },
                 _ => ChannelError::numerical(context) }
         })?;
-        let a = c.exp(&c.add(&center, &root.lower)?)?;
-        let b = c.exp(&c.add(&center, &root.upper)?)?;
+        let a = c.cr_exp(&c.add(&center, &root.lower)?)?;
+        let b = c.cr_exp(&c.add(&center, &root.upper)?)?;
         let ra = residual(&a)?;
         let rb = residual(&b)?;
         let signed = c.mul(&c.le(&ra.upper, &zero)?, &c.ge(&rb.lower, &zero)?)?;

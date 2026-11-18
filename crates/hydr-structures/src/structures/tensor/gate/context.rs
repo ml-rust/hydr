@@ -1,7 +1,7 @@
 //! Immutable gate masks and logarithmic coefficient caches without crown rounding.
 use numr::ops::BinaryOps;
+use numr::ops::CorrectlyRoundedOps;
 use numr::ops::ScalarOps;
-use numr::ops::UnaryOps;
 use numr::{dtype::DType, runtime::Runtime};
 
 use crate::structures::{StructureElement, StructureError, StructureLaw};
@@ -55,13 +55,13 @@ impl<R: Runtime<DType = DType>> TensorGateContext<R> {
             mask: tensor(&mask)?,
             sill: tensor(&sill)?,
             log_scale: client.add(
-                &client.log(&tensor(&coefficient)?)?,
-                &client.log(&tensor(&width)?)?,
+                &client.cr_log(&tensor(&coefficient)?)?,
+                &client.cr_log(&tensor(&width)?)?,
             )?,
             log_root_gravity: client.mul_scalar(
                 &client.add(
-                    &client.log(&client.mul_scalar(&one, 2.0)?)?,
-                    &client.log(&tensor(&gravity)?)?,
+                    &client.cr_log(&client.mul_scalar(&one, 2.0)?)?,
+                    &client.cr_log(&tensor(&gravity)?)?,
                 )?,
                 0.5,
             )?,

@@ -90,7 +90,7 @@ where
 {
     let c = &context.client;
     let x = c.where_cond(active, excess, &context.zero)?;
-    let power = c.pow_scalar(&x, EXPONENT)?;
+    let power = c.cr_pow_scalar(&x, EXPONENT)?;
     context.finite(&power, "reservoir excess power")?;
     let alpha = c.where_cond(active, &context.alpha, &context.zero)?;
     let rate = c.mul(&alpha, &power)?;
@@ -124,7 +124,7 @@ where
     let c = &context.client;
     let x = c.where_cond(prepared.active(), x, &context.zero)?;
     let alpha = c.where_cond(prepared.active(), &context.alpha, &context.zero)?;
-    let rate = c.mul(&alpha, &c.pow_scalar(&x, EXPONENT)?)?;
+    let rate = c.mul(&alpha, &c.cr_pow_scalar(&x, EXPONENT)?)?;
     let loss = c.mul(prepared.active_duration(), &rate)?;
     c.where_cond(
         prepared.active(),

@@ -2,6 +2,10 @@
 //!
 //! Each digest is FNV-1a over the Debug text of the snapshot package after every interval.
 //! Debug text shows every bit of finite values, the step partition, and the CFL receipts.
+//!
+//! Correctly rounded `exp`, `log` and `pow` bump the channel contract identity to `3`, so every
+//! current digest moves. No accepted bit moves: the text mapped back to the schema `1` format
+//! still reproduces that format's digest.
 
 use super::standalone::{Kind, Result, reach, step};
 
@@ -18,10 +22,11 @@ fn digest(text: &str) -> u64 {
 /// The text in the package format before the FluxPort endpoint.
 ///
 /// That format names schema and contract `1`. A trajectory without a port changes no other
-/// field, so this text reproduces the earlier digest bit for bit.
+/// field, and correctly rounded arithmetic moves no accepted bit of these trajectories, so this
+/// text reproduces the earlier digest bit for bit.
 fn before_flux_port(text: &str) -> String {
     text.replace("hydr-channel-checkpoint-2", "hydr-channel-checkpoint-1")
-        .replace("hydr-channel-1d-numr-cpu-2", "hydr-channel-1d-numr-cpu-1")
+        .replace("hydr-channel-1d-numr-cpu-3", "hydr-channel-1d-numr-cpu-1")
 }
 
 /// Text of every snapshot over `INTERVALS` accepted intervals of `kind`.
@@ -46,10 +51,12 @@ fn labelled(digests: impl IntoIterator<Item = u64>) -> Vec<String> {
 
 #[test]
 fn standalone_trajectories_match_frozen_digests() -> Result {
+    // Under contract `2` the digests were 0x9c81_f00a_7ec3_3dab, 0x06cd_2018_c5ab_bf01 and
+    // 0xdda5_9c6f_523c_4f53. Only the contract identity differs.
     let expected = [
-        0x9c81_f00a_7ec3_3dab_u64,
-        0x06cd_2018_c5ab_bf01,
-        0xdda5_9c6f_523c_4f53,
+        0x4022_f020_af6f_957f_u64,
+        0x1e76_ea4e_68b2_8421,
+        0x689d_4dfa_0f9a_c4ed,
     ];
     // Digests of the same text in the schema `1` format.
     let earlier = [

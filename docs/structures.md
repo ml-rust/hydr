@@ -185,6 +185,8 @@ Qabs = exp(logQ)
 
 The submerged form equals `(1-(Hd/Hu)^1.5)^0.385` in real arithmetic. It avoids subtracting a rounded power from one.
 
+Every `log` and `exp` above is correctly rounded to nearest through numr `CorrectlyRoundedOps`. Each result is the exact value rounded once, so the discharge bits are identical on every runtime that admits the structures.
+
 | Numerical quantity | Admission rule |
 | --- | --- |
 | Active depths and direct original-stage gap | Positive finite representation required |
@@ -455,9 +457,17 @@ Jfree = (2/3)*L*sqrt(A)*K
 
 The represented ratio permits `[0,1]`. Rounded one retains a positive thin strip through independent `L`.
 
-The evaluator forms submerged and free strip logarithms separately. Numr `stack` and `logsumexp` combine them.
+The evaluator forms submerged and free strip logarithms `a` and `b` separately. A two-input logaddexp combines them:
 
-An absent strip uses negative infinity. Only the combined final discharge is exponentiated.
+```text
+m = max(a, b)
+n = min(a, b)
+logJ = m + log1p(exp(n-m))
+```
+
+`exp` and `log1p` are correctly rounded. The absolute error of `logJ` is at most `3*2^-54 + ulp(logJ)/2`.
+
+An absent strip uses negative infinity. When both strips are absent, `logJ` is negative infinity. Only the combined final discharge is exponentiated.
 
 `GateHydraulicOperands` exposes:
 
@@ -567,10 +577,11 @@ cargo run --example gate_trajectories_reference
 | CPU reference | One thread |
 | Other runtimes | [F64 arithmetic admission](integration.md#runtime-selection-and-admission) |
 | Arithmetic | Round-to-nearest ties-to-even and gradual underflow |
-| Context | Checks the shared execution envelope during construction |
+| Elementary functions | Correctly rounded F64 `exp`, `log` and `log1p`, which need IEEE fused multiply-add |
+| Context | Checks the shared execution envelope and the elementary-function contracts during construction |
 | Caller | Preserves that envelope throughout proposal evaluation |
 
-Coefficient/geometry logarithm sums remain cached. Passive laws and gates use Numr operations directly. Pumps reuse Solvr interpolation.
+Coefficient/geometry logarithm sums remain cached. Passive laws and gates use Numr correctly rounded logarithms and exponentials, combined by the two-input logaddexp above. Pumps reuse Solvr interpolation.
 
 ## Read the numerical evidence
 

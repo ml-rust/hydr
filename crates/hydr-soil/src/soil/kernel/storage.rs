@@ -56,6 +56,9 @@ where
         if let Some(error) = crate::tensor::probe_f64::<R, _>(&client)? {
             return Err(SoilError::input(error.message("soil")));
         }
+        if let Some(error) = crate::tensor::probe_correctly_rounded::<R>() {
+            return Err(SoilError::input(error.message("soil")));
+        }
         let tensor = |values: Vec<f64>| Tensor::<R>::from_slice(&values, &[values.len()], &device);
         let context = Self {
             client,

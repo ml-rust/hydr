@@ -83,6 +83,9 @@ where
         if let Some(error) = crate::tensor::probe_f64::<R, _>(&client)? {
             return Err(SubcatchmentError::input(error.message("subcatchment")));
         }
+        if let Some(error) = crate::tensor::probe_correctly_rounded::<R>() {
+            return Err(SubcatchmentError::input(error.message("subcatchment")));
+        }
         let tensor = |values: &[f64]| Tensor::<R>::from_slice(values, &[values.len()], &device);
         let phase1 = TensorSubareaGroup::<R>::new(client.clone(), first, &definitions, &config)?;
         let phase2 = TensorSubareaGroup::<R>::new(client.clone(), second, &definitions, &config)?;

@@ -18,7 +18,7 @@ use std::sync::Arc;
 /// Schema identity of the runoff pool snapshot package.
 pub const RUNOFF_POOL_SNAPSHOT_SCHEMA: &str = "hydr-runoff-pool-checkpoint-1";
 /// Numerical contract identity of the runoff pool snapshot package.
-pub const RUNOFF_POOL_CONTRACT_VERSION: &str = "hydr-runoff-pool-numr-cpu-1";
+pub const RUNOFF_POOL_CONTRACT_VERSION: &str = "hydr-runoff-pool-numr-cpu-2";
 
 /// Complete caller-owned paired state, with one bounded common receipt.
 #[derive(Clone, Debug, PartialEq)]

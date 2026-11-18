@@ -415,7 +415,7 @@ Exact continuation requires the same build, dependency sources, runtime arithmet
 
 Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `CHANNEL_SNAPSHOT_SCHEMA` and `CHANNEL_CONTRACT_VERSION`. `import_snapshot` compares both before any other check and rejects a foreign value with an input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected. These include earlier layouts and packages with surveyed low parts.
 
-The current identities are `hydr-channel-checkpoint-2` and `hydr-channel-1d-numr-cpu-2`. Retained forcing can hold a `FluxPort`, with its provenance. Packages of schema `hydr-channel-checkpoint-1` reject by identity. Capture a new package to recover.
+The current identities are `hydr-channel-checkpoint-2` and `hydr-channel-1d-numr-cpu-3`. Contract `hydr-channel-1d-numr-cpu-2` predates correctly rounded `exp`, `log` and `pow`, and rejects by identity. Retained forcing can hold a `FluxPort`, with its provenance. Packages of schema `hydr-channel-checkpoint-1` reject by identity. Capture a new package to recover.
 
 Import checks continuation consistency. The application owns content hashes and the authenticity of earlier history.
 

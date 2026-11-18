@@ -7,7 +7,7 @@ use hydr::storage::LEVEL_POOL_SNAPSHOT_SCHEMA;
 #[test]
 fn channel_package_carries_identity() -> TestResult {
     assert_eq!(CHANNEL_SNAPSHOT_SCHEMA, "hydr-channel-checkpoint-2");
-    assert_eq!(CHANNEL_CONTRACT_VERSION, "hydr-channel-1d-numr-cpu-2");
+    assert_eq!(CHANNEL_CONTRACT_VERSION, "hydr-channel-1d-numr-cpu-3");
     let package = advance(reach()?, 2)?.snapshot_data()?;
     assert_eq!(package.schema, CHANNEL_SNAPSHOT_SCHEMA);
     assert_eq!(package.contract, CHANNEL_CONTRACT_VERSION);
@@ -53,8 +53,13 @@ fn channel_import_rejects_foreign_contract() -> TestResult {
     let origin = reach()?;
     let package = advance(origin.clone(), 2)?.snapshot_data()?;
     let before = origin.snapshot_data()?;
-    // Contract `1` predates the FluxPort endpoint.
-    for found in ["hydr-channel-1d-numr-gpu-1", "hydr-channel-1d-numr-cpu-1"] {
+    // Contract `1` predates the FluxPort endpoint. Contract `2` predates correctly rounded
+    // `exp`, `log` and `pow`.
+    for found in [
+        "hydr-channel-1d-numr-gpu-1",
+        "hydr-channel-1d-numr-cpu-1",
+        "hydr-channel-1d-numr-cpu-2",
+    ] {
         let mut changed = package.clone();
         changed.contract = found.into();
         let Err(error) = origin.import_snapshot(&changed) else {

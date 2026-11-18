@@ -9,6 +9,10 @@
 //!
 //! Reach-end ports change the package format again. Each case also maps its text back to the
 //! format before ports and reproduces that format's digest.
+//!
+//! Correctly rounded `exp`, `log` and `pow` bump the surface/channel, channel and surface solver
+//! contract identities, so both current digests move. No accepted bit moves in either case: the
+//! text mapped back to the format before ports still reproduces that format's digest.
 
 use crate::fixture::Result;
 use crate::restoration::{network, state};
@@ -25,18 +29,21 @@ fn digest(text: &str) -> u64 {
 
 /// The text in the package format before reach-end ports.
 ///
-/// That format names schema `3` and contract `4`. It holds no port fields, and its reach
-/// forcing holds each endpoint policy without `Some`. A case without ports changes no other
-/// field, so this text reproduces the earlier digest bit for bit.
+/// That format names schema `3` and contract `4`, with channel contract `2` and surface solver
+/// contract `1` in the nested packages. It holds no port fields, and its reach forcing holds
+/// each endpoint policy without `Some`. A case without ports changes no other field, so this
+/// text reproduces the earlier digest bit for bit.
 fn before_ports(text: &str) -> String {
     text.replace(
         "hydr-surface-channel-checkpoint-4",
         "hydr-surface-channel-checkpoint-3",
     )
     .replace(
-        "hydr-surface-channel-numr-cpu-5",
+        "hydr-surface-channel-numr-cpu-6",
         "hydr-surface-channel-numr-cpu-4",
     )
+    .replace("hydr-channel-1d-numr-cpu-3", "hydr-channel-1d-numr-cpu-2")
+    .replace("hydr-swe-numr-cpu-2", "hydr-swe-numr-cpu-1")
     .replace(
         ", ports: SurfaceChannelPortCounterData { ledgers: [], last_signed_volume_m3: [], surface_in_m3: 0.0, surface_out_m3: 0.0, paired_bound_m3: 0.0 }",
         "",
@@ -81,6 +88,8 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
     // their partition, and their accepted states agree with the earlier ones within the head
     // and transfer budgets. The fourth interval no longer stalls and keeps its step-limited
     // duration.
+    //
+    // The digest under contract `5` was 0x6ac9_8aad_15d3_f3a7. Only the identities differ.
     let mut batch = network().build()?;
     for target in [0.25, 0.5, 0.75, 1.0] {
         batch = step(&batch, target)?;
@@ -90,7 +99,7 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
             assert_eq!(link.level_factor, 1.0, "{link:?}");
         }
     }
-    check(&batch, 0x6ac9_8aad_15d3_f3a7, 0xf6d4_a84c_2e66_ef34)
+    check(&batch, 0xba64_0fc6_cc65_ea08, 0xf6d4_a84c_2e66_ef34)
 }
 
 #[test]
@@ -98,6 +107,8 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
     // The digest before the response step was 0xb123_21ad_9264_82d0. The step partition stays
     // unchanged, and the third interval takes fewer updates. Its exchanged volume and heads
     // agree with the earlier ones within the head and transfer budgets.
+    //
+    // The digest under contract `5` was 0x0511_a7a3_d27d_263f. Only the identities differ.
     let mut spec = Spec::new(1, 1, 1.0, 0.0)
         .reach(
             ReachSpec::new("river", 0.0, &[1.0, 1.0])
@@ -118,5 +129,5 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
         let interval = forcing(&batch, end, &[("river", inflow)]);
         batch = batch.trial_to(end, &interval)?.into_next();
     }
-    check(&batch, 0x0511_a7a3_d27d_263f, 0xcfe8_ea92_adc0_edf6)
+    check(&batch, 0x84a2_1234_ef25_3316, 0xcfe8_ea92_adc0_edf6)
 }

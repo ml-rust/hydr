@@ -42,6 +42,8 @@ mod reservoir;
 mod runoff_pools;
 #[path = "support/runtime.rs"]
 mod runtime;
+#[path = "runtime_backends/structure_laws.rs"]
+mod structure_laws;
 #[path = "runtime_backends/subcatchment.rs"]
 mod subcatchment;
 #[path = "runtime_backends/surface_channels.rs"]

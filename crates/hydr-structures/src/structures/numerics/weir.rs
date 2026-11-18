@@ -2,6 +2,7 @@
 use numr::ops::BinaryOps;
 use numr::ops::CompareOps;
 use numr::ops::ConditionalOps;
+use numr::ops::CorrectlyRoundedOps;
 use numr::ops::ScalarOps;
 use numr::ops::UnaryOps;
 use numr::{dtype::DType, runtime::Runtime};
@@ -46,7 +47,10 @@ where
         &hu,
         "active free-overflow head above crest must remain positive finite",
     )?;
-    let raw = c.add(&context.log_weir_scale, &c.mul_scalar(&c.log(&hu)?, 1.5)?)?;
+    let raw = c.add(
+        &context.log_weir_scale,
+        &c.mul_scalar(&c.cr_log(&hu)?, 1.5)?,
+    )?;
     let (magnitude, logarithm) = super::orifice::exp_active(context, active, &raw)?;
     Ok(WeirResult {
         magnitude,
@@ -100,7 +104,7 @@ where
         "represented submerged head ratio lies outside [0,1]",
     )?;
     // No outward bound covers this square root, so no runtime square-root contract is checked.
-    // Its error reaches only `k`, which shares the uncontracted log/exp path to the discharge.
+    // Its error reaches only `k`, which feeds the correctly rounded log/exp path to the discharge.
     // Downstream finite and positive checks reject any nonfinite or vanished result.
     let k = c.add(
         &context.one,
@@ -110,11 +114,11 @@ where
         &c.add(
             &c.add(
                 &context.log_weir_scale,
-                &c.mul_scalar(&c.log(&hu)?, 1.5 - VILLEMONTE_EXPONENT)?,
+                &c.mul_scalar(&c.cr_log(&hu)?, 1.5 - VILLEMONTE_EXPONENT)?,
             )?,
-            &c.mul_scalar(&c.log(&gap)?, VILLEMONTE_EXPONENT)?,
+            &c.mul_scalar(&c.cr_log(&gap)?, VILLEMONTE_EXPONENT)?,
         )?,
-        &c.mul_scalar(&c.log(&k)?, VILLEMONTE_EXPONENT)?,
+        &c.mul_scalar(&c.cr_log(&k)?, VILLEMONTE_EXPONENT)?,
     )?;
     let (magnitude, logarithm) = super::orifice::exp_active(context, active, &raw)?;
     Ok(WeirResult {

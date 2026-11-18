@@ -179,7 +179,7 @@ fn earlier_package_identities_reject() -> Result {
     );
     assert_eq!(
         SURFACE_CHANNEL_CONTRACT_VERSION,
-        "hydr-surface-channel-numr-cpu-5"
+        "hydr-surface-channel-numr-cpu-6"
     );
     let data = package()?;
     let mut earlier = data.clone();
@@ -192,16 +192,22 @@ fn earlier_package_identities_reject() -> Result {
             "capture a new package",
         ],
     )?;
-    let mut earlier = data;
-    earlier.contract = "hydr-surface-channel-numr-cpu-4".into();
-    rejects(
-        &earlier,
-        &[
-            "surface-channel checkpoint contract",
-            "found \"hydr-surface-channel-numr-cpu-4\"",
-            "restore it with the hydr build that produced it",
-        ],
-    )
+    for found in [
+        "hydr-surface-channel-numr-cpu-4",
+        "hydr-surface-channel-numr-cpu-5",
+    ] {
+        let mut earlier = data.clone();
+        earlier.contract = found.into();
+        rejects(
+            &earlier,
+            &[
+                "surface-channel checkpoint contract",
+                &format!("found \"{found}\""),
+                "restore it with the hydr build that produced it",
+            ],
+        )?;
+    }
+    Ok(())
 }
 
 #[test]

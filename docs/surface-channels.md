@@ -28,7 +28,7 @@ A surveyed reach joins the coordinator through lateral links only.
 - Stage: the bed plus the depth from the reach's certified area-to-stage recovery.
 - Donor water: the lower bound of the two-part stored volume, as the reach's own step uses.
 
-Surveyed reaches keep the [surveyed limits](channels.md#set-surveyed-numerical-controls). Surveyed links run in the CPU checks only. The CUDA runtime evidence covers rectangular reaches, through a bank link in one case and a port in another.
+Surveyed reaches keep the [surveyed limits](channels.md#set-surveyed-numerical-controls). Surveyed links run in the CPU checks only. The CUDA runtime evidence covers rectangular reaches, through a bank link in one case and a port with a bank link in another.
 
 A reach without links advances on the same common interval with its own forcing.
 
@@ -353,7 +353,7 @@ Construct a `restore` or `import_snapshot` destination with the same setup and o
 
 Pass `data.surface.setup.forcing.clone()` to `resume` for a plain restart.
 
-`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-4`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-5`). Import checks both first. A package of an earlier format rejects by identity; capture a new package. Import recalculates the last interval and compares every bit. An error names the first differing field.
+`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-4`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-6`). Import checks both first. A package of an earlier format rejects by identity; capture a new package. Import recalculates the last interval and compares every bit. An error names the first differing field.
 
 The package holds the ports in `setup.ports` and the lifetime port counters in `counters.ports`. The counters include each port's last signed volume, so a replayed `reversed` flag matches. The last interval's diagnostics hold every port receipt. Port ghost states rebuild from the start-frame reach packages.
 

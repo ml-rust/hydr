@@ -263,7 +263,7 @@ where
         let original_momentum = c.where_cond(active, momentum, &zero)?;
         let safe_volume = c.where_cond(active, volume, &one)?;
         let velocity = c.abs(&c.div(&original_momentum, &safe_volume)?)?;
-        let power = c.pow_scalar(radius, 4.0 / 3.0)?;
+        let power = c.cr_pow_scalar(radius, 4.0 / 3.0)?;
         let numerator = c.mul_scalar(
             &c.mul_scalar(
                 &c.mul(&roughness_squared, &velocity)?,

@@ -15,7 +15,7 @@ fn native_coefficient_retains_class_area_and_original_operation_order() -> Resul
         alpha_native.to_bits()
     );
     assert_eq!(alpha_native.to_bits(), 0.18625_f64.to_bits());
-    let alpha_si = alpha_native * 0.3048_f64.powf(1.0 - 1.6666667);
+    let alpha_si = alpha_native * numr::algorithm::correctly_rounded::pow(0.3048, 1.0 - 1.6666667);
     assert_eq!(
         p.coefficient_si()
             .ok_or("missing SI coefficient")?

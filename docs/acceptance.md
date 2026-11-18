@@ -663,8 +663,9 @@ The CUDA tests of these components also run the same case on CPU and compare com
 | Components | CPU/CUDA comparison |
 | --- | --- |
 | Operating controls, controlled gates, controlled pumps | Every field matches bit for bit |
+| Structure laws | Free and submerged weir, orifice, and free, mixed and submerged gate outputs match bit for bit over a dense head grid of more than 700 lanes |
 | Level pools, reservoirs, subcatchments | Per-element states match bit for bit. Batch totals and residual diagnostics agree within `volume_absolute + volume_relative * scale`. |
-| Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart through one bank link. A second case drains a reach through a port, refills it, and drains it again, with restart. Its cell states also match bit for bit. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. |
+| Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart through one bank link. A second case drains a reach through a port and a bank link together, refills it, and drains it again, with restart. Its cell states also match bit for bit. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. |
 
 Those totals and diagnostics differ in their last bits between CPU and CUDA. CUDA execution establishes no GPU accuracy qualification.
 

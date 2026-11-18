@@ -128,7 +128,7 @@ impl ReservoirParameters {
             }
             coefficient
         };
-        let alpha_si = alpha * FOOT.powf(1.0 - EXPONENT);
+        let alpha_si = alpha * numr::algorithm::correctly_rounded::pow(FOOT, 1.0 - EXPONENT);
         if !alpha_si.is_finite() || (alpha > 0.0 && alpha_si <= 0.0) {
             return Err(ReservoirError::input(
                 "SI coefficient overflows or underflows. Rescale physical geometry",

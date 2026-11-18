@@ -1,6 +1,7 @@
 //! Configured persistent concrete-law masks and sum-of-logs coefficient caches.
 use numr::ops::BinaryOps;
 use numr::ops::CompareOps;
+use numr::ops::CorrectlyRoundedOps;
 use numr::ops::IndexingOps;
 use numr::ops::ReduceOps;
 use numr::ops::ScalarOps;
@@ -187,12 +188,22 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
                 error.message("structures"),
             ));
         }
+        if let Some(error) = crate::tensor::probe_correctly_rounded::<R>() {
+            return Err(StructureError::input(
+                StructureInputErrorKind::Definition,
+                error.message("structures"),
+            ));
+        }
         let tensor = |v: &[f64]| Tensor::<R>::from_slice(v, &[v.len()], &device);
         let one = tensor(&vec![1.0; n])?;
-        let log_orifice_scale =
-            client.add(&client.log(&tensor(&cd)?)?, &client.log(&tensor(&area)?)?)?;
-        let log_weir_scale =
-            client.add(&client.log(&tensor(&cw)?)?, &client.log(&tensor(&length)?)?)?;
+        let log_orifice_scale = client.add(
+            &client.cr_log(&tensor(&cd)?)?,
+            &client.cr_log(&tensor(&area)?)?,
+        )?;
+        let log_weir_scale = client.add(
+            &client.cr_log(&tensor(&cw)?)?,
+            &client.cr_log(&tensor(&length)?)?,
+        )?;
         let context = Self {
             gate: super::gate::TensorGateContext::new(&elements, &client, &device)?,
             pump: super::pump::TensorPumpContext::new(&elements, &device)?,
@@ -203,8 +214,8 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
             crest: tensor(&crest)?,
             allow_a: tensor(&allow_a)?,
             allow_b: tensor(&allow_b)?,
-            log_gravity: client.log(&tensor(&gravity)?)?,
-            log_two: client.log(&client.mul_scalar(&one, 2.0)?)?,
+            log_gravity: client.cr_log(&tensor(&gravity)?)?,
+            log_two: client.cr_log(&client.mul_scalar(&one, 2.0)?)?,
             log_orifice_scale,
             log_weir_scale,
             one,

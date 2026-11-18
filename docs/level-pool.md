@@ -191,6 +191,8 @@ Continuation and import require:
 
 Unsupported arithmetic rejects context construction. Callers must preserve the admitted arithmetic throughout continuation and import.
 
+A level pool evaluates no elementary function. Coupled level pools and channel pools that nest it also require `correctly-rounded-elementary`: correctly rounded F64 `exp`, `log` and `pow` for their structure laws and reaches, with IEEE fused multiply-add.
+
 ### Exchange calculation
 
 ```text

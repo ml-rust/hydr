@@ -13,7 +13,7 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 /// Schema identity of the reservoir snapshot package.
 pub const RESERVOIR_SNAPSHOT_SCHEMA: &str = "hydr-reservoir-checkpoint-1";
 /// Numerical contract identity of the reservoir snapshot package.
-pub const RESERVOIR_CONTRACT_VERSION: &str = "hydr-reservoir-numr-cpu-1";
+pub const RESERVOIR_CONTRACT_VERSION: &str = "hydr-reservoir-numr-cpu-2";
 
 /// Caller-owned complete reservoir continuation values.
 ///

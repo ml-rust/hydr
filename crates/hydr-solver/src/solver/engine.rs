@@ -104,6 +104,12 @@ where
                 error.message("surface"),
             ));
         }
+        if let Some(error) = crate::tensor::probe_correctly_rounded::<R>() {
+            return Err(EngineError::rejected(
+                "arithmetic environment",
+                error.message("surface"),
+            ));
+        }
         let state = FlowState::new(&domain, state.cells().to_vec())?;
         let boundaries =
             BoundaryConditions::with_open_faces(&domain, boundaries.open_faces().to_vec())?;

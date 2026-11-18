@@ -182,6 +182,7 @@ Construction requires:
 - The basic arithmetic contract.
 - `FusedMulAddContract::Ieee754Fused`.
 - Nearest-even rounding with gradual underflow.
+- Correctly rounded F64 `exp` and `log` (`correctly-rounded-elementary`). The bound `StructureBatch` evaluates them at construction.
 
 Keep that arithmetic environment during continuation and import. Runtime availability alone is insufficient. No host or unfused fallback substitutes for the provider contract.
 

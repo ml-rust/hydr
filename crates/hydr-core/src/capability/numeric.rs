@@ -34,6 +34,8 @@ pub enum ArithmeticRequirement {
     /// `pow` is correctly rounded modulo the unknown hardest cases.
     /// All four are deterministic on every runtime that meets the contracts.
     /// Needs IEEE basic arithmetic and fused multiply-add.
+    /// Evidence: numr `tests/correctly_rounded.rs` checks every function against MPFR, and
+    /// `tests/backend_parity/correctly_rounded.rs` checks CUDA against CPU bit for bit.
     CorrectlyRoundedElementary,
 }
 

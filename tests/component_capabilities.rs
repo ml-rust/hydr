@@ -110,7 +110,7 @@ mod surface_channels;
 #[path = "component_capabilities/surface_channel_ports.rs"]
 mod surface_channel_ports;
 
-use hydr::capability::{ComponentCapabilities, RegimeScope, RuntimeKind};
+use hydr::capability::{ComponentCapabilities, ComponentId, RegimeScope, RuntimeKind};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -470,4 +470,72 @@ fn declarations_are_unique_and_identified() -> Result<(), Box<dyn std::error::Er
         }
     }
     Ok(())
+}
+
+/// Components that a runtime without correctly rounded elementary functions cannot run.
+///
+/// Each calls numr `CorrectlyRoundedOps` or the host `correctly_rounded` functions, directly or
+/// through a nested component, or needs a `StructureBatch` that does.
+const CORRECTLY_ROUNDED_CALLERS: &[ComponentId] = &[
+    // Surface Manning `cr_pow_scalar(depth, 7/3)`, and nested soil.
+    ComponentId::SurfaceSolver,
+    // Reach Manning `cr_pow_scalar(radius, 4/3)`.
+    ComponentId::ChannelReachRectangular,
+    // Star-depth `cr_log` / `cr_exp` and reach Manning.
+    ComponentId::ChannelReachTriangular,
+    // Surveyed Manning `cr_pow_scalar(radius, 4/3)`.
+    ComponentId::ChannelReachSurveyed,
+    // Green-Ampt Newton step `cr_log`.
+    ComponentId::Soil,
+    // Drainage `cr_pow_scalar` and the host SI coefficient `pow`.
+    ComponentId::Reservoir,
+    // Weir and orifice log-scale caches and `cr_exp` discharge.
+    ComponentId::CoupledLevelPools,
+    // Needs a `StructureBatch`, whose construction runs `cr_log` and the correctly rounded probe.
+    ComponentId::ControlledGate,
+    ComponentId::OperatingControl,
+    ComponentId::GateActuator,
+    ComponentId::ControlledPump,
+    // Bank weir, host stall forecast `log`, and nested components.
+    ComponentId::SurfaceChannels,
+    // Nested callers only.
+    ComponentId::Subcatchment,
+    ComponentId::ChannelPools,
+    ComponentId::RunoffPools,
+];
+
+#[test]
+fn correctly_rounded_elementary_is_declared_by_exactly_its_callers() {
+    use hydr::capability::ArithmeticRequirement as A;
+    for entry in declarations() {
+        let capabilities = entry.capabilities;
+        let id = capabilities.component.id();
+        let declares = capabilities
+            .arithmetic
+            .contains(&A::CorrectlyRoundedElementary);
+        let calls = CORRECTLY_ROUNDED_CALLERS.contains(&capabilities.component);
+        assert_eq!(
+            declares, calls,
+            "`{id}`: declares correctly-rounded-elementary={declares}, calls it={calls}"
+        );
+        if declares {
+            // The numr family needs IEEE basic arithmetic and fused multiply-add.
+            for needed in [
+                A::F64Ieee754Basic,
+                A::NearestEvenGradualUnderflow,
+                A::FusedMulAdd,
+            ] {
+                assert!(
+                    capabilities.arithmetic.contains(&needed),
+                    "`{id}` declares correctly-rounded-elementary without `{}`",
+                    needed.id()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn reference_runtime_meets_correctly_rounded_elementary() {
+    assert!(hydr_core::tensor::probe_correctly_rounded::<runtime::Runtime>().is_none());
 }

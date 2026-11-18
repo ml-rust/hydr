@@ -46,7 +46,7 @@ fn channel_pool_package_carries_identity() -> Result {
     );
     assert_eq!(
         CHANNEL_POOL_CONTRACT_VERSION,
-        "hydr-channel-pool-numr-cpu-1"
+        "hydr-channel-pool-numr-cpu-2"
     );
     let (_, package) = package()?;
     assert_eq!(package.schema, CHANNEL_POOL_SNAPSHOT_SCHEMA);

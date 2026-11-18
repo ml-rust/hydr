@@ -1,8 +1,8 @@
 //! All-log fully submerged orifice evaluation without unnecessary physical products.
 use numr::ops::BinaryOps;
 use numr::ops::ConditionalOps;
+use numr::ops::CorrectlyRoundedOps;
 use numr::ops::ScalarOps;
-use numr::ops::UnaryOps;
 use numr::{dtype::DType, runtime::Runtime};
 
 use super::direction::Classification;
@@ -34,7 +34,7 @@ where
     let c = &context.client;
     let logarithm = c.where_cond(active, raw, &context.zero)?;
     context.finite(&logarithm, "active log discharge")?;
-    let magnitude = c.exp(&logarithm)?;
+    let magnitude = c.cr_exp(&logarithm)?;
     context.positive(
         &magnitude,
         "active final discharge overflows or underflows to zero",
@@ -67,7 +67,7 @@ where
     let root_log = c.mul_scalar(
         &c.add(
             &c.add(&context.log_two, &context.log_gravity)?,
-            &c.log(&gap)?,
+            &c.cr_log(&gap)?,
         )?,
         0.5,
     )?;

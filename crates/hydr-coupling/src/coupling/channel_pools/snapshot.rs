@@ -11,7 +11,7 @@ use std::sync::Arc;
 /// Schema identity of the channel pool snapshot package.
 pub const CHANNEL_POOL_SNAPSHOT_SCHEMA: &str = "hydr-channel-pool-checkpoint-1";
 /// Numerical contract identity of the channel pool snapshot package.
-pub const CHANNEL_POOL_CONTRACT_VERSION: &str = "hydr-channel-pool-numr-cpu-1";
+pub const CHANNEL_POOL_CONTRACT_VERSION: &str = "hydr-channel-pool-numr-cpu-2";
 
 /// Complete caller-owned continuation. Preserve every floating-point bit when encoding.
 #[derive(Clone, Debug, PartialEq)]

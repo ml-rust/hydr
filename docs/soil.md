@@ -180,7 +180,7 @@ Lifecycle checks cover mixed/independent batches, SI/native conversion, immutabl
 
 ### What these checks establish
 
-Checked scalar and SIMD logarithm paths meet the frozen tolerances. Bitwise restart requires a fixed batch layout, build, and runtime. Cross-shape bitwise equality remains unestablished.
+The infiltration logarithm is correctly rounded, so its bits do not depend on batch length or lane position. The checked layouts meet the frozen tolerances. Bitwise restart requires a fixed batch layout, build, and runtime. Cross-shape bitwise equality remains unestablished: no test compares the same cell across batch shapes.
 
 ## Current limits
 

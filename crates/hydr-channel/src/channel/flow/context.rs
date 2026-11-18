@@ -68,6 +68,9 @@ where
         if let Some(error) = crate::tensor::probe_f64::<R, _>(&client)? {
             return Err(ChannelError::input(error.message("channel reach")));
         }
+        if let Some(error) = crate::tensor::probe_correctly_rounded::<R>() {
+            return Err(ChannelError::input(error.message("channel reach")));
+        }
         let device = client.device();
         let make = |values: Vec<f64>| Tensor::<R>::from_slice(&values, &[values.len()], device);
         let length = make(definition.geometry.cells().map(|c| c.length_m).collect())?;

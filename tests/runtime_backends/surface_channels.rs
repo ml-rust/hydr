@@ -179,14 +179,14 @@ fn selected_cuda_client_executes_surface_channel_overflow_reversal_and_restart()
     super::same_states_bounded_data(&cpu, &cuda, config.mass_absolute_m3, config.mass_relative)
 }
 
-/// A reach above its floodplain drains through the west port, then refills and drains again.
+/// A reach above its floodplain drains through the west port and the bank link together, then
+/// refills and drains again.
 ///
-/// The case holds no bank link. The weir law evaluates `exp` and `log`, and numr CUDA `exp`
-/// is not correctly rounded, so a link breaks the bit-for-bit state criterion.
+/// The weir law evaluates correctly rounded `exp` and `log`, so the bank link keeps accepted
+/// cell states bit for bit equal on every runtime.
 fn port_case() -> Scenario {
     let mut case = Scenario::rest(1.0, 1.6, 0.5, vec![west("p")]);
     case.alpha = Reach::rest(0.5, 1.75);
-    case.link = false;
     case
 }
 

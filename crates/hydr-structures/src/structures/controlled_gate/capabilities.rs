@@ -32,6 +32,7 @@ static CONTROLLED_GATE: ComponentCapabilities = ComponentCapabilities {
         ArithmeticRequirement::F64Ieee754Basic,
         ArithmeticRequirement::NearestEvenGradualUnderflow,
         ArithmeticRequirement::FusedMulAdd,
+        ArithmeticRequirement::CorrectlyRoundedElementary,
     ],
     runtimes: &[
         RuntimeSupport {

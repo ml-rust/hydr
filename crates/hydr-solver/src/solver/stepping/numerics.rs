@@ -44,7 +44,7 @@ where
             &client.gt(&speed, zero)?,
             &client.gt(&self.context.manning, zero)?,
         )?;
-        let power = client.pow_scalar(&depth, 7.0 / 3.0)?;
+        let power = client.cr_pow_scalar(&depth, 7.0 / 3.0)?;
         let safe_power = client.where_cond(&active_drag, &power, &client.add_scalar(zero, 1.0)?)?;
         let drag = client.mul(&self.context.manning, &self.context.manning)?;
         let drag = client.mul(&drag, &speed)?;

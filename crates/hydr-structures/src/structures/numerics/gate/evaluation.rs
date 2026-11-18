@@ -1,10 +1,9 @@
-//! Positive pressure-strip logarithms combined through Numr logsumexp.
+//! Positive pressure-strip logarithms combined through a correctly rounded two-input logaddexp.
 use numr::ops::BinaryOps;
 use numr::ops::CompareOps;
 use numr::ops::ConditionalOps;
-use numr::ops::CumulativeOps;
+use numr::ops::CorrectlyRoundedOps;
 use numr::ops::ScalarOps;
-use numr::ops::ShapeOps;
 use numr::ops::UnaryOps;
 use numr::{dtype::DType, runtime::Runtime};
 
@@ -44,8 +43,8 @@ where
         c.where_cond(&class.submerged, &geometry.submerged_height, &context.one)?;
     let gap = c.where_cond(&class.submerged, &geometry.gap, &context.one)?;
     let submerged_log = c.add(
-        &c.log(&submerged_height)?,
-        &c.mul_scalar(&c.log(&gap)?, 0.5)?,
+        &c.cr_log(&submerged_height)?,
+        &c.mul_scalar(&c.cr_log(&gap)?, 0.5)?,
     )?;
     let free_height = c.where_cond(&class.free, &geometry.free_height, &context.one)?;
     let lower = c.where_cond(&class.free, &geometry.lower, &context.one)?;
@@ -57,25 +56,23 @@ where
         "gate free pressure-head ratio lies outside zero to one",
     )?;
     // No outward bound covers this square root, so no runtime square-root contract is checked.
-    // Its error reaches only `k`, which shares the uncontracted log/exp path to the discharge.
+    // Its error reaches only `k`, which feeds the correctly rounded log/exp path to the discharge.
     // Downstream finite and positive checks reject any nonfinite or vanished result.
     let k = c.add_scalar(&c.div(&ratio, &c.add_scalar(&c.sqrt(&ratio)?, 1.0)?)?, 1.0)?;
     let free_log = c.add(
         &c.add(
-            &c.log(&c.add_scalar(&context.zero, 2.0 / 3.0)?)?,
-            &c.log(&free_height)?,
+            &c.cr_log(&c.add_scalar(&context.zero, 2.0 / 3.0)?)?,
+            &c.cr_log(&free_height)?,
         )?,
-        &c.add(&c.mul_scalar(&c.log(&lower)?, 0.5)?, &c.log(&k)?)?,
+        &c.add(&c.mul_scalar(&c.cr_log(&lower)?, 0.5)?, &c.cr_log(&k)?)?,
     )?;
     let absent = c.add_scalar(&context.zero, f64::NEG_INFINITY)?;
-    let strips = c.stack(
-        &[
-            &c.where_cond(&class.submerged, &submerged_log, &absent)?,
-            &c.where_cond(&class.free, &free_log, &absent)?,
-        ],
-        1,
+    let integral_log = super::super::log_add_exp::log_add_exp(
+        c,
+        &c.where_cond(&class.submerged, &submerged_log, &absent)?,
+        &c.where_cond(&class.free, &free_log, &absent)?,
+        &absent,
     )?;
-    let integral_log = c.logsumexp(&strips, &[1], false)?;
     let raw = c.add(
         &c.add(&gate.log_scale, &gate.log_root_gravity)?,
         &integral_log,

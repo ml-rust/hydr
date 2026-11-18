@@ -55,7 +55,7 @@ where
             }
         };
         let radius = c.where_cond(&active, &radius, &one)?;
-        let power = c.pow_scalar(&radius, 4.0 / 3.0)?;
+        let power = c.cr_pow_scalar(&radius, 4.0 / 3.0)?;
         let roughness = c.where_cond(&active, &self.manning, &zero)?;
         let roughness_squared = c.mul(&roughness, &roughness)?;
         let velocity = c.where_cond(&active, &c.abs(&fields.velocity)?, &zero)?;
