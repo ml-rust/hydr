@@ -1,8 +1,8 @@
 //! Reach-end port cases on a 4 x 2 grid of 2 m cells beside two 4 m wide rectangular reaches.
 //!
-//! Surface cell `row * 4 + column` is 2 m square. Each reach has three 2 m long cells of the
-//! 4 m port width. West edge faces `x_face(0, *)` and east edge faces `x_face(4, *)` each
-//! match one reach end. Every case uses the public coordinator API only.
+//! Surface cell `row * 4 + column` is 2 m square. Each reach has three cells, by default 2 m
+//! long and of the 4 m port width. West edge faces `x_face(0, *)` and east edge faces
+//! `x_face(4, *)` each match one reach end. Every case uses the public coordinator API only.
 
 use super::fixture::{Result, applicability, config};
 use hydr::channel::*;
@@ -11,8 +11,8 @@ use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::soil::{LandModel, SoilState};
 use hydr::solver::{
-    Axis, BoundaryConditions, BoundaryFace, ForcingInterval, ForcingSchedule, InitialState,
-    SolverConfig, SolverSetup,
+    Axis, BoundaryConditions, BoundaryFace, BoundaryForcing, ForcingInterval, ForcingSchedule,
+    InitialState, SolverConfig, SolverSetup,
 };
 
 pub type Batch = SurfaceChannelBatch<crate::runtime::Runtime>;
@@ -114,6 +114,11 @@ pub fn four_ports() -> Vec<SurfaceChannelPort> {
 
 /// Rectangular reach of `count` cells of the port width on `bed`.
 pub fn rectangular(count: usize, bed: f64) -> ChannelReachDefinition {
+    sized(count, bed, [REACH_WIDTH, LENGTH])
+}
+
+/// Rectangular reach of `count` cells of `[width, length]` on `bed`, in m.
+pub fn sized(count: usize, bed: f64, [width, length]: [f64; 2]) -> ChannelReachDefinition {
     ChannelReachDefinition {
         vertical_datum: DATUM.into(),
         provenance: "Rectangular reach at the surface grid edge".into(),
@@ -121,8 +126,8 @@ pub fn rectangular(count: usize, bed: f64) -> ChannelReachDefinition {
             cells: (0..count)
                 .map(|i| RectangularChannelCell {
                     id: format!("cell-{i}"),
-                    length_m: LENGTH,
-                    width_m: REACH_WIDTH,
+                    length_m: length,
+                    width_m: width,
                     bed_elevation_m: bed,
                     maximum_depth_m: 4.0,
                     manning_n: 0.0,
@@ -193,9 +198,15 @@ pub struct Scenario {
     pub inactive: Vec<usize>,
     pub alpha: Reach,
     pub beta: Reach,
+    /// `alpha` cell width and length, in m.
+    pub alpha_size: [f64; 2],
     /// Keep the bank link on `alpha` cell 1.
     pub link: bool,
     pub ports: Vec<SurfaceChannelPort>,
+    /// Held forcing of every open surface face. The other edge faces are walls.
+    pub open: Vec<BoundaryForcing>,
+    /// Caller policies at unported reach ends. Every other unported end is a wall.
+    pub ends: Vec<(&'static str, ChannelEnd, ChannelBoundary)>,
 }
 
 impl Scenario {
@@ -212,9 +223,45 @@ impl Scenario {
             inactive: Vec::new(),
             alpha: Reach::rest(alpha_bed, stage),
             beta: Reach::rest(0.25, stage),
+            alpha_size: [REACH_WIDTH, LENGTH],
             link: true,
             ports,
+            open: Vec::new(),
+            ends: Vec::new(),
         }
+    }
+
+    /// Forcing over `[start, end]`: no policy at each ported end, the declared policy or a
+    /// wall at every other end.
+    pub fn forcing(
+        &self,
+        setup: &SurfaceChannelSetup,
+        start: f64,
+        end: f64,
+    ) -> SurfaceChannelForcingInterval {
+        let mut interval = forcing(setup, start, end);
+        for reach in &mut interval.reaches {
+            for (id, side, policy) in &self.ends {
+                if reach.reach_id != *id {
+                    continue;
+                }
+                let slot = match side {
+                    ChannelEnd::Left => &mut reach.left,
+                    ChannelEnd::Right => &mut reach.right,
+                };
+                *slot = Some(policy.clone());
+            }
+        }
+        interval
+    }
+
+    /// One accepted interval of this case toward `start + dt`.
+    pub fn step(&self, batch: &Batch, dt: f64) -> Result<Batch> {
+        let start = batch.time();
+        let end = start + dt;
+        Ok(batch
+            .trial_to(end, &self.forcing(batch.setup(), start, end))?
+            .into_next())
     }
 
     /// Setup and initial state of this case.
@@ -230,7 +277,10 @@ impl Scenario {
             active.clone(),
             SpatialReference::new("Synthetic projected CRS".into(), DATUM.into(), [0.0; 2])?,
         )?;
-        let boundaries = BoundaryConditions::impermeable_walls();
+        let boundaries = BoundaryConditions::with_open_faces(
+            &domain,
+            self.open.iter().map(BoundaryForcing::face).collect(),
+        )?;
         let forcing = ForcingSchedule::new(
             &domain,
             &boundaries,
@@ -240,7 +290,7 @@ impl Scenario {
                 rain: vec![0.0; CELLS],
                 potential_evaporation: vec![0.0; CELLS],
                 withdrawal: vec![0.0; CELLS],
-                boundaries: Vec::new(),
+                boundaries: self.open.clone(),
             }],
         )?;
         let land = LandModel::impervious(&domain);
@@ -252,17 +302,13 @@ impl Scenario {
             .map(|(cell, &active)| if active { *cell } else { still(0.0) })
             .collect();
         let flow = FlowState::new(&domain, cells)?;
-        let reach_state = |reach: &Reach| ChannelInitialState {
+        let reach_state = |reach: &Reach, [width, length]: [f64; 2]| ChannelInitialState {
             time_s: 0.0,
-            volume_m3: reach
-                .depth
-                .iter()
-                .map(|h| h * REACH_WIDTH * LENGTH)
-                .collect(),
+            volume_m3: reach.depth.iter().map(|h| h * width * length).collect(),
             longitudinal_momentum_m4_per_s: reach
                 .discharge_per_width
                 .iter()
-                .map(|q| q * REACH_WIDTH * LENGTH)
+                .map(|q| q * width * length)
                 .collect(),
         };
         let setup = SurfaceChannelSetup {
@@ -276,7 +322,7 @@ impl Scenario {
             reaches: vec![
                 SurfaceChannelReach {
                     id: ALPHA.into(),
-                    definition: rectangular(3, self.alpha.bed),
+                    definition: sized(3, self.alpha.bed, self.alpha_size),
                 },
                 SurfaceChannelReach {
                     id: BETA.into(),
@@ -296,8 +342,8 @@ impl Scenario {
                 soil,
             },
             reaches: vec![
-                (ALPHA.into(), reach_state(&self.alpha)),
-                (BETA.into(), reach_state(&self.beta)),
+                (ALPHA.into(), reach_state(&self.alpha, self.alpha_size)),
+                (BETA.into(), reach_state(&self.beta, [REACH_WIDTH, LENGTH])),
             ],
         };
         Ok((setup, initial))

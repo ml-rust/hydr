@@ -19,14 +19,24 @@ mod lifecycle;
 mod physics;
 #[path = "surface_channels/ports_definition.rs"]
 mod ports_definition;
+#[path = "surface_channels/ports_donors.rs"]
+mod ports_donors;
 #[path = "surface_channels/ports_fixture.rs"]
 mod ports_fixture;
+#[path = "surface_channels/ports_limits.rs"]
+mod ports_limits;
 #[path = "surface_channels/ports_order.rs"]
 mod ports_order;
+#[path = "surface_channels/ports_rest.rs"]
+mod ports_rest;
 #[path = "surface_channels/ports_restart.rs"]
 mod ports_restart;
 #[path = "surface_channels/ports_scenario.rs"]
 mod ports_scenario;
+#[path = "surface_channels/ports_step.rs"]
+mod ports_step;
+#[path = "surface_channels/ports_uniform.rs"]
+mod ports_uniform;
 #[path = "surface_channels/reference.rs"]
 mod reference;
 #[path = "surface_channels/refinement.rs"]

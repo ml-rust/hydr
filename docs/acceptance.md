@@ -624,6 +624,23 @@ The drain converges at second order because an isolated drain makes each interva
 
 These cases establish no weir-coefficient accuracy, bank-mapping proof, or measured-event accuracy.
 
+### Reach-end ports
+
+A port joins a rectangular reach end to a line of surface edge faces. The criteria below were fixed before any run.
+
+| Case | Enforced criterion |
+| --- | --- |
+| [Lake at rest](../tests/surface_channels/ports_rest.rs) | A reach bed equal to, below, and above the floodplain bed, through a one-face and a four-face port. After 50 intervals every surface `|q|` and reach `|Q|` stays within `1e-12`, and every stage within `1e-12 m`. |
+| Water below the higher bed | A port whose stage lies below the higher bed on both sides moves `0.0 m³`, bit for bit, over 50 intervals. Both children keep their start state bit for bit. |
+| Mirror symmetry | A reach drains across the four north faces of a symmetric grid. Mirror cells agree within `1e-12` relative each interval. |
+| [Uniform flow](../tests/surface_channels/ports_uniform.rs) | Froude `0.5` and `2`, reach to surface and surface to reach. Every `h` and `q` changes by at most `1e-12` relative over 50 intervals. The port carries the state's own discharge and momentum within `1e-12` relative. |
+| [Step limits](../tests/surface_channels/ports_limits.rs) | Each interval, the port signal speed covers `|u| + sqrt(g h)` of the reach end and of every surface face cell. The accepted step stays within both children's CFL limits. A fast reach end makes the port speed set the step. |
+| Depletion | A near-empty end cell drains onto a dry floodplain. Each port face takes the HLL flux of the start states bit for bit, and no water turns negative. The CFL limit stays at or below the depletion limit, so depletion never scales the flux. |
+| [Shared donor](../tests/surface_channels/ports_donors.rs) | A port and a bank weir draw on one reach end cell. The weir takes the cell's water net of port outflow: the gap stays within `1e-12` relative, and the two never exceed the cell's water. Port pairing, link pairing, and mass hold each interval. |
+| [Bed step](../tests/surface_channels/ports_step.rs) | Steady flow up and down a `0.2 m` step against a one-grid 2D twin. Steady means every `h` and `q` changes by at most `1e-12` relative over one interval. Inflow and outflow agree within `1e-9` relative in both systems. Reach stages match the twin within 1% of local depth. |
+
+These cases establish no measured-event accuracy and no energy guarantee at bed steps.
+
 ## Runtime support
 
 Every capability declaration claims the same status on each runtime. A named test backs each claim.

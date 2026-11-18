@@ -1,10 +1,9 @@
-//! Reach-end port intervals through the public trial: rest, dry beds, drains, flux regimes,
-//! pairing, and reversal.
+//! Reach-end port intervals through the public trial: port-only setup, a dam break smoke
+//! case, flux regimes, pairing, and reversal.
 
 use crate::fixture::Result;
 use crate::ports_fixture::{
-    ALPHA, BETA, Batch, CELLS, GRAVITY, REACH_WIDTH, Reach, Scenario, balanced, east, last,
-    reach_cells, step, still, west,
+    ALPHA, Batch, CELLS, Reach, Scenario, balanced, east, last, reach_cells, step, still, west,
 };
 use hydr::coupling::{SurfaceChannelPortRegime, SurfaceChannelPortTransfer};
 use hydr::model::CellState;
@@ -22,60 +21,6 @@ fn transfer(batch: &Batch) -> Result<SurfaceChannelPortTransfer> {
         .first()
         .ok_or("the port receipt")?
         .clone())
-}
-
-#[test]
-fn a_lake_at_rest_through_ports_with_a_bed_step_stays_at_rest() -> Result {
-    // Frozen criterion: after 50 intervals every |q|, |Q| and stage change is at most 1e-12.
-    const TOLERANCE: f64 = 1e-12;
-    let stage = 1.6;
-    // The reach bed lies below, then above, the 1 m surface bed, under the 1.2 m bank crest.
-    for alpha_bed in [0.5, 1.125] {
-        let ports = vec![west("p-west"), east("p-east")];
-        let mut batch = Scenario::rest(1.0, stage, alpha_bed, ports).build()?;
-        for _ in 0..50 {
-            batch = step(&batch, DT)?;
-            let interval = last(&batch)?;
-            assert_eq!(interval.ports.len(), 2);
-            for transfer in &interval.ports {
-                assert_eq!(transfer.regime, SurfaceChannelPortRegime::Subcritical);
-                assert!(transfer.paired_gap_m3.abs() <= transfer.paired_bound_m3);
-            }
-        }
-        assert_eq!(batch.accepted_steps(), 50);
-        for cell in batch.surface().state()?.cells() {
-            assert!(
-                cell.qx.abs() <= TOLERANCE && cell.qy.abs() <= TOLERANCE,
-                "{cell:?}"
-            );
-            assert!((cell.h + 1.0 - stage).abs() <= TOLERANCE, "{cell:?}");
-        }
-        for id in [ALPHA, BETA] {
-            for cell in reach_cells(&batch, id)? {
-                assert!(cell.discharge_m3_per_s.abs() <= TOLERANCE, "{id}: {cell:?}");
-                let moved = (cell.stage_m.ok_or("the reach is wet")? - stage).abs();
-                assert!(moved <= TOLERANCE, "{id}: {cell:?}");
-            }
-        }
-        balanced(&batch)?;
-    }
-    Ok(())
-}
-
-#[test]
-fn water_below_the_higher_bed_moves_nothing() -> Result {
-    // The reach stage of 0.8 m lies below the 1 m surface bed, and the surface is dry.
-    let mut case = Scenario::rest(1.0, 0.8, 0.5, vec![west("p")]);
-    case.link = false;
-    let batch = step(&case.build()?, DT)?;
-    let transfer = transfer(&batch)?;
-    assert_eq!(transfer.regime, SurfaceChannelPortRegime::Dry);
-    assert_eq!(transfer.signed_volume_m3.to_bits(), 0.0f64.to_bits());
-    assert_eq!(
-        batch.surface().ledger().exchange_in_m3.to_bits(),
-        0.0f64.to_bits()
-    );
-    Ok(())
 }
 
 #[test]
@@ -104,50 +49,6 @@ fn a_port_only_coordinator_builds_and_steps() -> Result {
     // The surface ledger counts port water as exchange. The composite link totals leave it out.
     assert!(batch.surface().ledger().exchange_in_m3 > 0.0);
     assert!(batch.ledger()?.surface_exchange_in_m3.abs() <= 1e-12);
-    Ok(())
-}
-
-#[test]
-fn a_draining_end_cell_shortens_the_attempt_and_keeps_its_water_nonnegative() -> Result {
-    // Only the reach end cell holds water, and the floodplain is dry.
-    let mut case = Scenario::rest(1.0, 0.0, 1.0, vec![west("p")]);
-    case.link = false;
-    case.alpha = Reach {
-        bed: 1.0,
-        depth: [0.05, 0.0, 0.0],
-        discharge_per_width: [0.0; 3],
-    };
-    let start = case.build()?;
-    let held = reach_cells(&start, ALPHA)?[0].volume_m3;
-    let mut batch = step(&start, 1.0)?;
-    assert!(
-        last(&batch)?.retries >= 1,
-        "the requested second must shorten"
-    );
-    // The first interval drains across the front. Later the floodplain cell is wet.
-    assert_eq!(
-        transfer(&batch)?.regime,
-        SurfaceChannelPortRegime::WetDryFront
-    );
-    let mut drained = 0.0;
-    for _ in 0..10 {
-        drained -= transfer(&batch)?.signed_volume_m3;
-        let reach = batch.reach(ALPHA).ok_or("alpha")?;
-        let limits = reach.last_step()?.ok_or("a reach receipt")?;
-        // Port export enters the face depletion limit, which covers the interval.
-        let dt = limits.end_s - limits.start_s;
-        assert!(limits.depletion_limit_s.is_finite() && dt <= limits.depletion_limit_s);
-        assert!(dt <= limits.cfl_limit_s);
-        assert!(
-            reach_cells(&batch, ALPHA)?
-                .iter()
-                .all(|c| c.volume_m3 >= 0.0)
-        );
-        assert!(batch.surface().state()?.cells().iter().all(|c| c.h >= 0.0));
-        balanced(&batch)?;
-        batch = step(&batch, 1.0)?;
-    }
-    assert!(drained > 0.0 && drained <= held);
     Ok(())
 }
 
@@ -202,41 +103,6 @@ fn east_step(case: &Scenario, dt: f64) -> Result<(Batch, SurfaceChannelPortTrans
     let batch = step(&case.build()?, dt)?;
     let transfer = transfer(&batch)?;
     Ok((batch, transfer))
-}
-
-fn relative(actual: f64, expected: f64) -> f64 {
-    (actual - expected).abs() / expected.abs()
-}
-
-#[test]
-fn uniform_supercritical_flow_takes_the_upwind_flux_both_ways() -> Result {
-    // Frozen criterion: the reach state's own flux, relative change at most 1e-12.
-    const TOLERANCE: f64 = 1e-12;
-    let h = 0.5;
-    let q = h * 2.0 * (GRAVITY * h).sqrt();
-    let flux = REACH_WIDTH * q;
-    let momentum = REACH_WIDTH * (q * q / h + 0.5 * GRAVITY * h * h);
-    // Into the surface is -x at the east edge. The reach flows toward its right end.
-    let out = east_case(Reach::uniform(1.0, h, q), moving(h, -q));
-    let (batch, transfer) = east_step(&out, 0.01)?;
-    let dt = batch.time();
-    assert_eq!(
-        transfer.regime,
-        SurfaceChannelPortRegime::SupercriticalToSurface
-    );
-    assert!(relative(-transfer.signed_volume_m3, flux * dt) <= TOLERANCE);
-    assert!(relative(transfer.reach_momentum_impulse_m4_per_s, momentum * dt) <= TOLERANCE);
-    // The same state running into the reach takes the surface state's own flux.
-    let into = east_case(Reach::uniform(1.0, h, -q), moving(h, q));
-    let (batch, transfer) = east_step(&into, 0.01)?;
-    let dt = batch.time();
-    assert_eq!(
-        transfer.regime,
-        SurfaceChannelPortRegime::SupercriticalToReach
-    );
-    assert!(relative(transfer.signed_volume_m3, flux * dt) <= TOLERANCE);
-    assert!(relative(transfer.reach_momentum_impulse_m4_per_s, momentum * dt) <= TOLERANCE);
-    Ok(())
 }
 
 #[test]
