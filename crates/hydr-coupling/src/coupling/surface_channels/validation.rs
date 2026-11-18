@@ -1,6 +1,7 @@
 //! Construction checks that turn a setup into a checked surface/channel definition.
 
 use super::bindings::{binding_ids, channel_cells, coordinated_definition};
+use super::ports::{CheckedPort, SurfaceChannelPort, check_ports};
 use super::{
     SURFACE_CHANNEL_TANGENT_TOLERANCE, SurfaceChannelError, SurfaceChannelLink, SurfaceChannelSetup,
 };
@@ -42,6 +43,10 @@ pub struct SurfaceChannelDefinition {
     pub(super) links: Vec<CheckedLink>,
     /// Unique linked surface cells in ascending order. Surface exchange lanes follow it.
     pub(super) surface_cells: Vec<usize>,
+    /// Declared reach-end ports in caller order.
+    pub(super) port_declarations: Vec<SurfaceChannelPort>,
+    /// Admitted ports in ascending port-identity order.
+    pub(super) ports: Vec<CheckedPort>,
 }
 
 impl SurfaceChannelDefinition {
@@ -71,6 +76,23 @@ impl SurfaceChannelDefinition {
     /// - `minimum_step_s` below the surface or a reach `min_step`
     /// - `retry_limit` above the surface `max_retries`
     pub fn new(setup: SurfaceChannelSetup) -> Result<Self, SurfaceChannelError> {
+        Self::with_ports(setup, Vec::new())
+    }
+
+    /// Checks `setup` with reach-end `ports`, as [`Self::new`] checks it without ports.
+    ///
+    /// Links may be empty when ports are not. Each port also rejects for:
+    /// - an empty or repeated identity, one equal to a link identity, or empty evidence
+    /// - an unknown reach, or a second port on one reach end
+    /// - a triangular, surveyed, or empty reach
+    /// - a face with no active cell or two, a caller open face, a face in two ports,
+    ///   faces off one axis, face line, or surface side, or a gap in the face line
+    /// - face widths whose sum differs from the end cell width by more than
+    ///   `SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE` times that width
+    pub(super) fn with_ports(
+        setup: SurfaceChannelSetup,
+        port_declarations: Vec<SurfaceChannelPort>,
+    ) -> Result<Self, SurfaceChannelError> {
         setup.config.check()?;
         text(
             "storage_exclusion_evidence",
@@ -98,7 +120,8 @@ impl SurfaceChannelDefinition {
             )));
         }
         let reach_index = check_reaches(&setup)?;
-        let resolved = check_links(&setup, &reach_index)?;
+        let resolved = check_links(&setup, &reach_index, !port_declarations.is_empty())?;
+        let ports = check_ports(&setup, &port_declarations, &reach_index)?;
         let surface_cells: Vec<usize> = setup
             .links
             .iter()
@@ -138,6 +161,8 @@ impl SurfaceChannelDefinition {
             coordinated,
             links,
             surface_cells,
+            port_declarations,
+            ports,
         })
     }
 
@@ -260,11 +285,14 @@ struct Resolved<'a> {
 }
 
 /// Checks every link. Returns the resolved links in ascending link-identity order.
+///
+/// The links may be empty only when `ported` holds.
 fn check_links<'a>(
     setup: &'a SurfaceChannelSetup,
     reach_index: &BTreeMap<&str, usize>,
+    ported: bool,
 ) -> Result<Vec<Resolved<'a>>, SurfaceChannelError> {
-    if setup.links.is_empty() {
+    if setup.links.is_empty() && !ported {
         return Err(SurfaceChannelError::input(
             "links is empty: supply at least one surface-channel link",
         ));

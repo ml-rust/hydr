@@ -120,7 +120,18 @@ where
         setup: SurfaceChannelSetup,
         initial: SurfaceChannelInitialState,
     ) -> Result<Self, SurfaceChannelError> {
-        let definition = SurfaceChannelDefinition::new(setup)?;
+        Self::from_definition(client, SurfaceChannelDefinition::new(setup)?, initial)
+    }
+
+    /// Checks `initial` against a checked `definition`, then builds every child on `client`.
+    ///
+    /// # Errors
+    /// Returns every [`Self::new`] rejection after the definition checks.
+    pub(super) fn from_definition(
+        client: R::Client,
+        definition: SurfaceChannelDefinition,
+        initial: SurfaceChannelInitialState,
+    ) -> Result<Self, SurfaceChannelError> {
         let original = Arc::new(initial.clone());
         let SurfaceChannelInitialState {
             time_s,

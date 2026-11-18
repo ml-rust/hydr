@@ -48,7 +48,7 @@ Member crates live under `crates/`. Each crate depends only on the crates in thi
 | `hydr-core` | none |
 | `hydr-soil`, `hydr-storage`, `hydr-structures`, `hydr-channel` | `hydr-core` |
 | `hydr-runoff`, `hydr-solver` | `hydr-core`, `hydr-soil` |
-| `hydr-coupling` | `hydr-core`, `hydr-storage`, `hydr-structures`, `hydr-runoff`, `hydr-channel` |
+| `hydr-coupling` | `hydr-core`, `hydr-soil`, `hydr-storage`, `hydr-structures`, `hydr-runoff`, `hydr-channel`, `hydr-solver` |
 
 - Cross-crate internals: Put them in a `#[doc(hidden)] internal` module or on `#[doc(hidden)]` methods. They stay out of the public API.
 - Layering test: `tests/layering.rs` enforces the module order inside each crate and the crate order in the table.

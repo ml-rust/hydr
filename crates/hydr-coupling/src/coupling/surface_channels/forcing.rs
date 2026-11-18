@@ -2,12 +2,13 @@
 
 use super::SurfaceChannelError;
 use super::context::Context;
+use super::ports::check_endpoint;
 use crate::channel::{
     ChannelBoundary, ChannelLateralInput, ChannelTensorBoundary, ChannelTensorFluxPort,
     ChannelTensorLateralInput, ChannelTensorWaterAmount,
 };
 use crate::forcing::WaterAmount;
-use hydr_channel::internal::SURFACE_EXCHANGE_BINDING_PREFIX;
+use hydr_channel::internal::{ChannelCouplingEnd, SURFACE_EXCHANGE_BINDING_PREFIX};
 use numr::dtype::DType;
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -160,6 +161,12 @@ impl<R: Runtime<DType = DType>> BoundForcing<R> {
                         }
                     }
                 });
+            }
+            for (end, policy) in [
+                (ChannelCouplingEnd::Left, &record.left),
+                (ChannelCouplingEnd::Right, &record.right),
+            ] {
+                check_endpoint(id, end, context.port_at(reach, end), Some(policy))?;
             }
             reaches.push(BoundReach {
                 left: tensor_boundary(id, &record.left, &scalar)?,

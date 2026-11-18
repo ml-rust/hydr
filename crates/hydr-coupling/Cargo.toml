@@ -16,6 +16,7 @@ wgpu = ["numr/wgpu", "solvr/wgpu", "hydr-channel/wgpu", "hydr-core/wgpu", "hydr-
 hydr-channel = { workspace = true }
 hydr-core = { workspace = true }
 hydr-runoff = { workspace = true }
+hydr-soil = { workspace = true }
 hydr-solver = { workspace = true }
 hydr-storage = { workspace = true }
 hydr-structures = { workspace = true }

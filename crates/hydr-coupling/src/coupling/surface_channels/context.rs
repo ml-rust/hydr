@@ -2,6 +2,7 @@
 
 use super::bindings::channel_cells;
 use super::levelling::SlotPlan;
+use super::ports::PortTopology;
 use super::state::LinkCounters;
 use super::{SurfaceChannelDefinition, SurfaceChannelError};
 use crate::channel::ChannelLateralDirection;
@@ -10,6 +11,7 @@ use crate::solver::Solver;
 use crate::structures::{
     DirectionPolicy, StructureElement, StructureLaw, StructureOperatingPoint, StructureOperation,
 };
+use hydr_channel::internal::ChannelCouplingEnd;
 use hydr_solver::internal::SurfaceLinks;
 use hydr_structures::internal::CouplingStructures;
 use numr::dtype::DType;
@@ -156,6 +158,8 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub head_absolute_m: f64,
     /// Relative head allowance.
     pub head_relative: f64,
+    /// Reach-end ports, or `None` without ports.
+    pub ports: Option<PortTopology<R>>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -330,7 +334,9 @@ where
         let mut beds = surface_beds;
         beds.extend_from_slice(&slot_beds);
         let cell_area = setup.surface.domain.grid().cell_area();
+        let ports = PortTopology::new(definition, surface)?;
         Ok(Self {
+            ports,
             lane_area_m2: vec![cell_area; surface_count],
             slot_plans,
             link_lane: lane.clone(),
@@ -389,6 +395,13 @@ where
             value,
             self.client.device(),
         )?)
+    }
+}
+
+impl<R: Runtime<DType = DType>> Context<R> {
+    /// Identity of the port at `end` of setup reach `reach`, if any.
+    pub fn port_at(&self, reach: usize, end: ChannelCouplingEnd) -> Option<&str> {
+        self.ports.as_ref()?.port_at(reach, end)
     }
 }
 
