@@ -252,9 +252,9 @@ pub(super) fn check_tolerance(
 pub(in crate::channel::flow::surveyed_points) mod fixture;
 
 #[cfg(test)]
-pub(in crate::channel::flow::surveyed_points) mod tests {
-    pub(in crate::channel::flow::surveyed_points) use super::fixture as support;
-    use crate::channel::flow::surveyed_points::source_tests::support as frozen;
+mod tests {
+    use super::fixture as support;
+    use crate::channel::flow::surveyed_points::source_fixture_support as frozen;
     use frozen::Result;
     use numr::{dtype::DType, runtime::Runtime};
 
@@ -296,7 +296,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
         };
         use crate::channel::flow::surveyed::error::HydraulicError;
         use crate::channel::flow::surveyed_points::{
-            chart_test_support, wet_depth::refine_wet_depth, wet_roots::locate_wet_roots,
+            chart_fixture, wet_depth::refine_wet_depth, wet_roots::locate_wet_roots,
         };
         use numr::{dtype::DType, runtime::Runtime};
         use solvr::optimize::CertifiedRootTolerance;
@@ -318,7 +318,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let changed = crate::channel::flow::surveyed::PrismaticRiemannConfig {
                 gravity_m_per_s2: 2.0,
                 ..config.clone()
@@ -334,7 +334,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     |pair, replacement, work| {
                         let rows = support::rows::<R>(client, &[0])?;
                         hydraulic(pair.source_values([&rows, &rows]))?;
-                        let cache = chart_test_support::cache(pair)?;
+                        let cache = chart_fixture::cache(pair)?;
                         assert!(cache.iter().all(|entry| entry.ready == [1.0]));
                         let before = work.snapshot();
                         if panels {
@@ -350,7 +350,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                             "{error:?}"
                         );
                         assert_eq!(work.snapshot(), before);
-                        assert_eq!(chart_test_support::cache(pair)?, cache);
+                        assert_eq!(chart_fixture::cache(pair)?, cache);
                         let error = pair
                             .source_values([&rows, &rows])
                             .err()
@@ -360,7 +360,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                             "{error:?}"
                         );
                         assert_eq!(work.snapshot(), before);
-                        assert_eq!(chart_test_support::cache(pair)?, cache);
+                        assert_eq!(chart_fixture::cache(pair)?, cache);
                         Ok(())
                     },
                 )?;
@@ -373,8 +373,8 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let config = chart_test_support::config();
-            let section = chart_test_support::rectangle::<R>(client, 3.0, 1.0)?;
+            let config = chart_fixture::config();
+            let section = chart_fixture::rectangle::<R>(client, 3.0, 1.0)?;
             let located = support::with_section::<R, _>(
                 client,
                 &section,
@@ -397,10 +397,10 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                             .is_ok()
                     );
                     let before = work.snapshot();
-                    let cache = chart_test_support::cache(other)?;
+                    let cache = chart_fixture::cache(other)?;
                     assert!(refine_wet_depth(other, located).is_err());
                     assert_eq!(work.snapshot(), before);
-                    assert_eq!(chart_test_support::cache(other)?, cache);
+                    assert_eq!(chart_fixture::cache(other)?, cache);
                     Ok(())
                 },
             )
@@ -411,7 +411,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let changed = crate::channel::flow::surveyed::PrismaticRiemannConfig {
                 gravity_m_per_s2: 2.0,
                 ..config.clone()
@@ -429,7 +429,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                         let located =
                             hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
                         let before = work.snapshot();
-                        let cache = chart_test_support::cache(pair)?;
+                        let cache = chart_fixture::cache(pair)?;
                         if panels {
                             pair.evaluation.panels += 2;
                         } else {
@@ -437,7 +437,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                         }
                         assert!(refine_wet_depth(pair, located).is_err());
                         assert_eq!(work.snapshot(), before);
-                        assert_eq!(chart_test_support::cache(pair)?, cache);
+                        assert_eq!(chart_fixture::cache(pair)?, cache);
                         Ok(())
                     },
                 )?;
@@ -450,7 +450,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.0,
@@ -490,7 +490,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(client, 1.0, 4.0, &[], &config, |pair, work| {
                 let rows = support::rows::<R>(client, &[])?;
                 let located = hydraulic(locate_wet_roots(pair, &rows, 0))?;
@@ -520,7 +520,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
         use crate::channel::flow::{
             surveyed::error::{HydraulicError, PrismaticRiemannRejection},
             surveyed_points::{
-                chart_test_support, wet_depth::refine_wet_depth, wet_depth_types::WetDepthStatus,
+                chart_fixture, wet_depth::refine_wet_depth, wet_depth_types::WetDepthStatus,
                 wet_root_types::WetRootStatus, wet_roots::locate_wet_roots,
             },
         };
@@ -542,7 +542,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 3.0,
@@ -584,11 +584,11 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.root.atol = 0.0;
             config.root.rtol = 0.0;
             config.root.max_iterations = 1;
-            let section = chart_test_support::rectangle::<R>(client, 1.0, 4.0)?;
+            let section = chart_fixture::rectangle::<R>(client, 1.0, 4.0)?;
             let owners = support::rows::<R>(client, &[0, 0])?;
             let epsilon = 3.0 * 2.0_f64.powi(-80);
             let fields = [
@@ -601,74 +601,67 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                 .iter()
                 .map(|field| expansion::<R>(client, field, true))
                 .collect::<Result<Vec<_>>>()?;
-            chart_test_support::with_inputs(
-                client,
-                section,
-                owners,
-                inputs,
-                &config,
-                |pair, work| {
-                    let rows = support::rows::<R>(client, &[0, 1])?;
-                    let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
-                    assert_eq!(
-                        located.status.try_to_vec::<i64>()?,
-                        [WetRootStatus::Located as i64; 2]
-                    );
-                    assert_eq!(located.domains.len(), 2);
-                    let points = located.callback_points();
-                    let session = hydraulic(refine_wet_depth(pair, located))?;
-                    assert_eq!(session.domains().len(), 2);
-                    assert!(
-                        session
-                            .domains()
-                            .iter()
-                            .all(|domain| domain.iterations == 1)
-                    );
-                    assert_eq!(work.snapshot().root_iterations, 2);
-                    assert_eq!(work.snapshot().maximum_root_iterations, 1);
-                    for domain in session.domains() {
-                        let parents = domain.parent_rows.try_to_vec::<i64>()?;
-                        let areas = support::area_bounds(
-                            session.sources(),
-                            &domain.parent_rows,
-                            &domain.query,
-                        )?;
-                        for (parent, [lower, upper]) in parents.into_iter().zip(areas) {
-                            if parent == 1 {
-                                // F(A)=4*sqrt(A)-3*2^-80 has the exact root 9*2^-164.
-                                let star = 9.0 * 2.0_f64.powi(-164);
-                                assert!(lower <= star && star <= upper);
-                            }
+            chart_fixture::with_inputs(client, section, owners, inputs, &config, |pair, work| {
+                let rows = support::rows::<R>(client, &[0, 1])?;
+                let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
+                assert_eq!(
+                    located.status.try_to_vec::<i64>()?,
+                    [WetRootStatus::Located as i64; 2]
+                );
+                assert_eq!(located.domains.len(), 2);
+                let points = located.callback_points();
+                let session = hydraulic(refine_wet_depth(pair, located))?;
+                assert_eq!(session.domains().len(), 2);
+                assert!(
+                    session
+                        .domains()
+                        .iter()
+                        .all(|domain| domain.iterations == 1)
+                );
+                assert_eq!(work.snapshot().root_iterations, 2);
+                assert_eq!(work.snapshot().maximum_root_iterations, 1);
+                for domain in session.domains() {
+                    let parents = domain.parent_rows.try_to_vec::<i64>()?;
+                    let areas = support::area_bounds(
+                        session.sources(),
+                        &domain.parent_rows,
+                        &domain.query,
+                    )?;
+                    for (parent, [lower, upper]) in parents.into_iter().zip(areas) {
+                        if parent == 1 {
+                            // F(A)=4*sqrt(A)-3*2^-80 has the exact root 9*2^-164.
+                            let star = 9.0 * 2.0_f64.powi(-164);
+                            assert!(lower <= star && star <= upper);
                         }
                     }
-                    assert_eq!(
-                        session.callback_points(),
-                        points
-                            + session
-                                .domains()
-                                .iter()
-                                .map(|domain| domain.callback_points)
-                                .sum::<usize>()
-                    );
-                    let before = work.snapshot();
-                    let points = session.callback_points();
-                    let session = hydraulic(session.refine_depth_to(CertifiedRootTolerance {
-                        atol: 0.0,
-                        rtol: 0.0,
-                    }))?;
-                    assert!(
-                        session
+                }
+                assert_eq!(
+                    session.callback_points(),
+                    points
+                        + session
                             .domains()
                             .iter()
-                            .all(|domain| domain.iterations == 1)
-                    );
-                    assert_eq!(session.callback_points(), points);
-                    assert_eq!(work.snapshot().residual_points, before.residual_points);
-                    assert_eq!(work.snapshot().root_iterations, before.root_iterations);
-                    assert_eq!(work.snapshot().maximum_root_iterations, 1);
-                    Ok(())
-                },
-            )
+                            .map(|domain| domain.callback_points)
+                            .sum::<usize>()
+                );
+                let before = work.snapshot();
+                let points = session.callback_points();
+                let session = hydraulic(session.refine_depth_to(CertifiedRootTolerance {
+                    atol: 0.0,
+                    rtol: 0.0,
+                }))?;
+                assert!(
+                    session
+                        .domains()
+                        .iter()
+                        .all(|domain| domain.iterations == 1)
+                );
+                assert_eq!(session.callback_points(), points);
+                assert_eq!(work.snapshot().residual_points, before.residual_points);
+                assert_eq!(work.snapshot().root_iterations, before.root_iterations);
+                assert_eq!(work.snapshot().maximum_root_iterations, 1);
+                Ok(())
+            })
         }
 
         fn callback_work_error_remains_typed<R>(client: &R::Client) -> Result
@@ -678,7 +671,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
         {
             let config = crate::channel::flow::surveyed::PrismaticRiemannConfig {
                 max_native_query_points: 1,
-                ..chart_test_support::config()
+                ..chart_fixture::config()
             };
             support::with_rectangle::<R, _>(
                 client,
@@ -718,7 +711,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
         use crate::channel::flow::{
             surveyed::error,
             surveyed_points::{
-                chart_test_support,
+                chart_fixture,
                 potential_range::select_expansion,
                 wet_depth::refine_wet_depth,
                 wet_depth_types::{DepthRefinementState, WetDepthStatus},
@@ -753,7 +746,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
         {
             let config = crate::channel::flow::surveyed::PrismaticRiemannConfig {
                 gravity_m_per_s2: 2.0,
-                ..chart_test_support::config()
+                ..chart_fixture::config()
             };
             support::with_pointed_film::<R, _>(client, &config, |pair, work| {
                 let rows = support::rows::<R>(client, &[0])?;
@@ -786,13 +779,13 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let ids = [
                 "scalar_rectangle_uniform_rest",
                 "retained_vacuum_inside_film",
                 "uniform_cap_retained_deficit_dyadic_velocity",
             ];
-            chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &ids, &config, |pair, work| {
                 let rows = support::rows::<R>(client, &[0, 1, 2])?;
                 let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
                 assert_eq!(
@@ -917,7 +910,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 3.0,
@@ -969,10 +962,10 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.root.atol = 0.05;
             config.root.rtol = 0.0;
-            chart_test_support::with_pair::<R, _>(
+            chart_fixture::with_pair::<R, _>(
                 client,
                 &["scalar_rectangle_depth_jump"],
                 &config,
@@ -1037,14 +1030,14 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let ids = [
                 "scalar_rectangle_uniform_rest",
                 "scalar_rectangle_vacuum",
                 "scalar_rectangle_vacuum_threshold",
                 "scalar_three_bands_cap_compression",
             ];
-            chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &ids, &config, |pair, work| {
                 let rows = support::rows::<R>(client, &[2, 0, 1, 0, 3])?;
                 let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
                 let statuses = located.status.try_to_vec::<i64>()?;
@@ -1071,12 +1064,12 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let ids = ["retained_vacuum_inside_film", "scalar_rectangle_two_shocks"];
-            chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &ids, &config, |pair, work| {
                 let rows = support::rows::<R>(client, &[0])?;
                 let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
-                let fixed = chart_test_support::cache(pair)?;
+                let fixed = chart_fixture::cache(pair)?;
                 assert!(fixed.iter().all(|entry| entry.ready[1] == 0.0));
                 let before = work.snapshot();
                 let session = hydraulic(refine_wet_depth(pair, located))?;
@@ -1085,7 +1078,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     atol: 0.0,
                     rtol: 0.0,
                 }))?;
-                assert_eq!(chart_test_support::cache(session.sources())?, fixed);
+                assert_eq!(chart_fixture::cache(session.sources())?, fixed);
                 assert!(session.domains().iter().all(|domain| !domain.is_deferred()));
                 Ok(())
             })
@@ -1098,7 +1091,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             support::{self, DepthClient},
         };
         use crate::channel::flow::surveyed_points::{
-            chart_test_support,
+            chart_fixture,
             wet_depth::refine_wet_depth,
             wet_depth_types::{WetDepthSession, WetDepthStatus},
             wet_roots::locate_wet_roots,
@@ -1111,7 +1104,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.root.atol = 1e-17;
             config.root.rtol = 0.0;
             let states = [
@@ -1128,7 +1121,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     [2, 0, 1]
                 );
                 let located_points = located.callback_points();
-                let cache = chart_test_support::cache(pair)?;
+                let cache = chart_fixture::cache(pair)?;
                 let before = work.snapshot();
                 let session = hydraulic(refine_wet_depth(pair, located))?;
                 check_domains(&session)?;
@@ -1185,7 +1178,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     work.snapshot().maximum_root_iterations,
                     before.maximum_root_iterations
                 );
-                assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                assert_eq!(chart_fixture::cache(session.sources())?, cache);
                 for domain in session.domains() {
                     assert!(!domain.is_deferred());
                     assert!(

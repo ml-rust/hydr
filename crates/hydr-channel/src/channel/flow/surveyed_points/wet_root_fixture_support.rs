@@ -1,8 +1,8 @@
-use crate::channel::flow::surveyed_points::{chart_test_support, paired_sources::PairedSources};
+use crate::channel::flow::surveyed_points::{chart_fixture, paired_sources::PairedSources};
 use crate::channel::flow::{
     surveyed::{PrismaticRiemannConfig, error, work::WorkLedger},
-    surveyed_points::source_tests::support::{
-        self, Client, Result, components, expansion, hydraulic,
+    surveyed_points::source_fixture_support::{
+        self as support, Client, Result, components, expansion, hydraulic,
     },
 };
 use crate::channel::section::SupportedAreaQuery;
@@ -41,7 +41,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: Client<R>,
 {
-    let [lower, upper] = chart_test_support::endpoint_areas(pair, rows, query)?;
+    let [lower, upper] = chart_fixture::endpoint_areas(pair, rows, query)?;
     hydraulic(error::checked::<R, _>(
         pair.geometry.client(),
         "locator retained physical domain bounds",
@@ -78,7 +78,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: Client<R>,
 {
-    let [lower, upper] = chart_test_support::endpoint_areas(pair, rows, query)?;
+    let [lower, upper] = chart_fixture::endpoint_areas(pair, rows, query)?;
     let client = pair.geometry.client();
     let truth = expansion::<R>(client, &[[14.0_f64.to_bits(), 0xbaf0000000000000, 0]], true)?;
     hydraulic(error::checked::<R, _>(
@@ -119,7 +119,7 @@ where
     .into_iter()
     .map(|value| expansion::<R>(client, &[value], true))
     .collect::<Result<Vec<_>>>()?;
-    chart_test_support::with_inputs(client, section, owners, inputs, config, operation)
+    chart_fixture::with_inputs(client, section, owners, inputs, config, operation)
 }
 
 pub(super) fn uncertain_dry_limit<R, T>(
@@ -131,7 +131,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: Client<R> + CertifiedSimpsonAlgorithms<R> + CertifiedBisectionAlgorithms<R>,
 {
-    let section = chart_test_support::rectangle::<R>(client, 9.0, 1.0)?;
+    let section = chart_fixture::rectangle::<R>(client, 9.0, 1.0)?;
     let owners = Tensor::from_slice(&[0_i64], &[1], client.device())?;
     let inputs = [
         9.0_f64.to_bits(),
@@ -142,5 +142,5 @@ where
     .into_iter()
     .map(|high| expansion::<R>(client, &[[high, 0, 0]], true))
     .collect::<Result<Vec<_>>>()?;
-    chart_test_support::with_inputs(client, section, owners, inputs, config, operation)
+    chart_fixture::with_inputs(client, section, owners, inputs, config, operation)
 }

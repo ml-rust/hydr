@@ -180,9 +180,9 @@ pub(super) fn invalid(message: &str) -> HydraulicError {
 mod tests {
     use super::*;
     use crate::channel::flow::surveyed_points::{
-        chart_test_support,
-        source_tests::support::{Result, hydraulic},
-        wet_depth::tests::support,
+        chart_fixture,
+        source_fixture_support::{Result, hydraulic},
+        wet_depth::fixture as support,
     };
 
     fn matrix<R>(client: &R::Client) -> Result
@@ -190,7 +190,7 @@ mod tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         support::with_rectangle::<R, _>(
             client,
             1.0,

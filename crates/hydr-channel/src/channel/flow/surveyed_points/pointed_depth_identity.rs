@@ -100,7 +100,7 @@ mod tests {
     use super::*;
     use crate::channel::flow::{
         surveyed::error,
-        surveyed_points::source_tests::support::{Client, Result, components, hydraulic},
+        surveyed_points::source_fixture_support::{Client, Result, components, hydraulic},
     };
     use numr::runtime::RuntimeClient;
 

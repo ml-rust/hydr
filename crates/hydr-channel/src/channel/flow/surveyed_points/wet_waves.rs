@@ -134,10 +134,9 @@ where
 mod tests {
     use crate::channel::flow::surveyed_points::corpus_coverage::Coverage;
     use crate::channel::flow::surveyed_points::{
-        chart_test_support,
-        source_tests::support as frozen,
+        chart_fixture, source_fixture_support as frozen,
+        wet_depth::fixture as support,
         wet_depth::refine_wet_depth,
-        wet_depth::tests::support,
         wet_roots::locate_wet_roots,
         wet_wave_types::{WetWaveDomain, WetWaveStatus},
     };
@@ -157,7 +156,7 @@ mod tests {
             1.0,
             8.0,
             &[[1.0, 1.0, 1.0, 1.0]],
-            &chart_test_support::config(),
+            &chart_fixture::config(),
             |pair, work| {
                 let rows = support::rows::<R>(client, &[0])?;
                 let located = hydraulic(locate_wet_roots(
@@ -205,8 +204,7 @@ mod tests {
 
     mod controls {
         use super::{
-            Result, chart_test_support, frozen, hydraulic, locate_wet_roots, refine_wet_depth,
-            support,
+            Result, chart_fixture, frozen, hydraulic, locate_wet_roots, refine_wet_depth, support,
         };
         use crate::channel::{
             flow::surveyed::error::checked,
@@ -234,7 +232,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.0,
@@ -246,9 +244,9 @@ mod tests {
                     let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
                     let mut session = hydraulic(refine_wet_depth(pair, located))?;
                     // Exact uniform identity proves A*=1 independently of this wider supported bracket.
-                    session.wet.domains[0].query = chart_test_support::chart(
+                    session.wet.domains[0].query = chart_fixture::chart(
                         session.sources(),
-                        chart_test_support::Anchor::Zero,
+                        chart_fixture::Anchor::Zero,
                         [1.0_f64.to_bits(), 0],
                         &[[0.25, 2.25]],
                     )?;
@@ -279,7 +277,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             // Rectangle Phi(A)=2*sqrt(A). These distinct sources give the exact root A*=1,u*=1.
             support::with_rectangle::<R, _>(
                 client,
@@ -326,9 +324,9 @@ mod tests {
                             },
                         ))?
                     } else {
-                        chart_test_support::chart(
+                        chart_fixture::chart(
                             session.sources(),
-                            chart_test_support::Anchor::Zero,
+                            chart_fixture::Anchor::Zero,
                             [1.0_f64.to_bits(), 0],
                             &[[0.25, 2.25]],
                         )?
@@ -545,8 +543,7 @@ mod tests {
 
     mod references {
         use super::{
-            Result, chart_test_support, frozen, hydraulic, locate_wet_roots, refine_wet_depth,
-            support,
+            Result, chart_fixture, frozen, hydraulic, locate_wet_roots, refine_wet_depth, support,
         };
         use crate::channel::flow::surveyed_points::corpus_coverage::Coverage;
         use crate::channel::flow::surveyed_points::{
@@ -614,9 +611,9 @@ mod tests {
                     ],
                 ),
             ];
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let ids = references.iter().map(|r| r.0).collect::<Vec<_>>();
-            chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &ids, &config, |pair, work| {
                 // The device skips the two-shock compression. The knot crossing reaches its shock path.
                 let parents: &[i64] = if coverage.is_full() {
                     &[3, 0, 4, 2, 1, 0]
@@ -748,9 +745,9 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.gravity_m_per_s2 = 3.0;
-            chart_test_support::with_pair::<R, _>(
+            chart_fixture::with_pair::<R, _>(
                 client,
                 &["scalar_rectangle_stationary_shock"],
                 &config,
@@ -806,8 +803,8 @@ mod tests {
             R::Client: support::DepthClient<R>,
         {
             use solvr::optimize::CertifiedRootTolerance;
-            let config = chart_test_support::config();
-            chart_test_support::with_pair::<R, _>(
+            let config = chart_fixture::config();
+            chart_fixture::with_pair::<R, _>(
                 client,
                 &["retained_vacuum_inside_film"],
                 &config,
@@ -855,8 +852,7 @@ mod tests {
 
     mod lifecycle {
         use super::{
-            Result, chart_test_support, frozen, hydraulic, locate_wet_roots, refine_wet_depth,
-            support,
+            Result, chart_fixture, frozen, hydraulic, locate_wet_roots, refine_wet_depth, support,
         };
         use numr::{dtype::DType, runtime::Runtime};
         use solvr::optimize::CertifiedRootTolerance;
@@ -877,7 +873,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let foreign = support::with_rectangle::<R, _>(
                 client,
                 1.0,
@@ -899,7 +895,7 @@ mod tests {
                             hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
                         let mut session = hydraulic(refine_wet_depth(pair, located))?;
                         let before = work.snapshot();
-                        let cache = chart_test_support::cache(session.sources())?;
+                        let cache = chart_fixture::cache(session.sources())?;
                         if stale {
                             session.sources.evaluation.panels *= 2;
                         } else {
@@ -912,7 +908,7 @@ mod tests {
                         }
                         assert!(session.certify_wet_waves().is_err());
                         assert_eq!(work.snapshot(), before);
-                        assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                        assert_eq!(chart_fixture::cache(session.sources())?, cache);
                         Ok(())
                     },
                 )?;
@@ -925,10 +921,10 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.root.atol = 1e-4;
             config.root.rtol = 0.0;
-            chart_test_support::with_pair::<R, _>(
+            chart_fixture::with_pair::<R, _>(
                 client,
                 &[
                     "scalar_rectangle_depth_jump",
@@ -1006,10 +1002,10 @@ mod tests {
                             (identity.4, identity.5, identity.6)
                         );
                     }
-                    let cache = chart_test_support::cache(session.sources())?;
+                    let cache = chart_fixture::cache(session.sources())?;
                     let repeated = hydraulic(session.certify_wet_waves())?;
                     assert_eq!(repeated.len(), waves.len());
-                    assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                    assert_eq!(chart_fixture::cache(session.sources())?, cache);
                     let session = hydraulic(session.refine_depth_to(CertifiedRootTolerance {
                         atol: 1e-7,
                         rtol: 0.0,
@@ -1026,7 +1022,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.max_native_query_points = 1;
             support::with_rectangle::<R, _>(
                 client,
@@ -1063,7 +1059,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(client, 1.0, 8.0, &[], &config, |pair, work| {
                 let rows = support::rows::<R>(client, &[])?;
                 let located = hydraulic(locate_wet_roots(pair, &rows, 0))?;

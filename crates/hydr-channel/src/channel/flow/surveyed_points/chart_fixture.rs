@@ -1,7 +1,9 @@
 use crate::channel::flow::surveyed_points::{
     paired_sources::PairedSources,
     point_sources::PointSourceParts,
-    source_tests::support::{self, Client, Result, components, endpoints, expansion, hydraulic},
+    source_fixture_support::{
+        self as support, Client, Result, components, endpoints, expansion, hydraulic,
+    },
 };
 use crate::channel::{
     flow::surveyed::{PrismaticRiemannConfig, error, work::WorkLedger},

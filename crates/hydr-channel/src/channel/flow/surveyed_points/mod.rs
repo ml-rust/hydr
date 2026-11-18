@@ -5,12 +5,12 @@ mod analytic_bottom_arithmetic;
 mod analytic_endpoint;
 mod chart_admission;
 mod chart_brackets;
+#[cfg(test)]
+mod chart_fixture;
 mod chart_root_callback;
 mod chart_root_derivative;
 #[cfg(test)]
 mod chart_roots;
-#[cfg(test)]
-mod chart_test_support;
 #[cfg(test)]
 mod corpus_coverage;
 mod dry_vacuum;
@@ -65,18 +65,16 @@ mod point_wave_envelope;
 mod pointed_depth_identity;
 mod potential_absolute;
 mod potential_analytic;
-#[cfg(test)]
-mod potential_band_retention_tests;
 pub(crate) mod potential_callbacks;
 mod potential_increment;
+#[cfg(test)]
+mod potential_increment_fixtures;
 mod potential_lanes;
 mod potential_numerical;
 mod potential_range;
 #[cfg(test)]
-mod potential_range_tests;
+mod potential_range_fixture;
 mod potential_sonic;
-#[cfg(test)]
-mod potential_underflow_tests;
 mod root_invocation;
 mod shock_points;
 mod source_binding;
@@ -102,7 +100,11 @@ pub(crate) mod source_velocity;
 pub(crate) mod types;
 mod wave_curve;
 #[cfg(test)]
-mod wave_curve_tests;
+mod wave_curve_fixture_support;
+#[cfg(test)]
+mod wave_curve_fixtures;
+#[cfg(test)]
+mod wave_curve_scaling_fixture;
 mod wave_curve_types;
 mod wet_candidates;
 mod wet_candidates_fans;
@@ -148,17 +150,7 @@ mod source_fixtures;
 mod source_potential_fixtures;
 
 #[cfg(test)]
-mod source_tests {
-    pub(super) use super::source_fixture_support as support;
-}
+mod paired_residual_fixtures;
 
 #[cfg(test)]
-mod analytic_bottom_tests {
-    pub(super) use super::source_potential_fixtures as fixtures;
-}
-
-#[cfg(test)]
-mod potential_analytic_tests;
-
-#[cfg(test)]
-mod potential_sonic_tests;
+mod paired_residual_corpus_fixture;

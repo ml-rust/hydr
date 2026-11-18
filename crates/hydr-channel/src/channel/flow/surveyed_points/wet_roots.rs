@@ -126,9 +126,9 @@ mod tests {
     use crate::channel::flow::{
         surveyed::error::{HydraulicError, PrismaticRiemannRejection},
         surveyed_points::{
-            chart_test_support,
+            chart_fixture,
             corpus_coverage::Coverage,
-            source_tests::support::{self as frozen, Client, Result, hydraulic},
+            source_fixture_support::{self as frozen, Client, Result, hydraulic},
             wet_root_types::WetRootStatus,
         },
     };
@@ -190,7 +190,7 @@ mod tests {
         let mut executed = 0;
         for case in replayed {
             let (config, expected) = cases::declared(case.id);
-            chart_test_support::with_pair::<R, _>(client, &[case.id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[case.id], &config, |pair, work| {
                 let source_before = support::source_bits(pair)?;
                 let parents = Tensor::from_slice(&[0_i64], &[1], client.device())?;
                 let result = locate_wet_roots(pair, &parents, config.root.max_points);
@@ -312,8 +312,8 @@ mod tests {
         use crate::channel::flow::{
             surveyed::error::{HydraulicError, PrismaticRiemannRejection},
             surveyed_points::{
-                chart_test_support::{self, cache},
-                source_tests::support::{Client, Result, hydraulic},
+                chart_fixture::{self, cache},
+                source_fixture_support::{Client, Result, hydraulic},
                 wet_root_types::WetRootStatus,
                 wet_roots::locate_wet_roots,
             },
@@ -336,8 +336,8 @@ mod tests {
                 + CertifiedBisectionAlgorithms<R>
                 + CertifiedUpperBracketAlgorithms<R>,
         {
-            let config = chart_test_support::config();
-            chart_test_support::with_pair::<R, _>(
+            let config = chart_fixture::config();
+            chart_fixture::with_pair::<R, _>(
                 client,
                 &["scalar_rectangle_uniform_rest"],
                 &config,
@@ -382,7 +382,7 @@ mod tests {
             )?;
             let mut zero = config.clone();
             zero.max_native_query_points = 0;
-            chart_test_support::with_pair::<R, _>(
+            chart_fixture::with_pair::<R, _>(
                 client,
                 &["scalar_rectangle_uniform_rest"],
                 &zero,
@@ -401,7 +401,7 @@ mod tests {
                     Ok(())
                 },
             )?;
-            chart_test_support::with_pair::<R, _>(
+            chart_fixture::with_pair::<R, _>(
                 client,
                 &["scalar_rectangle_left_dry_sonic"],
                 &config,
@@ -427,10 +427,10 @@ mod tests {
         use crate::channel::flow::{
             surveyed::PrismaticRiemannConfig,
             surveyed_points::{
+                chart_fixture,
                 chart_roots::solve_chart,
-                chart_test_support,
                 paired_sources::PairedSources,
-                source_tests::support::{Client, Result, components, endpoints, hydraulic},
+                source_fixture_support::{Client, Result, components, endpoints, hydraulic},
                 wet_root_types::WetRootStatus,
                 wet_roots::locate_wet_roots,
             },
@@ -470,7 +470,7 @@ mod tests {
         {
             for &id in ids {
                 let (config, _) = cases::declared(id);
-                chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+                chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                     chain(pair, &config, id, cases::star(id))?;
                     assert!(work.snapshot().residual_points <= config.root.max_points);
                     Ok(())
@@ -487,7 +487,7 @@ mod tests {
                 + CertifiedBisectionAlgorithms<R>
                 + CertifiedUpperBracketAlgorithms<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.gravity_m_per_s2 = 2.0;
             support::pointed_film::<R, _>(client, &config, |pair, _| {
                 // A=h², Phi(A)=4*A^(1/4), F(A)=8*A^(1/4)-2^-80.
@@ -604,8 +604,8 @@ mod tests {
     mod oracles {
         use super::{certificates, support};
         use crate::channel::flow::surveyed_points::{
-            chart_test_support,
-            source_tests::support::{Client, Result, components, hydraulic},
+            chart_fixture,
+            source_fixture_support::{Client, Result, components, hydraulic},
             wet_root_types::{WetRootEvidenceKind, WetRootStatus},
             wet_roots::locate_wet_roots,
         };
@@ -627,7 +627,7 @@ mod tests {
                 + CertifiedBisectionAlgorithms<R>
                 + CertifiedUpperBracketAlgorithms<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::uncertain_dry_limit::<R, _>(client, &config, |pair, work| {
                 let rows = Tensor::from_slice(&[0_i64], &[1], client.device())?;
                 let result = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
@@ -661,8 +661,8 @@ mod tests {
 
     mod selection {
         use crate::channel::flow::surveyed_points::{
-            chart_test_support::{self, cache},
-            source_tests::support::{Client, Result, hydraulic},
+            chart_fixture::{self, cache},
+            source_fixture_support::{Client, Result, hydraulic},
             wet_root_types::WetRootStatus,
             wet_roots::locate_wet_roots,
         };
@@ -699,7 +699,7 @@ mod tests {
                 + CertifiedBisectionAlgorithms<R>
                 + CertifiedUpperBracketAlgorithms<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let ids = [
                 "retained_vacuum_inside_film",
                 "scalar_rectangle_vacuum",
@@ -708,7 +708,7 @@ mod tests {
                 "scalar_rectangle_uniform_rest",
                 "scalar_rectangle_weak_depth_jump",
             ];
-            chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &ids, &config, |pair, work| {
                 let parent_values = [4_i64, 1, 4, 0, 2, 3];
                 let storage = Tensor::from_slice(
                     &[99_i64, 4, 99, 1, 99, 4, 99, 0, 99, 2, 99, 3],
@@ -760,14 +760,14 @@ mod tests {
                 + CertifiedBisectionAlgorithms<R>
                 + CertifiedUpperBracketAlgorithms<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let ids = [
                 "retained_vacuum_inside_film",
                 "scalar_rectangle_depth_jump",
                 "scalar_rectangle_two_shocks",
                 "scalar_rectangle_uniform_rest",
             ];
-            chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &ids, &config, |pair, work| {
                 let rows = Tensor::from_slice(&[0_i64, 0], &[2], client.device())?;
                 let before = cache(pair)?;
                 let mut cold_simpson = None;
@@ -808,14 +808,14 @@ mod tests {
                 + CertifiedBisectionAlgorithms<R>
                 + CertifiedUpperBracketAlgorithms<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let ids = [
                 "scalar_rectangle_uniform_rest",
                 "scalar_rectangle_vacuum",
                 "retained_vacuum_inside_film",
             ];
             for budget in [1, 2, 3] {
-                chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
+                chart_fixture::with_pair::<R, _>(client, &ids, &config, |pair, work| {
                     let rows = Tensor::from_slice(&[0_i64, 1, 2], &[3], client.device())?;
                     let result = hydraulic(locate_wet_roots(pair, &rows, budget))?;
                     let expected = [
@@ -833,7 +833,7 @@ mod tests {
                     super::certificates::check(pair, &result)
                 })?;
             }
-            chart_test_support::with_pair::<R, _>(
+            chart_fixture::with_pair::<R, _>(
                 client,
                 &["scalar_rectangle_uniform_rest"],
                 &config,
@@ -860,9 +860,9 @@ mod tests {
                 + CertifiedBisectionAlgorithms<R>
                 + CertifiedUpperBracketAlgorithms<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             for budget in [4, config.root.max_points] {
-                chart_test_support::with_pair::<R, _>(
+                chart_fixture::with_pair::<R, _>(
                     client,
                     &["retained_vacuum_inside_film"],
                     &config,

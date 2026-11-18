@@ -226,8 +226,8 @@ where
 mod tests {
     use super::super::{
         point_flux_quantum,
-        source_tests::support::{self as frozen, Result, hydraulic},
-        wet_depth::tests::support,
+        source_fixture_support::{self as frozen, Result, hydraulic},
+        wet_depth::fixture as support,
     };
     use super::*;
     use crate::channel::flow::surveyed::error::checked;

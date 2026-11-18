@@ -268,23 +268,23 @@ where
 
 #[cfg(test)]
 #[path = "point_candidates_fixture.rs"]
-mod fixture;
+pub(in crate::channel::flow::surveyed_points) mod fixture;
 
 #[cfg(test)]
-pub(in crate::channel::flow::surveyed_points) mod tests {
+mod tests {
     use super::super::corpus_coverage::Coverage;
     use super::super::{
-        chart_test_support,
+        chart_fixture,
         point_candidate_types::{
             PointCandidate, PointCandidateStatus, PointFanAuthority, PointRegime,
         },
         point_root_session::PointRootSession,
-        source_tests::support as frozen,
-        wet_depth::tests::support,
+        source_fixture_support as frozen,
+        wet_depth::fixture as support,
     };
-    use super::fixture::{diagnostics, fixture_model, flux_fixture_model, observed};
-    pub(in crate::channel::flow::surveyed_points) use super::fixture::{
-        fixtures, flux_fixtures, wave_references,
+    use super::fixture::{
+        diagnostics, fixture_model, fixtures, flux_fixture_model, flux_fixtures, observed,
+        wave_references,
     };
     use frozen::{Result, hydraulic};
     use numr::{dtype::DType, runtime::Runtime};
@@ -295,7 +295,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         support::with_rectangle::<R, _>(
             client,
             1.,
@@ -382,8 +382,8 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             source_sonic_types::{SonicSide, SourceSonicStatus},
         };
         use super::{
-            PointCandidate, PointFanAuthority, PointRootSession, Result, chart_test_support,
-            frozen, hydraulic, support,
+            PointCandidate, PointFanAuthority, PointRootSession, Result, chart_fixture, frozen,
+            hydraulic, support,
         };
         use numr::{dtype::DType, runtime::Runtime};
         use solvr::optimize::CertifiedRootTolerance;
@@ -393,7 +393,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             // Independent rectangle controls: source contact, critical equality, and star-sonic contact at A=1.
             support::with_rectangle::<R, _>(
                 client,
@@ -509,8 +509,8 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             point_candidate_types::PointCandidateStatus, wet_root_types::WetRootStatus,
         };
         use super::{
-            PointRootSession, Result, chart_test_support, fixture_model::Execution, fixtures,
-            frozen, hydraulic, support,
+            PointRootSession, Result, chart_fixture, fixture_model::Execution, fixtures, frozen,
+            hydraulic, support,
         };
         use crate::channel::flow::{
             surveyed::error::{HydraulicError, PrismaticRiemannRejection},
@@ -539,7 +539,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                 }
                 let ids = rows.iter().map(|r| r.id).collect::<Vec<_>>();
                 let config = declared.build();
-                chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
+                chart_fixture::with_pair::<R, _>(client, &ids, &config, |pair, work| {
                     let original = source_bits(pair)?;
                     let indices = (0..rows.len())
                         .map(i64::try_from)
@@ -873,7 +873,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
     }
 
     mod demand {
-        use super::{PointRootSession, Result, chart_test_support, frozen, hydraulic, support};
+        use super::{PointRootSession, Result, chart_fixture, frozen, hydraulic, support};
         use numr::{
             dtype::DType,
             ops::BinaryOps,
@@ -985,7 +985,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.,
@@ -1001,7 +1001,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     ))?;
                     hydraulic(session.start_wet(&support::rows::<R>(client, &[0, 1, 2, 3])?))?;
                     let before = state(&session)?;
-                    let cache = chart_test_support::cache(session.sources())?;
+                    let cache = chart_fixture::cache(session.sources())?;
                     let work_before = work.snapshot();
                     let empty = Tensor::zeros(&[4], DType::F64, client.device())?;
                     assert!(hydraulic(session.certify_wet_star_selected(&empty))?.is_empty());
@@ -1011,7 +1011,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     assert!(point.candidates.is_empty() && point.waves.is_empty());
                     assert_eq!(point.status.numel(), 0);
                     assert_eq!(work.snapshot(), work_before);
-                    assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                    assert_eq!(chart_fixture::cache(session.sources())?, cache);
                     assert_eq!(state(&session)?, before);
                     let full_stars = hydraulic(session.certify_wet_star())?;
                     let expected = star_rows(&full_stars)?;
@@ -1037,11 +1037,11 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                         Tensor::from_slice(&[0., 1., 2., 0.], &[4], client.device())?,
                     ] {
                         let before = work.snapshot();
-                        let cache = chart_test_support::cache(session.sources())?;
+                        let cache = chart_fixture::cache(session.sources())?;
                         assert!(session.certify_wet_star_selected(&bad).is_err());
                         assert!(session.certify_wet_waves_selected(&bad).is_err());
                         assert_eq!(work.snapshot(), before);
-                        assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                        assert_eq!(chart_fixture::cache(session.sources())?, cache);
                     }
                     let all = Tensor::full_scalar(&[4], DType::F64, 1., client.device())?;
                     let owned = hydraulic(session.certify_wet_waves_selected(&all))?;
@@ -1076,7 +1076,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             for mutate_owner in [true, false] {
                 support::with_rectangle::<R, _>(
                     client,
@@ -1100,7 +1100,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                         }
                         let mask = Tensor::from_slice(&[0., 1.], &[2], client.device())?;
                         let before = work.snapshot();
-                        let cache = chart_test_support::cache(session.sources())?;
+                        let cache = chart_fixture::cache(session.sources())?;
                         assert!(session.certify_wet_star_selected(&mask).is_err());
                         assert!(session.certify_wet_waves_selected(&mask).is_err());
                         assert!(
@@ -1109,7 +1109,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                                 .is_err()
                         );
                         assert_eq!(work.snapshot(), before);
-                        assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                        assert_eq!(chart_fixture::cache(session.sources())?, cache);
                         Ok(())
                     },
                 )?;
@@ -1125,8 +1125,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             wet_waves_regions, wet_waves_side,
         };
         use super::{
-            PointCandidate, PointRootSession, Result, chart_test_support, frozen, hydraulic,
-            support,
+            PointCandidate, PointRootSession, Result, chart_fixture, frozen, hydraulic, support,
         };
         use crate::channel::flow::surveyed::error::checked;
         use numr::{
@@ -1142,7 +1141,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             // Exact rectangle: left invariant=3, G=3*sqrt(A)-3, and the right source is A=Q=1.
             support::with_rectangle::<R, _>(
                 client,
@@ -1161,15 +1160,15 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                         frozen::endpoints(&session.sonic.requests[0].domains[0].query.area)?[0];
                     assert!(0.5 <= original_star[0] && original_star[1] <= 1.5);
                     assert!(0.75 <= original_sonic[0] && original_sonic[1] <= 1.25);
-                    let star = chart_test_support::chart(
+                    let star = chart_fixture::chart(
                         session.sources(),
-                        chart_test_support::Anchor::Zero,
+                        chart_fixture::Anchor::Zero,
                         [1.0_f64.to_bits(), 0],
                         &[[0.5, 1.5]],
                     )?;
-                    let sonic = chart_test_support::chart(
+                    let sonic = chart_fixture::chart(
                         session.sources(),
-                        chart_test_support::Anchor::Zero,
+                        chart_fixture::Anchor::Zero,
                         [1.0_f64.to_bits(), 0],
                         &[[0.75, 1.25]],
                     )?;
@@ -1289,8 +1288,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
     mod ownership {
         use super::super::super::source_sonic_types::SonicSide;
         use super::{
-            PointCandidate, PointRootSession, Result, chart_test_support, frozen, hydraulic,
-            support,
+            PointCandidate, PointRootSession, Result, chart_fixture, frozen, hydraulic, support,
         };
         use numr::{
             dtype::DType,
@@ -1316,7 +1314,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.,
@@ -1344,7 +1342,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let state = if initialized {
                 [4., 0., 1., 0.]
             } else {
@@ -1375,7 +1373,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                 hydraulic(second.start_wet(&owners))?;
                 second.wet.domains[0] = donor;
                 let before = work.snapshot();
-                let cache = chart_test_support::cache(second.sources())?;
+                let cache = chart_fixture::cache(second.sources())?;
                 let empty = Tensor::zeros(&[2], DType::F64, client.device())?;
                 assert!(second.certify_wet_star_selected(&empty).is_err());
                 assert!(second.certify_wet_waves_selected(&empty).is_err());
@@ -1385,7 +1383,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                         .is_err()
                 );
                 assert_eq!(work.snapshot(), before);
-                assert_eq!(chart_test_support::cache(second.sources())?, cache);
+                assert_eq!(chart_fixture::cache(second.sources())?, cache);
                 Ok(())
             })
         }
@@ -1394,7 +1392,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.,
@@ -1425,14 +1423,14 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     hydraulic(second.start_source_sonic(&owners, SonicSide::Left))?;
                     second.sonic.requests[0] = donor;
                     let before = work.snapshot();
-                    let cache = chart_test_support::cache(second.sources())?;
+                    let cache = chart_fixture::cache(second.sources())?;
                     assert!(
                         second
                             .certify_point_candidates(&support::rows::<R>(client, &[1])?)
                             .is_err()
                     );
                     assert_eq!(work.snapshot(), before);
-                    assert_eq!(chart_test_support::cache(second.sources())?, cache);
+                    assert_eq!(chart_fixture::cache(second.sources())?, cache);
                     Ok(())
                 },
             )
@@ -1442,7 +1440,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.,
@@ -1528,21 +1526,21 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     assert_eq!(work.snapshot().residual_points, before);
                     for bad in [&[-1][..], &[3][..], &[0, 0][..]] {
                         let before = work.snapshot();
-                        let cache = chart_test_support::cache(session.sources())?;
+                        let cache = chart_fixture::cache(session.sources())?;
                         assert!(
                             session
                                 .certify_point_candidates(&support::rows::<R>(client, bad)?)
                                 .is_err()
                         );
                         assert_eq!(work.snapshot(), before);
-                        assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                        assert_eq!(chart_fixture::cache(session.sources())?, cache);
                     }
                     session.sources.evaluation.panels *= 2;
                     let before = work.snapshot();
-                    let cache = chart_test_support::cache(session.sources())?;
+                    let cache = chart_fixture::cache(session.sources())?;
                     assert!(session.certify_point_candidates(&owners).is_err());
                     assert_eq!(work.snapshot(), before);
-                    assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                    assert_eq!(chart_fixture::cache(session.sources())?, cache);
                     Ok(())
                 },
             )
@@ -1555,8 +1553,8 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             source_sonic_types::SonicSide,
         };
         use super::{
-            PointCandidate, PointFanAuthority, PointRootSession, Result, chart_test_support,
-            fixtures, frozen, hydraulic, support,
+            PointCandidate, PointFanAuthority, PointRootSession, Result, chart_fixture, fixtures,
+            frozen, hydraulic, support,
         };
         use numr::{dtype::DType, runtime::Runtime};
         use solvr::optimize::CertifiedRootTolerance;
@@ -1579,7 +1577,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                 .find(|r| r.id == "retained_vacuum_inside_film")
                 .ok_or("Missing independent film reference")?;
             let config = fixtures::CONFIGS[reference.config].build();
-            chart_test_support::with_pair::<R, _>(client, &[reference.id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[reference.id], &config, |pair, work| {
                 let cap = pair.bands.cap_depth.upper().try_to_vec::<f64>()?[0];
                 let owners = support::rows::<R>(client, &[0])?;
                 let mut session =
@@ -1690,7 +1688,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     .find(|r| r.id == id)
                     .ok_or("Missing independent source-scale reference")?;
                 let config = fixtures::CONFIGS[row.config].build();
-                chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, _| {
+                chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, _| {
                     let owners = support::rows::<R>(client, &[0])?;
                     let mut session =
                         hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
@@ -1742,8 +1740,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
     mod shocks {
         use super::super::super::source_sonic_types::SourceSonicStatus;
         use super::{
-            PointCandidate, PointRootSession, Result, chart_test_support, frozen, hydraulic,
-            support,
+            PointCandidate, PointRootSession, Result, chart_fixture, frozen, hydraulic, support,
         };
         use numr::{dtype::DType, runtime::Runtime};
 
@@ -1753,9 +1750,9 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R::Client: support::DepthClient<R>,
         {
             for weak_change in [false, true] {
-                let mut config = chart_test_support::config();
+                let mut config = chart_fixture::config();
                 config.gravity_m_per_s2 = 3.;
-                let section = chart_test_support::rectangle::<R>(client, 1., 4.)?;
+                let section = chart_fixture::rectangle::<R>(client, 1., 4.)?;
                 let owners = support::rows::<R>(client, &[0])?;
                 let low = if weak_change {
                     2.0_f64.powi(-80).to_bits()
@@ -1772,7 +1769,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                 .map(|p| frozen::expansion::<R>(client, &[*p], true))
                 .collect::<Result<Vec<_>>>()?;
                 // At Q=3 both source momenta equal21/2. Q=3+e gives their difference3e+e²/2>0.
-                chart_test_support::with_inputs(
+                chart_fixture::with_inputs(
                     client,
                     section,
                     owners,
@@ -1855,7 +1852,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             point_candidate_types::{PointCandidateStatus, PointRegime},
             source_sonic_types::{SonicSide, SourceSonicStatus},
         };
-        use super::{PointRootSession, Result, chart_test_support, hydraulic, support};
+        use super::{PointRootSession, Result, chart_fixture, hydraulic, support};
         use crate::channel::flow::surveyed::error::{HydraulicError, PrismaticRiemannRejection};
         use numr::{dtype::DType, runtime::Runtime};
         use solvr::optimize::CertifiedRootTolerance;
@@ -1874,7 +1871,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.,
@@ -1936,7 +1933,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.max_native_query_points = 6;
             support::with_rectangle::<R, _>(
                 client,
@@ -1963,7 +1960,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     assert_eq!(work.snapshot().residual_points, 6);
                     assert!(session.sonic.requests[0].terminal);
                     let before = work.snapshot();
-                    let cache = chart_test_support::cache(session.sources())?;
+                    let cache = chart_fixture::cache(session.sources())?;
                     assert!(session.certify_point_candidates(&owners).is_err());
                     assert!(
                         session
@@ -1972,7 +1969,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     );
                     assert_eq!(session.callback_points(), 6);
                     assert_eq!(work.snapshot(), before);
-                    assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                    assert_eq!(chart_fixture::cache(session.sources())?, cache);
                     Ok(())
                 },
             )
@@ -1982,7 +1979,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.max_native_query_points = 3;
             support::with_rectangle::<R, _>(
                 client,
@@ -2007,11 +2004,11 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     );
                     assert!(session.wet.terminal);
                     let before = work.snapshot();
-                    let cache = chart_test_support::cache(session.sources())?;
+                    let cache = chart_fixture::cache(session.sources())?;
                     assert!(session.certify_point_candidates(&owners).is_err());
                     assert_eq!(session.callback_points(), 3);
                     assert_eq!(work.snapshot(), before);
-                    assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                    assert_eq!(chart_fixture::cache(session.sources())?, cache);
                     Ok(())
                 },
             )

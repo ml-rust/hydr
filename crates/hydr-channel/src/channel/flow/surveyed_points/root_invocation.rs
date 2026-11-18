@@ -105,9 +105,8 @@ fn inconsistent(message: &str) -> HydraulicError {
 mod tests {
     use super::RootInvocation;
     use crate::channel::flow::surveyed_points::{
-        chart_test_support,
-        source_tests::support as frozen,
-        wet_depth::{refine_wet_depth, tests::support},
+        chart_fixture, source_fixture_support as frozen,
+        wet_depth::{fixture as support, refine_wet_depth},
         wet_roots::locate_wet_roots,
     };
     use frozen::{Result, hydraulic};
@@ -130,7 +129,7 @@ mod tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         support::with_rectangle::<R, _>(
             client,
             1.0,
@@ -172,7 +171,7 @@ mod tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         support::with_rectangle::<R, _>(
             client,
             1.0,
@@ -195,13 +194,13 @@ mod tests {
                 );
                 std::mem::swap(&mut first.domains, &mut second.domains);
                 let before = work.snapshot();
-                let cache = chart_test_support::cache(pair)?;
+                let cache = chart_fixture::cache(pair)?;
                 let error = refine_wet_depth(pair, second)
                     .err()
                     .ok_or("Foreign located domain enters depth mapping")?;
                 assert!(format!("{error:?}").contains("another invocation"));
                 assert_eq!(work.snapshot(), before);
-                assert_eq!(chart_test_support::cache(pair)?, cache);
+                assert_eq!(chart_fixture::cache(pair)?, cache);
                 Ok(())
             },
         )
@@ -213,7 +212,7 @@ mod tests {
         R::Client: support::DepthClient<R>,
     {
         use solvr::optimize::CertifiedRootTolerance;
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         support::with_rectangle::<R, _>(
             client,
             3.0,
@@ -255,7 +254,7 @@ mod tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         support::with_rectangle::<R, _>(client, 1.0, 8.0, &[], &config, |pair, work| {
             let rows = support::rows::<R>(client, &[])?;
             let first = hydraulic(locate_wet_roots(pair, &rows, 0))?;
@@ -296,7 +295,7 @@ mod tests {
 
     mod transplants {
         use super::{
-            Result, chart_test_support, hydraulic, locate_wet_roots, refine_wet_depth, support,
+            Result, chart_fixture, hydraulic, locate_wet_roots, refine_wet_depth, support,
         };
         use crate::channel::flow::surveyed_points::{
             wet_depth_refinement, wet_depth_types::DepthRefinementState,
@@ -337,7 +336,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.root.atol = 0.05;
             config.root.rtol = 0.0;
             let state = if initialized {
@@ -367,7 +366,7 @@ mod tests {
                 assert_eq!(!second.domains()[0].is_deferred(), initialized);
                 assert!(second.invocation.check(&original_identity).is_err());
                 let before = work.snapshot();
-                let cache = chart_test_support::cache(second.sources())?;
+                let cache = chart_fixture::cache(second.sources())?;
                 let points = second.callback_points();
                 let limit = second.point_limit();
                 if substate_only {
@@ -443,7 +442,7 @@ mod tests {
                 };
                 assert!(format!("{error:?}").contains("another invocation"));
                 assert_eq!(work.snapshot(), before);
-                assert_eq!(chart_test_support::cache(pair)?, cache);
+                assert_eq!(chart_fixture::cache(pair)?, cache);
                 Ok(())
             })
         }

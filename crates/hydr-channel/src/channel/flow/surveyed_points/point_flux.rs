@@ -331,11 +331,11 @@ pub(super) mod fixture;
 mod tests {
     use super::super::corpus_coverage::Coverage;
     use super::super::{
-        chart_test_support,
+        chart_fixture,
         point_flux_types::{PointFluxKind, PointFluxStatus},
         point_root_session::PointRootSession,
-        source_tests::support as frozen,
-        wet_depth::tests::support,
+        source_fixture_support as frozen,
+        wet_depth::fixture as support,
     };
     use super::fixture::{coherence, diagnostics};
     use frozen::{Result, hydraulic};
@@ -346,7 +346,7 @@ mod tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         support::with_rectangle::<R, _>(
             client,
             1.,
@@ -400,14 +400,14 @@ mod tests {
 
     mod controller {
         use super::super::super::{
-            point_candidates::tests::fixtures,
+            point_candidates::fixture::fixtures,
             point_flux_types::{PointFluxKind, PointFluxStatus},
             point_quadrature_types::PointQuadratureOutcome as Outcome,
             point_root_session::PointRootSession,
             source_sonic_quadrature::tests::CASES,
         };
         use super::coherence::coherent;
-        use super::{chart_test_support, frozen, hydraulic, support};
+        use super::{chart_fixture, frozen, hydraulic, support};
         use crate::channel::flow::surveyed::PrismaticRiemannConfig;
         use frozen::Result;
         use numr::{dtype::DType, runtime::Runtime};
@@ -442,7 +442,7 @@ mod tests {
             let id = CASES[6];
             let mut config = config(id)?;
             config.max_refinements = 1;
-            chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                 let owners = support::rows::<R>(client, &[0])?;
                 let mut session =
                     hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
@@ -476,15 +476,14 @@ mod tests {
         {
             let id = CASES[6];
             let config = config(id)?;
-            let initial =
-                chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, _| {
-                    let owners = support::rows::<R>(client, &[0])?;
-                    let mut session =
-                        hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
-                    Ok(hydraulic(session.select_point_fluxes(&owners))?.callback_points)
-                })?;
+            let initial = chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, _| {
+                let owners = support::rows::<R>(client, &[0])?;
+                let mut session =
+                    hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
+                Ok(hydraulic(session.select_point_fluxes(&owners))?.callback_points)
+            })?;
             let limit = initial + 1;
-            chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                 let owners = support::rows::<R>(client, &[0])?;
                 let mut session = hydraulic(PointRootSession::new(pair, &owners, limit))?;
                 let result = hydraulic(session.resolve_point_fluxes(&owners))?;
@@ -520,7 +519,7 @@ mod tests {
             config.water_flux_atol_m3_per_s = 0.;
             config.momentum_flux_atol_m4_per_s2 = 0.;
             config.flux_rtol = 0.;
-            chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                 let owners = support::rows::<R>(client, &[0])?;
                 let mut session =
                     hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
@@ -576,7 +575,7 @@ mod tests {
             config.momentum_flux_atol_m4_per_s2 = 0.;
             config.flux_rtol = 0.;
             config.max_simpson_panels = config.initial_simpson_panels * 4;
-            chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                 let owners = support::rows::<R>(client, &[0])?;
                 let mut session =
                     hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
@@ -607,7 +606,7 @@ mod tests {
             point_flux_admission, point_flux_arithmetic, point_flux_types::PointFluxStatus,
             point_root_session::PointRootSession,
         };
-        use super::{chart_test_support, diagnostics, frozen, hydraulic, support};
+        use super::{chart_fixture, diagnostics, frozen, hydraulic, support};
         use crate::channel::flow::surveyed::error::{
             self, HydraulicError, PrismaticRiemannRejection,
         };
@@ -676,7 +675,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.,
@@ -796,12 +795,12 @@ mod tests {
 
     mod corpus {
         use super::super::super::{
-            point_candidates::tests::{fixtures, flux_fixtures},
+            point_candidates::fixture::{fixtures, flux_fixtures},
             point_flux_types::PointFluxStatus,
             point_root_session::PointRootSession,
             source_sonic_quadrature::tests::CASES,
         };
-        use super::{chart_test_support, coherence, frozen, hydraulic, support};
+        use super::{chart_fixture, coherence, frozen, hydraulic, support};
         use crate::channel::flow::{
             surveyed::error::{HydraulicError, PrismaticRiemannRejection},
             surveyed_points::corpus_coverage::Coverage,
@@ -839,7 +838,7 @@ mod tests {
                 }
                 let ids = rows.iter().map(|e| e.id).collect::<Vec<_>>();
                 let config = original.build();
-                chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, work| {
+                chart_fixture::with_pair::<R, _>(client, &ids, &config, |pair, work| {
                     let parents = (0..rows.len())
                         .map(i64::try_from)
                         .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -1131,13 +1130,13 @@ mod tests {
 
     mod positive_support {
         use super::super::super::{
-            point_candidates::tests::fixtures,
+            point_candidates::fixture::fixtures,
             point_flux_association, point_flux_support_metrics,
             point_flux_types::{PointFluxStatus, PointPositiveStatus},
             point_root_session::PointRootSession,
             source_sonic_types::SonicSide,
         };
-        use super::{chart_test_support, diagnostics, frozen, hydraulic, support};
+        use super::{chart_fixture, diagnostics, frozen, hydraulic, support};
         use crate::channel::flow::surveyed::error::checked;
         use frozen::Result;
         use numr::{
@@ -1186,7 +1185,7 @@ mod tests {
                 .find(|case| case.id == "scalar_rectangle_vacuum_threshold_inside")
                 .ok_or("Missing original inside-threshold execution")?;
             let config = fixtures::CONFIGS[case.config].build();
-            chart_test_support::with_pair::<R, _>(client, &[case.id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[case.id], &config, |pair, work| {
                 let owners = support::rows::<R>(client, &[0])?;
                 let mut session =
                     hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
@@ -1319,11 +1318,11 @@ mod tests {
 
     mod precision {
         use super::super::super::{
-            point_candidates::tests::{fixtures, flux_fixtures},
+            point_candidates::fixture::{fixtures, flux_fixtures},
             point_flux_types::{PointFluxKind, PointFluxStatus},
             point_root_session::PointRootSession,
         };
-        use super::{chart_test_support, diagnostics, frozen, hydraulic, support};
+        use super::{chart_fixture, diagnostics, frozen, hydraulic, support};
         use crate::channel::flow::surveyed::error::checked;
         use frozen::Result;
         use numr::{dtype::DType, runtime::Runtime};
@@ -1345,7 +1344,7 @@ mod tests {
                     .find(|r| r.id == id)
                     .ok_or("Missing frozen full flux precision truth")?;
                 let config = fixtures::CONFIGS[case.config].build();
-                chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+                chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                     let source_a = frozen::components(&pair.velocity.input().left_area)?;
                     let source_q = frozen::components(&pair.velocity.input().left_discharge)?;
                     let cap = pair.bands.cap_depth.upper().try_to_vec::<f64>()?[0];

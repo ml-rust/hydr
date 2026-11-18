@@ -1,5 +1,13 @@
-use super::*;
-use numr::ops::ScalarOps;
+use super::potential_increment_fixtures as frozen;
+use super::potential_range::PotentialValue;
+use super::source_fixture_support::{self as support, Client, Result, components, endpoints, zero};
+use crate::channel::{
+    flow::surveyed::PrismaticRiemannConfig,
+    section::{
+        CrossSectionBatch, CrossSectionDefinition, CrossSectionPoint, PrismaticSectionBatch,
+    },
+};
+use numr::{dtype::DType, runtime::Runtime};
 
 pub(super) fn section<R>(
     client: &R::Client,
@@ -112,64 +120,4 @@ where
         }
     }
     Ok(())
-}
-
-pub(super) fn guarded_prefix<R>(
-    client: &R::Client,
-    context: &PotentialContext<'_, R>,
-    endpoint: PhysicalEndpoint,
-    reference: frozen::Reference,
-) -> Result
-where
-    R: Runtime<DType = DType>,
-    R::Client: Client<R> + CertifiedSimpsonAlgorithms<R>,
-{
-    let query = hydraulic(error::checked::<R, _>(
-        client,
-        "zero-crossing analytic admission control",
-        |a| {
-            let query = context.query.endpoint(a, context.bands, endpoint)?;
-            let raw = query.retained_endpoint_area(a, context.bands, context.boundaries)?;
-            let state = context
-                .geometry
-                .recover_query(a, context.bands, &query)?
-                .state;
-            let physical = a.expansion_interval(&raw)?;
-            let zero = Tensor::zeros(raw.high().shape(), DType::F64, client.device())?;
-            // Widen only the certificate. The original frozen physical query and recovered geometry remain unchanged.
-            let radius = client.mul_scalar(physical.upper(), 2.0)?;
-            let widened = a.expansion_bounds(&zero, &zero, &radius)?;
-            let projected = a.expansion_interval(&widened)?;
-            assert!(
-                projected
-                    .lower()
-                    .try_to_vec::<f64>()?
-                    .into_iter()
-                    .all(|x| x < 0.0)
-            );
-            let analytic = super::super::potential_absolute::admitted_analytic(
-                a,
-                context.bands,
-                &widened,
-                &state.depth,
-                context.evaluation.config.gravity_m_per_s2,
-            )?;
-            assert_eq!(analytic.eligible.try_to_vec::<f64>()?, [0.0; 3]);
-            assert_eq!(analytic.rectangular.try_to_vec::<f64>()?, [0.0; 3]);
-            assert_eq!(analytic.pointed.try_to_vec::<f64>()?, [0.0; 3]);
-            Ok(query)
-        },
-    ))?;
-    let prefix = hydraulic(super::super::potential_absolute::prefix_potential(
-        context,
-        context.bands,
-        &query,
-        context.boundaries,
-    ))?;
-    check_value::<R>(
-        client,
-        &prefix,
-        reference,
-        "zero-crossing certificate retains the physical dry prefix",
-    )
 }

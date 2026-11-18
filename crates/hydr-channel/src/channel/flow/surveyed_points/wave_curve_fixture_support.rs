@@ -1,9 +1,27 @@
-use super::super::potential_range_tests::frozen::query_profiles as points;
-use super::*;
-use crate::channel::section::{
-    AreaAnchor, AreaDirection, AreaQuery, CrossSectionBatch, CrossSectionDefinition,
-    CrossSectionPoint, PrismaticSectionBatch,
+use super::potential_increment_fixtures::query_profiles as points;
+use super::potential_range::{PotentialContext, PotentialEvaluation};
+use super::source_fixture_support::{
+    Client, Result, bounds as source_bounds, components, endpoints, expansion, hydraulic, zero,
 };
+use super::wave_curve_fixtures as fixtures;
+use super::wave_curve_types::{CurveValue, EndpointCurve};
+use crate::channel::{
+    flow::surveyed::{
+        PrismaticRiemannConfig,
+        error::{self, HydraulicError},
+        work::WorkLedger,
+    },
+    section::{
+        AreaAnchor, AreaDirection, AreaQuery, CrossSectionBatch, CrossSectionDefinition,
+        CrossSectionPoint, HydraulicGeometry, PhysicalEndpoint, PrismaticSectionBatch,
+    },
+};
+use numr::{
+    dtype::DType,
+    runtime::{Runtime, RuntimeClient},
+    tensor::Tensor,
+};
+use solvr::integrate::CertifiedSimpsonAlgorithms;
 
 pub(super) fn sections<R>(client: &R::Client) -> Result<Vec<PrismaticSectionBatch<R>>>
 where
@@ -283,7 +301,7 @@ where
     assert_eq!(value.available.try_to_vec::<f64>()?, [1.0; 3], "{id}");
     for bounds in [
         &value.physical,
-        &super::super::source_tests::support::bounds::<R>(client, &value.retained)?,
+        &source_bounds::<R>(client, &value.retained)?,
     ] {
         for actual in endpoints(bounds)? {
             check(actual, reference, id);
@@ -303,5 +321,95 @@ pub(super) fn unavailable_value<R: Runtime<DType = DType>>(value: &CurveValue<R>
         zero(point, "unavailable wave placeholder");
     }
     assert_eq!(endpoints(&value.physical)?, [[0.0; 2]; 3]);
+    Ok(())
+}
+
+pub(super) fn check_endpoint<R>(
+    client: &R::Client,
+    value: &EndpointCurve<R>,
+    expected: fixtures::Expected,
+    id: &str,
+) -> Result
+where
+    R: Runtime<DType = DType>,
+    R::Client: Client<R>,
+{
+    let (shock, rare, equal, dry) = match expected {
+        fixtures::Expected::Dry => {
+            unavailable_value(&value.curve)?;
+            (0.0, 0.0, 0.0, 1.0)
+        }
+        fixtures::Expected::Equality { limit } => {
+            check_value::<R>(client, &value.curve, fixtures::Reference::ExactZero, id)?;
+            check_value::<R>(client, &value.equality_limit, limit, id)?;
+            (0.0, 0.0, 1.0, 0.0)
+        }
+        fixtures::Expected::Rare { curve } => {
+            check_value::<R>(client, &value.curve, curve, id)?;
+            for bounds in endpoints(&value.curve.physical)? {
+                assert!(bounds[1] <= 0.0, "{id}: {bounds:?}");
+            }
+            (0.0, 1.0, 0.0, 0.0)
+        }
+        fixtures::Expected::Shock { curve, offset } => {
+            check_value::<R>(client, &value.curve, curve, id)?;
+            check_value::<R>(client, &value.actual_shock.value, offset, id)?;
+            for bounds in endpoints(&value.curve.physical)? {
+                assert!(bounds[0] > 0.0, "{id}: {bounds:?}");
+            }
+            let domain = &value.actual_shock.domain;
+            for bounds in endpoints(&domain.source_area)?
+                .into_iter()
+                .chain(endpoints(&domain.target_area)?)
+            {
+                assert!(
+                    bounds[0] > 0.0 && bounds[0] <= bounds[1],
+                    "{id}: {bounds:?}"
+                );
+            }
+            for bounds in endpoints(&domain.separation)? {
+                assert!(bounds[0] > 0.0, "{id}: {bounds:?}");
+            }
+            for bounds in endpoints(&domain.contraction)? {
+                assert!(bounds[0] >= 0.0 && bounds[1] <= 1.0, "{id}: {bounds:?}");
+            }
+            (1.0, 0.0, 0.0, 0.0)
+        }
+        fixtures::Expected::NumericalRange => {
+            return Err("Numerical range case returned a wave certificate".into());
+        }
+    };
+    assert_eq!(
+        value.classification.shock.try_to_vec::<f64>()?,
+        [shock; 3],
+        "{id}"
+    );
+    assert_eq!(
+        value.classification.rarefaction.try_to_vec::<f64>()?,
+        [rare; 3],
+        "{id}"
+    );
+    assert_eq!(
+        value.classification.equality.try_to_vec::<f64>()?,
+        [equal; 3],
+        "{id}"
+    );
+    assert_eq!(
+        value.classification.dry_source.try_to_vec::<f64>()?,
+        [dry; 3],
+        "{id}"
+    );
+    assert_eq!(
+        value.classification.uncertain.try_to_vec::<f64>()?,
+        [0.0; 3],
+        "{id}"
+    );
+    unavailable_value(&value.conditional_shock.value)?;
+    if shock == 0.0 {
+        unavailable_value(&value.actual_shock.value)?;
+    }
+    if equal == 0.0 {
+        unavailable_value(&value.equality_limit)?;
+    }
     Ok(())
 }

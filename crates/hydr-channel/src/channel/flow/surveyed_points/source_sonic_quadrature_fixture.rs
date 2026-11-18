@@ -1,6 +1,6 @@
 use super::super::{
-    point_root_session::PointRootSession, source_sonic_types::SonicSide,
-    source_tests::support as frozen, wet_depth::tests::support,
+    point_root_session::PointRootSession, source_fixture_support as frozen,
+    source_sonic_types::SonicSide, wet_depth::fixture as support,
 };
 use crate::channel::flow::surveyed::error::checked;
 use frozen::{Result, hydraulic};

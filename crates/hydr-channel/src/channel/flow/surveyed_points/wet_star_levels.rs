@@ -88,13 +88,13 @@ where
 #[cfg(test)]
 pub(in crate::channel::flow::surveyed_points) mod tests {
     use super::super::{
-        chart_test_support, paired_residual,
+        chart_fixture, paired_residual,
         point_candidate_types::PointCandidate,
-        point_candidates::tests::{fixtures, flux_fixtures},
+        point_candidates::fixture::{fixtures, flux_fixtures},
         point_flux_types::{PointFluxCertificates, PointFluxKind, SelectedPointFlux},
         point_root_session::PointRootSession,
-        source_tests::support as frozen,
-        wet_depth::tests::support,
+        source_fixture_support as frozen,
+        wet_depth::fixture as support,
     };
     use crate::channel::{
         flow::surveyed::{PrismaticRiemannConfig, error::checked},
@@ -327,7 +327,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                 .ok_or("Star truth lacks water")?
                 .map(f64::from_bits);
             let config = fixtures::CONFIGS[case.config].build();
-            chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, _| {
+            chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, _| {
                 let owners = support::rows::<R>(client, &[0])?;
                 let mut session =
                     hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;

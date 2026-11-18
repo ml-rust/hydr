@@ -3,9 +3,9 @@ use crate::channel::{
         surveyed::PrismaticRiemannConfig,
         surveyed::work::WorkLedger,
         surveyed_points::{
-            chart_test_support,
+            chart_fixture,
             paired_sources::PairedSources,
-            source_tests::support::{self as frozen, Client, Result, components, expansion},
+            source_fixture_support::{self as frozen, Client, Result, components, expansion},
             wet_root_types::WetRootDomain,
         },
     },
@@ -104,7 +104,7 @@ where
             )
         })
         .collect::<Result<Vec<_>>>()?;
-    chart_test_support::with_inputs_ref_policy(
+    chart_fixture::with_inputs_ref_policy(
         client,
         section,
         owners,
@@ -127,7 +127,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: DepthClient<R>,
 {
-    let section = chart_test_support::rectangle::<R>(client, width, cap_depth)?;
+    let section = chart_fixture::rectangle::<R>(client, width, cap_depth)?;
     with_section(client, &section, states, config, operation)
 }
 
@@ -148,7 +148,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: DepthClient<R>,
 {
-    let section = chart_test_support::rectangle::<R>(client, width, cap_depth)?;
+    let section = chart_fixture::rectangle::<R>(client, width, cap_depth)?;
     with_section_policy(client, &section, states, config, replacement, operation)
 }
 
@@ -177,7 +177,7 @@ where
     .iter()
     .map(|value| expansion::<R>(client, &[*value], true))
     .collect::<Result<Vec<_>>>()?;
-    chart_test_support::with_inputs(client, section, owners, inputs, config, operation)
+    chart_fixture::with_inputs(client, section, owners, inputs, config, operation)
 }
 
 pub(super) fn area_bounds<R>(
@@ -189,7 +189,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: Client<R>,
 {
-    let [lower, upper] = chart_test_support::endpoint_areas(pair, parents, query)?;
+    let [lower, upper] = chart_fixture::endpoint_areas(pair, parents, query)?;
     let lower = frozen::bounds(pair.geometry.client(), &lower)?;
     let upper = frozen::bounds(pair.geometry.client(), &upper)?;
     Ok(lower
@@ -222,8 +222,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: Client<R>,
 {
-    let [lower, upper] =
-        chart_test_support::endpoint_areas(pair, &domain.parent_rows, &domain.query)?;
+    let [lower, upper] = chart_fixture::endpoint_areas(pair, &domain.parent_rows, &domain.query)?;
     let parameter = frozen::endpoints(&domain.query.query.parameter)?;
     Ok(DomainSnapshot {
         parents: domain.parent_rows.try_to_vec::<i64>()?,

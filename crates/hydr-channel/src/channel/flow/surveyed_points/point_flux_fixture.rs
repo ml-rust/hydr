@@ -1,4 +1,4 @@
-use super::super::{source_tests::support as frozen, wet_depth::tests::support};
+use super::super::{source_fixture_support as frozen, wet_depth::fixture as support};
 use frozen::hydraulic;
 
 #[path = "point_flux_fixture_coherence.rs"]

@@ -213,14 +213,14 @@ where
 mod tests {
     use crate::channel::flow::surveyed_points::corpus_coverage::Coverage;
     use crate::channel::flow::surveyed_points::{
-        chart_test_support, source_tests::support as frozen, wet_depth::refine_wet_depth,
+        chart_fixture, source_fixture_support as frozen, wet_depth::refine_wet_depth,
         wet_roots::locate_wet_roots, wet_star_types::WetStarStatus,
     };
     use frozen::{Result, hydraulic};
     use numr::{dtype::DType, runtime::Runtime};
     use solvr::optimize::CertifiedRootTolerance;
 
-    use crate::channel::flow::surveyed_points::wet_depth::tests::support;
+    use crate::channel::flow::surveyed_points::wet_depth::fixture as support;
     use diagnostics::check_diagnostics;
 
     fn matrix<R>(client: &R::Client, coverage: Coverage) -> Result
@@ -240,7 +240,7 @@ mod tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         // Phi(A)=2*sqrt(A). Sources (4,-4),(4,12) give A*=1,u*=1,Q*=1.
         support::with_rectangle::<R, _>(
             client,
@@ -301,10 +301,10 @@ mod tests {
                         }
                     }
                 }
-                let cache = chart_test_support::cache(session.sources())?;
+                let cache = chart_fixture::cache(session.sources())?;
                 let repeated = hydraulic(session.certify_wet_star())?;
                 assert_eq!(repeated.len(), certificates.len());
-                assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                assert_eq!(chart_fixture::cache(session.sources())?, cache);
                 assert_eq!(work.snapshot(), after);
                 // Certificate construction leaves continuation available for stricter physical stopping.
                 let session = hydraulic(session.refine_depth_to(CertifiedRootTolerance {
@@ -346,68 +346,63 @@ mod tests {
                 [0xbaea20bd700c2c3e, 0xbaea20bd700c2c3d],
             ),
         ];
-        let config = chart_test_support::config();
-        chart_test_support::with_pair::<R, _>(
-            client,
-            &truths.map(|t| t.0),
-            &config,
-            |pair, work| {
-                // The device replays the knot jump and the film, one star of each kind.
-                let parents: &[i64] = if coverage.is_full() {
-                    &[3, 0, 1, 3, 2]
-                } else {
-                    &[3, 0]
-                };
-                let rows = support::rows::<R>(client, parents)?;
-                let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
-                let session = hydraulic(refine_wet_depth(pair, located))?;
-                let mut session = hydraulic(session.refine_depth_to(CertifiedRootTolerance {
-                    atol: 0.0,
-                    rtol: 0.0,
-                }))?;
-                let before = work.snapshot();
-                let certificates = hydraulic(session.certify_wet_star())?;
-                assert_eq!(work.snapshot().residual_points, before.residual_points);
-                assert_eq!(work.snapshot().root_iterations, before.root_iterations);
-                let mut count = 0;
-                for domain in &certificates {
-                    check_diagnostics(session.sources(), domain)?;
-                    diagnostics::check_frozen_differences(session.sources(), domain)?;
-                    let parents = domain.parent_rows.try_to_vec::<i64>()?;
-                    let velocity = frozen::endpoints(&domain.velocity)?;
-                    let discharge = frozen::endpoints(&domain.discharge)?;
-                    assert!(
-                        domain
-                            .status
-                            .try_to_vec::<i64>()?
-                            .iter()
-                            .all(|&s| s == WetStarStatus::Certified as i64)
-                    );
-                    for (index, parent) in parents.into_iter().enumerate() {
-                        let truth = truths[usize::try_from(parent)?];
-                        for (actual, expected) in
-                            [(velocity[index], truth.1), (discharge[index], truth.2)]
-                        {
-                            let expected = expected.map(f64::from_bits);
+        let config = chart_fixture::config();
+        chart_fixture::with_pair::<R, _>(client, &truths.map(|t| t.0), &config, |pair, work| {
+            // The device replays the knot jump and the film, one star of each kind.
+            let parents: &[i64] = if coverage.is_full() {
+                &[3, 0, 1, 3, 2]
+            } else {
+                &[3, 0]
+            };
+            let rows = support::rows::<R>(client, parents)?;
+            let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
+            let session = hydraulic(refine_wet_depth(pair, located))?;
+            let mut session = hydraulic(session.refine_depth_to(CertifiedRootTolerance {
+                atol: 0.0,
+                rtol: 0.0,
+            }))?;
+            let before = work.snapshot();
+            let certificates = hydraulic(session.certify_wet_star())?;
+            assert_eq!(work.snapshot().residual_points, before.residual_points);
+            assert_eq!(work.snapshot().root_iterations, before.root_iterations);
+            let mut count = 0;
+            for domain in &certificates {
+                check_diagnostics(session.sources(), domain)?;
+                diagnostics::check_frozen_differences(session.sources(), domain)?;
+                let parents = domain.parent_rows.try_to_vec::<i64>()?;
+                let velocity = frozen::endpoints(&domain.velocity)?;
+                let discharge = frozen::endpoints(&domain.discharge)?;
+                assert!(
+                    domain
+                        .status
+                        .try_to_vec::<i64>()?
+                        .iter()
+                        .all(|&s| s == WetStarStatus::Certified as i64)
+                );
+                for (index, parent) in parents.into_iter().enumerate() {
+                    let truth = truths[usize::try_from(parent)?];
+                    for (actual, expected) in
+                        [(velocity[index], truth.1), (discharge[index], truth.2)]
+                    {
+                        let expected = expected.map(f64::from_bits);
+                        assert!(
+                            actual[0] <= expected[0] && actual[1] >= expected[1],
+                            "{}: {actual:?}, {expected:?}",
+                            truth.0
+                        );
+                        if parent == 0 {
                             assert!(
-                                actual[0] <= expected[0] && actual[1] >= expected[1],
-                                "{}: {actual:?}, {expected:?}",
-                                truth.0
+                                actual[1] - actual[0] < expected[0].abs() * 1e-10,
+                                "film precision: {actual:?}"
                             );
-                            if parent == 0 {
-                                assert!(
-                                    actual[1] - actual[0] < expected[0].abs() * 1e-10,
-                                    "film precision: {actual:?}"
-                                );
-                            }
                         }
-                        count += 1;
                     }
+                    count += 1;
                 }
-                assert_eq!(count, parents.len());
-                Ok(())
-            },
-        )
+            }
+            assert_eq!(count, parents.len());
+            Ok(())
+        })
     }
 
     #[test]
@@ -436,7 +431,7 @@ mod tests {
             support,
         };
         use crate::channel::flow::surveyed_points::{
-            chart_test_support, wet_depth::refine_wet_depth, wet_roots::locate_wet_roots,
+            chart_fixture, wet_depth::refine_wet_depth, wet_roots::locate_wet_roots,
         };
         use numr::{dtype::DType, runtime::Runtime};
 
@@ -445,7 +440,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             unchanged_retained_source::<R>(client)?;
             let foreign = support::with_rectangle::<R, _>(
                 client,
@@ -468,7 +463,7 @@ mod tests {
                             hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
                         let mut session = hydraulic(refine_wet_depth(pair, located))?;
                         let before = work.snapshot();
-                        let cache = chart_test_support::cache(session.sources())?;
+                        let cache = chart_fixture::cache(session.sources())?;
                         if stale {
                             session.sources.evaluation.panels *= 2;
                         } else {
@@ -481,7 +476,7 @@ mod tests {
                         }
                         assert!(session.certify_wet_star().is_err());
                         assert_eq!(work.snapshot(), before);
-                        assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                        assert_eq!(chart_fixture::cache(session.sources())?, cache);
                         Ok(())
                     },
                 )?;
@@ -507,8 +502,8 @@ mod tests {
                 flow::surveyed_points::{potential_range::source_query, wet_star_endpoint},
                 section::PhysicalEndpoint,
             };
-            let config = chart_test_support::config();
-            chart_test_support::with_pair::<R, _>(
+            let config = chart_fixture::config();
+            chart_fixture::with_pair::<R, _>(
                 client,
                 &["uniform_cap_retained_deficit_dyadic_velocity"],
                 &config,
@@ -749,7 +744,7 @@ mod tests {
 
     mod ranges {
         use super::{
-            Result, WetStarStatus, chart_test_support, frozen, hydraulic, locate_wet_roots,
+            Result, WetStarStatus, chart_fixture, frozen, hydraulic, locate_wet_roots,
             refine_wet_depth, support,
         };
         use numr::{dtype::DType, runtime::Runtime};
@@ -761,7 +756,7 @@ mod tests {
         {
             use crate::channel::flow::surveyed_points::wet_depth_types::WetDepthStatus;
             use numr::{runtime::RuntimeClient, tensor::Tensor};
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.0,
@@ -773,9 +768,9 @@ mod tests {
                     let located = hydraulic(locate_wet_roots(pair, &rows, config.root.max_points))?;
                     let mut session = hydraulic(refine_wet_depth(pair, located))?;
                     // Widen the supported bracket around the independently known root A*=1.
-                    let query = chart_test_support::chart(
+                    let query = chart_fixture::chart(
                         session.sources(),
-                        chart_test_support::Anchor::Zero,
+                        chart_fixture::Anchor::Zero,
                         [1.0_f64.to_bits(), 0],
                         &[[0.25, 2.25]],
                     )?;

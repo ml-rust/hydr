@@ -220,9 +220,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::{
-        chart_test_support, point_flux_pressure,
-        source_tests::support::{self as frozen, Result, hydraulic},
-        wet_depth::tests::support,
+        chart_fixture, point_flux_pressure,
+        source_fixture_support::{self as frozen, Result, hydraulic},
+        wet_depth::fixture as support,
     };
     use super::*;
     use crate::channel::flow::surveyed::error::checked;
@@ -232,7 +232,7 @@ mod tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         support::with_rectangle::<R, _>(
             client,
             1.,
@@ -242,9 +242,9 @@ mod tests {
             |pair, work| {
                 let area = 2.0_f64.powi(-164);
                 let truth = 2.0_f64.powi(-329);
-                let query = chart_test_support::chart(
+                let query = chart_fixture::chart(
                     pair,
-                    chart_test_support::Anchor::Zero,
+                    chart_fixture::Anchor::Zero,
                     [1.0_f64.to_bits(), 0],
                     &[[area, area]],
                 )?;
@@ -280,16 +280,12 @@ mod tests {
                 );
                 assert_eq!(work.snapshot().root_solves, 0);
                 assert_eq!(work.snapshot().residual_points, 0);
-                let identity_query = chart_test_support::chart(
-                    pair,
-                    chart_test_support::Anchor::Source,
-                    [0, 0],
-                    &[[0., 0.]],
-                )?;
+                let identity_query =
+                    chart_fixture::chart(pair, chart_fixture::Anchor::Source, [0, 0], &[[0., 0.]])?;
                 let delta = 2.0_f64.powi(-80);
-                let weak_query = chart_test_support::chart(
+                let weak_query = chart_fixture::chart(
                     pair,
-                    chart_test_support::Anchor::Source,
+                    chart_fixture::Anchor::Source,
                     [delta.to_bits(), 0],
                     &[[1., 1.]],
                 )?;

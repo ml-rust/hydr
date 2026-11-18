@@ -119,15 +119,15 @@ mod snapshots;
 #[cfg(test)]
 pub(in crate::channel::flow::surveyed_points) mod tests {
     use super::super::{
-        chart_test_support,
+        chart_fixture,
         corpus_coverage::Coverage,
-        point_candidates::tests::{fixtures, flux_fixtures},
+        point_candidates::fixture::{fixtures, flux_fixtures},
         point_flux_types::{PointFluxKind, PointFluxStatus},
         point_quadrature_types::PointQuadratureProgress,
         point_root_session::PointRootSession,
+        source_fixture_support as frozen,
         source_sonic_types::SonicSide,
-        source_tests::support as frozen,
-        wet_depth::tests::support,
+        wet_depth::fixture as support,
     };
     use super::snapshots;
     use crate::channel::flow::surveyed::{PrismaticRiemannConfig, work::PrismaticRiemannWork};
@@ -263,11 +263,8 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             R::Client: support::DepthClient<R>,
         {
             let config = config(CASES[0])?;
-            let foreign = chart_test_support::with_pair::<R, _>(
-                client,
-                &[CASES[1]],
-                &config,
-                |pair, work| {
+            let foreign =
+                chart_fixture::with_pair::<R, _>(client, &[CASES[1]], &config, |pair, work| {
                     let parent = support::rows::<R>(client, &[0])?;
                     let empty = support::rows::<R>(client, &[])?;
                     let level = hydraulic(pair.panel_level(1))?;
@@ -276,9 +273,8 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     assert!(work.snapshot().simpson_value_points > before.simpson_value_points);
                     assert_eq!(values.values[0].available.try_to_vec::<f64>()?, [1.]);
                     Ok(values)
-                },
-            )?;
-            chart_test_support::with_pair::<R, _>(client, &CASES[..2], &config, |pair, work| {
+                })?;
+            chart_fixture::with_pair::<R, _>(client, &CASES[..2], &config, |pair, work| {
                 let parents = support::rows::<R>(client, &[0, 1])?;
                 let first = support::rows::<R>(client, &[0])?;
                 let second = support::rows::<R>(client, &[1])?;
@@ -384,7 +380,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             let id = CASES[0];
             let config = config(id)?;
             let side = side(id)?;
-            chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                 let owners = support::rows::<R>(client, &[0])?;
                 let mut session =
                     hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
@@ -456,7 +452,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             let id = CASES[0];
             let config = config(id)?;
             let side = side(id)?;
-            chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                 let parents = support::rows::<R>(client, &[0, 0])?;
                 let owners = support::rows::<R>(client, &[0, 1])?;
                 let mut session = hydraulic(PointRootSession::new(
@@ -466,7 +462,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                 ))?;
                 hydraulic(session.select_point_fluxes(&owners))?;
                 let untouched = snapshots::owner(&session, side, 0)?;
-                let initial_cache = chart_test_support::cache(session.sources)?;
+                let initial_cache = chart_fixture::cache(session.sources)?;
                 let before = work.snapshot();
                 let old_mapped = mapped(&session);
                 let input = support::rows::<R>(client, &[1])?;
@@ -496,7 +492,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                 );
                 assert_eq!(untouched, snapshots::owner(&session, side, 0)?);
                 assert_eq!(snapshots::levels(&session, side)?, [(0, 0, 0), (1, 0, 1)]);
-                assert_eq!(chart_test_support::cache(session.sources)?, initial_cache);
+                assert_eq!(chart_fixture::cache(session.sources)?, initial_cache);
                 client.copy_into(&input, &Tensor::zeros(&[1], DType::I64, client.device())?)?;
                 assert_eq!(progress.invocation_owner.try_to_vec::<i64>()?, [1]);
                 assert_eq!(progress.parent_rows.try_to_vec::<i64>()?, [0]);
@@ -600,12 +596,12 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             let id = CASES[0];
             let config = config(id)?;
             let side = side(id)?;
-            chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                 let owners = support::rows::<R>(client, &[0])?;
                 let mut session =
                     hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
                 hydraulic(session.select_point_fluxes(&owners))?;
-                let initial_cache = chart_test_support::cache(session.sources)?;
+                let initial_cache = chart_fixture::cache(session.sources)?;
                 let initial_panels = session.sources.evaluation.panels;
                 let mut level = 0_i64;
                 let mut limited = false;
@@ -726,7 +722,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     caches
                 );
                 assert_eq!(session.sources.evaluation.panels, initial_panels);
-                assert_eq!(chart_test_support::cache(session.sources)?, initial_cache);
+                assert_eq!(chart_fixture::cache(session.sources)?, initial_cache);
                 Ok(())
             })
         }
@@ -768,7 +764,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     .flat_map(|request| &request.domains)
                     .all(|domain| domain.refinement.is_some() == initialized)
             );
-            let cache = chart_test_support::cache(session.sources)?;
+            let cache = chart_fixture::cache(session.sources)?;
             let allocations = (
                 session.sources.panel_cache.len(),
                 session.sources.panel_cache.capacity(),
@@ -793,7 +789,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                 global_limit
             );
             assert_eq!(session.sources.evaluation.panels, panels);
-            assert_eq!(chart_test_support::cache(session.sources)?, cache);
+            assert_eq!(chart_fixture::cache(session.sources)?, cache);
             assert_eq!(
                 (
                     session.sources.panel_cache.len(),
@@ -828,30 +824,29 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             let id = CASES[0];
             let config = config(id)?;
             let side = side(id)?;
-            let limit =
-                chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, _| {
-                    let owners = support::rows::<R>(client, &[0])?;
-                    let mut session =
-                        hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
-                    hydraulic(session.start_source_sonic(&owners, side))?;
-                    assert!(
-                        session
-                            .sonic
-                            .requests
-                            .iter()
-                            .flat_map(|request| &request.domains)
-                            .all(|domain| domain.refinement.is_some())
-                    );
-                    Ok(session.callback_points())
-                })?;
+            let limit = chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, _| {
+                let owners = support::rows::<R>(client, &[0])?;
+                let mut session =
+                    hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
+                hydraulic(session.start_source_sonic(&owners, side))?;
+                assert!(
+                    session
+                        .sonic
+                        .requests
+                        .iter()
+                        .flat_map(|request| &request.domains)
+                        .all(|domain| domain.refinement.is_some())
+                );
+                Ok(session.callback_points())
+            })?;
             assert!(limit > 0);
-            chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                 let owners = support::rows::<R>(client, &[0])?;
                 let mut session = hydraulic(PointRootSession::new(pair, &owners, limit))?;
                 hydraulic(session.start_source_sonic(&owners, side))?;
                 no_capacity(&mut session, work, side, &owners, true)
             })?;
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let epsilon = 2.0_f64.powi(-50);
             let input = [[1., 0., 1., 2. - epsilon]];
             let limit =
@@ -898,7 +893,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
             let mut config = config(id)?;
             let side = side(id)?;
             let (seed_work, ceiling) =
-                chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+                chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                     let owners = support::rows::<R>(client, &[0])?;
                     let empty = support::rows::<R>(client, &[])?;
                     let mut session =
@@ -928,7 +923,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     Ok((seed, ceiling))
                 })?;
             config.max_native_query_points = ceiling;
-            chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                 let owners = support::rows::<R>(client, &[0])?;
                 let mut session =
                     hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
@@ -1021,7 +1016,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                         .ok_or("Missing grouped quadrature execution")?;
                     assert_eq!(row.config, original.config, "{id}: grouped controls differ");
                 }
-                chart_test_support::with_pair::<R, _>(client, ids, &config, |pair, work| {
+                chart_fixture::with_pair::<R, _>(client, ids, &config, |pair, work| {
                     let parents = (0..ids.len())
                         .map(i64::try_from)
                         .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -1039,7 +1034,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                     );
                     let old_q = frozen::endpoints(&initial.physical_water)?;
                     let old_j = frozen::endpoints(&initial.physical_momentum)?;
-                    let old_cache = chart_test_support::cache(session.sources)?;
+                    let old_cache = chart_fixture::cache(session.sources)?;
                     let old_panels = session.sources.evaluation.panels;
                     for selected_side in [SonicSide::Left, SonicSide::Right] {
                         let mut demand = Vec::new();
@@ -1117,7 +1112,7 @@ pub(in crate::channel::flow::surveyed_points) mod tests {
                         assert_eq!(progress.point_limit, config.root.max_points);
                         assert!(progress.callback_points <= progress.point_limit);
                         assert_eq!(session.sources.evaluation.panels, old_panels);
-                        assert_eq!(chart_test_support::cache(session.sources)?, old_cache);
+                        assert_eq!(chart_fixture::cache(session.sources)?, old_cache);
                         let refined = hydraulic(session.select_point_fluxes(&owners))?;
                         let q = frozen::endpoints(&refined.physical_water)?;
                         let j = frozen::endpoints(&refined.physical_momentum)?;

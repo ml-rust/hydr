@@ -1,6 +1,6 @@
 use crate::channel::flow::surveyed_points::{
     paired_sources::PairedSources,
-    source_tests::support::{Client, Result, bounds, components, endpoints},
+    source_fixture_support::{Client, Result, bounds, components, endpoints},
     wet_root_types::{WetRootDomains, WetRootEvidenceKind, WetRootStatus},
 };
 use numr::{dtype::DType, runtime::Runtime};

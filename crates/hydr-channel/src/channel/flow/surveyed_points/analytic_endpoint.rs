@@ -80,7 +80,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::potential_analytic;
-    use super::super::source_tests::support::{
+    use super::super::source_fixture_support::{
         Client, Result, bounds, components, endpoints, hydraulic, zero,
     };
     use super::{self as analytic_endpoint, EndpointSide};

@@ -229,12 +229,12 @@ where
 mod tests {
     use super::super::corpus_coverage::Coverage;
     use super::super::{
-        chart_test_support,
-        point_candidates::tests::{fixtures, wave_references},
+        chart_fixture,
+        point_candidates::fixture::{fixtures, wave_references},
         point_flux_types::PointFluxStatus,
         point_root_session::PointRootSession,
-        source_tests::support as frozen,
-        wet_depth::tests::support,
+        source_fixture_support as frozen,
+        wet_depth::fixture as support,
     };
     use super::*;
     use crate::channel::flow::surveyed::error::checked;
@@ -258,7 +258,7 @@ mod tests {
             }
             let ids = rows.iter().map(|row| row.id).collect::<Vec<_>>();
             let config = declared.build();
-            chart_test_support::with_pair::<R, _>(client, &ids, &config, |pair, _| {
+            chart_fixture::with_pair::<R, _>(client, &ids, &config, |pair, _| {
                 let parents = (0..rows.len())
                     .map(i64::try_from)
                     .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -312,7 +312,7 @@ mod tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         // Width 1 makes depth equal to area.
         let depth = 2.;
         let gh = config.gravity_m_per_s2 * depth;
@@ -384,7 +384,7 @@ mod tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         let wet = [2., 0., 2., 0.];
         support::with_rectangle::<R, _>(
             client,

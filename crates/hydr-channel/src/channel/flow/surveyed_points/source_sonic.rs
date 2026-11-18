@@ -319,11 +319,11 @@ where
 mod tests {
     use super::super::corpus_coverage::Coverage;
     use super::super::{
-        chart_test_support,
+        chart_fixture,
         point_root_session::PointRootSession,
+        source_fixture_support as frozen,
         source_sonic_types::{SonicFanMembership, SonicSide, SourceSonicStatus},
-        source_tests::support as frozen,
-        wet_depth::tests::support,
+        wet_depth::fixture as support,
         wet_root_types::WetRootStatus,
     };
     use frozen::{Result, hydraulic};
@@ -335,7 +335,7 @@ mod tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         support::with_rectangle::<R, _>(
             client,
             1.0,
@@ -416,7 +416,7 @@ mod tests {
 
     mod contacts {
         use super::{
-            PointRootSession, Result, SonicSide, SourceSonicStatus, chart_test_support, frozen,
+            PointRootSession, Result, SonicSide, SourceSonicStatus, chart_fixture, frozen,
             hydraulic, support,
         };
         use numr::{dtype::DType, runtime::Runtime};
@@ -436,7 +436,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let states = [
                 [1.0, -2.0, 1.0, 2.0],
                 [1.0, 1.0, 1.0, -1.0],
@@ -515,7 +515,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let section = frozen::batch::<R>(client)?;
             let profile = frozen::cases()
                 .iter()
@@ -534,7 +534,7 @@ mod tests {
             .iter()
             .map(|point| frozen::expansion::<R>(client, &[*point], true))
             .collect::<Result<Vec<_>>>()?;
-            chart_test_support::with_inputs(client, section, owners, input, &config, |pair, _| {
+            chart_fixture::with_inputs(client, section, owners, input, &config, |pair, _| {
                 let rows = support::rows::<R>(client, &[0])?;
                 let mut session =
                     hydraulic(PointRootSession::new(pair, &rows, config.root.max_points))?;
@@ -568,7 +568,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             for (id, expected) in [
                 (
                     "scalar_rectangle_vacuum_threshold",
@@ -576,7 +576,7 @@ mod tests {
                 ),
                 ("scalar_rectangle_vacuum", SourceSonicStatus::NoRootDry),
             ] {
-                chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, _| {
+                chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, _| {
                     let rows = support::rows::<R>(client, &[0])?;
                     let mut session =
                         hydraulic(PointRootSession::new(pair, &rows, config.root.max_points))?;
@@ -696,7 +696,7 @@ mod tests {
 
     mod ownership {
         use super::{
-            PointRootSession, Result, SonicSide, SourceSonicStatus, chart_test_support, frozen,
+            PointRootSession, Result, SonicSide, SourceSonicStatus, chart_fixture, frozen,
             hydraulic, support,
         };
         use crate::channel::flow::surveyed_points::{
@@ -729,7 +729,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.0,
@@ -779,7 +779,7 @@ mod tests {
                         ]
                     );
                     let before = work.snapshot();
-                    let cache = chart_test_support::cache(session.sources())?;
+                    let cache = chart_fixture::cache(session.sources())?;
                     for bad in [vec![1, 1], vec![-1], vec![4]] {
                         assert!(
                             session
@@ -806,7 +806,7 @@ mod tests {
                             .is_err()
                     );
                     assert_eq!(work.snapshot(), before);
-                    assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                    assert_eq!(chart_fixture::cache(session.sources())?, cache);
                     // Duplicate source rows remain independent invocation owners and can start separate histories.
                     hydraulic(
                         session.start_source_sonic(
@@ -875,7 +875,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             for mutation in 0..6 {
                 let state = if mutation == 5 {
                     [1.0, 2.0, 1.0, 0.0]
@@ -925,7 +925,7 @@ mod tests {
                             _ => return Err("Unexpected binding mutation".into()),
                         }
                         let before = work.snapshot();
-                        let cache = chart_test_support::cache(session.sources())?;
+                        let cache = chart_fixture::cache(session.sources())?;
                         assert!(session.certify_source_sonic().is_err());
                         assert!(
                             session
@@ -944,7 +944,7 @@ mod tests {
                                 .is_err()
                         );
                         assert_eq!(work.snapshot(), before);
-                        assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                        assert_eq!(chart_fixture::cache(session.sources())?, cache);
                         Ok(())
                     },
                 )?;
@@ -957,7 +957,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.0,
@@ -984,7 +984,7 @@ mod tests {
                     assert!(session.sonic.requests[1].domains[0].refinement.is_some());
                     session.sonic.requests[1].domains[0].refinement = Some(state);
                     let before = work.snapshot();
-                    let cache = chart_test_support::cache(session.sources())?;
+                    let cache = chart_fixture::cache(session.sources())?;
                     assert!(session.certify_source_sonic().is_err());
                     assert!(
                         session
@@ -995,7 +995,7 @@ mod tests {
                             .is_err()
                     );
                     assert_eq!(work.snapshot(), before);
-                    assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                    assert_eq!(chart_fixture::cache(session.sources())?, cache);
                     Ok(())
                 },
             )
@@ -1006,7 +1006,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             let id = if initialized {
                 "scalar_rectangle_right_dry_sonic"
             } else {
@@ -1017,7 +1017,7 @@ mod tests {
             } else {
                 SonicSide::Right
             };
-            chart_test_support::with_pair::<R, _>(client, &[id], &config, |pair, work| {
+            chart_fixture::with_pair::<R, _>(client, &[id], &config, |pair, work| {
                 let rows = support::rows::<R>(client, &[0])?;
                 let donor = {
                     let mut first =
@@ -1037,7 +1037,7 @@ mod tests {
                 hydraulic(second.start_source_sonic(&rows, side))?;
                 second.sonic.requests[0].domains[0] = donor;
                 let before = work.snapshot();
-                let cache = chart_test_support::cache(second.sources())?;
+                let cache = chart_fixture::cache(second.sources())?;
                 assert!(second.certify_source_sonic().is_err());
                 assert!(
                     second
@@ -1048,7 +1048,7 @@ mod tests {
                         .is_err()
                 );
                 assert_eq!(work.snapshot(), before);
-                assert_eq!(chart_test_support::cache(second.sources())?, cache);
+                assert_eq!(chart_fixture::cache(second.sources())?, cache);
                 Ok(())
             })
         }
@@ -1058,7 +1058,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.0,
@@ -1072,7 +1072,7 @@ mod tests {
                     hydraulic(session.start_source_sonic(&rows, SonicSide::Left))?;
                     session.sources.evaluation.panels *= 2;
                     let before = work.snapshot();
-                    let cache = chart_test_support::cache(session.sources())?;
+                    let cache = chart_fixture::cache(session.sources())?;
                     assert!(session.start_source_sonic(&rows, SonicSide::Right).is_err());
                     assert!(
                         session
@@ -1084,7 +1084,7 @@ mod tests {
                     );
                     assert!(session.certify_source_sonic().is_err());
                     assert_eq!(work.snapshot(), before);
-                    assert_eq!(chart_test_support::cache(session.sources())?, cache);
+                    assert_eq!(chart_fixture::cache(session.sources())?, cache);
                     Ok(())
                 },
             )
@@ -1095,7 +1095,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.0,
@@ -1144,7 +1144,7 @@ mod tests {
 
     mod pointed {
         use super::{
-            PointRootSession, Result, SonicSide, SourceSonicStatus, chart_test_support, frozen,
+            PointRootSession, Result, SonicSide, SourceSonicStatus, chart_fixture, frozen,
             hydraulic, support,
         };
         use crate::channel::{
@@ -1165,7 +1165,7 @@ mod tests {
         {
             // Independent control: A=h²,g=2,c=A^(1/4),Phi=4*c. Epsilon=5*2^-83 gives Asonic=2^-332.
             for upper_exponent in [-331, -330] {
-                let mut config = chart_test_support::config();
+                let mut config = chart_fixture::config();
                 config.gravity_m_per_s2 = 2.0;
                 let section = CrossSectionBatch::<R>::new(
                     client.clone(),
@@ -1195,7 +1195,7 @@ mod tests {
                 .iter()
                 .map(|values| frozen::expansion::<R>(client, values, true))
                 .collect::<Result<Vec<_>>>()?;
-                chart_test_support::with_inputs(
+                chart_fixture::with_inputs(
                     client,
                     section,
                     owners,
@@ -1313,7 +1313,7 @@ mod tests {
 
     mod references {
         use super::{
-            PointRootSession, Result, SonicSide, SourceSonicStatus, chart_test_support, frozen,
+            PointRootSession, Result, SonicSide, SourceSonicStatus, chart_fixture, frozen,
             hydraulic, support,
         };
         use crate::channel::flow::surveyed_points::corpus_coverage::Coverage;
@@ -1408,8 +1408,8 @@ mod tests {
             });
             // Only explicitly labelled sonic candidates supply these truths. Legacy velocities use independent rational Q/A bounds.
             for reference in replayed {
-                let config = chart_test_support::config();
-                chart_test_support::with_pair::<R, _>(
+                let config = chart_fixture::config();
+                chart_fixture::with_pair::<R, _>(
                     client,
                     &[reference.id],
                     &config,
@@ -1433,7 +1433,7 @@ mod tests {
                                 }),
                             )?;
                         }
-                        let cache = chart_test_support::cache(session.sources())?;
+                        let cache = chart_fixture::cache(session.sources())?;
                         assert!(
                             cache[1 - reference.side.index()]
                                 .ready
@@ -1490,7 +1490,7 @@ mod tests {
 
     mod work {
         use super::{
-            PointRootSession, Result, SonicSide, SourceSonicStatus, chart_test_support, frozen,
+            PointRootSession, Result, SonicSide, SourceSonicStatus, chart_fixture, frozen,
             hydraulic, support,
         };
         use crate::channel::flow::{
@@ -1520,7 +1520,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.0,
@@ -1606,7 +1606,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.root.max_iterations = 1;
             config.root.atol = 0.0;
             config.root.rtol = 0.0;
@@ -1645,7 +1645,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.max_native_query_points = 6;
             support::with_rectangle::<R, _>(
                 client,
@@ -1694,7 +1694,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let config = chart_test_support::config();
+            let config = chart_fixture::config();
             support::with_rectangle::<R, _>(
                 client,
                 1.0,
@@ -1732,7 +1732,7 @@ mod tests {
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
-            let mut config = chart_test_support::config();
+            let mut config = chart_fixture::config();
             config.max_native_query_points = 3;
             support::with_rectangle::<R, _>(
                 client,
@@ -1782,8 +1782,8 @@ mod tests {
 #[cfg(test)]
 mod selected_tests {
     use super::super::{
-        chart_test_support, point_root_session::PointRootSession, source_sonic_types::SonicSide,
-        source_tests::support as frozen, wet_depth::tests::support,
+        chart_fixture, point_root_session::PointRootSession, source_fixture_support as frozen,
+        source_sonic_types::SonicSide, wet_depth::fixture as support,
     };
     use crate::channel::flow::surveyed::error::checked;
     use frozen::{Result, hydraulic};
@@ -1877,7 +1877,7 @@ mod selected_tests {
         R: Runtime<DType = DType>,
         R::Client: support::DepthClient<R>,
     {
-        let config = chart_test_support::config();
+        let config = chart_fixture::config();
         let epsilon = 2.0_f64.powi(-50);
         support::with_rectangle::<R, _>(
             client,

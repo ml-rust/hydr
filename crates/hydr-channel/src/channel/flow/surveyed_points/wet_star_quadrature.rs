@@ -109,8 +109,8 @@ mod tests {
         point_flux_types::PointFluxCertificates,
         point_quadrature_types::{PointQuadratureOutcome as Outcome, PointQuadratureProgress},
         point_root_session::PointRootSession,
-        source_tests::support as frozen,
-        wet_depth::tests::support,
+        source_fixture_support as frozen,
+        wet_depth::fixture as support,
         wet_star_levels::tests::{MIRROR, trapezoid},
     };
     use crate::channel::flow::surveyed::{PrismaticRiemannConfig, work::PrismaticRiemannWork};

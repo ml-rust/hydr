@@ -188,7 +188,7 @@ where
 mod tests {
     use super::super::corpus_coverage::Coverage;
     use super::super::point_flux::fixture::diagnostics;
-    use super::super::{source_tests::support as frozen, wet_depth::tests::support};
+    use super::super::{source_fixture_support as frozen, wet_depth::fixture as support};
     use frozen::{Result, hydraulic};
 
     mod reflection {

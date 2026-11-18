@@ -247,10 +247,10 @@ fn trace_code(kind: PointFluxKind) -> PrismaticPointTraceKind {
 mod tests {
     use super::super::{
         corpus_coverage::Coverage,
-        point_candidates::tests::{fixtures, flux_fixtures},
+        point_candidates::fixture::{fixtures, flux_fixtures},
         point_output::{PrismaticPointRiemannResult, PrismaticPointTraceKind},
-        source_tests::support::{self as frozen, Result, hydraulic},
-        wet_depth::tests::support,
+        source_fixture_support::{self as frozen, Result, hydraulic},
+        wet_depth::fixture as support,
     };
     use crate::channel::{
         flow::surveyed::{
@@ -464,8 +464,8 @@ mod tests {
     mod exterior {
         use super::super::super::{
             point_output::{PrismaticPointRiemannResult, PrismaticPointTraceKind},
-            source_tests::support::{self as frozen, Result},
-            wet_depth::tests::support,
+            source_fixture_support::{self as frozen, Result},
+            wet_depth::fixture as support,
         };
         use crate::channel::{
             flow::surveyed::PrismaticRiemannConfig,
@@ -681,8 +681,8 @@ mod tests {
     mod sharpening {
         use super::super::super::{
             point_output::{PrismaticPointRiemannResult, PrismaticPointTraceKind},
-            source_tests::support::{self as frozen, Result},
-            wet_depth::tests::support,
+            source_fixture_support::{self as frozen, Result},
+            wet_depth::fixture as support,
         };
         use crate::channel::{
             flow::surveyed::PrismaticRiemannConfig,
@@ -813,8 +813,8 @@ mod tests {
         use super::super::super::{
             corpus_coverage::Coverage,
             point_output::{PrismaticPointRiemannResult, PrismaticPointTraceKind},
-            source_tests::support::{self as frozen, Result, hydraulic},
-            wet_depth::tests::support,
+            source_fixture_support::{self as frozen, Result, hydraulic},
+            wet_depth::fixture as support,
             wet_star_levels::tests::{MIRROR, WALLS, integer_trapezoid, trapezoid},
         };
         use crate::channel::{

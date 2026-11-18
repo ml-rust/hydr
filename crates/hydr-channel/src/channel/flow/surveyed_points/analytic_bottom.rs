@@ -94,10 +94,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::source_potential_fixtures::{CASES, Case, Reference, SideReference};
-    use super::super::source_tests::support::{
-        self, Client, Result, batch, bounds, components, endpoints, expansion, hydraulic, zero,
+    use super::super::source_fixture_support::{
+        self as support, Client, Result, batch, bounds, components, endpoints, expansion,
+        hydraulic, zero,
     };
+    use super::super::source_potential_fixtures::{CASES, Case, Reference, SideReference};
     use super::{self as analytic_bottom, AnalyticSource};
     use crate::channel::flow::surveyed::error;
     use crate::channel::section::{HydraulicGeometry, PrismaticRecoveryConfig};
