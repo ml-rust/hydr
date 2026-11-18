@@ -21,10 +21,12 @@
 use super::SurfaceChannelError;
 use super::context::{Context, Ops};
 use super::evaluate::{Attempt, Trials};
-use super::exchange::{Exchange, split};
+use super::exchange::Exchange;
 use super::response::Response;
 use super::start::Start;
 use crate::channel::{ChannelGeometry, ChannelReach, ChannelReachDefinition};
+use crate::coupling::links::LinkError;
+use crate::coupling::links::donors::split;
 use crate::solver::Solver;
 use numr::dtype::DType;
 use numr::ops::{
@@ -265,9 +267,9 @@ where
         let c = &self.client;
         let zero = self.scalar(0.0)?;
         let one = self.scalar(1.0)?;
-        let (positive, negative) = split(c, weir, &zero)?;
-        let outgoing = self.aggregate(&c.cat(&[&positive, &negative], 0)?)?.value;
-        let incoming = self.aggregate(&c.cat(&[&negative, &positive], 0)?)?.value;
+        let (positive, negative) = split(c, weir, &zero).map_err(LinkError::surface_channel)?;
+        let outgoing = self.aggregate(&c.cat(&[&positive, &negative], 0)?)?;
+        let incoming = self.aggregate(&c.cat(&[&negative, &positive], 0)?)?;
         let at = |values: &Tensor<R>, index: &Tensor<R>| c.index_select(values, 0, index);
         let forward = c.gt(weir, &zero)?;
         let backward = c.lt(weir, &zero)?;

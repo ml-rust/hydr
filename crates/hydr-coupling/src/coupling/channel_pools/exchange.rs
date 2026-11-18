@@ -1,7 +1,9 @@
 use super::state::{Accepted, BoundForcing, NativeEvaluation, NativeInterval};
 use super::{ChannelPoolError, context_types::Context};
-use crate::numerics::water_transfers::{AggregationKind, finite};
-use hydr_channel::internal::{ChannelCouplingTrial, ChannelReservoirOperands};
+use crate::coupling::links::LinkError;
+use crate::coupling::links::pool_ends::{self, EndHeads, EndVolumes, ReachEnds};
+use crate::numerics::water_transfers::AggregationKind;
+use hydr_channel::internal::ChannelCouplingTrial;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, MidpointOps,
@@ -48,34 +50,33 @@ where
         self.check_epochs(&accepted.reaches, &accepted.pools)?;
         let c = &self.client;
         let p = self.setup.pools.len();
-        let midpoint = c.midpoint(&accepted.pools.stages_tensor()?, &x.narrow(0, 0, p)?)?;
-        finite(c, &midpoint, "used midpoint pool stages")
-            .map_err(ChannelPoolError::from_transfer)?;
-        let connection_heads =
-            c.index_select(&midpoint, 0, &self.topology.connection_pool_indices)?;
+        let EndHeads {
+            midpoint,
+            heads: connection_heads,
+        } = pool_ends::end_heads(
+            c,
+            &accepted.pools.stages_tensor()?,
+            &x.narrow(0, 0, p)?,
+            &self.topology.connection_pool_indices,
+        )
+        .map_err(LinkError::channel_pool)?;
         let mut reaches = Vec::with_capacity(accepted.reaches.len());
         let mut endpoint_volumes = Vec::with_capacity(accepted.reaches.len());
         let mut endpoint_momentum = Vec::with_capacity(accepted.reaches.len());
         for (index, reach) in accepted.reaches.iter().enumerate() {
-            let attachments = self.topology.endpoint_connections[index];
-            let gather = |values: &Tensor<R>| -> Result<[Option<Tensor<R>>; 2], ChannelPoolError> {
-                Ok([
-                    attachments[0].map(|i| values.narrow(0, i, 1)).transpose()?,
-                    attachments[1].map(|i| values.narrow(0, i, 1)).transpose()?,
-                ])
-            };
-            let heads = gather(&connection_heads)?;
-            let losses = gather(&self.topology.entrance_loss_coefficients)?;
-            let operands = |side: usize| {
-                heads[side].as_ref().zip(losses[side].as_ref()).map(
-                    |(elevation_m, entrance_loss_coefficient)| ChannelReservoirOperands {
-                        elevation_m,
-                        entrance_loss_coefficient,
-                    },
-                )
-            };
+            let ends = ReachEnds::new(
+                &connection_heads,
+                &self.topology.entrance_loss_coefficients,
+                self.topology.endpoint_connections[index],
+            )
+            .map_err(LinkError::channel_pool)?;
             let result = reach
-                .trial_coupled(end, &forcing.reaches[index], operands(0), operands(1))
+                .trial_coupled(
+                    end,
+                    &forcing.reaches[index],
+                    ends.operands(0),
+                    ends.operands(1),
+                )
                 .map_err(|source| ChannelPoolError::Channel {
                     reach_id: self.setup.reaches[index].id.clone(),
                     source,
@@ -104,11 +105,18 @@ where
             endpoint_momentum.push(endpoints.momentum_impulse_m4_per_s);
             reaches.push(next);
         }
-        let volumes = c.cat(&endpoint_volumes.iter().collect::<Vec<_>>(), 0)?;
-        let momenta = c.cat(&endpoint_momentum.iter().collect::<Vec<_>>(), 0)?;
-        let signed = c.index_select(&volumes, 0, &self.topology.connection_endpoint_indices)?;
-        let external = c.index_select(&volumes, 0, &self.topology.external_endpoint_indices)?;
-        let momentum = c.index_select(&momenta, 0, &self.topology.connection_endpoint_indices)?;
+        let EndVolumes {
+            signed,
+            external,
+            momentum,
+        } = pool_ends::end_volumes(
+            c,
+            &endpoint_volumes,
+            &endpoint_momentum,
+            &self.topology.connection_endpoint_indices,
+            &self.topology.external_endpoint_indices,
+        )
+        .map_err(LinkError::channel_pool)?;
         let zero = Tensor::<R>::zeros(&[1], DType::F64, c.device())?;
         let incoming = self
             .topology

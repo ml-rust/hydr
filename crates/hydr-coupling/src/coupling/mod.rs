@@ -1,6 +1,7 @@
 //! Conservative water exchange between hydraulic components.
 
 mod checkpoint;
+mod links;
 
 pub mod channel_pools;
 #[doc(no_inline)]

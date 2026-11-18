@@ -1,7 +1,6 @@
 use super::inflows::PreparedInflows;
-use super::{
-    CoupledLevelPoolError, context::Context, exchange::Exchange, heads::Heads, topology::reject,
-};
+use super::{CoupledLevelPoolError, context::Context, exchange::Exchange, heads::Heads};
+use crate::coupling::links::LinkError;
 use crate::storage::LevelPoolBatch;
 use hydr_storage::internal::PreparedLevelPoolInterval;
 use numr::dtype::DType;
@@ -134,7 +133,6 @@ where
         Ok((head, volume, flags))
     }
     pub fn check_endpoint(&self, evaluation: &Evaluation<R>) -> Result<(), CoupledLevelPoolError> {
-        let c = &self.client;
         let stage = evaluation.pools.stages_tensor()?;
         let wet = self.wet(evaluation.pools.volumes_tensor())?;
         let heads = self.heads(&stage, &wet)?;
@@ -146,22 +144,9 @@ where
             &heads.wet_a,
             &heads.wet_b,
         )?;
-        let signed = &evaluation.exchange.signed;
-        let crossing_a = c.mul(&c.gt(signed, &self.zero)?, &c.le(&heads.a, &self.cutoff_a)?)?;
-        let crossing_b = c.mul(&c.lt(signed, &self.zero)?, &c.le(&heads.b, &self.cutoff_b)?)?;
-        let origin_a = c.index_select(&self.origin, 0, &self.a)?;
-        let origin_b = c.index_select(&self.origin, 0, &self.b)?;
-        let raised_a = c.gt(&self.cutoff_a, &origin_a)?;
-        let raised_b = c.gt(&self.cutoff_b, &origin_b)?;
-        reject(
-            c,
-            &c.maximum(
-                &c.mul(&crossing_a, &raised_a)?,
-                &c.mul(&crossing_b, &raised_b)?,
-            )?,
-            "active transfer crosses a raised local bed or law cutoff. Shorten the interval",
-        )?;
-        Ok(())
+        self.attachments()
+            .check_raised_crossing(&self.client, &heads, &evaluation.exchange.signed)
+            .map_err(LinkError::level_pool)
     }
 }
 

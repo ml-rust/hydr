@@ -13,13 +13,8 @@ use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::interpolate::Interp1dAlgorithms;
 
-#[derive(Clone, Debug)]
-pub(super) struct Heads<R: Runtime<DType = DType>> {
-    pub a: Tensor<R>,
-    pub b: Tensor<R>,
-    pub wet_a: Tensor<R>,
-    pub wet_b: Tensor<R>,
-}
+use crate::coupling::links::LinkError;
+pub(super) use crate::coupling::links::pool_heads::Heads;
 
 impl<R: Runtime<DType = DType>> Context<R>
 where
@@ -40,24 +35,18 @@ where
         + Interp1dAlgorithms<R>,
 {
     pub fn wet(&self, volume: &Tensor<R>) -> Result<Tensor<R>, CoupledLevelPoolError> {
-        Ok(self.client.gt(volume, &self.zero)?)
+        self.attachments()
+            .wet(&self.client, volume)
+            .map_err(LinkError::level_pool)
     }
     pub fn heads(
         &self,
         stages: &Tensor<R>,
         wet: &Tensor<R>,
     ) -> Result<Heads<R>, CoupledLevelPoolError> {
-        let c = &self.client;
-        let a = c.index_select(stages, 0, &self.a)?;
-        let b = c.index_select(stages, 0, &self.b)?;
-        let wa = c.index_select(wet, 0, &self.a)?;
-        let wb = c.index_select(wet, 0, &self.b)?;
-        Ok(Heads {
-            wet_a: c.mul(&wa, &c.gt(&a, &self.bed_a)?)?,
-            wet_b: c.mul(&wb, &c.gt(&b, &self.bed_b)?)?,
-            a,
-            b,
-        })
+        self.attachments()
+            .heads(&self.client, stages, wet)
+            .map_err(LinkError::level_pool)
     }
     pub fn midpoint_heads(
         &self,
@@ -66,16 +55,9 @@ where
         start_wet: &Tensor<R>,
         end_wet: &Tensor<R>,
     ) -> Result<Heads<R>, CoupledLevelPoolError> {
-        let c = &self.client;
-        let stage = c.midpoint(start, end)?;
-        finite(c, &stage, "temporal midpoint stage")?;
-        let wet = c.maximum(start_wet, end_wet)?;
-        reject(
-            c,
-            &c.mul(&wet, &c.le(&stage, &self.origin)?)?,
-            "positive pool water has no represented midpoint depth. Rescale the vertical reference",
-        )?;
-        self.heads(&stage, &wet)
+        self.attachments()
+            .midpoint_heads(&self.client, start, end, start_wet, end_wet)
+            .map_err(LinkError::level_pool)
     }
     pub fn packet(
         &self,

@@ -1,7 +1,8 @@
 use super::inflows::InflowContext;
 use super::topology::TransferTree;
 use super::{CoupledLevelPoolError, CoupledLevelPoolSetup};
-use crate::structures::{DirectionPolicy, StructureLaw};
+use crate::coupling::links::cutoffs::{endpoint_cutoffs, pool_attachment_admitted};
+use crate::coupling::links::pool_heads::PoolAttachments;
 use hydr_structures::internal::CouplingStructures;
 use numr::dtype::DType;
 use numr::ops::{
@@ -130,9 +131,12 @@ where
                     ))
                 })?;
                 if &attachment.pool_id != expected
-                    || element.datum != setup.pools[index].curve.vertical_reference()
-                    || !attachment.bed_elevation_m.is_finite()
-                    || attachment.bed_elevation_m < origins[index]
+                    || !pool_attachment_admitted(
+                        &element.datum,
+                        setup.pools[index].curve.vertical_reference(),
+                        attachment.bed_elevation_m,
+                        origins[index],
+                    )
                 {
                     return Err(CoupledLevelPoolError::input(format!(
                         "structure={}: require matching pool endpoint/datum and a finite local bed at or above its physical pool limit",
@@ -147,29 +151,7 @@ where
                     "a structure must connect distinct physical pools",
                 ));
             }
-            let mut cuts = beds;
-            match &element.law {
-                StructureLaw::SuppressedRectangularWeir(p) => {
-                    cuts[0] = cuts[0].max(p.crest_m());
-                    cuts[1] = cuts[1].max(p.crest_m());
-                }
-                StructureLaw::HydrostaticRectangularGate(p) => {
-                    cuts[0] = cuts[0].max(p.sill_m());
-                    cuts[1] = cuts[1].max(p.sill_m());
-                }
-                StructureLaw::SubmergedOrifice(p) => {
-                    cuts[0] = cuts[0].max(p.crown_m());
-                    cuts[1] = cuts[1].max(p.crown_m());
-                }
-                StructureLaw::Pump(p) => {
-                    let source = if element.direction == DirectionPolicy::BtoAOnly {
-                        1
-                    } else {
-                        0
-                    };
-                    cuts[source] = cuts[source].max(p.minimum_suction_stage_m());
-                }
-            }
+            let cuts = endpoint_cutoffs(element, beds);
             a.push(index_value(positions[0])?);
             b.push(index_value(positions[1])?);
             ba.push(beds[0]);
@@ -215,6 +197,19 @@ where
     }
     pub fn edge_count(&self) -> usize {
         self.setup.structures.len()
+    }
+    /// Pool attachments of every structure, for the shared head steps.
+    pub fn attachments(&self) -> PoolAttachments<'_, R> {
+        PoolAttachments {
+            a: &self.a,
+            b: &self.b,
+            bed_a: &self.bed_a,
+            bed_b: &self.bed_b,
+            cutoff_a: &self.cutoff_a,
+            cutoff_b: &self.cutoff_b,
+            origin: &self.origin,
+            zero: &self.zero,
+        }
     }
 }
 

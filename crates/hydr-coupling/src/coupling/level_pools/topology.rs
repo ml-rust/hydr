@@ -11,7 +11,6 @@ use numr::tensor::Tensor;
 #[derive(Debug)]
 pub(super) struct TransferTree<R: Runtime<DType = DType>> {
     shared: SharedTransferTree<R>,
-    pub degree_margin: Tensor<R>,
 }
 
 pub(super) struct Aggregate<R: Runtime<DType = DType>> {
@@ -62,10 +61,12 @@ where
     ) -> Result<Self, CoupledLevelPoolError> {
         let shared = SharedTransferTree::new_grouped(client, pool_count, input_count, targets)
             .map_err(CoupledLevelPoolError::from_transfer)?;
-        Ok(Self {
-            degree_margin: shared.degree_margin.clone(),
-            shared,
-        })
+        Ok(Self { shared })
+    }
+
+    /// The shared tree this wrapper aggregates through.
+    pub fn shared(&self) -> &SharedTransferTree<R> {
+        &self.shared
     }
 
     pub fn aggregate(
