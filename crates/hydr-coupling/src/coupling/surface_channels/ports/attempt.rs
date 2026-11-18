@@ -79,7 +79,7 @@ mod tests {
         case.link = false;
         case.alpha = Reach::rest(0.5, 1.8);
         let batch = step(&case.build()?, DT)?;
-        assert!(batch.context.links.is_none() && batch.context.structures.is_none());
+        assert!(batch.context.links.is_none() && batch.context.operations.structures().is_err());
         assert_eq!(batch.context.link_count, 0);
         let counters = &batch.counters.ports;
         // The higher reach drains onto the surface. Both sides count the port water.
@@ -103,7 +103,7 @@ mod tests {
         let held = forcing(&batch.setup().ports, 0.0, dt);
         let bound = BoundForcing::bind(context, &ids, (0.0, dt), &held)?;
         let children = (&batch.surface, &batch.reaches[..], None);
-        let start = context.start(children, &ids, dt, bound)?;
+        let start = context.start(children, &ids, (dt, &context.operations), bound)?;
         // The linked reach is ported, so each attempt builds its slot operands.
         assert!(start.slots.is_none() && start.reservations[0].is_none());
         let topology = context.ports.as_ref().ok_or("ports")?;
@@ -125,7 +125,12 @@ mod tests {
         // The still interior face exports nothing, so the end cell exports its port water only.
         let outgoing = reservation.outgoing_rate_m3_per_s.try_to_vec::<f64>()?[0];
         assert_eq!(outgoing.to_bits(), export.to_bits());
-        let attempt = context.attempt(&start, *stage, ports, None)?;
+        let attempt = context.attempt(
+            &start,
+            (*stage, std::sync::Arc::clone(&context.operations)),
+            ports,
+            None,
+        )?;
         let available = attempt
             .available
             .as_ref()

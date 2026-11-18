@@ -238,6 +238,7 @@ where
             counters: import_counters(&parts.context, counters, prefix)?,
             last: None,
             pools: None,
+            operating: None,
         };
         let balance = batch.ledger()?;
         require(

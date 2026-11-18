@@ -7,7 +7,6 @@ use crate::coupling::surface_channels::pool_ends::PoolEndCounters;
 use crate::coupling::surface_channels::ports::{PortCounters, end_slot};
 use crate::coupling::surface_channels::state::LinkCounters;
 use crate::numerics::water_transfers::WaterTransferError;
-use hydr_structures::internal::CouplingStructures;
 use numr::dtype::DType;
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -87,13 +86,6 @@ impl<R: Runtime<DType = DType>> Context<R> {
     /// True when a pool end owns either end of setup reach `reach`.
     pub fn is_pool_ended(&self, reach: usize) -> bool {
         self.pool_ends.as_ref().is_some_and(|ends| ends.owns(reach))
-    }
-
-    /// Laws of every link. A coordinator with ports only has none.
-    pub fn link_structures(&self) -> Result<&CouplingStructures<R>, SurfaceChannelError> {
-        self.structures.as_ref().ok_or_else(|| {
-            SurfaceChannelError::Numerical("a coordinator without links has no weir laws".into())
-        })
     }
 }
 

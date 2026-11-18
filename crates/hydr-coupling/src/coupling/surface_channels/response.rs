@@ -127,7 +127,8 @@ where
             gather(&start.stage, &self.link_b)?,
         ];
         let [end_a, end_b] = [gather(&end, &self.link_a)?, gather(&end, &self.link_b)?];
-        let structures = self.link_structures()?;
+        let operations = &attempt.operations;
+        let structures = operations.structures()?;
         let [forward, backward] = &response.bounds;
         let backward = c.neg(backward)?;
         // Kept weir volume of every link when its own volume moves from `accepted` to `volume`.
@@ -136,6 +137,7 @@ where
             let surface = c.sub(&end_a, &c.mul(&shift, &response.shared[0])?)?;
             let channel = c.add(&end_b, &c.mul(&shift, &response.shared[1])?)?;
             let law = self.link_weir(
+                operations,
                 [
                     &c.midpoint(&start_a, &surface)?,
                     &c.midpoint(&start_b, &channel)?,

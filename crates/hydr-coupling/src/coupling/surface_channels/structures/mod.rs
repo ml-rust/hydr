@@ -10,11 +10,13 @@
 
 mod admission;
 mod laws;
+mod operations;
 #[cfg(test)]
 pub(super) mod scenario;
 
 pub(super) use admission::check_structures;
 pub(super) use laws::LinkLaw;
+pub(super) use operations::LinkOperations;
 
 use crate::structures::{StructureElement, StructureOperatingPoint};
 
@@ -69,6 +71,9 @@ pub(crate) struct StructureScenario {
 }
 
 /// Owner of a structure's operation.
+///
+/// A dynamic owner binds the structure to one operating child of the coordinator. See
+/// [`crate::coupling::surface_channels::operating`].
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(
     not(test),
@@ -77,6 +82,19 @@ pub(crate) struct StructureScenario {
 pub(crate) enum SurfaceChannelOperationOwner {
     /// One supplied operation held over every interval.
     Manual(StructureOperatingPoint),
+    /// A gate on the trajectory child. Each interval takes the midpoint of its linear path.
+    Prescribed,
+    /// A gate on the controlled-gate child. Each interval takes the midpoint of its actuator path.
+    Actuated,
+    /// A pump on the controlled-pump child. Each interval holds its accepted operation.
+    ControlledPump,
+}
+
+impl SurfaceChannelOperationOwner {
+    /// True for an owner bound to an operating child.
+    pub(crate) fn is_dynamic(&self) -> bool {
+        !matches!(self, Self::Manual(_))
+    }
 }
 
 /// One structure link between two coordinator nodes.
@@ -116,7 +134,10 @@ pub(super) struct CheckedStructure {
     pub nodes: [CheckedNode; 2],
     /// Attachment beds `[A, B]`, in metres.
     pub beds: [f64; 2],
-    /// Operation of every interval.
+    /// Operation of every interval under a manual owner.
+    ///
+    /// A dynamic owner holds its closed state here: a gate opening of zero, or a stopped pump.
+    /// Every attempt then replaces it with the interval operation of its operating child.
     pub operating_point: StructureOperatingPoint,
     /// Synthesized inflow binding identity at the channel endpoint.
     pub inflow_binding: String,

@@ -296,11 +296,33 @@ fn check_law(
 }
 
 /// The operation of `structure`, checked against its law kind.
+///
+/// A prescribed or actuated owner drives a gate, and a controlled-pump owner drives a pump. A
+/// dynamic owner returns the closed state its operating child replaces on every attempt.
 fn operation(
     structure: &SurfaceChannelStructure,
 ) -> Result<StructureOperatingPoint, SurfaceChannelError> {
-    let SurfaceChannelOperationOwner::Manual(point) = &structure.operation;
-    let admitted = match &structure.element.law {
+    let law = &structure.element.law;
+    let point = match (&structure.operation, law) {
+        (SurfaceChannelOperationOwner::Manual(point), _) => point,
+        (
+            SurfaceChannelOperationOwner::Prescribed | SurfaceChannelOperationOwner::Actuated,
+            StructureLaw::HydrostaticRectangularGate(_),
+        ) => return Ok(StructureOperatingPoint::GateOpening { opening_m: 0.0 }),
+        (SurfaceChannelOperationOwner::ControlledPump, StructureLaw::Pump(_)) => {
+            return Ok(StructureOperatingPoint::PumpStoppedIsolated);
+        }
+        (owner, _) => {
+            return Err(rejected(
+                "operation-ownership",
+                &structure.element.id,
+                format!(
+                    "owner={owner:?} does not drive its law: give a prescribed or actuated owner to a gate and a controlled-pump owner to a pump"
+                ),
+            ));
+        }
+    };
+    let admitted = match law {
         StructureLaw::SuppressedRectangularWeir(_) | StructureLaw::SubmergedOrifice(_) => {
             matches!(point, StructureOperatingPoint::Passive)
         }
@@ -409,6 +431,18 @@ mod tests {
         cases.push((case, "non-symmetric-structure"));
         let mut case = culvert()?;
         case.element.law = gate_law(0.2)?;
+        cases.push((case, "operation-ownership"));
+        let mut case = culvert()?;
+        case.operation = SurfaceChannelOperationOwner::Actuated;
+        cases.push((case, "operation-ownership"));
+        let mut case = culvert()?;
+        case.element.law = gate_law(0.2)?;
+        case.operation = SurfaceChannelOperationOwner::ControlledPump;
+        cases.push((case, "operation-ownership"));
+        let mut case = culvert()?;
+        case.element.law = pump_law(0.3, None)?;
+        case.element.direction = DirectionPolicy::AtoBOnly;
+        case.operation = SurfaceChannelOperationOwner::Prescribed;
         cases.push((case, "operation-ownership"));
         let mut case = culvert()?;
         case.scenario.evidence = " ".into();

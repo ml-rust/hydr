@@ -55,6 +55,7 @@ where
             counters: self.counters.clone(),
             last: self.last.as_ref().map(Arc::clone),
             pools: self.pools.clone(),
+            operating: self.operating.clone(),
         }
     }
 
@@ -102,6 +103,7 @@ where
             counters: self.counters.clone(),
             last,
             pools: self.pools.clone(),
+            operating: self.operating.clone(),
         })
     }
 }
@@ -136,6 +138,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
             midpoint_channel_m: self.midpoint_channel_m.clone(),
             ports: self.ports.clone(),
             pool_ends: self.pool_ends.clone(),
+            operation: self.operation.clone(),
         }
     }
 }

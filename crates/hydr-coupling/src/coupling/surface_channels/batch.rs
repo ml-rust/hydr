@@ -1,4 +1,5 @@
 use super::context::Context;
+use super::operating::{OperatingChildren, SurfaceChannelOperating, admit, check_manual};
 use super::pools::{PoolChild, PoolParts, inflow_error};
 use super::state::{LinkCounters, StoredStep};
 use super::{
@@ -14,7 +15,7 @@ use numr::ops::{
     TensorOps, TwoSumOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::Runtime;
-use solvr::interpolate::Interp1dAlgorithms;
+use solvr::interpolate::{Interp1dAlgorithms, LinearInterp1dDiagnostics};
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedNewtonAlgorithms};
 use std::sync::Arc;
 
@@ -36,6 +37,8 @@ pub struct SurfaceChannelBatch<R: Runtime<DType = DType>> {
     pub(super) last: Option<Arc<StoredStep<R>>>,
     /// Accepted pools, or `None` without pools.
     pub(super) pools: Option<PoolChild<R>>,
+    /// Accepted operating children, or `None` when every structure has a manual owner.
+    pub(super) operating: Option<OperatingChildren<R>>,
 }
 
 impl<R: Runtime<DType = DType>> std::fmt::Debug for SurfaceChannelBatch<R> {
@@ -141,7 +144,8 @@ where
     ///
     /// # Errors
     /// Returns every [`Self::new`] rejection after the definition checks, and
-    /// [`SurfaceChannelError::Input`] for a definition with pools.
+    /// [`SurfaceChannelError::Input`] for a definition with pools or a structure with a dynamic
+    /// owner (`operation-ownership`).
     pub(super) fn from_definition(
         client: R::Client,
         definition: SurfaceChannelDefinition,
@@ -152,6 +156,7 @@ where
                 "pool states: build a coordinator with pools through its pool constructor",
             ));
         }
+        check_manual(&definition)?;
         Self::build(client, definition, initial, None)
     }
 
@@ -220,6 +225,7 @@ where
             counters,
             last: None,
             pools,
+            operating: None,
         })
     }
 }
@@ -261,6 +267,47 @@ where
         expect(dead_code, reason = "in-crate callers construct pool coordinators")
     )]
     pub(crate) fn with_pools(
+        client: R::Client,
+        definition: SurfaceChannelDefinition,
+        initial: SurfaceChannelInitialState,
+        states: &[LevelPoolState],
+    ) -> Result<Self, SurfaceChannelError> {
+        check_manual(&definition)?;
+        Self::pooled(client, definition, initial, states)
+    }
+
+    /// Builds every child of `definition` at `initial` and the pool `states` on `client`, then
+    /// binds the fresh operating children `operating`.
+    ///
+    /// # Errors
+    /// Returns every [`Self::with_pools`] rejection except the manual-owner check, and every
+    /// `operation-ownership` rejection of the operating children. See
+    /// [`super::operating::admit`].
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "in-crate callers construct operating coordinators"
+        )
+    )]
+    pub(crate) fn with_operating(
+        client: R::Client,
+        definition: SurfaceChannelDefinition,
+        initial: SurfaceChannelInitialState,
+        states: &[LevelPoolState],
+        operating: SurfaceChannelOperating<R>,
+    ) -> Result<Self, SurfaceChannelError>
+    where
+        R::Client: LinearInterp1dDiagnostics<R>,
+    {
+        let time_s = initial.time_s;
+        let mut batch = Self::pooled(client, definition, initial, states)?;
+        batch.operating = Some(admit(&batch.definition, &batch.context, time_s, operating)?);
+        Ok(batch)
+    }
+
+    /// Builds every child of `definition` at `initial` and the pool `states` on `client`.
+    fn pooled(
         client: R::Client,
         definition: SurfaceChannelDefinition,
         initial: SurfaceChannelInitialState,

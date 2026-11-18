@@ -6,6 +6,7 @@ use super::completion::advanced;
 use super::evaluate::Accepted;
 use super::forcing::BoundForcing;
 use super::iteration::Stall;
+use super::operating::AttemptOperation;
 use super::outcome::LinkOutcome;
 use super::pool_ends::PoolEndInterval;
 use super::pools::{PoolChild, SurfaceChannelPoolForcing};
@@ -114,6 +115,9 @@ where
 
     /// Calculates one common interval toward `requested_end_s` with pool forcing `pools`.
     ///
+    /// A coordinator with operating children also ends the interval at its next operating event.
+    /// See [`super::operating`].
+    ///
     /// Pool sources hold one rate set per pool exactly when the pools declare source policies.
     /// Pool inflows hold one input per declared binding. An integrated pool inflow fixes the
     /// interval to the requested span, as a caller integrated lateral volume does.
@@ -150,19 +154,17 @@ where
                 ))
             })?;
         let minimum = config.minimum_step_s;
-        let mut end = requested
+        let limited = requested
             .min(start + config.maximum_step_s)
             .min(surface_end);
+        let mut end = self.operating_end(limited)?;
         if bound.requires_exact_span && end.to_bits() != requested.to_bits() {
-            return Err(recompute(
-                start,
-                requested,
-                end,
-                minimum,
-                0,
+            let reason = if end < limited {
+                "an operating event lies inside the integrated span"
+            } else {
                 "maximum_step_s or the surface forcing interval ends before the integrated span"
-                    .into(),
-            ));
+            };
+            return Err(recompute(start, requested, end, minimum, 0, reason.into()));
         }
         let pool_operands = match (&self.pools, pool_start) {
             (Some(child), Some(pool_start)) => Some((child, pool_start)),
@@ -174,7 +176,11 @@ where
             }
         };
         let children = (&self.surface, &self.reaches[..], pool_operands);
-        let operands = self.context.start(children, &reach_ids, end, bound)?;
+        let first = self.operation_at(end)?;
+        let operands = self
+            .context
+            .start(children, &reach_ids, (end, &first.operations), bound)?;
+        let mut prepared = Some(first);
         let mut retries = 0;
         let stalled = Cell::new(None);
         loop {
@@ -187,11 +193,16 @@ where
                 });
             }
             stalled.set(None);
+            // A retry prepares the operating children again at its shorter end.
+            let operation = match prepared.take() {
+                Some(operation) if operation.end.to_bits() == end.to_bits() => operation,
+                _ => self.operation_at(end)?,
+            };
             let attempted = self.attempt(
                 end,
                 requested,
                 retries,
-                (&operands, &stalled),
+                (&operands, &stalled, operation),
                 &reach_ids,
                 (forcing, pools),
             );
@@ -247,13 +258,13 @@ where
         }
     }
 
-    /// Calculates one complete candidate ending at `end`.
+    /// Calculates one complete candidate ending at `end` under `operation`.
     fn attempt(
         &self,
         end: f64,
         requested: f64,
         retries: usize,
-        (operands, stalled): (&Start<R>, &Cell<Option<Stall>>),
+        (operands, stalled, operation): (&Start<R>, &Cell<Option<Stall>>, AttemptOperation<R>),
         reach_ids: &[&str],
         (forcing, pool_forcing): (&SurfaceChannelForcingInterval, &SurfaceChannelPoolForcing),
     ) -> Result<Self, SurfaceChannelError> {
@@ -301,12 +312,15 @@ where
         let steps = self.accepted_steps + 1;
         let mut slots: Vec<Option<ChannelReach<R>>> =
             (0..self.reaches.len()).map(|_| None).collect();
+        // Candidate end stages and wet masks at every node, for decision samples.
+        let mut nodes = None;
         let (surface, outcome, ports) = if context.transfer_count() == 0 {
             let surface = context.complete_alone(&self.surface, &stage)?;
             (surface, LinkOutcome::empty(context)?, ports)
         } else {
             let pool_child = self.pools.as_ref().map(|child| (child, steps));
-            let attempt = context.attempt(operands, stage, ports, pool_child)?;
+            let links = Arc::clone(&operation.operations);
+            let attempt = context.attempt(operands, (stage, links), ports, pool_child)?;
             let accepted = Accepted {
                 surface: &self.surface,
                 reaches: &self.reaches,
@@ -314,6 +328,11 @@ where
             };
             let solved = context.solve(config, accepted, reach_ids, operands, &attempt, stalled)?;
             let evaluation = solved.evaluation;
+            let (n, m) = (context.group_count(), context.transfer_count());
+            nodes = Some((
+                evaluation.packet.narrow(0, 0, n)?,
+                evaluation.packet.narrow(0, n + m, n)?,
+            ));
             let pools = match (evaluation.pools, &attempt.pools) {
                 (Some(batch), Some(pool_attempt)) => {
                     let summary = &pool_attempt.external.summary;
@@ -426,6 +445,7 @@ where
                 balance.residual_m3, balance.bound_m3
             )));
         }
+        let (operating, operation) = self.complete_operating(operation, end, nodes.as_ref())?;
         let step = StoredStep {
             previous: PreviousFrame {
                 surface: self.surface.coupling_clone(),
@@ -453,6 +473,7 @@ where
             regime: outcome.regime,
             ports: interval,
             pool_ends,
+            operation,
         };
         Ok(Self {
             definition: Arc::clone(&self.definition),
@@ -465,6 +486,7 @@ where
             counters,
             last: Some(Arc::new(step)),
             pools,
+            operating,
         })
     }
 }

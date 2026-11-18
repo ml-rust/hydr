@@ -171,7 +171,7 @@ where
         };
         for (link, (groups, ends)) in self.link_groups.iter().zip(&self.link_ends).enumerate() {
             let heads = [read(&host, groups[0])?, read(&host, groups[1])?];
-            let law = self.laws.get(link).ok_or_else(topology)?;
+            let law = attempt.operations.laws.get(link).ok_or_else(topology)?;
             let cut = law.cut;
             let side_areas = [0, 1].map(|side| self.side_area(ends[side], heads, law));
             let [area_a, area_b] = side_areas;

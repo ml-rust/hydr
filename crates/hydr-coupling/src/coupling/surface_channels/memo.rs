@@ -15,6 +15,9 @@
 //! - The surface beside a linked pool-ended reach: its operands, then every reservoir head. The
 //!   heads set the channel velocity its inflow carries.
 //!
+//! Every key also holds the bits of the attempt's link operations, so no kept trial serves an
+//! attempt under another gate opening or pump operation.
+//!
 //! A trial whose operands match a kept entry in every bit takes that entry's result.
 //! A converged reach repeats its last trial. A dry attempt repeats its zero-exchange trial.
 
@@ -142,39 +145,45 @@ impl<T: Clone> Kept<T> {
 }
 
 /// Kept surface results `S`, linked reach results `C`, and pool results `P` of one attempt.
+///
+/// Every key ends with the bits of the attempt's link operations.
 pub(super) struct TrialMemo<S, C, P = ()> {
     surface: RefCell<Kept<S>>,
     linked: RefCell<Vec<Kept<C>>>,
     pools: RefCell<Kept<P>>,
+    operation: Vec<u64>,
 }
 
 impl<S: Clone, C: Clone, P: Clone> TrialMemo<S, C, P> {
-    /// An empty memo for `linked` reaches.
-    pub fn new(linked: usize) -> Self {
+    /// An empty memo for `linked` reaches under link operation bits `operation`.
+    pub fn new(linked: usize, operation: Vec<u64>) -> Self {
         Self {
             surface: RefCell::new(Kept::new()),
             linked: RefCell::new((0..linked).map(|_| Kept::new()).collect()),
             pools: RefCell::new(Kept::new()),
+            operation,
         }
     }
 
     /// The kept pool result of `key`, or a fresh `trial` kept under it.
     pub fn pool<E>(&self, key: &TrialKey, trial: impl FnOnce() -> Result<P, E>) -> Result<P, E> {
-        if let Some(found) = self.pools.borrow_mut().find(key) {
+        let key = key.joined(&self.operation);
+        if let Some(found) = self.pools.borrow_mut().find(&key) {
             return Ok(found);
         }
         let value = trial()?;
-        self.pools.borrow_mut().keep(key.clone(), value.clone());
+        self.pools.borrow_mut().keep(key, value.clone());
         Ok(value)
     }
 
     /// The kept surface result of `key`, or a fresh `trial` kept under it.
     pub fn surface<E>(&self, key: &TrialKey, trial: impl FnOnce() -> Result<S, E>) -> Result<S, E> {
-        if let Some(found) = self.surface.borrow_mut().find(key) {
+        let key = key.joined(&self.operation);
+        if let Some(found) = self.surface.borrow_mut().find(&key) {
             return Ok(found);
         }
         let value = trial()?;
-        self.surface.borrow_mut().keep(key.clone(), value.clone());
+        self.surface.borrow_mut().keep(key, value.clone());
         Ok(value)
     }
 
@@ -185,17 +194,18 @@ impl<S: Clone, C: Clone, P: Clone> TrialMemo<S, C, P> {
         key: &TrialKey,
         trial: impl FnOnce() -> Result<C, E>,
     ) -> Result<C, E> {
+        let key = key.joined(&self.operation);
         if let Some(found) = self
             .linked
             .borrow_mut()
             .get_mut(index)
-            .and_then(|kept| kept.find(key))
+            .and_then(|kept| kept.find(&key))
         {
             return Ok(found);
         }
         let value = trial()?;
         if let Some(kept) = self.linked.borrow_mut().get_mut(index) {
-            kept.keep(key.clone(), value.clone());
+            kept.keep(key, value.clone());
         }
         Ok(value)
     }
@@ -224,16 +234,35 @@ mod tests {
 
     #[test]
     fn a_repeated_key_reuses_its_trial() {
-        let memo = TrialMemo::<u32, u32>::new(1);
+        let memo = TrialMemo::<u32, u32>::new(1, Vec::new());
         let runs = Cell::new(0);
         assert_eq!(reach(&memo, &key(&[0.25, 0.0]), 7, &runs), 7);
         assert_eq!(reach(&memo, &key(&[0.25, 0.0]), 8, &runs), 7);
         assert_eq!(runs.get(), 1);
     }
 
+    /// Frozen criteria, fixed before the first run:
+    /// - Equal operand and operation bits reuse the kept trial.
+    /// - The kept key holds the operands, then the operation bits. An operation one ulp away and
+    ///   the bare operands both miss.
+    #[test]
+    fn keys_hold_the_operation_bits() {
+        let opening = 0.25f64.to_bits();
+        let memo = TrialMemo::<u32, u32>::new(1, vec![1, opening]);
+        let runs = Cell::new(0);
+        assert_eq!(reach(&memo, &key(&[0.5]), 7, &runs), 7);
+        assert_eq!(reach(&memo, &key(&[0.5]), 8, &runs), 7);
+        assert_eq!(runs.get(), 1);
+        let at = key(&[0.5]);
+        let mut kept = memo.linked.borrow_mut();
+        assert!(kept[0].find(&at.joined(&[1, opening])).is_some());
+        assert!(kept[0].find(&at.joined(&[1, opening + 1])).is_none());
+        assert!(kept[0].find(&at).is_none());
+    }
+
     #[test]
     fn a_one_ulp_change_misses() {
-        let memo = TrialMemo::<u32, u32>::new(1);
+        let memo = TrialMemo::<u32, u32>::new(1, Vec::new());
         let runs = Cell::new(0);
         reach(&memo, &key(&[0.25, 0.0]), 7, &runs);
         let next = f64::from_bits(0.25f64.to_bits() + 1);
@@ -245,7 +274,7 @@ mod tests {
 
     #[test]
     fn the_least_recent_trial_leaves_first() {
-        let memo = TrialMemo::<u32, u32>::new(1);
+        let memo = TrialMemo::<u32, u32>::new(1, Vec::new());
         let runs = Cell::new(0);
         let [a, b, c] = [key(&[1.0]), key(&[2.0]), key(&[3.0])];
         reach(&memo, &a, 1, &runs);
@@ -260,7 +289,7 @@ mod tests {
 
     #[test]
     fn a_rejected_trial_is_not_kept() {
-        let memo = TrialMemo::<u32, u32>::new(1);
+        let memo = TrialMemo::<u32, u32>::new(1, Vec::new());
         let at = key(&[1.0]);
         assert_eq!(
             memo.surface(&at, || Err::<u32, _>("shorter")),
@@ -297,7 +326,7 @@ mod tests {
     /// - A one-ulp change in an incoming volume, and a signed zero outgoing volume, each miss.
     #[test]
     fn a_pool_key_reuses_only_on_exact_bits() -> Result {
-        let memo = TrialMemo::<u32, u32, u32>::new(0);
+        let memo = TrialMemo::<u32, u32, u32>::new(0, Vec::new());
         let runs = Cell::new(0);
         let device = CpuDevice::new();
         let pool = |values: &[f64], value: u32| -> Result<u32> {

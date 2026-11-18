@@ -10,15 +10,14 @@ use super::pool_ends::PoolEndTopology;
 use super::pools::{LinkSides, PoolParts, PoolTopology};
 use super::ports::PortTopology;
 use super::slot_plan::SlotPlan;
-use super::structures::LinkLaw;
+use super::structures::{LinkLaw, LinkOperations};
 use super::table::{TableEnd, table};
 use super::{SurfaceChannelDefinition, SurfaceChannelError};
 use crate::channel::ChannelLateralDirection;
 use crate::numerics::water_transfers::TransferTree;
 use crate::solver::Solver;
-use crate::structures::StructureOperation;
+use crate::structures::StructureElement;
 use hydr_solver::internal::SurfaceLinks;
-use hydr_structures::internal::CouplingStructures;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, ReduceOps, ScalarOps,
@@ -27,6 +26,7 @@ use numr::ops::{
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 pub(super) use super::ops::Ops;
 pub(super) use nodes::{LinkedReach, NodeEnd};
@@ -39,8 +39,12 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub client: R::Client,
     /// Linked surface cells, or `None` for a coordinator without surface lanes.
     pub links: Option<SurfaceLinks<R>>,
-    /// Laws of every bank and structure link, or `None` without links.
-    pub structures: Option<CouplingStructures<R>>,
+    /// Laws of every bank and structure link under its declared operation.
+    ///
+    /// A coordinator with operating children replaces them on every attempt.
+    pub operations: Arc<LinkOperations<R>>,
+    /// Law, direction, and datum of every link.
+    pub link_elements: Vec<StructureElement>,
     /// Groups `S + C + P`. Input `e` is link `e` at endpoint A, input `L + e` at endpoint B.
     pub donors: TransferTree<R>,
     /// Groups `S`. Input `e` is link `e` at its surface lane when endpoint A is a surface lane.
@@ -113,8 +117,6 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub lane_area_m2: Vec<f64>,
     /// Plan geometry of every slot.
     pub slot_plans: Vec<SlotPlan>,
-    /// Law class and cutoffs of every link.
-    pub laws: Vec<LinkLaw>,
     /// Absolute head allowance, in metres.
     pub head_absolute_m: f64,
     /// Relative head allowance.
@@ -316,29 +318,16 @@ where
         .map_err(transfer_error)?;
         let lanes = TransferTree::new_grouped(&client, surface_count, link_count, &lane_targets)
             .map_err(transfer_error)?;
-        let operations = table
-            .iter()
-            .map(|link| StructureOperation {
-                structure_id: link.id.to_string(),
-                operating_point: link.operation,
-            })
-            .collect();
-        let allowance = (setup.config.head_absolute_m, setup.config.head_relative);
-        let laws: Vec<LinkLaw> = table
-            .iter()
-            .zip(&beds)
-            .map(|(link, &beds)| LinkLaw::new(&link.element, link.operation, beds, allowance))
-            .collect();
-        let elements = table.iter().map(|link| link.element.clone()).collect();
-        let structures = if link_ids.is_empty() {
-            None
-        } else {
-            Some(
-                CouplingStructures::new(client.clone(), elements, operations).map_err(|error| {
-                    SurfaceChannelError::input(format!("link structures: {error}"))
-                })?,
-            )
-        };
+        let link_elements: Vec<StructureElement> =
+            table.iter().map(|link| link.element.clone()).collect();
+        let operations = Arc::new(LinkOperations::declared(
+            &client,
+            &link_elements,
+            table.iter().map(|link| link.operation).collect(),
+            &beds,
+            (setup.config.head_absolute_m, setup.config.head_relative),
+        )?);
+        let laws = &operations.laws;
         let cell_area = setup.surface.domain.grid().cell_area();
         let lane_area_m2 = vec![cell_area; surface_count];
         let per_law = |value: &dyn Fn(usize, &LinkLaw) -> f64| -> Vec<f64> {
@@ -405,7 +394,7 @@ where
                         ids: &link_ids,
                         ends: &link_ends,
                         beds: &beds,
-                        laws: &laws,
+                        laws,
                     },
                     &definition.pool_ends,
                 ),
@@ -446,7 +435,8 @@ where
                 .enumerate()
                 .filter_map(|(position, link)| link.bank.then_some(position))
                 .collect(),
-            laws,
+            operations: Arc::clone(&operations),
+            link_elements,
             lane_area_m2,
             tangent: [floats(&tangent(0))?, floats(&tangent(1))?],
             channel_b: floats(
@@ -472,7 +462,6 @@ where
             )?,
             channel_links: indices(&channel_links)?,
             links,
-            structures,
             donors,
             lanes,
             surface_count,

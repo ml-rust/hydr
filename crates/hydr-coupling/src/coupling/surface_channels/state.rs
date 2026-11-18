@@ -1,6 +1,7 @@
 //! Device-resident link counters and the receipt of the last accepted common interval.
 
 use super::SurfaceChannelForcingInterval;
+use super::operating::StepOperation;
 use super::pool_ends::{PoolEndCounters, PoolEndInterval};
 use super::pools::{PoolChild, SurfaceChannelPoolForcing};
 use super::ports::{PortCounters, PortInterval};
@@ -9,6 +10,7 @@ use crate::solver::Solver;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
+use std::sync::Arc;
 
 /// Lifetime directional link volumes in link identity order, each `[L]`.
 #[derive(Clone)]
@@ -77,4 +79,6 @@ pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub ports: PortInterval,
     /// Pool-end volumes and reservoir heads. Empty without pool ends.
     pub pool_ends: PoolEndInterval,
+    /// Interval operation of the operating children, or `None` without them.
+    pub operation: Option<Arc<StepOperation<R>>>,
 }

@@ -12,6 +12,7 @@ use numr::tensor::Tensor;
 use solvr::optimize::roots::AndersonAlgorithms;
 use solvr::optimize::roots::{AndersonConvergence, AndersonOptions, RootOptions};
 use std::cell::{Cell, RefCell};
+use std::sync::Arc;
 
 /// Separate head and transfer residuals between an iterate and its map value.
 pub(super) struct Residuals {
@@ -136,8 +137,9 @@ where
     ) -> Result<Solved<R>, SurfaceChannelError> {
         // Kept trials never outlive this attempt, so none crosses an accepted step or a retry.
         let ended = self.pool_ends.as_ref().map_or(0, |ends| ends.ended.len());
-        let trials = Trials::new(self.linked.len() + ended);
+        let trials = Trials::new(self.linked.len() + ended, attempt.operations.bits());
         let levelling = self.levelling(accepted, reach_ids, start, attempt, &trials)?;
+        let initial = self.initial_iterate(start, attempt)?;
         let error = RefCell::new(None);
         let record = |e: SurfaceChannelError| -> numr::error::Error {
             if let Ok(mut slot) = error.try_borrow_mut()
@@ -192,40 +194,40 @@ where
             },
         };
         let norms: RefCell<Vec<f64>> = RefCell::new(Vec::new());
-        let root =
-            self.client
-                .anderson_with_convergence(map, &start.initial, &options, |_, _, _| {
-                    let (residual, repeats) = checked.borrow_mut().take().ok_or_else(|| {
-                        record(SurfaceChannelError::Numerical(
-                            "fixed-point update lacks its residuals".into(),
-                        ))
-                    })?;
-                    let mut norms = norms.borrow_mut();
-                    norms.push(residual.norm);
-                    if !residual.converged {
-                        // A cycle never contracts.
-                        let stop = if repeats {
-                            let cycle = Stall {
-                                updates: norms.len() - 1,
-                                contraction: 1.0,
-                            };
-                            Some((cycle, exhausted(config)))
-                        } else {
-                            stall(&norms, config.iteration_limit)
-                                .map(|forecast| (forecast, forecast.rejection(config)))
+        let root = self
+            .client
+            .anderson_with_convergence(map, &initial, &options, |_, _, _| {
+                let (residual, repeats) = checked.borrow_mut().take().ok_or_else(|| {
+                    record(SurfaceChannelError::Numerical(
+                        "fixed-point update lacks its residuals".into(),
+                    ))
+                })?;
+                let mut norms = norms.borrow_mut();
+                norms.push(residual.norm);
+                if !residual.converged {
+                    // A cycle never contracts.
+                    let stop = if repeats {
+                        let cycle = Stall {
+                            updates: norms.len() - 1,
+                            contraction: 1.0,
                         };
-                        if let Some((forecast, rejection)) = stop {
-                            stalled.set(Some(forecast));
-                            return Err(record(rejection));
-                        }
-                    }
-                    let decision = AndersonConvergence {
-                        residual_norm: residual.norm,
-                        converged: residual.converged,
+                        Some((cycle, exhausted(config)))
+                    } else {
+                        stall(&norms, config.iteration_limit)
+                            .map(|forecast| (forecast, forecast.rejection(config)))
                     };
-                    *checked.borrow_mut() = Some((residual, repeats));
-                    Ok(decision)
-                });
+                    if let Some((forecast, rejection)) = stop {
+                        stalled.set(Some(forecast));
+                        return Err(record(rejection));
+                    }
+                }
+                let decision = AndersonConvergence {
+                    residual_norm: residual.norm,
+                    converged: residual.converged,
+                };
+                *checked.borrow_mut() = Some((residual, repeats));
+                Ok(decision)
+            });
         if let Some(error) = error.into_inner() {
             return Err(error);
         }
@@ -292,6 +294,39 @@ where
             residuals,
             contraction,
         })
+    }
+
+    /// First iterate of `attempt`: the start iterate, with start regimes under the attempt's link
+    /// operations.
+    ///
+    /// An attempt under the start's own operations takes the start iterate unchanged.
+    fn initial_iterate(
+        &self,
+        start: &Start<R>,
+        attempt: &Attempt<R>,
+    ) -> Result<Tensor<R>, SurfaceChannelError> {
+        if self.link_count == 0 || Arc::ptr_eq(&start.operations, &attempt.operations) {
+            return Ok(start.initial.clone());
+        }
+        let c = &self.client;
+        let n = self.group_count();
+        let m = self.transfer_count();
+        let l = self.link_count;
+        let regime = self
+            .weir(
+                &attempt.operations,
+                &start.stage,
+                &start.wet,
+                &self.level_heads(&start.stage)?,
+            )?
+            .regime;
+        // Layout: end stages, signed volumes, end wet masks, link regimes, then pool-end support.
+        let before = start.initial.narrow(0, 0, 2 * n + m)?;
+        if m == l {
+            return Ok(c.cat(&[&before, &regime], 0)?);
+        }
+        let support = start.initial.narrow(0, 2 * n + m + l, m - l)?;
+        Ok(c.cat(&[&before, &regime, &support], 0)?)
     }
 
     /// Rejects a passive link whose receiver ends above its donor beyond the head budget.

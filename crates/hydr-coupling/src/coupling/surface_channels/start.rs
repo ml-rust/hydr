@@ -5,6 +5,7 @@ use super::context::{Context, NodeEnd, Ops};
 use super::forcing::BoundForcing;
 use super::pools::{PoolChild, PoolStart};
 use super::ports::PortStart;
+use super::structures::{LinkLaw, LinkOperations};
 use crate::channel::{ChannelReach, ChannelTensorLateralInput, ChannelTensorWaterAmount};
 use crate::solver::Solver;
 use hydr_channel::internal::ChannelCouplingReservation;
@@ -13,9 +14,9 @@ use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps, ShapeOps, UnaryOps,
 };
-
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
+use std::sync::Arc;
 
 /// Structures regime codes of submerged-type passive flow: fully submerged orifice, submerged
 /// weir, mixed gate aperture, and submerged gate aperture.
@@ -66,6 +67,11 @@ pub(super) struct Start<R: Runtime<DType = DType>> {
     pub pools: Option<PoolStart<R>>,
     /// Wet support of every pool end at the accepted start, `[E]`, or `None` without pool ends.
     pub end_support: Option<Tensor<R>>,
+    /// Link laws the start regimes and the pump checks used.
+    ///
+    /// An attempt under other operations takes its own start regimes. See
+    /// [`Context::initial_iterate`].
+    pub operations: Arc<LinkOperations<R>>,
 }
 
 /// Donor operands of every channel slot.
@@ -120,12 +126,13 @@ where
 
     /// Builds the start operands from the accepted children and the bound forcing.
     ///
-    /// `pools` holds the accepted pool child with its bound trial forcing.
+    /// `pools` holds the accepted pool child with its bound trial forcing. `operations` holds the
+    /// link laws of the first attempt. Its pump operations hold over every attempt of the trial.
     pub fn start(
         &self,
         (surface, reaches, pools): StartChildren<'_, R>,
         reach_ids: &[&str],
-        end: f64,
+        (end, operations): (f64, &Arc<LinkOperations<R>>),
         forcing: BoundForcing<R>,
     ) -> Result<Start<R>, SurfaceChannelError> {
         let (pool_child, pool_start) = match pools {
@@ -192,11 +199,12 @@ where
             let linked: Vec<&ChannelReach<R>> =
                 self.linked.iter().map(|r| &reaches[r.reach]).collect();
             let (stage, wet) = self.node_stages(surface, &linked, pool_batch, reach_ids)?;
-            self.check_pumps(&stage, &wet)?;
+            self.check_pumps(&operations.laws, &stage, &wet)?;
             let regime = if self.link_count == 0 {
                 zeros.clone()
             } else {
-                self.weir(&stage, &wet, &self.level_heads(&stage)?)?.regime
+                self.weir(operations, &stage, &wet, &self.level_heads(&stage)?)?
+                    .regime
             };
             let initial = match &end_support {
                 // Pool-end volumes and support follow the link volumes and regimes.
@@ -221,6 +229,7 @@ where
             ports,
             pools: pool_start,
             end_support,
+            operations: Arc::clone(operations),
         })
     }
 
@@ -230,18 +239,21 @@ where
     /// - `pump-without-suction`: the donor holds no supported water above its suction cutoff.
     /// - `pump-dry-delivery`: the receiver is dry and no declared free outlet lies at or above
     ///   its attachment bed.
-    fn check_pumps(&self, stage: &Tensor<R>, wet: &Tensor<R>) -> Result<(), SurfaceChannelError> {
-        if self
-            .laws
-            .iter()
-            .all(|law| law.pump().is_none_or(|p| !p.running))
-        {
+    ///
+    /// `laws` holds every link law under the operations of the trial.
+    fn check_pumps(
+        &self,
+        laws: &[LinkLaw],
+        stage: &Tensor<R>,
+        wet: &Tensor<R>,
+    ) -> Result<(), SurfaceChannelError> {
+        if laws.iter().all(|law| law.pump().is_none_or(|p| !p.running)) {
             return Ok(());
         }
         let stage = stage.try_to_vec::<f64>()?;
         let wet = wet.try_to_vec::<f64>()?;
         let missing = || SurfaceChannelError::Numerical("pump check lacks a group".into());
-        for (link, law) in self.laws.iter().enumerate() {
+        for (link, law) in laws.iter().enumerate() {
             let Some(pump) = law.pump().filter(|p| p.running) else {
                 continue;
             };
@@ -320,11 +332,13 @@ where
         })
     }
 
-    /// Law of every link at group `stage` with support `wet`, both `[S + C + P]`.
+    /// Law of every link under `operations` at group `stage` with support `wet`, both
+    /// `[S + C + P]`.
     ///
     /// A submerged link where `level` is one counts as equal heads and carries no water.
     pub fn weir(
         &self,
+        operations: &LinkOperations<R>,
         stage: &Tensor<R>,
         wet: &Tensor<R>,
         level: &Tensor<R>,
@@ -332,6 +346,7 @@ where
         let c = &self.client;
         let gather = |values: &Tensor<R>, index: &Tensor<R>| c.index_select(values, 0, index);
         self.link_weir(
+            operations,
             [&gather(stage, &self.link_a)?, &gather(stage, &self.link_b)?],
             [&gather(wet, &self.link_a)?, &gather(wet, &self.link_b)?],
             level,
@@ -354,19 +369,21 @@ where
         Ok(c.le(&c.abs(&c.sub(&surface, &channel)?)?, &allowance)?)
     }
 
-    /// Law of every link at its surface and channel `stages` and `wet` masks, each `[L]`.
+    /// Law of every link under `operations` at its surface and channel `stages` and `wet` masks,
+    /// each `[L]`.
     ///
     /// A side supports flow when it is wet and stands above its attachment bed. A link in a
     /// submerged-type regime where `level` is one counts as equal heads and carries no water.
     pub fn link_weir(
         &self,
+        operations: &LinkOperations<R>,
         [surface, channel]: [&Tensor<R>; 2],
         [wet_surface, wet_channel]: [&Tensor<R>; 2],
         level: &Tensor<R>,
     ) -> Result<TensorStructureResult<R>, SurfaceChannelError> {
         let c = &self.client;
-        let mut law = self
-            .link_structures()?
+        let mut law = operations
+            .structures()?
             .evaluate_heads(
                 surface,
                 channel,

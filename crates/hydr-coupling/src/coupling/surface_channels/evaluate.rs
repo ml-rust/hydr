@@ -22,6 +22,7 @@ use super::memo::TrialMemo;
 use super::pools::{PoolAttempt, PoolChild, charge};
 use super::ports::PortBinding;
 use super::start::Start;
+use super::structures::LinkOperations;
 use crate::channel::ChannelReach;
 use crate::solver::Solver;
 use crate::storage::LevelPoolBatch;
@@ -30,6 +31,7 @@ use numr::dtype::DType;
 use numr::ops::{BinaryOps, IndexingOps, MidpointOps, ShapeOps};
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
+use std::sync::Arc;
 
 /// Relative donor margin per withdrawal binding, in units of `f64::EPSILON`.
 const SLOT_MARGIN_ULPS: f64 = 4.0;
@@ -72,6 +74,10 @@ pub(super) struct Attempt<R: Runtime<DType = DType>> {
     pub ports: PortBinding<R>,
     /// Pool operands of this attempt, or `None` without pools.
     pub pools: Option<PoolAttempt<R>>,
+    /// Link laws under the operations of this attempt.
+    ///
+    /// They depend on no iterate, so every evaluation of the attempt takes them.
+    pub operations: Arc<LinkOperations<R>>,
 }
 
 /// Kept child trials of one attempt.
@@ -118,10 +124,11 @@ where
     /// Channel slots reserve native face outflow over the duration and caller withdrawals.
     /// A ported reach's face outflow includes its port export. Pools offer their post-source
     /// water. `pools` holds the accepted pool child and the accepted-step count after the attempt.
+    /// `operations` holds the link laws under the attempt's operations.
     pub fn attempt(
         &self,
         start: &Start<R>,
-        stage: SurfaceCouplingStage<R>,
+        (stage, operations): (SurfaceCouplingStage<R>, Arc<LinkOperations<R>>),
         ports: PortBinding<R>,
         pools: Option<(&PoolChild<R>, usize)>,
     ) -> Result<Attempt<R>, SurfaceChannelError> {
@@ -192,6 +199,7 @@ where
             slot_reserve,
             ports,
             pools,
+            operations,
         })
     }
 
@@ -228,9 +236,10 @@ where
             (None, self.no_exchange()?)
         } else {
             let wet = c.maximum(&start.wet, &end_wet)?;
-            let law = self.weir(&midpoint, &wet, &levelling.level)?;
-            let proposed = self
-                .link_structures()?
+            let law = self.weir(&attempt.operations, &midpoint, &wet, &levelling.level)?;
+            let proposed = attempt
+                .operations
+                .structures()?
                 .held_volumes(&law, attempt.dt)
                 .map_err(|error| {
                     SurfaceChannelError::Numerical(format!("link volumes: {error}"))

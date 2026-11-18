@@ -49,6 +49,7 @@ mod iteration;
 mod level_cap;
 mod levelling;
 mod memo;
+mod operating;
 mod ops;
 mod outcome;
 mod output;

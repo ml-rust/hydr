@@ -93,6 +93,17 @@ where
         if snapshot.definition.pools != self.definition.pools {
             return Err(rejected("pools", "differs from the destination pools"));
         }
+        let same_operating = match (&snapshot.operating, &self.operating) {
+            (Some(trusted), Some(own)) => trusted.same_binding(own),
+            (None, None) => true,
+            _ => false,
+        };
+        if !same_operating {
+            return Err(rejected(
+                "operating",
+                "differs from the destination operating children",
+            ));
+        }
         checked(
             identity::initial(&snapshot.initial, &self.initial),
             "differs from the destination original state",
@@ -124,6 +135,7 @@ where
             counters: snapshot.counters.clone(),
             last: snapshot.last.as_ref().map(Arc::clone),
             pools: snapshot.pools.clone(),
+            operating: snapshot.operating.clone(),
         })
     }
 
