@@ -6,6 +6,8 @@ Pool levels respond to the channel's actual water transfers. Multiple channel en
 
 Read [channel flow](channels.md) and [level pools](level-pool.md) before constructing their inputs.
 
+To add a surface, structures, or sampled controls to channel and pool connections, use the [surface/channel coordinator](surface-channels.md#couple-a-reach-end-to-a-pool). It joins a reach end to a pool through a pool end and accepts every child over one common interval. This page covers reach-to-pool connections without a surface.
+
 Read capabilities with `channel_pool_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, connected endpoints, regimes, sources, nested components, unsupported uses, and limits.
 
 ## Construct the connected system
@@ -136,7 +138,7 @@ Active connections must remain wet throughout the accepted interval. A connectio
 | --- | --- |
 | Existing rectangular and prismatic triangular reaches | General channel junctions and surveyed-profile dynamics |
 | Multiple declared endpoints per pool | Inferred geographic connections or overlapping represented storage |
-| Exchange-only pools and channel lateral inputs | Pool structures, local pool sources, and surface/network coordination |
+| Exchange-only pools and channel lateral inputs | Pool structures, local pool sources, and surface coordination. The [surface/channel coordinator](surface-channels.md) provides them. |
 | Reversing flow inside the wet-subcritical branch | Dry connections, critical transitions, jets, and oscillating pool surfaces |
 
 Time integration remains first order. The local connection law establishes no energy guarantee for the complete numerical calculation.

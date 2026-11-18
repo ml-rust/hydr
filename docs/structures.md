@@ -9,6 +9,7 @@ Use `hydr::structures::StructureBatch` to calculate flow through declared openin
 | Flow at one instant | `StructureBatch::propose` or `propose_with_operations` |
 | Volume while heads and operation stay fixed | `proposal.held_volumes` |
 | Accepted transfers between evolving pools | [Coupled level pools](coupled-level-pools.md) |
+| Accepted transfers between pools, surface cells, and channel cells | [Surface/channel coupling](surface-channels.md#join-nodes-through-structures) |
 | Commands or moving openings | [Operating controls](operating-controls.md), [actuators](gate-actuators.md), or [operating sources](operating-sources.md) |
 
 A standalone structure proposal advances no storage. It checks neither donor availability nor acceptance of a paired transfer.
@@ -264,6 +265,8 @@ With an outlet, the lift is `max(receiving stage, outlet) - donor stage`. A dry 
 | Dry, bed above the outlet | Rejects as an unsupported regime. Raise the outlet or supply a wet receiver. |
 
 Two pump definitions match only when both lack an outlet, or both carry the same outlet elevation bits and evidence text.
+
+The [surface/channel coordinator](surface-channels.md#check-structure-admission) uses the outlet head for a pump that delivers to a dry surface cell or pool. A running pump without an outlet that meets a dry receiver rejects with `pump-dry-delivery`.
 
 ### Check running and stopped support
 
@@ -598,6 +601,23 @@ Run the original-bit opening and error-receipt observer:
 cargo run --example gate_trajectories_reference
 ```
 
+## Read head sensitivity
+
+The tensor proposal holds one hidden output per element: `head_sensitivity`. It bounds `|dQ/dH| / |Q|`, in 1/m, for a move of either endpoint head. It is zero where the element carries no discharge. It is no part of the supported public API. The [surface/channel coordinator](surface-channels.md#resolution-term) reads it to size its convergence allowances.
+
+| Law | Bound |
+| --- | --- |
+| Suppressed weir | `1.5 / h_u + 0.385 / gap`. `h_u` is the upstream head above the crest. `gap` is the head difference of submerged flow and zero for free flow. |
+| Submerged orifice | `0.5 / gap` |
+| Gate | `1.5 / h_u + 0.5 / gap`. `h_u` is the donor head above the sill. `gap` is the donor-receiver difference where the receiver stands above the sill, else zero. |
+| Pump | `\|dQ_ref/dh\| / (N Q)` on the active curve segment, with `N` the speed ratio. Zero at shutoff and while isolated. |
+
+Scope of the output:
+
+- It bounds the change of discharge per metre. It establishes no accuracy of the discharge itself.
+- A pump with a free outlet moves its lift one for one with the donor head. A receiver below the outlet moves nothing, and the bound still holds.
+- Unit tests check each law's bound against a centred difference over a dense head grid.
+
 ## Select and preserve a runtime
 
 `StructureBatch::<R>::new(client, elements)` receives the configured Numr client. Laws retain F64 `Tensor<R>` fields.
@@ -709,7 +729,7 @@ Ordered element indices remain available without parsing diagnostic strings.
 
 Standalone proposals contain no donor storage, evolving outlet integration, storage snapshots, physical actuator response, network solve, or bed/sill changes.
 
-[Coupled level pools](coupled-level-pools.md) separately supplies synchronized head estimates and accepted shared transfers for its admitted scope.
+[Coupled level pools](coupled-level-pools.md) and the [surface/channel coordinator](surface-channels.md#join-nodes-through-structures) separately supply synchronized head estimates and accepted shared transfers for their admitted scope.
 
 ### Commands and actuator response
 

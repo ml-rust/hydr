@@ -6,6 +6,8 @@ This guide covers static manual operations with optional local sources and presc
 
 For generated upstream inflows, use the [runoff-to-pool coordinator](runoff-pools.md). It owns both children and their common interval.
 
+To join pools to the surface or to channel reaches, use the [surface/channel coordinator](surface-channels.md#add-level-pools). It accepts pools, weirs, orifices, gates, pumps, and sampled controls with the surface and every reach over one common interval. This page covers pool-to-pool transfers only.
+
 Read capabilities with `coupled_level_pool_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, structure and inflow endpoints, regimes, sources, nested components, unsupported uses, and limits.
 
 ## Define the physical model
@@ -221,6 +223,6 @@ Connections can become unavailable at different elevations. Availability scaling
 - External withdrawals and runoff feedback from receiving-pool levels.
 - Measured-replacement selection.
 - Control schedules, trajectories, and actuator frames.
-- Surface-to-network coupling.
+- Surface and channel coupling. The [surface/channel coordinator](surface-channels.md#join-nodes-through-structures) provides it, with its own controls.
 
 Read [acceptance coverage](acceptance.md) for numerical evidence. Synthetic checks establish neither measured-event accuracy nor universal GPU qualification.

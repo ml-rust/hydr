@@ -595,7 +595,7 @@ These cases establish no downstream feedback, geometric nonoverlap proof, dynami
 
 ## Surface/channel checks
 
-Use the [surface/channel guide](surface-channels.md) to declare bank links and their evidence.
+Use the [surface/channel guide](surface-channels.md) to declare bank links, ports, pools, structures, pool ends, and controls with their evidence.
 
 [Surface/channel cases](../tests/surface_channels.rs) check the surface and every reach over one accepted interval:
 
@@ -648,6 +648,39 @@ A port joins a rectangular reach end to a line of surface edge faces. The criter
 
 These cases establish no measured-event accuracy and no energy guarantee at bed steps.
 
+### Pools, structures, and controls
+
+A pool joins the coordinator as a node. A structure joins two nodes. A pool end joins a reach end to a pool. The criteria below were fixed before any run. A case that misses its criterion fails, and no one loosens the criterion.
+
+Analytical cases use `head_absolute_m = 1e-13`, `transfer_absolute_m3 = 1e-12`, and relative parts of zero. A refinement case runs four durations, each half the last, and compares consecutive errors. Every interval checks the regime, the mass bound, the pairing, and the composite balance.
+
+| Case | Enforced criterion |
+| --- | --- |
+| [Rest](../tests/surface_channels/pools_rest.rs) | A pond level with a surface cell, through a submerged weir, an orifice, and an open gate. Over 50 intervals every link volume is `0.0` bit for bit, the regime is `EqualHeads`, and every stage changes by at most `1e-12 m`. |
+| [Pond drain over a free weir](../tests/surface_channels/pools_weir_drain.rs) | A constant-area pool drains over a free weir onto a reach cell below the crest. Exact `h(t) = (h0^{-1/2} + C_w L t / (2A))^{-2}`. At the end time the finest relative error of `h` is at most `1e-6`, and the order is at least `1.8` on the two finest pairs. |
+| [Pond fill through an orifice](../tests/surface_channels/pools_orifice_fill.rs) | A closed one-cell surface tank and a constant-area pool. Exact `Δh(t) = (sqrt(Δh0) - k t / 2)^2`, `k = C_d a sqrt(2g) (1/A_1 + 1/A_2)`. At `t*/2` the finest relative error is at most `1e-6`, and the order is at least `1.8`. After `t*` the heads level within the head allowance, with no crossing rejection. |
+| [Surface-to-reach orifice](../tests/surface_channels/structures_surface_reach.rs) | A one-cell surface tank and a one-cell walled reach joined by an orifice. The exact solution and the criteria match the orifice fill. The orifice approximates a culvert. |
+| [Pump on a flat curve](../tests/surface_channels/structures_pump.rs) | Plateau `Q0` over the head range, pool to surface tank. `\|ΣV - Q0 T\| <= 8 ε N Q0 T` over `N` intervals, with `ε` the `f64` machine epsilon. |
+| Pump on a linear curve | Same file. `Q = Q0 - s Δ`, with `Δ` the lift. Exact `Δ(t) = Q0/s - (Q0/s - Δ0) exp(-s k t)`, `k = 1/A_1 + 1/A_2`. The finest relative error is at most `1e-6`, and the order is at least `1.8`. |
+| Suction cap | Same file. A pump drains its pool to the suction bound `z_s`. The cap binds and nothing rejects. The final stage lies in `[z_s, z_s + head_absolute_m]`, and no storage turns negative. Eight further intervals keep the stage in that band. |
+| Pump to a dry cell with an outlet | Same file. The volume equals the curve at lift `outlet - donor stage` within `8 ε` relative per interval. |
+| [Prescribed gate ramp](../tests/surface_channels/structures_gate.rs) | A linear opening ramp between two ponds, free aperture. Self-refinement order of the final stage is at least `1.8`. Closed intervals move `0.0` bit for bit. |
+| Actuated gate on a stage rule | Same file. A `ControlledGateBatch` opens a pond outlet when the pond stage reaches its upper threshold. Every decision stage keeps at least `0.01 m` from each threshold. The gate switches at the first decision with stage at or above the threshold. The self-refinement order of the final stage is at least `1.8`. Receipts hold the midpoint opening and its error. |
+| Actuated gate arrival | Same file. An outlet arrives at its target inside the run. The coordinator ends an interval at each bound of the arrival window. The last receipt opening equals the target bit for bit. |
+| [Controlled pump](../tests/surface_channels/structures_pump_control.rs) | A relay starts the pump at the upper sump threshold and stops it at the lower threshold. An independent plain-`f64` replay gives the decision stages and switch times. Commands switch at the exact decision times. Each running interval keeps `\|V - Q0 dt\| <= 8 ε Q0 dt`. A stopped interval moves `0.0` bit for bit. |
+| [Reversal](../tests/surface_channels/structures_reversal.rs) | A reach with a tidal `Exterior` end and a pool joined through a bidirectional orifice. The orifice volume changes sign at least 4 times. Pairing and composite mass pass every interval. |
+| Mirror symmetry | Same file. Swapping endpoints A and B negates every signed volume bit for bit and keeps every child state bit for bit. |
+| [Pool end](../tests/surface_channels/pools_reach_end.rs) | A reach end into a pool, filling then reversing. Every `channel_pools` frozen criterion for the same case holds through the coordinator: the 150-digit references at both ends within `1e-10` absolute plus `1e-10` relative, a lake at rest at both ends and both entrance losses, and a reversal. The pool-end volume equals the reach face volume bit for bit. |
+| [Competing donors](../tests/surface_channels/pools_donors.rs) | One pool feeds a surface cell, a channel cell, and another pool, with demand above storage. Every withdrawal keeps one share below one. Pool volume stays nonnegative. Rain on the pool funds withdrawals. Incoming water funds none. |
+| [Declaration order](../tests/surface_channels/pools_order.rs) | Reversing or rotating the pool, structure, pool-end, link, and port lists changes no receipt, ledger, balance, or child state bit over 8 intervals. Every structure moves water. |
+| [Restart](../tests/surface_channels/pools_restart.rs) | A case with a manual, a prescribed, an actuated, and a controlled-pump owner, plus a pool end and a pool inflow. The checkpoint interval ends at a decision. Snapshot, restore, import, and resume match the uninterrupted run bit for bit, with packages, ledgers, and child states. Forged pool, structure ledger, pool-end ledger, inflow ledger, and control packages reject. A package of schema `4` or contract `6` rejects by identity. |
+| [Admission](../tests/surface_channels/pools_definition.rs) | One test per rejection row. Each rejection returns `SurfaceChannelError::Input` and names its capability entry. |
+| [Capability declaration](../tests/component_capabilities/surface_channel_pools.rs) | Every declared endpoint and boundary kind moves water in a run. Every declared structure and pool-end regime holds. Every `RejectedByAdmission` entry has a rejecting case. |
+
+These rejections run as in-crate tests with frozen criteria: pool capacity, a dry signal node, a dry pool end, and the pump rejections.
+
+These cases establish no measured-event accuracy and no culvert accuracy. An orifice does not satisfy culvert inlet or outlet control.
+
 ## Runtime support
 
 Every capability declaration claims the same status on each runtime. A named test backs each claim.
@@ -665,7 +698,7 @@ The CUDA tests of these components also run the same case on CPU and compare com
 | Operating controls, controlled gates, controlled pumps | Every field matches bit for bit |
 | Structure laws | Free and submerged weir, orifice, and free, mixed and submerged gate outputs match bit for bit over a dense head grid of more than 700 lanes |
 | Level pools, reservoirs, subcatchments | Per-element states match bit for bit. Batch totals and residual diagnostics agree within `volume_absolute + volume_relative * scale`. |
-| Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart through one bank link. A second case drains a reach through a port and a bank link together, refills it, and drains it again, with restart. Its cell states also match bit for bit. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. |
+| Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart through one bank link. A second case drains a reach through a port and a bank link together, refills it, and drains it again, with restart. Its cell states also match bit for bit. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. A third case runs pools with an orifice, a pump, an actuated gate, and a pool end across relay decisions and a gate arrival. After every accepted interval the text of every child state, package, and ledger is equal between CPU and CUDA, signed zero included. |
 
 Those totals and diagnostics differ in their last bits between CPU and CUDA. CUDA execution establishes no GPU accuracy qualification.
 
@@ -680,11 +713,11 @@ Each WGPU test also requires `WgpuRuntime::computes_float_dtype(DType::F64)` to 
 | Contract | SI inputs, shapes, references, masks, sources, boundaries, outputs, and exclusions | Physical suitability of each application domain |
 | Determinism | Repeated runs, complete trusted/package restart, bit checks, rollback, and cancellation | Cross-platform bitwise equality remains unsupported |
 | Analytical | Selected lake, dam, vacuum, friction, Manning, contracting radial lake, shear transport, and moving-shoreline cases | Broader hydraulic jumps, radial cycles, and application-specific diffusion budgets |
-| Conservation | Rain, prescribed losses, shared faces, ports, donor depletion, barrier isolation, pool transfers, paired native runoff, and paired surface/channel exchange | Surface-to-pool and surface-to-structure transfers remain unsupported |
+| Conservation | Rain, prescribed losses, shared faces, ports, donor depletion, barrier isolation, pool transfers, paired native runoff, paired surface/channel exchange, and paired exchange through pools, structures, and pool ends | Runoff attachment to coordinator pools remains unsupported |
 | Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
 | Independent engine | Nine matched wet-bed/dry-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Analytical front accuracy, independent terrain/transverse-flow comparisons, and broader hydraulic regimes |
-| Extensions | Land sources, coupled pools, free runoff outlets, finite channel/pool connections, and surface/channel bank weirs have separate checks | General channel profiles, wider networks, surface exchange with pools or structures, and dynamic coupled controls require separate acceptance |
+| Extensions | Land sources, coupled pools, free runoff outlets, finite channel/pool connections, surface/channel bank weirs, and surface/channel pools, structures, pool ends, and sampled controls have separate checks | General channel profiles, wider networks, culvert inlet and outlet control, continuous control feedback, and application-specific blockage scenarios require separate acceptance |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 
 ### Numerical limits retained by the checks

@@ -66,7 +66,7 @@ Use [coupled level pools](coupled-level-pools.md) for declared pool-to-pool tran
 
 Use [runoff-to-pool connections](runoff-pools.md) to generate upstream inflows and accept both engines over one common interval. Every runoff outlet must drain without receiving-pool feedback.
 
-Rectangular, triangular, and surveyed reaches attach to the surface solver through the [surface/channel coordinator](surface-channels.md). Surveyed reaches attach through lateral links only. A rectangular reach end also attaches through a [reach-end port](surface-channels.md#couple-a-reach-end-to-the-surface). Pools and structures do not attach to the surface solver.
+Rectangular, triangular, and surveyed reaches attach to the surface solver through the [surface/channel coordinator](surface-channels.md). Surveyed reaches attach through lateral links only. A rectangular reach end also attaches through a [reach-end port](surface-channels.md#couple-a-reach-end-to-the-surface). Level pools, weirs, orifices, gates, and pumps attach to the surface solver and the reaches through the same coordinator. See [pools](surface-channels.md#add-level-pools) and [structures](surface-channels.md#join-nodes-through-structures). A reach end also meets a pool through a [pool end](surface-channels.md#couple-a-reach-end-to-a-pool). Sampled controls operate gates and pumps there. See [controls](surface-channels.md#operate-gates-and-pumps).
 
 ### Channel flow and geometry
 
@@ -84,7 +84,14 @@ Use [channel-to-pool connections](channel-pools.md) for rectangular or triangula
 
 Surface state remains separate from these channel/pool calculations.
 
-Use [surface/channel coupling](surface-channels.md) when water crosses a bank between surface cells and rectangular, triangular, or surveyed reach cells, or a rectangular reach end meets a line of surface faces. `SurfaceChannelBatch` accepts the surface and every reach over one common interval.
+Use [surface/channel coupling](surface-channels.md) when water crosses a bank between surface cells and rectangular, triangular, or surveyed reach cells, or a rectangular reach end meets a line of surface faces. Use it also in these cases:
+
+- A pond spills onto the surface.
+- An orifice joins the surface to a reach.
+- A pump lifts a sump into a reach.
+- A gate opens on a stage rule.
+
+`SurfaceChannelBatch` accepts the surface, every reach, every pool, and the operating children over one common interval.
 
 ## Read component capabilities
 
@@ -264,7 +271,7 @@ Each row names a component that also declares [capabilities](#read-component-cap
 | [Coupled level pool](coupled-level-pools.md) | `CoupledLevelPoolSnapshotData` | `COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-coupled-level-pool-checkpoint-1`) | `COUPLED_LEVEL_POOL_CONTRACT_VERSION` (`hydr-coupled-level-pool-numr-cpu-2`) | `CoupledLevelPoolBatch::restore_data` | Level pool |
 | [Channel pool](channel-pools.md) | `ChannelPoolSnapshotData` | `CHANNEL_POOL_SNAPSHOT_SCHEMA` (`hydr-channel-pool-checkpoint-1`) | `CHANNEL_POOL_CONTRACT_VERSION` (`hydr-channel-pool-numr-cpu-2`) | `ChannelPoolBatch::import_snapshot` | Channel (per reach), level pool |
 | [Runoff pool](runoff-pools.md) | `RunoffPoolSnapshotData` | `RUNOFF_POOL_SNAPSHOT_SCHEMA` (`hydr-runoff-pool-checkpoint-1`) | `RUNOFF_POOL_CONTRACT_VERSION` (`hydr-runoff-pool-numr-cpu-2`) | `RunoffPoolBatch::restore_data` | Subcatchment, coupled level pool |
-| [Surface/channel](surface-channels.md) | `SurfaceChannelSnapshotData` | `SURFACE_CHANNEL_SNAPSHOT_SCHEMA` (`hydr-surface-channel-checkpoint-4`) | `SURFACE_CHANNEL_CONTRACT_VERSION` (`hydr-surface-channel-numr-cpu-6`) | `SurfaceChannelBatch::import_snapshot`, `SurfaceChannelBatch::resume` | Surface solver, channel (per reach) |
+| [Surface/channel](surface-channels.md) | `SurfaceChannelSnapshotData` | `SURFACE_CHANNEL_SNAPSHOT_SCHEMA` (`hydr-surface-channel-checkpoint-5`) | `SURFACE_CHANNEL_CONTRACT_VERSION` (`hydr-surface-channel-numr-cpu-7`) | `SurfaceChannelBatch::import_snapshot`, `SurfaceChannelBatch::resume` | Surface solver, channel (per reach), level pool, controlled gate, controlled pump |
 
 Import follows these rules:
 
@@ -278,8 +285,8 @@ Import follows these rules:
 
 | Component | Restart responsibility |
 | --- | --- |
-| Surface solver | Its checkpoint excludes network and operating-control state. Coordinated restoration with those components remains unsupported. Surface exchange with a channel is coordinator-only: `restore_data`, `restore`, and `resume` reject a package that carries exchange water. |
-| Surface/channel | The nested surface package restores only through `SurfaceChannelBatch`. Import recalculates the last interval and names the first differing field. `continue_surface_forcing` splices a forecast under the surface splice rule. |
+| Surface solver | Its checkpoint excludes network, pool, and operating-control state. Restoration with channels, pools, and operating children goes through `SurfaceChannelBatch`. Surface exchange with a channel, a pool, or a structure is coordinator-only: `restore_data`, `restore`, and `resume` reject a package that carries exchange water. |
+| Surface/channel | The nested surface package restores only through `SurfaceChannelBatch`. Import checks every nested identity, then recalculates the last interval, decision completion included, and names the first differing field or package path. `continue_surface_forcing` splices a forecast under the surface splice rule. |
 | [Sampled controls](operating-controls.md) and [gate actuators](gate-actuators.md) | Each exposes a separate complete snapshot. |
 | [Operating-source bindings](operating-sources.md) | Reconstruct immutable bindings from original definitions. Restore each actuator before supplying fresh point-query frames. |
 
@@ -399,6 +406,6 @@ Start with an artificial test problem inside a native application worker:
 
 The shared lifecycle code is in `examples/native_worker/mod.rs`. `tests/native_worker.rs` asserts the same run.
 
-Real urban-event use still requires network/structure coupling and independent event evidence. Domains requiring unsupported boundary regimes remain excluded.
+Real urban-event use still requires network coupling and independent event evidence. Domains requiring unsupported boundary regimes remain excluded.
 
 Applications must reuse Hydr calculations instead of maintaining a competing numerical kernel.
