@@ -5,7 +5,7 @@ use crate::channel::{
         surveyed_points::{
             chart_test_support,
             paired_sources::PairedSources,
-            source_tests::support::{Client, Result, components, expansion},
+            source_tests::support::{self as frozen, Client, Result, components, expansion},
             wet_root_types::WetRootDomain,
         },
     },
@@ -161,8 +161,8 @@ where
     R: Runtime<DType = DType>,
     R::Client: DepthClient<R>,
 {
-    let section = super::frozen::batch::<R>(client)?;
-    let owner = super::frozen::cases()
+    let section = frozen::batch::<R>(client)?;
+    let owner = frozen::cases()
         .iter()
         .find(|case| case.id == "scalar_triangle_uniform_flow")
         .ok_or("Missing independent pointed profile")?
@@ -190,8 +190,8 @@ where
     R::Client: Client<R>,
 {
     let [lower, upper] = chart_test_support::endpoint_areas(pair, parents, query)?;
-    let lower = super::frozen::bounds(pair.geometry.client(), &lower)?;
-    let upper = super::frozen::bounds(pair.geometry.client(), &upper)?;
+    let lower = frozen::bounds(pair.geometry.client(), &lower)?;
+    let upper = frozen::bounds(pair.geometry.client(), &upper)?;
     Ok(lower
         .lower()
         .try_to_vec::<f64>()?
@@ -224,7 +224,7 @@ where
 {
     let [lower, upper] =
         chart_test_support::endpoint_areas(pair, &domain.parent_rows, &domain.query)?;
-    let parameter = super::frozen::endpoints(&domain.query.query.parameter)?;
+    let parameter = frozen::endpoints(&domain.query.query.parameter)?;
     Ok(DomainSnapshot {
         parents: domain.parent_rows.try_to_vec::<i64>()?,
         owners: domain.invocation_owner.try_to_vec::<i64>()?,
