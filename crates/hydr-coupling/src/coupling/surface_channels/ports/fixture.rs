@@ -5,6 +5,7 @@ use super::super::{
     SurfaceChannelInitialState, SurfaceChannelLink, SurfaceChannelReach, SurfaceChannelSetup,
 };
 use super::SurfaceChannelPort;
+use crate::channel::ChannelEnd;
 use crate::channel::{
     ChannelConfig, ChannelGeometry, ChannelInitialState, ChannelReachDefinition,
     RectangularChannelCell,
@@ -14,7 +15,6 @@ use crate::solver::{
     SolverConfig, SolverSetup,
 };
 use crate::structures::WeirApplicability;
-use hydr_channel::internal::ChannelCouplingEnd;
 use hydr_core::grid::CartesianGrid;
 use hydr_core::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr_soil::soil::{LandModel, SoilState};
@@ -50,7 +50,7 @@ pub fn y_face(column: usize, row: usize) -> BoundaryFace {
 pub fn port(
     id: &str,
     reach_id: &str,
-    end: ChannelCouplingEnd,
+    end: ChannelEnd,
     faces: Vec<BoundaryFace>,
 ) -> SurfaceChannelPort {
     SurfaceChannelPort {
@@ -70,25 +70,25 @@ pub fn four_ports() -> Vec<SurfaceChannelPort> {
         port(
             "p-alpha-right",
             ALPHA,
-            ChannelCouplingEnd::Right,
+            ChannelEnd::Right,
             vec![x_face(4, 1), x_face(4, 0)],
         ),
         port(
             "p-alpha-left",
             ALPHA,
-            ChannelCouplingEnd::Left,
+            ChannelEnd::Left,
             vec![x_face(0, 0), x_face(0, 1)],
         ),
         port(
             "p-beta-left",
             BETA,
-            ChannelCouplingEnd::Left,
+            ChannelEnd::Left,
             vec![y_face(0, 2), y_face(1, 2)],
         ),
         port(
             "p-beta-right",
             BETA,
-            ChannelCouplingEnd::Right,
+            ChannelEnd::Right,
             vec![y_face(1, 0), y_face(0, 0)],
         ),
     ]
@@ -212,6 +212,7 @@ pub fn case(inactive: &[usize]) -> TestResult<(SurfaceChannelSetup, SurfaceChann
                 },
             ],
             links: vec![link()],
+            ports: Vec::new(),
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: SurfaceChannelConfig {
                 head_absolute_m: 1e-12,
@@ -238,9 +239,18 @@ pub fn case(inactive: &[usize]) -> TestResult<(SurfaceChannelSetup, SurfaceChann
     ))
 }
 
+/// `setup` with `ports` as its ports.
+pub fn ported(
+    mut setup: SurfaceChannelSetup,
+    ports: Vec<SurfaceChannelPort>,
+) -> SurfaceChannelSetup {
+    setup.ports = ports;
+    setup
+}
+
 /// Input message of a rejected port definition.
 pub fn rejection(setup: SurfaceChannelSetup, ports: Vec<SurfaceChannelPort>) -> TestResult<String> {
-    match SurfaceChannelDefinition::with_ports(setup, ports) {
+    match SurfaceChannelDefinition::new(ported(setup, ports)) {
         Ok(_) => Err("the definition admitted an invalid port".into()),
         Err(SurfaceChannelError::Input(message)) => Ok(message),
         Err(other) => Err(format!("expected an input rejection, got {other}").into()),

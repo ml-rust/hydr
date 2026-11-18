@@ -1,4 +1,5 @@
-//! Surface/channel coordinator definitions, construction checks, common intervals, and checkpoints.
+//! Surface/channel coordinator definitions, construction checks, common intervals, reach-end
+//! ports, and checkpoints.
 
 #[path = "surface_channels/definition.rs"]
 mod definition;
@@ -16,6 +17,16 @@ mod levelling;
 mod lifecycle;
 #[path = "surface_channels/physics.rs"]
 mod physics;
+#[path = "surface_channels/ports_definition.rs"]
+mod ports_definition;
+#[path = "surface_channels/ports_fixture.rs"]
+mod ports_fixture;
+#[path = "surface_channels/ports_order.rs"]
+mod ports_order;
+#[path = "surface_channels/ports_restart.rs"]
+mod ports_restart;
+#[path = "surface_channels/ports_scenario.rs"]
+mod ports_scenario;
 #[path = "surface_channels/reference.rs"]
 mod reference;
 #[path = "surface_channels/refinement.rs"]

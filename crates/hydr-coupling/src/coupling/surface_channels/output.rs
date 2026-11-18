@@ -37,6 +37,66 @@ pub struct SurfaceChannelLinkTransfer {
     pub midpoint_channel_stage_m: f64,
 }
 
+/// Flow regime of one reach-end port over one accepted interval.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SurfaceChannelPortRegime {
+    /// Both waves straddle the port. The HLL flux mixes both states.
+    Subcritical,
+    /// Every wave runs into the surface. The flux is the reach state's own flux.
+    SupercriticalToSurface,
+    /// Every wave runs into the reach. The flux is the surface state's own flux.
+    SupercriticalToReach,
+    /// A rarefaction fan holds its sonic point at the port.
+    Transcritical,
+    /// One side holds no water above the higher bed.
+    WetDryFront,
+    /// Neither side holds water above the higher bed. The port moves nothing.
+    Dry,
+}
+
+/// Accepted exchange through one reach-end port over one common interval.
+///
+/// The flux comes from the accepted-start states and stays fixed for the attempt.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SurfaceChannelPortTransfer {
+    /// Exact setup port identity.
+    pub port_id: String,
+    /// Reach volume, positive surface-to-channel, in cubic metres: minus the reach's
+    /// outward rate times the interval.
+    pub signed_volume_m3: f64,
+    /// Normal momentum leaving the reach along its outward normal, pressure included, in m⁴/s.
+    pub reach_momentum_impulse_m4_per_s: f64,
+    /// Momentum entering the surface cells in grid x and y, in m⁴/s.
+    pub surface_momentum_impulse_m4_per_s: [f64; 2],
+    /// Momentum leaving the reach minus momentum entering the surface, grid x and y, in m⁴/s.
+    ///
+    /// It holds the bed-step reaction and any tangential momentum that leaves the surface.
+    pub junction_reaction_m4_per_s: [f64; 2],
+    /// Signal-speed bound the reach received, in m/s.
+    pub signal_speed_m_per_s: f64,
+    /// Port regime from the regimes of its faces.
+    pub regime: SurfaceChannelPortRegime,
+    /// The signed volume changes sign against the previous interval.
+    pub reversed: bool,
+    /// Surface port volume plus reach outward volume, in cubic metres.
+    pub paired_gap_m3: f64,
+    /// Admitted magnitude of `paired_gap_m3`, in cubic metres.
+    pub paired_bound_m3: f64,
+}
+
+/// Lifetime directional exchange through one reach-end port.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SurfaceChannelPortLedger {
+    /// Exact setup port identity.
+    pub port_id: String,
+    /// Accumulated surface-to-channel reach volume, in cubic metres.
+    pub surface_to_channel_m3: f64,
+    /// Accumulated channel-to-surface reach volume, in cubic metres.
+    pub channel_to_surface_m3: f64,
+    /// Conservative rounding envelope of both counters, in cubic metres.
+    pub roundoff_bound_m3: f64,
+}
+
 /// One accepted common interval with its iteration, accounting, and per-link exchange.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelStepDiagnostics {
@@ -63,22 +123,26 @@ pub struct SurfaceChannelStepDiagnostics {
     pub storage_before_m3: f64,
     /// Surface plus channel storage at the end, in cubic metres.
     pub storage_after_m3: f64,
-    /// Exchange water the surface received, in cubic metres.
+    /// Link water the surface received, in cubic metres. Port water stays out.
     pub surface_exchange_in_m3: f64,
-    /// Exchange water the surface gave, in cubic metres.
+    /// Link water the surface gave, in cubic metres. Port water stays out.
     pub surface_exchange_out_m3: f64,
-    /// Exchange water the channels received, in cubic metres.
+    /// Link water the channels received, in cubic metres.
     pub channel_exchange_in_m3: f64,
-    /// Exchange water the channels gave, in cubic metres.
+    /// Link water the channels gave, in cubic metres.
     pub channel_exchange_out_m3: f64,
     /// Bound on the gap between each side's net exchange and the summed link volumes, in m³.
     pub paired_bound_m3: f64,
-    /// Storage change minus external water, exchange excluded, in cubic metres.
+    /// Storage change minus external water, exchange and port water excluded, in cubic metres.
     pub mass_residual_m3: f64,
     /// Admitted magnitude of `mass_residual_m3`, in cubic metres.
     pub mass_bound_m3: f64,
     /// Per-link exchange in ascending link identity.
     pub links: Vec<SurfaceChannelLinkTransfer>,
+    /// Per-port exchange in ascending port identity. Empty without ports.
+    pub ports: Vec<SurfaceChannelPortTransfer>,
+    /// Sum of every port's `paired_bound_m3`, in cubic metres. It joins `mass_bound_m3`.
+    pub port_paired_bound_m3: f64,
 }
 
 /// Lifetime directional exchange through one link.

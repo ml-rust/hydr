@@ -1,32 +1,15 @@
-//! Port receipts of one accepted interval: regimes, pairing, and lifetime port counters.
+//! Port receipts of one accepted interval: regimes and pairing.
 //!
 //! Signed port volumes are positive from the surface into the channel, as link volumes are.
 //! The reach side counts `rate · dt` of its own port rate. The surface side counts the sum of
 //! its per-face volumes `f_k w_k dt`.
 
-use super::super::SurfaceChannelError;
 use super::super::accounting::within;
+use super::super::{SurfaceChannelError, SurfaceChannelPortRegime, SurfaceChannelPortTransfer};
 use crate::numerics::outward::{upward_add, upward_mul};
 
 /// Base of the pairing bound factor `2n + 2` of an `n`-face port, in units of `f64::EPSILON`.
 const PAIR_BASE_ULPS: f64 = 2.0;
-
-/// Flow regime of one port over one interval.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in super::super) enum PortRegime {
-    /// Both waves straddle the port. The HLL flux mixes both states.
-    Subcritical,
-    /// Every wave runs into the surface. The flux is the reach state's own flux.
-    SupercriticalToSurface,
-    /// Every wave runs into the reach. The flux is the surface state's own flux.
-    SupercriticalToReach,
-    /// A rarefaction fan holds its sonic point at the port.
-    Transcritical,
-    /// One side holds no water above the higher bed.
-    WetDryFront,
-    /// Neither side holds water above the higher bed. The port moves nothing.
-    Dry,
-}
 
 /// Host flux receipt of one port for one attempt, from the surface stage.
 #[derive(Clone, Debug, PartialEq)]
@@ -45,35 +28,13 @@ pub(in super::super) struct PortFlux {
     pub signal_speed_m_per_s: f64,
     /// Into-reach invariant `u + 2c` of the surface water, `None` when every face cell is dry.
     pub exterior_invariant_m_per_s: Option<f64>,
-    pub regime: PortRegime,
-}
-
-/// Receipt of one port over one accepted interval.
-#[derive(Clone, Debug, PartialEq)]
-pub(in super::super) struct PortTransfer {
-    pub port_id: String,
-    /// Water the reach takes from the surface through the port, in m³. Negative leaves it.
-    pub signed_volume_m3: f64,
-    /// Normal momentum leaving the reach along its outward normal, in m⁴/s.
-    pub reach_momentum_impulse_m4_per_s: f64,
-    /// Momentum entering the surface cells in grid x and y, in m⁴/s.
-    pub surface_momentum_impulse_m4_per_s: [f64; 2],
-    /// Momentum leaving the reach minus momentum entering the surface, grid x and y, in m⁴/s.
-    pub junction_reaction_m4_per_s: [f64; 2],
-    pub signal_speed_m_per_s: f64,
-    pub regime: PortRegime,
-    /// The signed volume changes sign against the previous interval.
-    pub reversed: bool,
-    /// `surface port volume + reach outward volume`, in m³.
-    pub paired_gap_m3: f64,
-    /// Bound of `|paired_gap_m3|`, in m³.
-    pub paired_bound_m3: f64,
+    pub regime: SurfaceChannelPortRegime,
 }
 
 /// Port receipts and water totals of one accepted interval.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(in super::super) struct PortInterval {
-    pub transfers: Vec<PortTransfer>,
+    pub transfers: Vec<SurfaceChannelPortTransfer>,
     /// Port water the surface counts in its exchange totals: into the surface, out of it, in m³.
     pub surface_m3: [f64; 2],
     /// Port water the reaches count in their boundary totals: into the reaches, out of them, in m³.
@@ -91,13 +52,14 @@ impl PortInterval {
     /// `(2n + 2) ε Σ|f_k w_k| dt`, rounded up, plus `n + 1` subnormal quanta.
     ///
     /// `surface_rate` holds the surface's summed port rates into it and out of it.
-    /// `previous` holds the receipts of the previous interval, if any.
+    /// `previous` holds each port's signed volume of the previous interval, zero before the
+    /// first.
     pub fn new(
         ids: &[String],
         fluxes: &[PortFlux],
         surface_rate: [f64; 2],
         dt: f64,
-        previous: Option<&[PortTransfer]>,
+        previous: &[f64],
     ) -> Result<Self, SurfaceChannelError> {
         let numerical = |error: crate::numerics::outward::OutwardError| {
             SurfaceChannelError::Numerical(format!("port pairing bound: {error}"))
@@ -133,19 +95,16 @@ impl PortInterval {
             }
             // A port that moves nothing reports `+0.0`.
             let signed = 0.0 - outward;
-            let reversed = previous
-                .and_then(|transfers| transfers.get(index))
-                .is_some_and(|before| {
-                    let prior = before.signed_volume_m3;
-                    (prior > 0.0 && signed < 0.0) || (prior < 0.0 && signed > 0.0)
-                });
+            let reversed = previous.get(index).is_some_and(|&prior| {
+                (prior > 0.0 && signed < 0.0) || (prior < 0.0 && signed > 0.0)
+            });
             interval.reach_m3[0] += signed.max(0.0);
             interval.reach_m3[1] += outward.max(0.0);
             interval.paired_bound_m3 =
                 upward_add(interval.paired_bound_m3, bound).map_err(numerical)?;
             let [sx, sy] = flux.surface_momentum_rate_m4_per_s2;
             let [rx, ry] = flux.junction_reaction_rate_m4_per_s2;
-            interval.transfers.push(PortTransfer {
+            interval.transfers.push(SurfaceChannelPortTransfer {
                 port_id: id.clone(),
                 signed_volume_m3: signed,
                 reach_momentum_impulse_m4_per_s: flux.outward_momentum_rate_m4_per_s2 * dt,
@@ -159,129 +118,6 @@ impl PortInterval {
             });
         }
         Ok(interval)
-    }
-}
-
-/// Lifetime port volumes, host resident, in port identity order.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(in super::super) struct PortCounters {
-    /// Water each reach took from the surface, in m³.
-    pub to_channel_m3: Vec<f64>,
-    /// Water each reach gave to the surface, in m³.
-    pub to_surface_m3: Vec<f64>,
-    /// Upward-rounded sum of every addition error of both counters, in m³.
-    pub roundoff_bound_m3: Vec<f64>,
-    /// Port water the surface counted into it and out of it, in m³.
-    pub surface_m3: [f64; 2],
-    /// Upward-rounded sum of every interval's pairing bound, in m³.
-    pub paired_bound_m3: f64,
-}
-
-/// Lifetime directional volumes of one port.
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "checkpoint data and port ledger projections read it"
-    )
-)]
-pub(in super::super) struct PortLedger {
-    pub port_id: String,
-    pub surface_to_channel_m3: f64,
-    pub channel_to_surface_m3: f64,
-    pub roundoff_bound_m3: f64,
-}
-
-/// `a + b` with its exact rounding error.
-fn two_sum(a: f64, b: f64) -> (f64, f64) {
-    let sum = a + b;
-    let b_part = sum - a;
-    let a_part = sum - b_part;
-    (sum, (a - a_part) + (b - b_part))
-}
-
-impl PortCounters {
-    /// Zero counters for `ports` ports.
-    pub fn zero(ports: usize) -> Self {
-        Self {
-            to_channel_m3: vec![0.0; ports],
-            to_surface_m3: vec![0.0; ports],
-            roundoff_bound_m3: vec![0.0; ports],
-            surface_m3: [0.0; 2],
-            paired_bound_m3: 0.0,
-        }
-    }
-
-    /// True without ports.
-    pub fn is_empty(&self) -> bool {
-        self.to_channel_m3.is_empty()
-    }
-
-    /// Lifetime totals over every port: into the reaches, out of them, and the rounding bound.
-    pub fn reach_totals(&self) -> (f64, f64, f64) {
-        (
-            self.to_channel_m3.iter().sum(),
-            self.to_surface_m3.iter().sum(),
-            self.roundoff_bound_m3.iter().sum(),
-        )
-    }
-
-    /// Adds one interval's port volumes with error-free addition bounds.
-    pub fn advance(&self, interval: &PortInterval) -> Result<Self, SurfaceChannelError> {
-        let numerical = |error: crate::numerics::outward::OutwardError| {
-            SurfaceChannelError::Numerical(format!("port counters: {error}"))
-        };
-        let mut next = self.clone();
-        for (index, transfer) in interval.transfers.iter().enumerate() {
-            let (Some(to_channel), Some(to_surface), Some(bound)) = (
-                next.to_channel_m3.get_mut(index),
-                next.to_surface_m3.get_mut(index),
-                next.roundoff_bound_m3.get_mut(index),
-            ) else {
-                return Err(SurfaceChannelError::Numerical(
-                    "port counters lack a port of the interval".into(),
-                ));
-            };
-            let signed = transfer.signed_volume_m3;
-            let (forward, forward_low) = two_sum(*to_channel, signed.max(0.0));
-            let (backward, backward_low) = two_sum(*to_surface, (-signed).max(0.0));
-            *to_channel = forward;
-            *to_surface = backward;
-            if forward_low != 0.0 || backward_low != 0.0 {
-                let low = upward_add(forward_low.abs(), backward_low.abs()).map_err(numerical)?;
-                *bound = upward_add(*bound, low).map_err(numerical)?;
-            }
-        }
-        next.surface_m3 = [
-            self.surface_m3[0] + interval.surface_m3[0],
-            self.surface_m3[1] + interval.surface_m3[1],
-        ];
-        next.paired_bound_m3 =
-            upward_add(self.paired_bound_m3, interval.paired_bound_m3).map_err(numerical)?;
-        Ok(next)
-    }
-
-    /// Host ledgers with ports in `ids` order.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "checkpoint data and port ledger projections read it"
-        )
-    )]
-    pub fn ledgers(&self, ids: &[String]) -> Vec<PortLedger> {
-        ids.iter()
-            .zip(&self.to_channel_m3)
-            .zip(&self.to_surface_m3)
-            .zip(&self.roundoff_bound_m3)
-            .map(|(((id, &to_channel), &to_surface), &bound)| PortLedger {
-                port_id: id.clone(),
-                surface_to_channel_m3: to_channel,
-                channel_to_surface_m3: to_surface,
-                roundoff_bound_m3: bound,
-            })
-            .collect()
     }
 }
 
@@ -302,17 +138,17 @@ pub(in super::super) fn face_regime(
     surface: FaceSide,
     [lower, upper]: [f64; 2],
     gravity: f64,
-) -> PortRegime {
+) -> SurfaceChannelPortRegime {
     match (ghost.depth_m > 0.0, surface.depth_m > 0.0) {
-        (false, false) => return PortRegime::Dry,
-        (true, false) | (false, true) => return PortRegime::WetDryFront,
+        (false, false) => return SurfaceChannelPortRegime::Dry,
+        (true, false) | (false, true) => return SurfaceChannelPortRegime::WetDryFront,
         (true, true) => {}
     }
     if lower >= 0.0 {
-        return PortRegime::SupercriticalToSurface;
+        return SurfaceChannelPortRegime::SupercriticalToSurface;
     }
     if upper <= 0.0 {
-        return PortRegime::SupercriticalToReach;
+        return SurfaceChannelPortRegime::SupercriticalToReach;
     }
     let celerity = |side: FaceSide| (gravity * side.depth_m).sqrt();
     let (cg, cs) = (celerity(ghost), celerity(surface));
@@ -320,9 +156,9 @@ pub(in super::super) fn face_regime(
     let toward_reach = ug - cg < 0.0 && 0.0 < us - cs;
     let toward_surface = ug + cg < 0.0 && 0.0 < us + cs;
     if toward_reach || toward_surface {
-        PortRegime::Transcritical
+        SurfaceChannelPortRegime::Transcritical
     } else {
-        PortRegime::Subcritical
+        SurfaceChannelPortRegime::Subcritical
     }
 }
 
@@ -330,16 +166,21 @@ pub(in super::super) fn face_regime(
 ///
 /// Every dry face makes the port dry. Otherwise a wet/dry front, then a sonic point, wins.
 /// A port is supercritical only when every wet face runs the same way.
-pub(in super::super) fn port_regime(faces: &[PortRegime]) -> PortRegime {
-    let wet: Vec<PortRegime> = faces
+pub(in super::super) fn port_regime(
+    faces: &[SurfaceChannelPortRegime],
+) -> SurfaceChannelPortRegime {
+    let wet: Vec<SurfaceChannelPortRegime> = faces
         .iter()
         .copied()
-        .filter(|regime| *regime != PortRegime::Dry)
+        .filter(|regime| *regime != SurfaceChannelPortRegime::Dry)
         .collect();
     let Some(&first) = wet.first() else {
-        return PortRegime::Dry;
+        return SurfaceChannelPortRegime::Dry;
     };
-    for regime in [PortRegime::WetDryFront, PortRegime::Transcritical] {
+    for regime in [
+        SurfaceChannelPortRegime::WetDryFront,
+        SurfaceChannelPortRegime::Transcritical,
+    ] {
         if wet.contains(&regime) {
             return regime;
         }
@@ -347,12 +188,13 @@ pub(in super::super) fn port_regime(faces: &[PortRegime]) -> PortRegime {
     if wet.iter().all(|regime| *regime == first) {
         first
     } else {
-        PortRegime::Subcritical
+        SurfaceChannelPortRegime::Subcritical
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::PortCounters;
     use super::*;
 
     fn side(depth_m: f64, velocity_m_per_s: f64) -> FaceSide {
@@ -368,38 +210,38 @@ mod tests {
         let wet = side(1.0, 0.0);
         assert_eq!(
             face_regime(side(0.0, 0.0), side(0.0, 0.0), [0.0; 2], g),
-            PortRegime::Dry
+            SurfaceChannelPortRegime::Dry
         );
         assert_eq!(
             face_regime(wet, side(0.0, 0.0), [-1.0, 6.0], g),
-            PortRegime::WetDryFront
+            SurfaceChannelPortRegime::WetDryFront
         );
         assert_eq!(
             face_regime(side(0.0, 0.0), wet, [-6.0, 1.0], g),
-            PortRegime::WetDryFront
+            SurfaceChannelPortRegime::WetDryFront
         );
         assert_eq!(
             face_regime(side(1.0, 7.0), side(1.0, 7.0), [3.8, 10.2], g),
-            PortRegime::SupercriticalToSurface
+            SurfaceChannelPortRegime::SupercriticalToSurface
         );
         assert_eq!(
             face_regime(side(1.0, -7.0), side(1.0, -7.0), [-10.2, -3.8], g),
-            PortRegime::SupercriticalToReach
+            SurfaceChannelPortRegime::SupercriticalToReach
         );
         // A subcritical reach end beside a supercritical surface cell: the 1-fan is sonic.
         assert_eq!(
             face_regime(side(1.0, 1.0), side(0.25, 2.0), [-2.2, 4.0], g),
-            PortRegime::Transcritical
+            SurfaceChannelPortRegime::Transcritical
         );
         assert_eq!(
             face_regime(wet, wet, [-3.2, 3.2], g),
-            PortRegime::Subcritical
+            SurfaceChannelPortRegime::Subcritical
         );
     }
 
     #[test]
     fn port_regimes_combine_their_faces() {
-        use PortRegime::*;
+        use SurfaceChannelPortRegime::*;
         assert_eq!(port_regime(&[Dry, Dry]), Dry);
         assert_eq!(port_regime(&[Dry, Subcritical]), Subcritical);
         assert_eq!(port_regime(&[Subcritical, WetDryFront]), WetDryFront);
@@ -423,7 +265,7 @@ mod tests {
             junction_reaction_rate_m4_per_s2: [0.25, -0.5],
             signal_speed_m_per_s: 4.0,
             exterior_invariant_m_per_s: Some(1.0),
-            regime: PortRegime::Subcritical,
+            regime: SurfaceChannelPortRegime::Subcritical,
         }
     }
 
@@ -433,8 +275,13 @@ mod tests {
         let rates = vec![0.1, 0.2, 0.3];
         // The reach rate is the face sum in another order.
         let outward = (0.3 + 0.2) + 0.1;
-        let interval =
-            PortInterval::new(&ids, &[flux(rates.clone(), outward)], [0.6, 0.0], 0.5, None)?;
+        let interval = PortInterval::new(
+            &ids,
+            &[flux(rates.clone(), outward)],
+            [0.6, 0.0],
+            0.5,
+            &[0.0],
+        )?;
         let transfer = &interval.transfers[0];
         assert!(transfer.paired_gap_m3.abs() <= transfer.paired_bound_m3);
         assert_eq!(transfer.signed_volume_m3, -(outward * 0.5));
@@ -445,7 +292,7 @@ mod tests {
         assert_eq!(interval.reach_m3, [0.0, outward * 0.5]);
         assert_eq!(interval.surface_m3, [0.3, 0.0]);
         // A gap far past the rounding bound rejects.
-        let wrong = PortInterval::new(&ids, &[flux(rates, 0.7)], [0.6, 0.0], 0.5, None);
+        let wrong = PortInterval::new(&ids, &[flux(rates, 0.7)], [0.6, 0.0], 0.5, &[0.0]);
         assert!(
             matches!(wrong, Err(SurfaceChannelError::Numerical(message)) if message.contains("pairing"))
         );
@@ -455,21 +302,31 @@ mod tests {
     #[test]
     fn reversal_and_counters_follow_the_signed_volume() -> Result<(), SurfaceChannelError> {
         let ids = vec!["p".to_string()];
-        let out = PortInterval::new(&ids, &[flux(vec![1.0], 1.0)], [1.0, 0.0], 1.0, None)?;
+        let zero = PortCounters::zero(1);
+        let out = PortInterval::new(
+            &ids,
+            &[flux(vec![1.0], 1.0)],
+            [1.0, 0.0],
+            1.0,
+            &zero.last_signed_m3,
+        )?;
+        let after_out = zero.advance(&out)?;
+        assert_eq!(after_out.last_signed_m3, [-1.0]);
         let back = PortInterval::new(
             &ids,
             &[flux(vec![-0.5], -0.5)],
             [0.0, 0.5],
             1.0,
-            Some(&out.transfers),
+            &after_out.last_signed_m3,
         )?;
         assert!(back.transfers[0].reversed);
+        let counters = after_out.advance(&back)?;
         let again = PortInterval::new(
             &ids,
             &[flux(vec![-0.25], -0.25)],
             [0.0, 0.25],
             1.0,
-            Some(&back.transfers),
+            &counters.last_signed_m3,
         )?;
         assert!(!again.transfers[0].reversed);
         // A zero volume never reverses.
@@ -478,10 +335,9 @@ mod tests {
             &[flux(vec![0.0], 0.0)],
             [0.0; 2],
             1.0,
-            Some(&again.transfers),
+            &counters.advance(&again)?.last_signed_m3,
         )?;
         assert!(!still.transfers[0].reversed);
-        let counters = PortCounters::zero(1).advance(&out)?.advance(&back)?;
         assert_eq!(counters.to_surface_m3, [1.0]);
         assert_eq!(counters.to_channel_m3, [0.5]);
         assert_eq!(counters.roundoff_bound_m3, [0.0]);

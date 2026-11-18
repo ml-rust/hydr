@@ -5,8 +5,8 @@ mod section;
 
 pub use flow::{
     CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelBoundary, ChannelBoundaryConfig,
-    ChannelBoundaryTrace, ChannelCellResult, ChannelConfig, ChannelError, ChannelFluxPort,
-    ChannelForcingInterval, ChannelFrictionGeometryDiagnostics, ChannelGeometry,
+    ChannelBoundaryTrace, ChannelCellResult, ChannelConfig, ChannelEnd, ChannelError,
+    ChannelFluxPort, ChannelForcingInterval, ChannelFrictionGeometryDiagnostics, ChannelGeometry,
     ChannelInitialState, ChannelIntervalSnapshotData, ChannelLateralBinding,
     ChannelLateralDirection, ChannelLateralInput, ChannelLateralLedger, ChannelLateralReceipt,
     ChannelLateralStateData, ChannelReach, ChannelReachDefinition, ChannelReservoirTrace,

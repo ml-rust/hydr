@@ -5,19 +5,19 @@
 //! match one reach end.
 
 use super::super::{
-    SurfaceChannelBatch, SurfaceChannelConfig, SurfaceChannelDefinition,
-    SurfaceChannelForcingInterval, SurfaceChannelInitialState, SurfaceChannelReach,
-    SurfaceChannelReachForcing, SurfaceChannelSetup,
+    SurfaceChannelBatch, SurfaceChannelConfig, SurfaceChannelForcingInterval,
+    SurfaceChannelInitialState, SurfaceChannelReach, SurfaceChannelReachForcing,
+    SurfaceChannelSetup,
 };
 use super::fixture::{
     ALPHA, BETA, DATUM, REACH_WIDTH, TestResult, link, port, rectangular, x_face,
 };
 use super::{PortInterval, SurfaceChannelPort};
+use crate::channel::ChannelEnd;
 use crate::channel::{ChannelBoundary, ChannelInitialState};
 use crate::solver::{
     BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, SolverConfig, SolverSetup,
 };
-use hydr_channel::internal::ChannelCouplingEnd;
 use hydr_core::grid::CartesianGrid;
 use hydr_core::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr_soil::soil::{LandModel, SoilState};
@@ -73,7 +73,7 @@ pub fn west(id: &str) -> SurfaceChannelPort {
     port(
         id,
         ALPHA,
-        ChannelCouplingEnd::Left,
+        ChannelEnd::Left,
         vec![x_face(0, 0), x_face(0, 1)],
     )
 }
@@ -83,7 +83,7 @@ pub fn east(id: &str) -> SurfaceChannelPort {
     port(
         id,
         ALPHA,
-        ChannelCouplingEnd::Right,
+        ChannelEnd::Right,
         vec![x_face(4, 0), x_face(4, 1)],
     )
 }
@@ -173,6 +173,7 @@ impl Scenario {
                 },
             ],
             links: if self.link { vec![link()] } else { Vec::new() },
+            ports: self.ports.clone(),
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: SurfaceChannelConfig {
                 head_absolute_m: 1e-12,
@@ -206,12 +207,7 @@ impl Scenario {
     /// The batch of this case on a single-threaded CPU client.
     pub fn build(&self) -> TestResult<Batch> {
         let (setup, initial) = self.parts()?;
-        let definition = SurfaceChannelDefinition::with_ports(setup, self.ports.clone())?;
-        Ok(SurfaceChannelBatch::from_definition(
-            client(),
-            definition,
-            initial,
-        )?)
+        Ok(SurfaceChannelBatch::new(client(), setup, initial)?)
     }
 }
 
@@ -219,14 +215,20 @@ pub fn client() -> CpuClient {
     CpuClient::new(CpuDevice::new()).with_parallelism(ParallelismConfig::new(Some(1), None))
 }
 
-/// Wall forcing at every end of both reaches over `[start, end]`.
-///
-/// A ported trial does not read the policy at a ported end.
-pub fn forcing(start: f64, end: f64) -> SurfaceChannelForcingInterval {
+/// Forcing over `[start, end]`: no policy at each end of `ports`, a wall at every other end.
+pub fn forcing(
+    ports: &[SurfaceChannelPort],
+    start: f64,
+    end: f64,
+) -> SurfaceChannelForcingInterval {
+    let policy = |id: &str, end: ChannelEnd| {
+        let ported = ports.iter().any(|p| p.reach_id == id && p.end == end);
+        (!ported).then_some(ChannelBoundary::Wall)
+    };
     let reach = |id: &str| SurfaceChannelReachForcing {
         reach_id: id.into(),
-        left: ChannelBoundary::Wall,
-        right: ChannelBoundary::Wall,
+        left: policy(id, ChannelEnd::Left),
+        right: policy(id, ChannelEnd::Right),
         lateral_inputs: Vec::new(),
     };
     SurfaceChannelForcingInterval {
@@ -236,11 +238,12 @@ pub fn forcing(start: f64, end: f64) -> SurfaceChannelForcingInterval {
     }
 }
 
-/// One accepted interval toward `start + dt`, with the coordinator's ports.
+/// One accepted interval toward `start + dt` through the public trial.
 pub fn step(batch: &Batch, dt: f64) -> TestResult<Batch> {
     let start = batch.time();
     let end = start + dt;
-    Ok(batch.trial_ported(end, &forcing(start, end))?.into_next())
+    let held = forcing(&batch.setup().ports, start, end);
+    Ok(batch.trial_to(end, &held)?.into_next())
 }
 
 /// Port receipts of the last accepted interval.

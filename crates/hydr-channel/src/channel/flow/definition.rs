@@ -46,6 +46,15 @@ pub struct ChannelInitialState {
     pub longitudinal_momentum_m4_per_s: Vec<f64>,
 }
 
+/// One end of an unbranched reach in its increasing longitudinal coordinate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ChannelEnd {
+    /// The end at the first cell's left face. The reach coordinate increases away from it.
+    Left,
+    /// The end at the last cell's right face. The reach coordinate increases toward it.
+    Right,
+}
+
 /// Endpoint policy using the declared section and adjacent bed elevation.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ChannelBoundary {

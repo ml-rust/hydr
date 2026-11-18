@@ -4,8 +4,9 @@ use super::context::Context;
 use super::state::{LinkCounters, StoredStep};
 use super::{
     SurfaceChannelConfig, SurfaceChannelDefinition, SurfaceChannelForcingInterval,
-    SurfaceChannelInitialState, SurfaceChannelLink, SurfaceChannelLinkLedger, SurfaceChannelReach,
-    SurfaceChannelSetup, SurfaceChannelStepDiagnostics,
+    SurfaceChannelInitialState, SurfaceChannelLink, SurfaceChannelLinkLedger, SurfaceChannelPort,
+    SurfaceChannelPortLedger, SurfaceChannelReach, SurfaceChannelSetup,
+    SurfaceChannelStepDiagnostics,
 };
 use crate::channel::{ChannelSnapshot, ChannelSnapshotData};
 use crate::coupling::checkpoint;
@@ -16,14 +17,15 @@ use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Schema identity of the surface/channel snapshot package.
-pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-3";
+pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-4";
 /// Numerical contract identity of the surface/channel snapshot package.
-pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-4";
+pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-5";
 
 /// Complete caller-owned continuation. Preserve every floating-point bit when encoding.
 ///
 /// The nested surface package holds the surface definition and its bounded forcing window.
-/// Import checks consistency and replays the last interval. It establishes no authenticity.
+/// Import checks consistency and replays the last interval. Port ghost states rebuild from the
+/// start-frame reach packages, so no package holds them. It establishes no authenticity.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelSnapshotData {
     /// Package schema identity.
@@ -34,11 +36,11 @@ pub struct SurfaceChannelSnapshotData {
     pub setup: SurfaceChannelSetupData,
     /// Original common epoch and authoritative original child states.
     pub initial: SurfaceChannelInitialState,
-    /// Complete accepted surface package. It carries coordinator exchange water.
+    /// Complete accepted surface package. It carries coordinator link and port water.
     pub surface: SnapshotData,
     /// Complete accepted `(reach id, package)` pairs in setup order.
     pub reaches: Vec<(String, ChannelSnapshotData)>,
-    /// Lifetime link counters, accepted count, and common time.
+    /// Lifetime link and port counters, accepted count, and common time.
     pub counters: SurfaceChannelCounterData,
     /// Last common interval with its start frame, absent before the first accepted interval.
     pub last_interval: Option<SurfaceChannelIntervalSnapshotData>,
@@ -51,6 +53,8 @@ pub struct SurfaceChannelSetupData {
     pub reaches: Vec<SurfaceChannelReach>,
     /// Bank-overflow links in declaration order.
     pub links: Vec<SurfaceChannelLink>,
+    /// Reach-end ports in declaration order.
+    pub ports: Vec<SurfaceChannelPort>,
     /// Evidence that surface cells and channel cells store no water twice.
     pub storage_exclusion_evidence: String,
     /// Explicit tolerances, duration limits, and work limits.
@@ -63,6 +67,7 @@ impl SurfaceChannelSetupData {
         Self {
             reaches: setup.reaches.clone(),
             links: setup.links.clone(),
+            ports: setup.ports.clone(),
             storage_exclusion_evidence: setup.storage_exclusion_evidence.clone(),
             config: setup.config.clone(),
         }
@@ -74,6 +79,7 @@ impl SurfaceChannelSetupData {
             surface,
             reaches: self.reaches.clone(),
             links: self.links.clone(),
+            ports: self.ports.clone(),
             storage_exclusion_evidence: self.storage_exclusion_evidence.clone(),
             config: self.config.clone(),
         }
@@ -89,6 +95,27 @@ pub struct SurfaceChannelCounterData {
     pub accepted_steps: usize,
     /// Lifetime directional link volumes in ascending link identity.
     pub links: Vec<SurfaceChannelLinkLedger>,
+    /// Lifetime port volumes and port totals. Empty and zero without ports.
+    pub ports: SurfaceChannelPortCounterData,
+}
+
+/// Authoritative port counters at one accepted time.
+///
+/// Every value is `+0.0` before the first accepted interval.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SurfaceChannelPortCounterData {
+    /// Lifetime directional reach volumes in ascending port identity.
+    pub ledgers: Vec<SurfaceChannelPortLedger>,
+    /// Signed volume of each port over the last accepted interval, in ledger order, in m³.
+    ///
+    /// The next interval's `reversed` flag compares against it.
+    pub last_signed_volume_m3: Vec<f64>,
+    /// Lifetime port water the surface exchange totals hold, into the surface, in m³.
+    pub surface_in_m3: f64,
+    /// Lifetime port water the surface exchange totals hold, out of the surface, in m³.
+    pub surface_out_m3: f64,
+    /// Upward-rounded sum of every interval's port pairing bound, in m³.
+    pub paired_bound_m3: f64,
 }
 
 /// Nonrecursive start frame of the last common interval.

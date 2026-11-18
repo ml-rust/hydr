@@ -80,7 +80,7 @@ fn flood_then_recession_reverses_through_same_link() -> Result {
     let advance_with = |batch: &Batch, stage: f64| -> Result<Batch> {
         let end = batch.time() + 1.0;
         let mut interval = forcing(batch, end, &[]);
-        interval.reaches[0].right = ChannelBoundary::Stage { elevation_m: stage };
+        interval.reaches[0].right = Some(ChannelBoundary::Stage { elevation_m: stage });
         Ok(batch.trial_to(end, &interval)?.into_next())
     };
     let mut flooded = false;

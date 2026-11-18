@@ -6,6 +6,9 @@
 //!
 //! The plan-area response step changes every linked iteration path, so both cases carry new
 //! digests. The digests of earlier package formats no longer apply.
+//!
+//! Reach-end ports change the package format again. Each case also maps its text back to the
+//! format before ports and reproduces that format's digest.
 
 use crate::fixture::Result;
 use crate::restoration::{network, state};
@@ -20,17 +23,52 @@ fn digest(text: &str) -> u64 {
     })
 }
 
-/// Fails unless `batch` matches the frozen `expected` digest.
-fn check(batch: &Batch, expected: u64) -> Result {
-    let actual = digest(&state(batch)?);
-    if actual == expected {
-        Ok(())
-    } else {
-        Err(format!(
+/// The text in the package format before reach-end ports.
+///
+/// That format names schema `3` and contract `4`. It holds no port fields, and its reach
+/// forcing holds each endpoint policy without `Some`. A case without ports changes no other
+/// field, so this text reproduces the earlier digest bit for bit.
+fn before_ports(text: &str) -> String {
+    text.replace(
+        "hydr-surface-channel-checkpoint-4",
+        "hydr-surface-channel-checkpoint-3",
+    )
+    .replace(
+        "hydr-surface-channel-numr-cpu-5",
+        "hydr-surface-channel-numr-cpu-4",
+    )
+    .replace(
+        ", ports: SurfaceChannelPortCounterData { ledgers: [], last_signed_volume_m3: [], surface_in_m3: 0.0, surface_out_m3: 0.0, paired_bound_m3: 0.0 }",
+        "",
+    )
+    .replace(", ports: [], port_paired_bound_m3: 0.0", "")
+    .replace(
+        "], ports: [], storage_exclusion_evidence",
+        "], storage_exclusion_evidence",
+    )
+    .replace("left: Some(Wall)", "left: Wall")
+    .replace("right: Some(Wall)", "right: Wall")
+}
+
+/// Fails unless `batch` matches the frozen `expected` digest, and its text in the format before
+/// ports matches the `earlier` digest of that format.
+fn check(batch: &Batch, expected: u64, earlier: u64) -> Result {
+    let text = state(batch)?;
+    let actual = digest(&text);
+    if actual != expected {
+        return Err(format!(
             "state digest={actual:#018x}, frozen={expected:#018x}: an accepted bit changed"
         )
-        .into())
+        .into());
     }
+    let before = digest(&before_ports(&text));
+    if before != earlier {
+        return Err(format!(
+            "digest before ports={before:#018x}, frozen={earlier:#018x}: a field other than the identities and port fields changed"
+        )
+        .into());
+    }
+    Ok(())
 }
 
 #[test]
@@ -52,7 +90,7 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
             assert_eq!(link.level_factor, 1.0, "{link:?}");
         }
     }
-    check(&batch, 0xf6d4_a84c_2e66_ef34)
+    check(&batch, 0x6ac9_8aad_15d3_f3a7, 0xf6d4_a84c_2e66_ef34)
 }
 
 #[test]
@@ -80,5 +118,5 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
         let interval = forcing(&batch, end, &[("river", inflow)]);
         batch = batch.trial_to(end, &interval)?.into_next();
     }
-    check(&batch, 0xcfe8_ea92_adc0_edf6)
+    check(&batch, 0x0511_a7a3_d27d_263f, 0xcfe8_ea92_adc0_edf6)
 }

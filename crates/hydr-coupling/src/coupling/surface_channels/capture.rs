@@ -2,6 +2,7 @@
 
 use super::SurfaceChannelError;
 use super::batch::SurfaceChannelBatch;
+use super::context::Context;
 use super::snapshot::{
     SURFACE_CHANNEL_CONTRACT_VERSION, SURFACE_CHANNEL_SNAPSHOT_SCHEMA, SurfaceChannelCounterData,
     SurfaceChannelIntervalSnapshotData, SurfaceChannelPreviousData, SurfaceChannelSetupData,
@@ -156,14 +157,8 @@ where
     /// # Errors
     /// Returns child projection and runtime transfer errors.
     pub fn data(&self) -> Result<SurfaceChannelSnapshotData, SurfaceChannelError> {
-        if let Some(ports) = &self.context.ports {
-            return Err(SurfaceChannelError::input(format!(
-                "snapshot data ports={:?}: the checkpoint schema holds no reach-end ports; continue a ported coordinator from its native snapshot",
-                ports.ids
-            )));
-        }
         let setup = self.definition.setup();
-        let link_ids = &self.context.link_ids;
+        let context = &self.context;
         let reaches = self
             .reaches
             .iter()
@@ -190,13 +185,13 @@ where
                         reaches: named(setup, previous)?,
                         counters: counter_data(
                             &step.previous.counters,
-                            link_ids,
+                            context,
                             step.start_s,
                             steps,
                         )?,
                     },
                     forcing: step.forcing.clone(),
-                    diagnostics: step.diagnostics(link_ids)?,
+                    diagnostics: step.diagnostics(&context.link_ids)?,
                 })
             }
         };
@@ -207,7 +202,7 @@ where
             initial: (*self.initial).clone(),
             surface: self.surface.data()?,
             reaches: named(setup, reaches)?,
-            counters: counter_data(&self.counters, link_ids, self.time_s, self.accepted_steps)?,
+            counters: counter_data(&self.counters, context, self.time_s, self.accepted_steps)?,
             last_interval,
         })
     }
@@ -236,13 +231,14 @@ fn named(
 /// Host counters at `time_s` after `accepted_steps` intervals.
 fn counter_data<R: Runtime<DType = DType>>(
     counters: &LinkCounters<R>,
-    link_ids: &[String],
+    context: &Context<R>,
     time_s: f64,
     accepted_steps: usize,
 ) -> Result<SurfaceChannelCounterData, SurfaceChannelError> {
     Ok(SurfaceChannelCounterData {
         time_s,
         accepted_steps,
-        links: counters.ledgers(link_ids)?,
+        links: counters.ledgers(&context.link_ids)?,
+        ports: counters.ports.data(context.port_ids()),
     })
 }

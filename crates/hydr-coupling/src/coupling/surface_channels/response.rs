@@ -258,7 +258,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::ports::SurfaceChannelPort;
+    use super::super::SurfaceChannelPort;
     use super::super::ports::fixture::{ALPHA, BETA, TestResult};
     use super::super::ports::scenario::{Batch, Reach, Scenario, receipt, step, west};
     use super::*;

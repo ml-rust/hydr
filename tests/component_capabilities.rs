@@ -107,6 +107,9 @@ mod surface_channels_variants;
 #[path = "component_capabilities/surface_channels.rs"]
 mod surface_channels;
 
+#[path = "component_capabilities/surface_channel_ports.rs"]
+mod surface_channel_ports;
+
 use hydr::capability::{ComponentCapabilities, RegimeScope, RuntimeKind};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};

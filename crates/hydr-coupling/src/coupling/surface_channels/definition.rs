@@ -1,10 +1,38 @@
 use super::SurfaceChannelError;
-use crate::channel::{ChannelInitialState, ChannelReachDefinition};
-use crate::solver::{InitialState, SolverSetup};
+use crate::channel::{ChannelEnd, ChannelInitialState, ChannelReachDefinition};
+use crate::solver::{BoundaryFace, InitialState, SolverSetup};
 use crate::structures::WeirApplicability;
 
 /// Largest admitted `|hypot(reach_tangent) - 1|` for a link's unit reach tangent.
 pub const SURFACE_CHANNEL_TANGENT_TOLERANCE: f64 = 1e-9;
+
+/// Largest admitted `|W - b| / b` between a port's face width sum `W` and its end cell width `b`.
+///
+/// The bound covers products such as `n · dx` against a declared width.
+pub const SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE: f64 = 16.0 * f64::EPSILON;
+
+/// One reach-end port between a line of surface faces and one end of a rectangular reach.
+///
+/// One hydrostatic HLL flux crosses each face. The reach end cell is the ghost neighbour of
+/// every face. The coordinator owns the end: its caller forcing policy is `None`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SurfaceChannelPort {
+    /// Unique nonempty port identity, distinct from every link identity.
+    pub id: String,
+    /// Exact identity of the ported setup reach. The reach must be rectangular.
+    pub reach_id: String,
+    /// Reach end the port attaches to. One port binds each end at most.
+    pub end: ChannelEnd,
+    /// Surface faces in any order. Admission sorts them along their face line.
+    ///
+    /// Every face has one active surface cell. Its other side is inactive or off the grid.
+    /// The faces share one axis, one face line, and one surface side, with no gap. No face is
+    /// a caller open face. The face widths sum to the end cell width within
+    /// [`SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE`].
+    pub faces: Vec<BoundaryFace>,
+    /// Evidence that the faces and the reach end share this location.
+    pub mapping_evidence: String,
+}
 
 /// One lateral bank-overflow link between a surface cell and a channel cell.
 ///
@@ -153,8 +181,10 @@ pub struct SurfaceChannelSetup {
     pub surface: SolverSetup,
     /// Nonempty reach definitions with unique identities, in child-output order.
     pub reaches: Vec<SurfaceChannelReach>,
-    /// Nonempty bank-overflow links in declaration order.
+    /// Bank-overflow links in declaration order. Empty only when `ports` is nonempty.
     pub links: Vec<SurfaceChannelLink>,
+    /// Reach-end ports in declaration order. Links and ports together are nonempty.
+    pub ports: Vec<SurfaceChannelPort>,
     /// Evidence that surface cells and channel cells store no water twice.
     pub storage_exclusion_evidence: String,
     /// Explicit dimensional tolerances, common duration limits, and work limits.

@@ -4,7 +4,8 @@ use super::batch::SurfaceChannelBatch;
 use super::state::{LinkCounters, StoredStep};
 use super::{
     SurfaceChannelError, SurfaceChannelLinkLedger, SurfaceChannelLinkTransfer,
-    SurfaceChannelStepDiagnostics, SurfaceChannelWaterBalance, SurfaceChannelWeirRegime,
+    SurfaceChannelPortLedger, SurfaceChannelStepDiagnostics, SurfaceChannelWaterBalance,
+    SurfaceChannelWeirRegime,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -37,6 +38,17 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
     /// Returns runtime transfer errors.
     pub fn link_ledgers(&self) -> Result<Vec<SurfaceChannelLinkLedger>, SurfaceChannelError> {
         self.counters.ledgers(&self.context.link_ids)
+    }
+
+    /// Projects lifetime directional port counters in ascending port identity.
+    ///
+    /// Each ledger counts the reach side's volume. Empty without ports.
+    ///
+    /// # Errors
+    /// Port counters stay on the host, so no error occurs. The `Result` matches
+    /// [`Self::link_ledgers`].
+    pub fn port_ledgers(&self) -> Result<Vec<SurfaceChannelPortLedger>, SurfaceChannelError> {
+        Ok(self.counters.ports.ledgers(self.context.port_ids()))
     }
 }
 
@@ -87,6 +99,8 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
             mass_residual_m3: totals.mass_residual_m3,
             mass_bound_m3: totals.mass_bound_m3,
             links,
+            ports: step.ports.transfers.clone(),
+            port_paired_bound_m3: step.ports.paired_bound_m3,
         })
     }
 }

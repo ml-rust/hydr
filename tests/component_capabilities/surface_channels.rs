@@ -43,8 +43,12 @@ fn surface_channels_admit_declared_endpoints_regimes_and_sources() -> Result {
     let (_, reverse) = one_interval(&pair(1.1, 1.5))?;
     assert!(spill.links[0].signed_volume_m3 > 0.0, "{spill:?}");
     assert!(reverse.links[0].signed_volume_m3 < 0.0, "{reverse:?}");
+    // Port endpoints and regimes carry their own evidence in `surface_channel_ports`.
     for endpoint in declared.endpoints {
         for &kind in endpoint.admitted {
+            if kind == BoundaryKind::FluxPort {
+                continue;
+            }
             assert_eq!(
                 kind,
                 BoundaryKind::SuppressedRectangularWeir,
@@ -69,6 +73,9 @@ fn surface_channels_admit_declared_endpoints_regimes_and_sources() -> Result {
         }
     }
     for claim in declared.regimes {
+        if claim.scope == RegimeScope::Boundary(BoundaryKind::FluxPort) {
+            continue;
+        }
         assert_eq!(
             claim.scope,
             RegimeScope::Boundary(BoundaryKind::SuppressedRectangularWeir),
@@ -94,7 +101,7 @@ fn surface_channels_admit_declared_endpoints_regimes_and_sources() -> Result {
     // Reach ends keep the nested reach's endpoint policies.
     let batch = pair(1.1, 0.5).build()?;
     let mut held = forcing(&batch, STEP, &[]);
-    held.reaches[0].right = ChannelBoundary::Stage { elevation_m: 0.5 };
+    held.reaches[0].right = Some(ChannelBoundary::Stage { elevation_m: 0.5 });
     accept(&batch, STEP, &held)?;
     Ok(())
 }
@@ -423,7 +430,7 @@ fn rejection_cases(id: &str) -> Option<Vec<Rejection>> {
                 "maximum_step_s or the surface forcing interval ends before the integrated span",
             ),
         ],
-        _ => return None,
+        id => return crate::surface_channel_ports::rejection_cases(id),
     })
 }
 

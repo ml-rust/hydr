@@ -54,7 +54,7 @@ pub use capabilities::{
 };
 pub use config::{ChannelConfig, ChannelTriangularReconstruction};
 pub use definition::{
-    ChannelBoundary, ChannelForcingInterval, ChannelGeometry, ChannelInitialState,
+    ChannelBoundary, ChannelEnd, ChannelForcingInterval, ChannelGeometry, ChannelInitialState,
     ChannelLateralBinding, ChannelLateralDirection, ChannelLateralInput, ChannelReachDefinition,
     RectangularChannelCell, TriangularChannelCell,
 };

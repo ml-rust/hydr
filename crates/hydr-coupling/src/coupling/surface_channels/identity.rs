@@ -1,11 +1,12 @@
 //! Bitwise checkpoint comparisons. Each rejection returns the path of the first differing field.
 
 use super::snapshot::{
-    SurfaceChannelCounterData, SurfaceChannelSetupData, SurfaceChannelSnapshotData,
+    SurfaceChannelCounterData, SurfaceChannelPortCounterData, SurfaceChannelSetupData,
+    SurfaceChannelSnapshotData,
 };
 use super::{
     SurfaceChannelConfig, SurfaceChannelDefinition, SurfaceChannelInitialState, SurfaceChannelLink,
-    SurfaceChannelStepDiagnostics,
+    SurfaceChannelPortTransfer, SurfaceChannelStepDiagnostics,
 };
 use crate::channel::{ChannelInitialState, ChannelSnapshotData};
 use crate::solver::{InitialState, SnapshotData, SolverSetup};
@@ -48,6 +49,10 @@ pub(super) fn setup(a: &SurfaceChannelSetupData, b: &SurfaceChannelSetupData) ->
         require(same_link(a, b), || {
             format!("setup.links[{index}] ({:?})", a.id)
         })?;
+    }
+    require(a.ports.len() == b.ports.len(), || "setup.ports".into())?;
+    for (index, (a, b)) in a.ports.iter().zip(&b.ports).enumerate() {
+        require(a == b, || format!("setup.ports[{index}] ({:?})", a.id))?;
     }
     Ok(())
 }
@@ -236,6 +241,51 @@ fn counters(path: &str, a: &SurfaceChannelCounterData, b: &SurfaceChannelCounter
             require(x.to_bits() == y.to_bits(), || format!("{}.{name}", link()))?;
         }
     }
+    port_counters(&format!("{path}.ports"), &a.ports, &b.ports)
+}
+
+fn port_counters(
+    path: &str,
+    a: &SurfaceChannelPortCounterData,
+    b: &SurfaceChannelPortCounterData,
+) -> Check {
+    require(a.ledgers.len() == b.ledgers.len(), || {
+        format!("{path}.ledgers")
+    })?;
+    for (index, (a, b)) in a.ledgers.iter().zip(&b.ledgers).enumerate() {
+        let port = || format!("{path}.ledgers[{index}] ({:?})", a.port_id);
+        require(a.port_id == b.port_id, port)?;
+        for (name, x, y) in [
+            (
+                "surface_to_channel_m3",
+                a.surface_to_channel_m3,
+                b.surface_to_channel_m3,
+            ),
+            (
+                "channel_to_surface_m3",
+                a.channel_to_surface_m3,
+                b.channel_to_surface_m3,
+            ),
+            (
+                "roundoff_bound_m3",
+                a.roundoff_bound_m3,
+                b.roundoff_bound_m3,
+            ),
+        ] {
+            require(x.to_bits() == y.to_bits(), || format!("{}.{name}", port()))?;
+        }
+    }
+    require(
+        bits(&a.last_signed_volume_m3, &b.last_signed_volume_m3),
+        || format!("{path}.last_signed_volume_m3"),
+    )?;
+    for (name, x, y) in [
+        ("surface_in_m3", a.surface_in_m3, b.surface_in_m3),
+        ("surface_out_m3", a.surface_out_m3, b.surface_out_m3),
+        ("paired_bound_m3", a.paired_bound_m3, b.paired_bound_m3),
+    ] {
+        require(x.to_bits() == y.to_bits(), || format!("{path}.{name}"))?;
+    }
     Ok(())
 }
 
@@ -314,5 +364,35 @@ fn diagnostics(
             require(x.to_bits() == y.to_bits(), || format!("{}.{name}", link()))?;
         }
     }
+    require(
+        a.port_paired_bound_m3.to_bits() == b.port_paired_bound_m3.to_bits(),
+        || format!("{path}.port_paired_bound_m3"),
+    )?;
+    require(a.ports.len() == b.ports.len(), || format!("{path}.ports"))?;
+    for (index, (a, b)) in a.ports.iter().zip(&b.ports).enumerate() {
+        require(same_port_transfer(a, b), || {
+            format!("{path}.ports[{index}] ({:?})", a.port_id)
+        })?;
+    }
     Ok(())
+}
+
+fn same_port_transfer(a: &SurfaceChannelPortTransfer, b: &SurfaceChannelPortTransfer) -> bool {
+    let values = |t: &SurfaceChannelPortTransfer| {
+        [
+            t.signed_volume_m3,
+            t.reach_momentum_impulse_m4_per_s,
+            t.surface_momentum_impulse_m4_per_s[0],
+            t.surface_momentum_impulse_m4_per_s[1],
+            t.junction_reaction_m4_per_s[0],
+            t.junction_reaction_m4_per_s[1],
+            t.signal_speed_m_per_s,
+            t.paired_gap_m3,
+            t.paired_bound_m3,
+        ]
+    };
+    a.port_id == b.port_id
+        && a.regime == b.regime
+        && a.reversed == b.reversed
+        && bits(&values(a), &values(b))
 }

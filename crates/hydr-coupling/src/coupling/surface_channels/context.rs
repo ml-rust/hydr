@@ -5,13 +5,12 @@ use super::levelling::SlotPlan;
 use super::ports::{PortCounters, PortTopology};
 use super::state::LinkCounters;
 use super::{SurfaceChannelDefinition, SurfaceChannelError};
-use crate::channel::ChannelLateralDirection;
+use crate::channel::{ChannelEnd, ChannelLateralDirection};
 use crate::numerics::water_transfers::{TransferTree, WaterTransferError};
 use crate::solver::Solver;
 use crate::structures::{
     DirectionPolicy, StructureElement, StructureLaw, StructureOperatingPoint, StructureOperation,
 };
-use hydr_channel::internal::ChannelCouplingEnd;
 use hydr_solver::internal::SurfaceLinks;
 use hydr_structures::internal::CouplingStructures;
 use numr::dtype::DType;
@@ -408,13 +407,20 @@ where
 
 impl<R: Runtime<DType = DType>> Context<R> {
     /// Identity of the port at `end` of setup reach `reach`, if any.
-    pub fn port_at(&self, reach: usize, end: ChannelCouplingEnd) -> Option<&str> {
+    pub fn port_at(&self, reach: usize, end: ChannelEnd) -> Option<&str> {
         self.ports.as_ref()?.port_at(reach, end)
+    }
+
+    /// Port identities in ascending order. Empty without ports.
+    pub fn port_ids(&self) -> &[String] {
+        self.ports
+            .as_ref()
+            .map_or(&[][..], |ports| ports.ids.as_slice())
     }
 
     /// Zero lifetime port counters, one lane per port.
     pub fn zero_port_counters(&self) -> PortCounters {
-        PortCounters::zero(self.ports.as_ref().map_or(0, |ports| ports.ids.len()))
+        PortCounters::zero(self.port_ids().len())
     }
 
     /// True when a port binds either end of setup reach `reach`.

@@ -1,4 +1,5 @@
-//! Capability declaration of the 2D surface coupled to channel reaches through bank weirs.
+//! Capability declaration of the 2D surface coupled to channel reaches through bank weirs and
+//! reach-end ports.
 
 use super::{SURFACE_CHANNEL_CONTRACT_VERSION, SURFACE_CHANNEL_SNAPSHOT_SCHEMA};
 use hydr_core::capability::{
@@ -7,11 +8,21 @@ use hydr_core::capability::{
     RuntimeSupport, SourceKind, Summary, Unsupported, UnsupportedReason,
 };
 
-/// Path of the guide that defines links, exchange, limits and scope.
+/// Path of the guide that defines links, ports, exchange, limits and scope.
 const SURFACE_CHANNELS_DOC: &str = "docs/surface-channels.md";
 
 /// Boundary kinds each side of a link admits.
 const BANK_WEIR: &[BoundaryKind] = &[BoundaryKind::SuppressedRectangularWeir];
+
+/// Boundary kinds each side of a reach-end port admits.
+const PORT: &[BoundaryKind] = &[BoundaryKind::FluxPort];
+
+const fn port_regime(regime: Regime) -> RegimeSupport {
+    RegimeSupport {
+        scope: RegimeScope::Boundary(BoundaryKind::FluxPort),
+        regime,
+    }
+}
 
 const fn unsupported(
     id: &'static str,
@@ -70,11 +81,29 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
             id: EndpointId::Lateral,
             admitted: BANK_WEIR,
         },
+        Endpoint {
+            id: EndpointId::ReachLeft,
+            admitted: PORT,
+        },
+        Endpoint {
+            id: EndpointId::ReachRight,
+            admitted: PORT,
+        },
+        Endpoint {
+            id: EndpointId::ExteriorFace,
+            admitted: PORT,
+        },
     ],
     regimes: &[
         weir_regime(Regime::FreeWeirFlow),
         weir_regime(Regime::SubmergedWeirFlow),
         weir_regime(Regime::BelowCrest),
+        port_regime(Regime::WetSubcritical),
+        port_regime(Regime::Supercritical),
+        port_regime(Regime::Critical),
+        port_regime(Regime::Dry),
+        port_regime(Regime::WetDryFront),
+        port_regime(Regime::ReversalInBranch),
     ],
     sources: &[
         SourceKind::Rain,
@@ -104,13 +133,43 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "surveyed-connected-endpoint",
             UnsupportedReason::RejectedByAdmission,
-            "A surveyed reach endpoint other than Wall or Exterior rejects; surveyed reaches couple laterally only.",
+            "A surveyed reach endpoint other than Wall or Exterior rejects, and so does a port; surveyed reaches couple laterally only.",
+            SURFACE_CHANNELS_DOC,
+        ),
+        unsupported(
+            "surveyed-port-end",
+            UnsupportedReason::RejectedByAdmission,
+            "A port on a surveyed reach end rejects; surveyed reaches couple through bank links only.",
+            SURFACE_CHANNELS_DOC,
+        ),
+        unsupported(
+            "port-section-mismatch",
+            UnsupportedReason::RejectedByAdmission,
+            "A port on a triangular reach end rejects; only a rectangular end matches a strip of surface faces.",
+            SURFACE_CHANNELS_DOC,
+        ),
+        unsupported(
+            "port-width-mismatch",
+            UnsupportedReason::RejectedByAdmission,
+            "A port whose face widths sum to other than the end cell width, past 16 epsilon of that width, rejects.",
+            SURFACE_CHANNELS_DOC,
+        ),
+        unsupported(
+            "port-face-ownership",
+            UnsupportedReason::RejectedByAdmission,
+            "A port face without exactly one active cell, on a caller open face, in two ports, off one face line, or with a gap rejects, and so do two ports on one reach end and an unknown reach.",
+            SURFACE_CHANNELS_DOC,
+        ),
+        unsupported(
+            "port-endpoint-policy",
+            UnsupportedReason::RejectedByAdmission,
+            "A caller policy at a ported reach end rejects, and so does a missing policy at an unported end.",
             SURFACE_CHANNELS_DOC,
         ),
         unsupported(
             "duplicate-links",
             UnsupportedReason::RejectedByAdmission,
-            "A repeated link identity or a repeated surface cell, reach and channel cell rejects.",
+            "A repeated link or port identity, or a repeated surface cell, reach and channel cell, rejects.",
             SURFACE_CHANNELS_DOC,
         ),
         unsupported(
@@ -152,19 +211,13 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "missing-link-evidence",
             UnsupportedReason::RejectedByAdmission,
-            "Empty mapping or storage-exclusion evidence rejects.",
+            "Empty mapping or storage-exclusion evidence rejects, and so does an empty port identity.",
             SURFACE_CHANNELS_DOC,
         ),
         unsupported(
             "integrated-lateral-span",
             UnsupportedReason::RejectedByAdmission,
             "An integrated caller lateral volume off the exact common interval rejects or requests recomputation.",
-            SURFACE_CHANNELS_DOC,
-        ),
-        unsupported(
-            "reach-end-port",
-            UnsupportedReason::NotAttached,
-            "Reach ends exchange no water with the surface; links attach at bank cells only.",
             SURFACE_CHANNELS_DOC,
         ),
         unsupported(
@@ -194,7 +247,7 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "normal-momentum",
             UnsupportedReason::OutsideModel,
-            "Exchange water carries only the velocity along the reach tangent; normal momentum dissipates.",
+            "Bank link water carries only the velocity along the reach tangent; its normal momentum dissipates. Ports carry normal momentum.",
             SURFACE_CHANNELS_DOC,
         ),
         unsupported(
@@ -239,7 +292,22 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         },
         Limit {
             id: "child-endpoint-policies",
-            summary: "Surface exterior faces and reach ends take the nested component's policies.",
+            summary: "Surface exterior faces and reach ends outside ports take the nested component's policies.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
+            id: "port-tangential-closure",
+            summary: "Water entering the surface through a port carries no tangential velocity; tangential momentum leaving the surface ends at the junction.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
+            id: "port-bed-step",
+            summary: "A port bed step uses hydrostatic reconstruction at the higher bed; no energy guarantee holds across the step.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
+            id: "port-explicit-flux",
+            summary: "Port flux comes from the accepted-start states and stays fixed for one attempt; depletion shortens the attempt instead of scaling the flux.",
             doc: SURFACE_CHANNELS_DOC,
         },
         Limit {
@@ -254,8 +322,8 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         },
     ],
     summary: Summary {
-        equations: "2D shallow-water surface and 1D channel reaches exchanging water through suppressed rectangular bank weirs with Villemonte submergence",
-        method: "fixed-point iteration of end stages and signed link volumes over one common interval, with a plan-area response step per update, midpoint-head weir volumes, a levelling cap per link, one shared factor per donor, and nested child admission",
+        equations: "2D shallow-water surface and 1D channel reaches exchanging water through suppressed rectangular bank weirs with Villemonte submergence, and water and normal momentum through reach-end ports under one hydrostatic HLL face flux",
+        method: "fixed-point iteration of end stages and signed link volumes over one common interval, with a plan-area response step per update, midpoint-head weir volumes, a levelling cap per link, one shared factor per donor, an explicit HLL port flux from the accepted-start states per attempt, and nested child admission",
         assessment: "selected spill, reversal, donor-limit, retry and restart cases; field accuracy remains unestablished",
     },
 };

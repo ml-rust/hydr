@@ -66,7 +66,7 @@ Use [coupled level pools](coupled-level-pools.md) for declared pool-to-pool tran
 
 Use [runoff-to-pool connections](runoff-pools.md) to generate upstream inflows and accept both engines over one common interval. Every runoff outlet must drain without receiving-pool feedback.
 
-Rectangular, triangular, and surveyed reaches attach to the surface solver through the [surface/channel coordinator](surface-channels.md). Surveyed reaches attach through lateral links only. Pools, structures, and reach-end ports do not attach to the surface solver.
+Rectangular, triangular, and surveyed reaches attach to the surface solver through the [surface/channel coordinator](surface-channels.md). Surveyed reaches attach through lateral links only. A rectangular reach end also attaches through a [reach-end port](surface-channels.md#couple-a-reach-end-to-the-surface). Pools and structures do not attach to the surface solver.
 
 ### Channel flow and geometry
 
@@ -84,7 +84,7 @@ Use [channel-to-pool connections](channel-pools.md) for rectangular or triangula
 
 Surface state remains separate from these channel/pool calculations.
 
-Use [surface/channel coupling](surface-channels.md) when water crosses a bank between surface cells and rectangular or triangular reach cells. `SurfaceChannelBatch` accepts the surface and every reach over one common interval.
+Use [surface/channel coupling](surface-channels.md) when water crosses a bank between surface cells and rectangular or triangular reach cells, or a rectangular reach end meets a line of surface faces. `SurfaceChannelBatch` accepts the surface and every reach over one common interval.
 
 ## Read component capabilities
 
@@ -263,7 +263,7 @@ Each row names a component that also declares [capabilities](#read-component-cap
 | [Coupled level pool](coupled-level-pools.md) | `CoupledLevelPoolSnapshotData` | `COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-coupled-level-pool-checkpoint-1`) | `COUPLED_LEVEL_POOL_CONTRACT_VERSION` (`hydr-coupled-level-pool-numr-cpu-1`) | `CoupledLevelPoolBatch::restore_data` | Level pool |
 | [Channel pool](channel-pools.md) | `ChannelPoolSnapshotData` | `CHANNEL_POOL_SNAPSHOT_SCHEMA` (`hydr-channel-pool-checkpoint-1`) | `CHANNEL_POOL_CONTRACT_VERSION` (`hydr-channel-pool-numr-cpu-1`) | `ChannelPoolBatch::import_snapshot` | Channel (per reach), level pool |
 | [Runoff pool](runoff-pools.md) | `RunoffPoolSnapshotData` | `RUNOFF_POOL_SNAPSHOT_SCHEMA` (`hydr-runoff-pool-checkpoint-1`) | `RUNOFF_POOL_CONTRACT_VERSION` (`hydr-runoff-pool-numr-cpu-1`) | `RunoffPoolBatch::restore_data` | Subcatchment, coupled level pool |
-| [Surface/channel](surface-channels.md) | `SurfaceChannelSnapshotData` | `SURFACE_CHANNEL_SNAPSHOT_SCHEMA` (`hydr-surface-channel-checkpoint-3`) | `SURFACE_CHANNEL_CONTRACT_VERSION` (`hydr-surface-channel-numr-cpu-4`) | `SurfaceChannelBatch::import_snapshot`, `SurfaceChannelBatch::resume` | Surface solver, channel (per reach) |
+| [Surface/channel](surface-channels.md) | `SurfaceChannelSnapshotData` | `SURFACE_CHANNEL_SNAPSHOT_SCHEMA` (`hydr-surface-channel-checkpoint-4`) | `SURFACE_CHANNEL_CONTRACT_VERSION` (`hydr-surface-channel-numr-cpu-5`) | `SurfaceChannelBatch::import_snapshot`, `SurfaceChannelBatch::resume` | Surface solver, channel (per reach) |
 
 Import follows these rules:
 

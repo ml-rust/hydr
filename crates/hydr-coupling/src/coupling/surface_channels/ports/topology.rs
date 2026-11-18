@@ -3,8 +3,8 @@
 use super::super::{SurfaceChannelDefinition, SurfaceChannelError};
 use super::faces::FACE_OWNERSHIP;
 use super::{CheckedPort, end_slot};
+use crate::channel::ChannelEnd;
 use crate::solver::Solver;
-use hydr_channel::internal::ChannelCouplingEnd;
 use hydr_solver::internal::{PortReachEnd, SurfacePortSpec, SurfacePorts};
 use numr::dtype::DType;
 use numr::ops::IndexingOps;
@@ -41,15 +41,15 @@ where
                 faces: port.faces.clone(),
                 ghost_bed_m: port.ghost_bed_m,
                 reach_end: match port.end {
-                    ChannelCouplingEnd::Left => PortReachEnd::Left,
-                    ChannelCouplingEnd::Right => PortReachEnd::Right,
+                    ChannelEnd::Left => PortReachEnd::Left,
+                    ChannelEnd::Right => PortReachEnd::Right,
                 },
             })
             .collect();
         let ids: Vec<String> = definition
             .ports
             .iter()
-            .map(|port| definition.port_declarations[port.setup_index].id.clone())
+            .map(|port| definition.setup.ports[port.setup_index].id.clone())
             .collect();
         let surface = surface.coupling_ports(&specs).map_err(|error| {
             SurfaceChannelError::input(format!("{FACE_OWNERSHIP}: ports={ids:?}: {error}"))
@@ -69,7 +69,7 @@ where
 
 impl<R: Runtime<DType = DType>> PortTopology<R> {
     /// Identity of the port at `end` of setup reach `reach`, if any.
-    pub fn port_at(&self, reach: usize, end: ChannelCouplingEnd) -> Option<&str> {
+    pub fn port_at(&self, reach: usize, end: ChannelEnd) -> Option<&str> {
         let position = self.reach_ports.get(reach)?[end_slot(end)]?;
         self.ids.get(position).map(String::as_str)
     }
@@ -77,23 +77,19 @@ impl<R: Runtime<DType = DType>> PortTopology<R> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::forcing::{BoundForcing, PortedEnds};
-    use super::super::super::{
-        SurfaceChannelBatch, SurfaceChannelError, SurfaceChannelForcingInterval,
-        SurfaceChannelReachForcing,
-    };
-    use super::super::fixture::{ALPHA, BETA, TestResult, case, contains, four_ports};
+    use super::super::super::SurfaceChannelBatch;
+    use super::super::super::forcing::BoundForcing;
+    use super::super::fixture::{ALPHA, BETA, TestResult, case, four_ports, ported};
+    use super::super::scenario::forcing;
     use super::*;
-    use crate::channel::ChannelBoundary;
     use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime};
 
     fn build(ports: bool) -> TestResult<SurfaceChannelBatch<CpuRuntime>> {
         let (setup, initial) = case(&[])?;
         let ports = if ports { four_ports() } else { Vec::new() };
-        let definition = SurfaceChannelDefinition::with_ports(setup, ports)?;
-        Ok(SurfaceChannelBatch::from_definition(
+        Ok(SurfaceChannelBatch::new(
             CpuClient::new(CpuDevice::new()),
-            definition,
+            ported(setup, ports),
             initial,
         )?)
     }
@@ -127,7 +123,7 @@ mod tests {
             [[Some(0), Some(1)], [Some(2), Some(3)]]
         );
         assert_eq!(
-            batch.context.port_at(1, ChannelCouplingEnd::Right),
+            batch.context.port_at(1, ChannelEnd::Right),
             Some("p-beta-right")
         );
         assert!(build(false)?.context.ports.is_none());
@@ -135,35 +131,14 @@ mod tests {
     }
 
     #[test]
-    fn caller_forcing_at_a_ported_end_rejects() -> TestResult {
-        let batch = build(true)?;
-        let reach = |id: &str| SurfaceChannelReachForcing {
-            reach_id: id.into(),
-            left: ChannelBoundary::Wall,
-            right: ChannelBoundary::Wall,
-            lateral_inputs: Vec::new(),
-        };
-        let forcing = SurfaceChannelForcingInterval {
-            start_s: 0.0,
-            end_s: 1.0,
-            reaches: vec![reach(ALPHA), reach(BETA)],
-        };
+    fn bound_forcing_holds_no_caller_policy_at_a_ported_end() -> TestResult {
         let ids = [ALPHA, BETA];
-        let bind = |batch: &SurfaceChannelBatch<CpuRuntime>, ported| {
-            BoundForcing::bind(&batch.context, &ids, (0.0, 1.0), &forcing, ported)
+        let bind = |batch: &SurfaceChannelBatch<CpuRuntime>| {
+            let held = forcing(&batch.setup().ports, 0.0, 1.0);
+            BoundForcing::bind(&batch.context, &ids, (0.0, 1.0), &held)
         };
-        let Err(SurfaceChannelError::Input(message)) = bind(&batch, PortedEnds::Caller) else {
-            return Err("a caller policy at a ported end must reject".into());
-        };
-        contains(
-            &message,
-            &[
-                "port-endpoint-policy",
-                "reach=\"alpha\" left=Wall sits at port=\"p-alpha-left\"",
-            ],
-        )?;
         // The coordinator owns every ported end, so no end keeps a caller policy.
-        let owned = bind(&batch, PortedEnds::Coordinator)?;
+        let owned = bind(&build(true)?)?;
         assert!(
             owned
                 .reaches
@@ -171,8 +146,7 @@ mod tests {
                 .all(|reach| reach.left.is_none() && reach.right.is_none())
         );
         // Without ports every end takes its caller policy.
-        let unported = build(false)?;
-        let caller = bind(&unported, PortedEnds::Coordinator)?;
+        let caller = bind(&build(false)?)?;
         assert!(
             caller
                 .reaches

@@ -169,6 +169,7 @@ impl Spec {
                 },
                 reaches,
                 links: self.links.clone(),
+                ports: Vec::new(),
                 storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
                 config: self.config.clone(),
             },
@@ -288,8 +289,8 @@ pub fn forcing(
         .iter()
         .map(|reach| SurfaceChannelReachForcing {
             reach_id: reach.id.clone(),
-            left: ChannelBoundary::Wall,
-            right: ChannelBoundary::Wall,
+            left: Some(ChannelBoundary::Wall),
+            right: Some(ChannelBoundary::Wall),
             lateral_inputs: reach
                 .definition
                 .lateral_bindings

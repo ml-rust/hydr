@@ -110,6 +110,23 @@ where
         Self::resume_with(client, data, forcing, Exchange::Admit, ports)
     }
 
+    /// Builds an engine of a package's definition and forcing window at its accepted state.
+    ///
+    /// The engine imports no ledger and no receipt. A coordinator builds its port faces on it
+    /// before [`Solver::coupling_resume`] admits the package's port water.
+    ///
+    /// # Errors
+    /// Returns construction errors.
+    #[doc(hidden)]
+    pub fn coupling_frame(client: R::Client, data: &SnapshotData) -> Result<Self, EngineError> {
+        Self::with_prefix(
+            client,
+            data.setup.clone(),
+            Some(data.forcing_prefix.clone()),
+            data.accepted.clone(),
+        )
+    }
+
     fn resume_with(
         client: R::Client,
         data: &SnapshotData,

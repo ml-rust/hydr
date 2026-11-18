@@ -178,6 +178,7 @@ pub fn case() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
                 link("link-a", 0, 0),
                 link("link-c", 2, 2),
             ],
+            ports: Vec::new(),
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: config(),
         },

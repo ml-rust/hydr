@@ -170,7 +170,7 @@ fn surveyed_connected_endpoint_rejects() -> Result {
     ];
     for boundary in scalar {
         let mut interval = forcing(&batch, 0.1, &[]);
-        interval.reaches[0].left = boundary;
+        interval.reaches[0].left = Some(boundary);
         match batch.trial_to(0.1, &interval) {
             Err(SurfaceChannelError::Channel { reach_id, source }) => {
                 assert_eq!(reach_id, REACH);
@@ -194,10 +194,10 @@ fn surveyed_connected_endpoint_rejects() -> Result {
     );
     // Wall and complete Exterior endpoints admit.
     let mut interval = forcing(&batch, 0.1, &[]);
-    interval.reaches[0].right = ChannelBoundary::Exterior {
+    interval.reaches[0].right = Some(ChannelBoundary::Exterior {
         depth_m: 1.0,
         velocity_m_per_s: 0.0,
-    };
+    });
     batch.trial_to(0.1, &interval)?;
     Ok(())
 }

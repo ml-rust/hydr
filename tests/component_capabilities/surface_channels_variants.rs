@@ -3,9 +3,12 @@
 //! Each mapping is an exhaustive `match`, so a new public variant fails to compile until it is
 //! classified.
 
-use hydr::capability::{ComponentId, Regime, SourceKind};
+use hydr::capability::{BoundaryKind, ComponentId, Regime, RegimeScope, SourceKind};
 use hydr::channel::{ChannelGeometry, ChannelLateralDirection};
-use hydr::coupling::{SurfaceChannelError, SurfaceChannelWeirRegime, surface_channel_capabilities};
+use hydr::coupling::{
+    SurfaceChannelError, SurfaceChannelPortRegime, SurfaceChannelWeirRegime,
+    surface_channel_capabilities,
+};
 
 /// Rejection kind of each public coordinator error variant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,6 +56,31 @@ pub const WEIR_REGIMES: [SurfaceChannelWeirRegime; 4] = [
     SurfaceChannelWeirRegime::EqualHeads,
 ];
 
+/// Declared regime of each public port regime.
+///
+/// Both supercritical directions are the supercritical regime. A reversal is the
+/// `reversed` flag of a receipt, whatever its regime.
+pub fn port_regime(regime: SurfaceChannelPortRegime) -> Regime {
+    match regime {
+        SurfaceChannelPortRegime::Subcritical => Regime::WetSubcritical,
+        SurfaceChannelPortRegime::SupercriticalToSurface
+        | SurfaceChannelPortRegime::SupercriticalToReach => Regime::Supercritical,
+        SurfaceChannelPortRegime::Transcritical => Regime::Critical,
+        SurfaceChannelPortRegime::WetDryFront => Regime::WetDryFront,
+        SurfaceChannelPortRegime::Dry => Regime::Dry,
+    }
+}
+
+/// Every public port regime.
+pub const PORT_REGIMES: [SurfaceChannelPortRegime; 6] = [
+    SurfaceChannelPortRegime::Subcritical,
+    SurfaceChannelPortRegime::SupercriticalToSurface,
+    SurfaceChannelPortRegime::SupercriticalToReach,
+    SurfaceChannelPortRegime::Transcritical,
+    SurfaceChannelPortRegime::WetDryFront,
+    SurfaceChannelPortRegime::Dry,
+];
+
 /// Nested reach of a linked geometry.
 pub fn geometry_component(geometry: &ChannelGeometry) -> ComponentId {
     match geometry {
@@ -79,9 +107,31 @@ fn surface_channel_public_variants_are_classified() -> Result<(), String> {
             return Err(format!("{regime:?} maps to undeclared `{}`", claimed.id()));
         }
     }
+    for regime in PORT_REGIMES {
+        let claimed = port_regime(regime);
+        if !declared.regimes.iter().any(|r| {
+            r.regime == claimed && r.scope == RegimeScope::Boundary(BoundaryKind::FluxPort)
+        }) {
+            return Err(format!("{regime:?} maps to undeclared `{}`", claimed.id()));
+        }
+    }
     for claim in declared.regimes {
-        if !WEIR_REGIMES.iter().any(|r| weir_regime(*r) == claim.regime) {
-            return Err(format!("`{}` has no public weir regime", claim.regime.id()));
+        let public = match claim.scope {
+            RegimeScope::Boundary(BoundaryKind::SuppressedRectangularWeir) => {
+                WEIR_REGIMES.iter().any(|r| weir_regime(*r) == claim.regime)
+            }
+            RegimeScope::Boundary(BoundaryKind::FluxPort) => {
+                claim.regime == Regime::ReversalInBranch
+                    || PORT_REGIMES.iter().any(|r| port_regime(*r) == claim.regime)
+            }
+            _ => false,
+        };
+        if !public {
+            return Err(format!(
+                "`{}` at {:?} has no public regime",
+                claim.regime.id(),
+                claim.scope
+            ));
         }
     }
     for direction in [

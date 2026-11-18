@@ -44,13 +44,15 @@ pub use runoff_pools::{
 pub mod surface_channels;
 #[doc(no_inline)]
 pub use surface_channels::{
-    SURFACE_CHANNEL_CONTRACT_VERSION, SURFACE_CHANNEL_SNAPSHOT_SCHEMA,
-    SURFACE_CHANNEL_TANGENT_TOLERANCE, SurfaceChannelBatch, SurfaceChannelConfig,
-    SurfaceChannelCounterData, SurfaceChannelDefinition, SurfaceChannelError,
+    SURFACE_CHANNEL_CONTRACT_VERSION, SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE,
+    SURFACE_CHANNEL_SNAPSHOT_SCHEMA, SURFACE_CHANNEL_TANGENT_TOLERANCE, SurfaceChannelBatch,
+    SurfaceChannelConfig, SurfaceChannelCounterData, SurfaceChannelDefinition, SurfaceChannelError,
     SurfaceChannelForcingInterval, SurfaceChannelInitialState, SurfaceChannelIntervalSnapshotData,
-    SurfaceChannelLink, SurfaceChannelLinkLedger, SurfaceChannelLinkTransfer,
-    SurfaceChannelPreviousData, SurfaceChannelReach, SurfaceChannelReachForcing,
-    SurfaceChannelSetup, SurfaceChannelSetupData, SurfaceChannelSnapshot,
-    SurfaceChannelSnapshotData, SurfaceChannelStepDiagnostics, SurfaceChannelTrial,
-    SurfaceChannelWaterBalance, SurfaceChannelWeirRegime, surface_channel_capabilities,
+    SurfaceChannelLink, SurfaceChannelLinkLedger, SurfaceChannelLinkTransfer, SurfaceChannelPort,
+    SurfaceChannelPortCounterData, SurfaceChannelPortLedger, SurfaceChannelPortRegime,
+    SurfaceChannelPortTransfer, SurfaceChannelPreviousData, SurfaceChannelReach,
+    SurfaceChannelReachForcing, SurfaceChannelSetup, SurfaceChannelSetupData,
+    SurfaceChannelSnapshot, SurfaceChannelSnapshotData, SurfaceChannelStepDiagnostics,
+    SurfaceChannelTrial, SurfaceChannelWaterBalance, SurfaceChannelWeirRegime,
+    surface_channel_capabilities,
 };

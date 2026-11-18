@@ -1,6 +1,6 @@
 # Couple the surface to channel reaches
 
-Use `SurfaceChannelBatch<R>` to advance the 2D surface engine and 1D channel reaches over one common interval. Water crosses a bank weir between a surface cell and a channel cell, in either direction.
+Use `SurfaceChannelBatch<R>` to advance the 2D surface engine and 1D channel reaches over one common interval. Water crosses a bank weir between a surface cell and a channel cell, in either direction. Water and momentum also cross a reach-end port between a line of surface faces and one reach end.
 
 Read [channel flow](channels.md), [numerics](numerics.md), and [structure laws](structures.md#orifices-and-rectangular-weirs) before constructing the inputs.
 
@@ -13,8 +13,11 @@ Read capabilities with `surface_channel_capabilities()`. It returns a `Component
 | Surface | `SolverSetup` and `InitialState` | Exterior faces, land model, and surface forcing keep their surface rules. |
 | Reaches | `SurfaceChannelReach` entries | Rectangular, triangular, or surveyed geometry. |
 | Links | `SurfaceChannelLink` entries | One bank weir between one active surface cell and one channel cell. |
+| Ports | `SurfaceChannelPort` entries | One line of surface faces against one rectangular reach end. See [reach-end ports](#couple-a-reach-end-to-the-surface). |
 
-Reach ends take the nested reach's endpoint policies. No reach end exchanges water with the surface.
+`links` can be empty when `ports` is not. A setup without links and without ports rejects.
+
+A reach end without a port takes the nested reach's endpoint policy. The coordinator owns a ported end.
 
 ### Couple a surveyed reach
 
@@ -145,7 +148,7 @@ One factor per donor scales every link that donor feeds. When demand exceeds the
 
 ### Momentum closure
 
-Exchange water carries momentum along the reach tangent only:
+Bank link water carries momentum along the reach tangent only. Ports carry normal momentum under the [port flux law](#port-flux-law).
 
 | Direction | Velocity carried |
 | --- | --- |
@@ -154,9 +157,73 @@ Exchange water carries momentum along the reach tangent only:
 
 The normal component dissipates at the bank. Several links into one surface cell carry their summed momentum.
 
+## Couple a reach end to the surface
+
+A port joins one reach end to a line of surface faces. A river mouth that discharges onto a floodplain is one use. Surface flow that enters a reach head is another.
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Unique nonempty identity, distinct from every link identity |
+| `reach_id` | Ported setup reach. It must be rectangular. |
+| `end` | `ChannelEnd::Left` or `ChannelEnd::Right`. One port binds each end at most. |
+| `faces` | Surface faces in any order. Admission sorts them along their face line. |
+| `mapping_evidence` | Your evidence that the faces and the reach end share this location |
+
+Each face has one active surface cell. Its other side is an inactive cell or lies off the grid. The faces share one axis, one face line, and one surface side, with no gap. A face is never a caller open face, and it belongs to one port only.
+
+The face widths must sum to the end cell width `b` within `SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE · b`. The tolerance is `16 · f64::EPSILON`. Set the end cell width to the face width sum. A rectangular reach can vary its width by cell.
+
+### Port flux law
+
+Each port face carries one hydrostatic HLL flux, the same flux as any surface face. The reach end cell is the ghost neighbour of every face.
+
+- Reach side: the end cell's accepted-start depth `A / b` and discharge per width `Q / b`.
+- Surface side: the cell state after sources, as the surface's own faces use.
+- Bed step: hydrostatic reconstruction at the higher of the two beds.
+- Timing: the flux depends on start states only. It stays fixed for one attempt and recalculates after a shorter retry.
+
+The reach end takes the summed face flux as a `ChannelBoundary::FluxPort`. The surface CFL limit, the reach CFL limit, and both depletion limits cover the port. A breach shortens the attempt. The coordinator never scales port flux.
+
+| Side | Momentum it receives |
+| --- | --- |
+| Surface cell | Shared normal flux plus the surface-side pressure, and the shared tangential flux |
+| Reach end | Shared normal flux plus the ghost-side pressure, summed over the faces along the outward reach normal |
+
+Water entering the surface carries no tangential velocity. Tangential momentum leaving the surface ends at the junction. `junction_reaction_m4_per_s` reports the difference between both sides: the bed-step reaction and any tangential loss.
+
+### Port regimes
+
+`SurfaceChannelPortTransfer.regime` names the port regime of each interval.
+
+| Regime | Port behaviour |
+| --- | --- |
+| `Subcritical` | Both waves straddle the port. The flux mixes both states. |
+| `SupercriticalToSurface` | Every wave runs into the surface. The flux is the reach state's own flux. |
+| `SupercriticalToReach` | Every wave runs into the reach. The flux is the surface state's own flux. |
+| `Transcritical` | A rarefaction fan holds its sonic point at the port. |
+| `WetDryFront` | One side holds no water above the higher bed. |
+| `Dry` | Neither side holds water above the higher bed. The port moves nothing. |
+
+A port with mixed face regimes reports `WetDryFront`, then `Transcritical`, before `Subcritical`. `reversed` is true when the signed volume changes sign against the previous interval.
+
+### Port forcing and checks
+
+Set `left` or `right` of `SurfaceChannelReachForcing` to `None` at a ported end. Set `Some(policy)` at every other end. Either mistake rejects the trial with `port-endpoint-policy`.
+
+`SurfaceChannelDefinition::new` rejects a port with `SurfaceChannelError::Input`. The message names the capability entry.
+
+| Case | Entry |
+| --- | --- |
+| Triangular reach end | `port-section-mismatch` |
+| Surveyed reach end | `surveyed-port-end` |
+| Face width sum off the end cell width | `port-width-mismatch` |
+| Bad face set, two ports on one end, or an unknown reach | `port-face-ownership` |
+| Empty or repeated port identity, or empty evidence | `duplicate-links`, `missing-link-evidence` |
+| Reach datum or gravity bits that differ from the surface | `datum-or-gravity-mismatch` |
+
 ## Advance one common interval
 
-1. Create `SurfaceChannelForcingInterval` with `start_s = batch.time()` and one `SurfaceChannelReachForcing` per reach.
+1. Create `SurfaceChannelForcingInterval` with `start_s = batch.time()` and one `SurfaceChannelReachForcing` per reach. Leave each ported end `None`.
 2. Call `trial_to(requested_end_s, &forcing)`.
 3. Read the trial's `time()` and `diagnostics()`.
 4. Replace the batch with `trial.into_next()` when accepting the candidate.
@@ -242,18 +309,29 @@ Never slice or scale old integrated inputs.
 | --- | --- |
 | `last_step()?` | `SurfaceChannelStepDiagnostics` of the last interval, absent before the first |
 | `link_ledgers()?` | Lifetime surface-to-channel and channel-to-surface volume per link, with a rounding bound |
+| `port_ledgers()?` | Lifetime surface-to-channel and channel-to-surface reach volume per port, with a rounding bound |
 | `ledger()?` | `SurfaceChannelWaterBalance` of the surface and every reach as one system |
 | `surface()`, `reach(id)` | Read-only children |
 
 Each `SurfaceChannelLinkTransfer` holds the signed volume, weir volume, levelling factor, donor factor, regime, and both midpoint stages.
 
-Each accepted interval passes three checks:
+`SurfaceChannelStepDiagnostics.ports` holds one `SurfaceChannelPortTransfer` per port, in ascending port identity. Each holds:
+
+- `signed_volume_m3`: the reach volume, positive from the surface into the channel
+- `reach_momentum_impulse_m4_per_s`: normal momentum leaving the reach, pressure included
+- `surface_momentum_impulse_m4_per_s`: momentum entering the surface cells, in grid x and y
+- `junction_reaction_m4_per_s`: the difference between both sides, in grid x and y
+- `signal_speed_m_per_s`, `regime`, and `reversed`
+- `paired_gap_m3` and `paired_bound_m3`: the surface face volume plus the reach outward volume, and its bound
+
+Each accepted interval passes these checks:
 
 - Binding: Each channel binding holds its link volume bit for bit.
 - Pairing: Each side's net exchange matches the summed link volumes within `paired_bound_m3`.
-- Mass: Storage change minus external water stays within `mass_bound_m3`.
+- Port pairing: Each port's `|paired_gap_m3|` stays within its `paired_bound_m3`.
+- Mass: Storage change minus external water stays within `mass_bound_m3`. `port_paired_bound_m3` joins it.
 
-Exchange stays inside the composite system. It appears only in the surface and channel exchange totals.
+Exchange stays inside the composite system. The surface and channel exchange totals report link water only. Port water also stays inside. The surface ledger counts it as exchange, the reach ledger as boundary water, and the composite balance removes it from both.
 
 ## Save, restore, and continue
 
@@ -267,9 +345,11 @@ Construct a `restore` or `import_snapshot` destination with the same setup and o
 
 Pass `data.surface.setup.forcing.clone()` to `resume` for a plain restart.
 
-`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`). Import checks both first. It recalculates the last interval and compares every bit. An error names the first differing field.
+`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-4`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-5`). Import checks both first. A package of an earlier format rejects by identity; capture a new package. Import recalculates the last interval and compares every bit. An error names the first differing field.
 
-The nested surface package carries exchange water. It restores only through the coordinator. `Solver::restore_data`, `Solver::restore`, and `Solver::resume` reject it.
+The package holds the ports in `setup.ports` and the lifetime port counters in `counters.ports`. The counters include each port's last signed volume, so a replayed `reversed` flag matches. The last interval's diagnostics hold every port receipt. Port ghost states rebuild from the start-frame reach packages.
+
+The nested surface package carries exchange water, port water included. It restores only through the coordinator. `Solver::restore_data`, `Solver::restore`, and `Solver::resume` reject it.
 
 `continue_surface_forcing(schedule)` splices a surface forecast after the accepted time. It follows the [surface splice rule](integration.md#continue-a-forecast-under-new-forcing). The original batch stays unchanged.
 
@@ -279,13 +359,20 @@ Preserve every package field and floating-point value exactly. Follow the [persi
 
 | Supported | Excluded |
 | --- | --- |
-| Bank weirs between active surface cells and rectangular, triangular, or surveyed reach cells | Unobstructed connections and reach-end ports |
-| Surveyed reaches with `Wall` or complete `Exterior` endpoints | Surveyed reaches with any other endpoint |
-| Reversal through one link between intervals | Normal momentum exchange and child subcycling |
+| Bank weirs between active surface cells and rectangular, triangular, or surveyed reach cells | Unobstructed connections |
+| Ports between a face line and a rectangular reach end of the face width | Ports on triangular or surveyed reach ends |
+| Surveyed reaches with `Wall` or complete `Exterior` endpoints | Surveyed reaches with any other endpoint or a port |
+| Reversal through one link or one port between intervals | Normal momentum exchange through bank links, and child subcycling |
 | Surface rain, impervious land, Modified Green-Ampt soil, evaporation, and withdrawal | Level pools, structures, and device-resident forcing |
 | Caller lateral inflow and withdrawal on reaches | |
 
 Time integration remains first order. The weir law establishes no energy guarantee for the complete calculation.
+
+Port limits:
+
+- `port-explicit-flux`: The flux uses the accepted-start states for one attempt. Request shorter intervals where the states change fast.
+- `port-bed-step`: Hydrostatic reconstruction keeps a lake at rest across a bed step. It gives no energy guarantee across the step.
+- `port-tangential-closure`: Reach water enters the surface with no tangential velocity. Tangential surface momentum that leaves through a port ends at the junction. Read `junction_reaction_m4_per_s` for it.
 
 Numerical agreement establishes no measured-event accuracy. CUDA runs execute without a GPU accuracy qualification.
 

@@ -5,6 +5,7 @@ use super::accounting::within;
 use super::batch::SurfaceChannelBatch;
 use super::context::Context;
 use super::identity::{self, Check};
+use super::ports::{PortCounters, PortTopology};
 use super::snapshot::SurfaceChannelCounterData;
 use super::state::LinkCounters;
 use super::{SurfaceChannelDefinition, SurfaceChannelInitialState};
@@ -104,7 +105,8 @@ where
         match self {
             Self::Destination(batch) => {
                 let mut engine = batch.surface.coupling_clone();
-                engine.coupling_restore_data(surface, None)?;
+                let ports = batch.context.ports.as_ref().map(|ports| &ports.surface);
+                engine.coupling_restore_data(surface, ports)?;
                 let reaches = reaches
                     .iter()
                     .zip(&batch.reaches)
@@ -127,11 +129,19 @@ where
                     ),
                     "differs from the current surface definition",
                 )?;
+                // Port faces depend on the surface definition alone. An engine of the package's
+                // definition builds them, so the resumed engine admits their port water.
+                let ports = if definition.ports.is_empty() {
+                    None
+                } else {
+                    let frame = Solver::<R>::coupling_frame((*client).clone(), surface)?;
+                    PortTopology::new(definition, &frame)?
+                };
                 let engine = Solver::<R>::coupling_resume(
                     (*client).clone(),
                     surface,
                     surface.setup.forcing.clone(),
-                    None,
+                    ports.as_ref().map(|ports| &ports.surface),
                 )?;
                 let reaches = reaches
                     .iter()
@@ -238,9 +248,9 @@ where
     }
 }
 
-/// Device link counters from host values in ascending link identity.
+/// Device link counters and host port counters from host values in ascending identity.
 ///
-/// Every value is finite and nonnegative. Before the first interval every value is `+0.0`.
+/// Every volume is finite and nonnegative. Before the first interval every value is `+0.0`.
 fn import_counters<R: Runtime<DType = DType>>(
     context: &Context<R>,
     data: &SurfaceChannelCounterData,
@@ -271,12 +281,19 @@ fn import_counters<R: Runtime<DType = DType>>(
             "holds a negative or nonfinite value, or a nonzero value before the first interval",
         )?;
     }
+    let ports = PortCounters::import(&data.ports, context.port_ids(), data.accepted_steps > 0)
+        .map_err(|field| {
+            rejected(
+                &format!("{prefix}counters.ports.{field}"),
+                "differs from the ports in ascending identity, holds a negative or nonfinite value, or holds a nonzero value before the first interval",
+            )
+        })?;
     let device = context.client.device();
     let tensor = |values: Vec<f64>| Tensor::<R>::from_slice(&values, &[values.len()], device);
     Ok(LinkCounters {
         to_channel_m3: tensor(data.links.iter().map(|l| l.surface_to_channel_m3).collect())?,
         to_surface_m3: tensor(data.links.iter().map(|l| l.channel_to_surface_m3).collect())?,
         roundoff_bound_m3: tensor(data.links.iter().map(|l| l.roundoff_bound_m3).collect())?,
-        ports: context.zero_port_counters(),
+        ports,
     })
 }

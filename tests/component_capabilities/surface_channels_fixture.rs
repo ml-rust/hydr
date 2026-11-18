@@ -67,8 +67,8 @@ pub fn surveyed_pair_outcome(
         .link(weir("bank", 0, REACH, 0, CREST, 2.0));
     let batch = spec.build()?;
     let mut held = forcing(&batch, STEP, &[]);
-    held.reaches[0].left = left;
-    held.reaches[0].right = right;
+    held.reaches[0].left = Some(left);
+    held.reaches[0].right = Some(right);
     trial_outcome(&batch, STEP, &held)
 }
 

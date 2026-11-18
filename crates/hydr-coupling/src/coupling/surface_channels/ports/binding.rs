@@ -15,8 +15,9 @@ use super::super::start::Start;
 use super::ghosts::PortEnd;
 use super::receipt::{FaceSide, PortFlux, face_regime, port_regime};
 use super::{CheckedPort, end_slot};
+use crate::channel::ChannelEnd;
 use crate::channel::{ChannelReach, ChannelTensorBoundary, ChannelTensorFluxPort};
-use hydr_channel::internal::{ChannelCouplingEnd, ChannelCouplingReservation};
+use hydr_channel::internal::ChannelCouplingReservation;
 use hydr_solver::internal::{PortFluxes, SurfaceCouplingStage};
 use numr::dtype::DType;
 use numr::ops::ShapeOps;
@@ -273,10 +274,10 @@ where
                 source,
             };
             let bound = &start.forcing.reaches[reach];
-            let policy = |end: ChannelCouplingEnd| {
+            let policy = |end: ChannelEnd| {
                 let caller = match end {
-                    ChannelCouplingEnd::Left => &bound.left,
-                    ChannelCouplingEnd::Right => &bound.right,
+                    ChannelEnd::Left => &bound.left,
+                    ChannelEnd::Right => &bound.right,
                 };
                 ends[end_slot(end)]
                     .and_then(|port| boundaries.get(port))
@@ -287,8 +288,8 @@ where
                         )
                     })
             };
-            let left = policy(ChannelCouplingEnd::Left)?;
-            let right = policy(ChannelCouplingEnd::Right)?;
+            let left = policy(ChannelEnd::Left)?;
+            let right = policy(ChannelEnd::Right)?;
             let mut inputs = bound.lateral.clone();
             if let Some(linked) = self.linked.iter().position(|entry| entry.reach == reach) {
                 inputs.extend(self.exchange_inputs(linked, &zeros, &zeros, &zeros)?);
@@ -310,19 +311,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::fixture::{BETA, REACH_WIDTH, TestResult, x_face};
-    use super::super::receipt::{PortRegime, PortTransfer};
+    use super::super::super::SurfaceChannelPortTransfer;
+    use super::super::fixture::{BETA, TestResult, x_face};
     use super::super::scenario::{
         Batch, CELLS, GRAVITY, Reach, Scenario, east, receipt, step, still,
     };
     use super::raised;
     use crate::solver::BoundaryFace;
     use hydr_core::model::CellState;
-
-    /// Every surface cell at depth `h` with x discharge per width `qx`.
-    fn moving(h: f64, qx: f64) -> Vec<CellState> {
-        vec![CellState { h, qx, qy: 0.0 }; CELLS]
-    }
 
     /// `alpha` in state `alpha` against `surface` through the east port, on a flat 1 m bed.
     fn east_case(alpha: Reach, surface: Vec<CellState>) -> Scenario {
@@ -337,39 +333,10 @@ mod tests {
     }
 
     /// One interval toward `dt`, with the batch and its port receipt.
-    fn east_step(case: &Scenario, dt: f64) -> TestResult<(Batch, PortTransfer)> {
+    fn east_step(case: &Scenario, dt: f64) -> TestResult<(Batch, SurfaceChannelPortTransfer)> {
         let batch = step(&case.build()?, dt)?;
         let transfer = receipt(&batch)?.transfers[0].clone();
         Ok((batch, transfer))
-    }
-
-    fn relative(actual: f64, expected: f64) -> f64 {
-        (actual - expected).abs() / expected.abs()
-    }
-
-    #[test]
-    fn uniform_supercritical_flow_takes_the_upwind_flux_both_ways() -> TestResult {
-        // Frozen criterion: the reach state's own flux, relative change at most 1e-12.
-        const TOLERANCE: f64 = 1e-12;
-        let h = 0.5;
-        let q = h * 2.0 * (GRAVITY * h).sqrt();
-        let flux = REACH_WIDTH * q;
-        let momentum = REACH_WIDTH * (q * q / h + 0.5 * GRAVITY * h * h);
-        // Into the surface is -x at the east edge. The reach flows toward its right end.
-        let out = east_case(Reach::uniform(1.0, h, q), moving(h, -q));
-        let (batch, transfer) = east_step(&out, 0.01)?;
-        let dt = batch.time();
-        assert_eq!(transfer.regime, PortRegime::SupercriticalToSurface);
-        assert!(relative(-transfer.signed_volume_m3, flux * dt) <= TOLERANCE);
-        assert!(relative(transfer.reach_momentum_impulse_m4_per_s, momentum * dt) <= TOLERANCE);
-        // The same state running into the reach takes the surface state's own flux.
-        let into = east_case(Reach::uniform(1.0, h, -q), moving(h, q));
-        let (batch, transfer) = east_step(&into, 0.01)?;
-        let dt = batch.time();
-        assert_eq!(transfer.regime, PortRegime::SupercriticalToReach);
-        assert!(relative(transfer.signed_volume_m3, flux * dt) <= TOLERANCE);
-        assert!(relative(transfer.reach_momentum_impulse_m4_per_s, momentum * dt) <= TOLERANCE);
-        Ok(())
     }
 
     #[test]
@@ -400,19 +367,6 @@ mod tests {
         assert!(batch.time() <= limits.cfl_limit_s);
         // An unported reach keeps its caller endpoints.
         assert!(batch.reach(BETA).is_some());
-        Ok(())
-    }
-
-    #[test]
-    fn a_sonic_point_and_a_dry_surface_take_their_regimes() -> TestResult {
-        // A subcritical reach end beside fast shallow surface water: the 1-fan is sonic.
-        let sonic = east_case(Reach::uniform(1.0, 1.0, 1.0), moving(0.1, -0.2));
-        assert_eq!(east_step(&sonic, 0.01)?.1.regime, PortRegime::Transcritical);
-        // A wet reach end against a dry surface drains across a wet/dry front.
-        let front = east_case(Reach::uniform(1.0, 0.5, 0.0), vec![still(0.0); CELLS]);
-        let transfer = east_step(&front, 0.01)?.1;
-        assert_eq!(transfer.regime, PortRegime::WetDryFront);
-        assert!(transfer.signed_volume_m3 < 0.0);
         Ok(())
     }
 

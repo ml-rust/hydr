@@ -130,76 +130,8 @@ pub(super) fn check_faces(
 
 #[cfg(test)]
 mod tests {
-    use super::super::fixture::{
-        ALPHA, TestResult, case, contains, port, rejection, x_face, y_face,
-    };
+    use super::super::fixture::{TestResult, case, y_face};
     use super::*;
-    use crate::solver::BoundaryConditions;
-    use hydr_channel::internal::ChannelCouplingEnd;
-
-    fn alpha_left(faces: Vec<BoundaryFace>) -> super::super::SurfaceChannelPort {
-        port("p", ALPHA, ChannelCouplingEnd::Left, faces)
-    }
-
-    #[test]
-    fn each_bad_face_set_rejects() -> TestResult {
-        let cases: [(&[usize], Vec<BoundaryFace>, &[&str]); 8] = [
-            (&[], Vec::new(), &["has no faces"]),
-            (&[], vec![x_face(9, 0)], &["face=", "lies outside the grid"]),
-            (
-                &[],
-                vec![x_face(1, 0)],
-                &["column: 1", "has two active cells"],
-            ),
-            (
-                &[7],
-                vec![x_face(4, 1)],
-                &["column: 4", "has no active surface cell"],
-            ),
-            (
-                &[],
-                vec![x_face(0, 0), x_face(0, 0)],
-                &["is already bound to a port"],
-            ),
-            (
-                &[],
-                vec![x_face(0, 0), y_face(0, 0)],
-                &["bind faces of one axis on one face line"],
-            ),
-            (
-                &[2, 5],
-                vec![x_face(2, 0), x_face(2, 1)],
-                &["bind faces with the surface on one side"],
-            ),
-            (
-                &[],
-                vec![y_face(0, 0), y_face(2, 0)],
-                &["with a gap", "bind one contiguous face line"],
-            ),
-        ];
-        for (inactive, faces, parts) in cases {
-            let (setup, _) = case(inactive)?;
-            let message = rejection(setup, vec![alpha_left(faces)])?;
-            contains(&message, &[FACE_OWNERSHIP, "port=\"p\""])?;
-            contains(&message, parts)?;
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn a_caller_open_face_rejects() -> TestResult {
-        let (mut setup, _) = case(&[])?;
-        setup.surface.boundaries =
-            BoundaryConditions::with_open_faces(&setup.surface.domain, vec![x_face(0, 1)])?;
-        contains(
-            &rejection(setup, vec![alpha_left(vec![x_face(0, 0), x_face(0, 1)])])?,
-            &[
-                FACE_OWNERSHIP,
-                "is a caller open face",
-                "remove it from the open faces or from the port",
-            ],
-        )
-    }
 
     #[test]
     fn faces_sort_along_their_line_and_sum_their_widths() -> TestResult {

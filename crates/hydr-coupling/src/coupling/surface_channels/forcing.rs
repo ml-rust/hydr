@@ -3,12 +3,13 @@
 use super::SurfaceChannelError;
 use super::context::Context;
 use super::ports::check_endpoint;
+use crate::channel::ChannelEnd;
 use crate::channel::{
     ChannelBoundary, ChannelLateralInput, ChannelTensorBoundary, ChannelTensorFluxPort,
     ChannelTensorLateralInput, ChannelTensorWaterAmount,
 };
 use crate::forcing::WaterAmount;
-use hydr_channel::internal::{ChannelCouplingEnd, SURFACE_EXCHANGE_BINDING_PREFIX};
+use hydr_channel::internal::SURFACE_EXCHANGE_BINDING_PREFIX;
 use numr::dtype::DType;
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -19,10 +20,12 @@ use std::collections::BTreeMap;
 pub struct SurfaceChannelReachForcing {
     /// Exact setup reach identity, present once per interval.
     pub reach_id: String,
-    /// Policy at the upstream endpoint.
-    pub left: ChannelBoundary,
-    /// Policy at the downstream endpoint.
-    pub right: ChannelBoundary,
+    /// Policy at the upstream endpoint. `None` exactly at a ported end.
+    ///
+    /// The coordinator supplies a ported end's flux port itself.
+    pub left: Option<ChannelBoundary>,
+    /// Policy at the downstream endpoint. `None` exactly at a ported end.
+    pub right: Option<ChannelBoundary>,
     /// One input per caller lateral binding, including zeros.
     ///
     /// The coordinator supplies every `surface-exchange:` binding itself.
@@ -49,22 +52,6 @@ pub(super) struct SlotWithdrawal {
     pub amount: WaterAmount,
 }
 
-/// Source of the policy at a ported reach end.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum PortedEnds {
-    /// Every record end is a caller policy. A caller policy at a ported end rejects.
-    Caller,
-    /// The coordinator supplies every ported end. The record's policy there is not read.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "public forcing records carry a caller policy at both ends"
-        )
-    )]
-    Coordinator,
-}
-
 /// Caller forcing of one reach on the configured device.
 pub(super) struct BoundReach<R: Runtime<DType = DType>> {
     /// Caller policy at the left end. `None` at a ported end.
@@ -85,13 +72,12 @@ pub(super) struct BoundForcing<R: Runtime<DType = DType>> {
 impl<R: Runtime<DType = DType>> BoundForcing<R> {
     /// Checks `forcing` against the accepted `start` and `requested` end, then copies it.
     ///
-    /// `ported` names the source of each ported end's policy.
+    /// A ported end takes `None`. Every other end takes a caller policy.
     pub fn bind(
         context: &Context<R>,
         reach_ids: &[&str],
         (start, requested): (f64, f64),
         forcing: &SurfaceChannelForcingInterval,
-        ported: PortedEnds,
     ) -> Result<Self, SurfaceChannelError> {
         if !requested.is_finite()
             || requested <= start
@@ -184,17 +170,14 @@ impl<R: Runtime<DType = DType>> BoundForcing<R> {
             }
             let mut policies = [None, None];
             for (slot, (end, policy)) in [
-                (ChannelCouplingEnd::Left, &record.left),
-                (ChannelCouplingEnd::Right, &record.right),
+                (ChannelEnd::Left, &record.left),
+                (ChannelEnd::Right, &record.right),
             ]
             .into_iter()
             .enumerate()
             {
                 let port = context.port_at(reach, end);
-                let policy = match (ported, port) {
-                    (PortedEnds::Coordinator, Some(_)) => None,
-                    _ => Some(policy),
-                };
+                let policy = policy.as_ref();
                 check_endpoint(id, end, port, policy)?;
                 policies[slot] = policy
                     .map(|policy| tensor_boundary(id, policy, &scalar))

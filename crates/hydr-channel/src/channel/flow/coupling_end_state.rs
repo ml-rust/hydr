@@ -1,6 +1,6 @@
 //! Private coordinator read: the accepted-start state of one rectangular reach end cell.
 
-use super::{ChannelError, ChannelGeometry, ChannelReach};
+use super::{ChannelEnd, ChannelError, ChannelGeometry, ChannelReach};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps,
@@ -8,16 +8,6 @@ use numr::ops::{
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
-
-/// One end of a reach.
-#[doc(hidden)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ChannelCouplingEnd {
-    /// The end at the first cell. The reach coordinate increases away from it.
-    Left,
-    /// The end at the last cell. The reach coordinate increases toward it.
-    Right,
-}
 
 /// Accepted-start state of a rectangular end cell, as a flux port ghost needs it.
 ///
@@ -64,7 +54,7 @@ where
     #[doc(hidden)]
     pub fn coupling_end_state(
         &self,
-        end: ChannelCouplingEnd,
+        end: ChannelEnd,
     ) -> Result<ChannelCouplingEndState<R>, ChannelError> {
         let ChannelGeometry::Rectangular { cells } = &self.definition().geometry else {
             let geometry = match &self.definition().geometry {
@@ -76,8 +66,8 @@ where
             )));
         };
         let cell = match end {
-            ChannelCouplingEnd::Left => 0,
-            ChannelCouplingEnd::Right => self.context.count() - 1,
+            ChannelEnd::Left => 0,
+            ChannelEnd::Right => self.context.count() - 1,
         };
         let declared = &cells[cell];
         let c = &self.context.client;
@@ -154,10 +144,7 @@ mod tests {
         let ChannelGeometry::Rectangular { cells } = &reach.definition().geometry else {
             return Err("the fixture is rectangular".into());
         };
-        for (end, cell) in [
-            (ChannelCouplingEnd::Left, 0),
-            (ChannelCouplingEnd::Right, 2),
-        ] {
+        for (end, cell) in [(ChannelEnd::Left, 0), (ChannelEnd::Right, 2)] {
             let read = reach.coupling_end_state(end)?;
             let scalar = |tensor: &Tensor<CpuRuntime>| -> Result<f64, Box<dyn std::error::Error>> {
                 assert_eq!(tensor.shape(), [1]);
@@ -199,7 +186,7 @@ mod tests {
                 longitudinal_momentum_m4_per_s: vec![0.0, 0.4, 6.7],
             },
         )?;
-        let read = reach.coupling_end_state(ChannelCouplingEnd::Left)?;
+        let read = reach.coupling_end_state(ChannelEnd::Left)?;
         for tensor in [
             &read.area_m2,
             &read.depth_m,
@@ -240,7 +227,7 @@ mod tests {
             },
         )?;
         let error = reach
-            .coupling_end_state(ChannelCouplingEnd::Right)
+            .coupling_end_state(ChannelEnd::Right)
             .err()
             .ok_or("a triangular end must reject")?;
         assert!(

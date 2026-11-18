@@ -2,9 +2,9 @@
 
 use super::super::SurfaceChannelError;
 use super::super::context::{Context, Ops};
+use crate::channel::ChannelEnd;
 use crate::channel::ChannelReach;
 use crate::solver::Solver;
-use hydr_channel::internal::ChannelCouplingEnd;
 use hydr_solver::internal::PortGhosts;
 use numr::dtype::DType;
 use numr::ops::ShapeOps;
@@ -28,10 +28,10 @@ pub(in super::super) struct PortStart<R: Runtime<DType = DType>> {
 }
 
 /// Outward normal sign of a reach end: `-1` left, `+1` right.
-pub(in super::super) fn outward(end: ChannelCouplingEnd) -> f64 {
+pub(in super::super) fn outward(end: ChannelEnd) -> f64 {
     match end {
-        ChannelCouplingEnd::Left => -1.0,
-        ChannelCouplingEnd::Right => 1.0,
+        ChannelEnd::Left => -1.0,
+        ChannelEnd::Right => 1.0,
     }
 }
 

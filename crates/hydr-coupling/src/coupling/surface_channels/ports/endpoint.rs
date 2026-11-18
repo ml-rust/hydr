@@ -3,7 +3,7 @@
 use super::super::SurfaceChannelError;
 use super::end_name;
 use crate::channel::ChannelBoundary;
-use hydr_channel::internal::ChannelCouplingEnd;
+use crate::channel::ChannelEnd;
 
 /// Checks the caller policy at one reach end against port ownership.
 ///
@@ -11,7 +11,7 @@ use hydr_channel::internal::ChannelCouplingEnd;
 /// Every other end takes one.
 pub(in super::super) fn check_endpoint(
     reach_id: &str,
-    end: ChannelCouplingEnd,
+    end: ChannelEnd,
     port: Option<&str>,
     policy: Option<&ChannelBoundary>,
 ) -> Result<(), SurfaceChannelError> {
@@ -31,7 +31,7 @@ pub(in super::super) fn check_endpoint(
 mod tests {
     use super::super::fixture::{ALPHA, BETA, TestResult, contains};
     use super::*;
-    use ChannelCouplingEnd::{Left, Right};
+    use ChannelEnd::{Left, Right};
 
     #[test]
     fn a_ported_end_takes_no_caller_policy() -> TestResult {

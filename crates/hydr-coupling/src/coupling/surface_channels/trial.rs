@@ -5,7 +5,7 @@ use super::batch::SurfaceChannelBatch;
 use super::context::Context;
 use super::evaluate::advanced;
 use super::exchange::Exchange;
-use super::forcing::{BoundForcing, PortedEnds};
+use super::forcing::BoundForcing;
 use super::iteration::Stall;
 use super::start::Start;
 use super::state::{PreviousFrame, StoredStep};
@@ -95,6 +95,8 @@ where
     ///
     /// # Errors
     /// Returns [`SurfaceChannelError::Input`] for invalid forcing or an uncovered surface time.
+    /// A caller policy at a ported end and a missing policy at an unported end are invalid
+    /// forcing (`port-endpoint-policy`).
     /// Returns [`SurfaceChannelError::RecomputeInterval`] when caller integrated lateral volumes
     /// need a shorter span. Returns [`SurfaceChannelError::Unresolved`] when retries or the
     /// minimum step stop recalculation. Returns every non-retryable child rejection unchanged.
@@ -103,40 +105,12 @@ where
         requested_end_s: f64,
         forcing: &SurfaceChannelForcingInterval,
     ) -> Result<SurfaceChannelTrial<R>, SurfaceChannelError> {
-        self.trial_bound(requested_end_s, forcing, PortedEnds::Caller)
-    }
-
-    /// [`Self::trial_to`] with the coordinator's flux port at every ported reach end.
-    ///
-    /// The forcing record's policy at a ported end is not read.
-    #[cfg(test)]
-    pub(super) fn trial_ported(
-        &self,
-        requested_end_s: f64,
-        forcing: &SurfaceChannelForcingInterval,
-    ) -> Result<SurfaceChannelTrial<R>, SurfaceChannelError> {
-        self.trial_bound(requested_end_s, forcing, PortedEnds::Coordinator)
-    }
-
-    /// [`Self::trial_to`] with the ported end policies that `ported` names.
-    fn trial_bound(
-        &self,
-        requested_end_s: f64,
-        forcing: &SurfaceChannelForcingInterval,
-        ported: PortedEnds,
-    ) -> Result<SurfaceChannelTrial<R>, SurfaceChannelError> {
         let setup = self.definition.setup();
         let config = &setup.config;
         let reach_ids: Vec<&str> = setup.reaches.iter().map(|r| r.id.as_str()).collect();
         let start = self.time_s;
         let requested = requested_end_s;
-        let bound = BoundForcing::bind(
-            &self.context,
-            &reach_ids,
-            (start, requested),
-            forcing,
-            ported,
-        )?;
+        let bound = BoundForcing::bind(&self.context, &reach_ids, (start, requested), forcing)?;
         let intervals = self.surface.coupling_forcing().intervals();
         let surface_end = intervals
             .get(intervals.partition_point(|interval| interval.end <= start))
@@ -350,7 +324,7 @@ where
                 "candidate children disagree on end={end} or accepted step {steps}"
             )));
         }
-        let interval = context.port_interval(&ports, dt, self.last.as_deref())?;
+        let interval = context.port_interval(&ports, dt, &self.counters.ports)?;
         let exchange = outcome.exchange;
         let counters = context.advance_counters(&self.counters, &exchange.signed, &interval)?;
         let totals = context.step_totals(
