@@ -8,6 +8,8 @@ mod common;
 mod flux_port;
 #[path = "channel_boundaries/flux_port_lifecycle.rs"]
 mod flux_port_lifecycle;
+#[path = "channel_boundaries/flux_port_surveyed.rs"]
+mod flux_port_surveyed;
 #[path = "channel_boundaries/lifecycle.rs"]
 mod lifecycle;
 #[path = "channel_boundaries/packing.rs"]
@@ -20,5 +22,8 @@ mod reference;
 #[allow(dead_code)]
 #[path = "support/runtime.rs"]
 mod runtime;
+#[allow(dead_code)]
+#[path = "support/surveyed_profiles.rs"]
+mod surveyed_profiles;
 #[path = "channel_boundaries/traces.rs"]
 mod traces;

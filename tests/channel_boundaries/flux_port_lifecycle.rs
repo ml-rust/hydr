@@ -133,22 +133,12 @@ fn surveyed_reach() -> Result<Reach, Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn surveyed_reaches_reject_flux_ports_standalone_and_coordinated() -> TestResult {
+fn surveyed_reaches_admit_standalone_flux_ports_and_reject_coordinated_ones() -> TestResult {
     let origin = surveyed_reach()?;
     let closed = port(0.0, 0.0, 10.0, Some(10.0))?;
     let wall = ChannelBoundary::Wall;
     for (left, right) in [(&closed, &wall), (&wall, &closed)] {
-        let (error, message) = rejection(&origin, left, right)?;
-        assert!(
-            matches!(error, ChannelError::InvalidInput { .. }),
-            "{error:?}"
-        );
-        assert!(
-            message.contains(
-                "surveyed FluxPort endpoint is unsupported: supply Wall or complete Exterior depth and velocity"
-            ),
-            "{message}"
-        );
+        advance(origin.clone(), 1, 0.25, left, right)?;
         let Err(error) = origin.bind_coupling_host(0.0, 0.25, Some(left), Some(right), &[]) else {
             return Err("a coordinated surveyed port was admitted".into());
         };

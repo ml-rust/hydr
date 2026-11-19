@@ -24,7 +24,11 @@ const SCALAR_REACH_ADMITTED: &[BoundaryKind] = &[
 ];
 
 /// Endpoint policies of surveyed reaches.
-const SURVEYED_ADMITTED: &[BoundaryKind] = &[BoundaryKind::Wall, BoundaryKind::Exterior];
+const SURVEYED_ADMITTED: &[BoundaryKind] = &[
+    BoundaryKind::Wall,
+    BoundaryKind::Exterior,
+    BoundaryKind::FluxPort,
+];
 
 const fn regime(scope: RegimeScope, regime: Regime) -> RegimeSupport {
     RegimeSupport { scope, regime }
@@ -83,6 +87,20 @@ const INTERIOR_WET_SUBCRITICAL: RegimeSupport =
 const INTERIOR_SUPERCRITICAL: RegimeSupport = regime(RegimeScope::Interior, Regime::Supercritical);
 const INTERIOR_DRY: RegimeSupport = regime(RegimeScope::Interior, Regime::Dry);
 const INTERIOR_WET_DRY_FRONT: RegimeSupport = regime(RegimeScope::Interior, Regime::WetDryFront);
+const FLUX_PORT_WET_SUBCRITICAL: RegimeSupport = regime(
+    RegimeScope::Boundary(BoundaryKind::FluxPort),
+    Regime::WetSubcritical,
+);
+const FLUX_PORT_SUPERCRITICAL: RegimeSupport = regime(
+    RegimeScope::Boundary(BoundaryKind::FluxPort),
+    Regime::Supercritical,
+);
+const FLUX_PORT_DRY: RegimeSupport =
+    regime(RegimeScope::Boundary(BoundaryKind::FluxPort), Regime::Dry);
+const FLUX_PORT_WET_DRY_FRONT: RegimeSupport = regime(
+    RegimeScope::Boundary(BoundaryKind::FluxPort),
+    Regime::WetDryFront,
+);
 
 /// Regimes of rectangular and triangular reaches.
 const SCALAR_REACH_REGIMES: &[RegimeSupport] = &[
@@ -101,19 +119,10 @@ const SCALAR_REACH_REGIMES: &[RegimeSupport] = &[
     EXTERIOR_WET_SUBCRITICAL,
     EXTERIOR_SUPERCRITICAL,
     EXTERIOR_DRY,
-    regime(
-        RegimeScope::Boundary(BoundaryKind::FluxPort),
-        Regime::WetSubcritical,
-    ),
-    regime(
-        RegimeScope::Boundary(BoundaryKind::FluxPort),
-        Regime::Supercritical,
-    ),
-    regime(RegimeScope::Boundary(BoundaryKind::FluxPort), Regime::Dry),
-    regime(
-        RegimeScope::Boundary(BoundaryKind::FluxPort),
-        Regime::WetDryFront,
-    ),
+    FLUX_PORT_WET_SUBCRITICAL,
+    FLUX_PORT_SUPERCRITICAL,
+    FLUX_PORT_DRY,
+    FLUX_PORT_WET_DRY_FRONT,
     INTERIOR_WET_SUBCRITICAL,
     INTERIOR_SUPERCRITICAL,
     INTERIOR_DRY,
@@ -125,6 +134,10 @@ const SURVEYED_REGIMES: &[RegimeSupport] = &[
     EXTERIOR_WET_SUBCRITICAL,
     EXTERIOR_SUPERCRITICAL,
     EXTERIOR_DRY,
+    FLUX_PORT_WET_SUBCRITICAL,
+    FLUX_PORT_SUPERCRITICAL,
+    FLUX_PORT_DRY,
+    FLUX_PORT_WET_DRY_FRONT,
     INTERIOR_WET_SUBCRITICAL,
     INTERIOR_SUPERCRITICAL,
     INTERIOR_DRY,
@@ -390,12 +403,8 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
             "Stage, Discharge and QuiescentReservoir endpoints reject on surveyed reaches.",
             CHANNELS_DOC,
         ),
-        unsupported(
-            "surveyed-flux-port",
-            UnsupportedReason::RejectedByAdmission,
-            "FluxPort endpoints reject on surveyed reaches, standalone and coordinated.",
-            CHANNELS_DOC,
-        ),
+        FLUX_PORT_SLOW_SIGNAL,
+        FLUX_PORT_DRY_EXPORT,
         unsupported(
             "surveyed-channel-pool-attachment",
             UnsupportedReason::RejectedByAdmission,
@@ -420,6 +429,7 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
     ],
     limits: &[
         LATERAL_OWNERSHIP,
+        FLUX_PORT_PROVIDER,
         Limit {
             id: "surveyed-work-ceilings",
             summary: "Surveyed root, integration and native query work stops at the configured ceilings.",

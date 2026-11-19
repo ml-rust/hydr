@@ -277,6 +277,7 @@ pub(super) mod tests {
             surveyed: Some(SurveyedRates {
                 water: rate(&water),
                 momentum: rate(&zero),
+                direct: [false, false],
             }),
             prescribed_water: None,
             water,

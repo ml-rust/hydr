@@ -16,6 +16,7 @@ mod reservoir_head;
 pub(in crate::channel::flow) mod types;
 mod wave;
 
+pub(in crate::channel::flow) use port::check_port;
 pub(in crate::channel::flow) use types::{
     DirectBoundaryFrame, EndpointInterior, NativeBoundaryTraces, PortFront,
 };

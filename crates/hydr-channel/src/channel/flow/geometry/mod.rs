@@ -6,6 +6,6 @@ mod surveyed_config;
 mod tensor;
 
 pub use definition::{ChannelGeometry, SurveyedChannelCell, TriangularChannelCell};
-pub(in crate::channel::flow) use surveyed::SurveyedGeometry;
+pub(in crate::channel::flow) use surveyed::{SurveyedGeometry, section_error};
 pub use surveyed_config::ChannelSurveyedConfig;
 pub(in crate::channel::flow) use tensor::{TensorGeometry, TriangleGeometry};

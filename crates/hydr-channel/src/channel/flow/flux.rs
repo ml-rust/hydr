@@ -26,13 +26,17 @@ use solvr::{
 };
 use std::sync::Arc;
 
-/// Two-part surveyed face rates, each from one selected point trace.
+/// Two-part surveyed face rates, each from one selected point trace or one endpoint policy.
 #[derive(Clone, Debug)]
 pub(super) struct SurveyedRates<R: Runtime<DType = DType>> {
     /// Water flux point and its radius, in m³/s.
     pub water: Parts<R>,
     /// Momentum flux point and its radius, in m⁴/s².
     pub momentum: Parts<R>,
+    /// Left and right end faces whose F64 rates come from the endpoint policy.
+    ///
+    /// Each holds `+0.0` low parts and radii. Its face points keep one F64 part.
+    pub direct: [bool; 2],
 }
 
 /// Face rates for one interval.

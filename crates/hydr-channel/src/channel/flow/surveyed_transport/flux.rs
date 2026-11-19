@@ -2,13 +2,14 @@ use super::error::riemann_error;
 use crate::channel::flow::{
     ChannelError, ChannelTensorBoundary,
     admission::Fields,
-    cfl_speeds::CflSpeeds,
+    boundary::assembly::{is_direct, numerical_range},
     conserved_update::{Parts, parts},
     context::Context,
     flux::{Flux, SurveyedRates},
     geometry::SurveyedGeometry,
     riemann_diagnostics::RiemannDiagnosticState,
     speed_memo::SpeedEntry,
+    surveyed::work::PrismaticRiemannWork,
     surveyed_points::{PrismaticPointRiemannResult, PrismaticPointTraceKind},
 };
 use numr::{
@@ -24,7 +25,10 @@ use solvr::{
     integrate::CertifiedSimpsonAlgorithms,
     optimize::{
         CertifiedMappedBisectionAlgorithms,
-        roots::{CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms},
+        roots::{
+            BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms,
+            CertifiedUpperBracketAlgorithms,
+        },
     },
 };
 use std::sync::Arc;
@@ -41,9 +45,12 @@ where
         + CertifiedSimpsonAlgorithms<R>
         + CertifiedBisectionAlgorithms<R>
         + CertifiedMappedBisectionAlgorithms<R>
-        + CertifiedUpperBracketAlgorithms<R>,
+        + CertifiedUpperBracketAlgorithms<R>
+        + BatchedBisectionAlgorithms<R>,
 {
-    /// Solve every face from the two-part cell points.
+    /// Solve every face outside the direct end faces from the two-part cell points.
+    ///
+    /// The caller must leave at least one such face.
     pub(super) fn surveyed_point_riemann(
         &self,
         geometry: &SurveyedGeometry<R>,
@@ -52,10 +59,11 @@ where
         right: &ChannelTensorBoundary<R>,
     ) -> Result<PrismaticPointRiemannResult<R>, ChannelError> {
         let faces = self.surveyed_faces(geometry, fields, left, right)?;
+        let (start, len) = numerical_range(self.count(), left, right);
         geometry
             .section
             .riemann_flux_points_tensor(
-                &geometry.face_owners,
+                &geometry.face_owners.narrow(0, start, len)?,
                 &faces.left_area,
                 &faces.left_discharge,
                 &faces.right_area,
@@ -72,50 +80,115 @@ where
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
     ) -> Result<Flux<R>, ChannelError> {
+        let frame = self.surveyed_direct_frame(geometry, fields, left, right, true)?;
+        let frame = frame.as_ref();
+        let (start, len) = numerical_range(self.count(), left, right);
         // A kept candidate evaluation of these exact operands holds this solve and its speeds.
         let key = self.speed_key(fields, left, right)?;
-        let kept = self.speed_memo.find(&key, true);
+        let kept = self.speed_memo.find(&key, len > 0);
         let result = match kept.as_ref().and_then(|entry| entry.riemann.clone()) {
-            Some(result) => result,
-            None => Arc::new(self.surveyed_point_riemann(geometry, fields, left, right)?),
+            Some(result) => Some(result),
+            None if len > 0 => Some(Arc::new(
+                self.surveyed_point_riemann(geometry, fields, left, right)?,
+            )),
+            None => None,
         };
-        let work = result.work();
-        let water_flux_width = self.surveyed_width(result.water_flux_bound_m3_per_s())?;
-        let momentum_flux_width = self.surveyed_width(result.momentum_flux_bound_m4_per_s2())?;
-        let water = self.surveyed_wall_water(&result, left, right)?;
-        let momentum = parts(result.momentum_flux_m4_per_s2());
+        let numerical = result
+            .as_ref()
+            .map(|result| {
+                Ok::<_, ChannelError>((
+                    self.surveyed_wall_water(result, left, right, start)?,
+                    parts(result.momentum_flux_m4_per_s2()),
+                    self.surveyed_width(result.water_flux_bound_m3_per_s())?,
+                    self.surveyed_width(result.momentum_flux_bound_m4_per_s2())?,
+                ))
+            })
+            .transpose()?;
+        let (water, momentum, water_width, momentum_width) = match &numerical {
+            Some((water, momentum, water_width, momentum_width)) => (
+                Some(water),
+                Some(momentum),
+                Some(water_width),
+                Some(momentum_width),
+            ),
+            None => (None, None, None, None),
+        };
+        let water =
+            self.surveyed_direct_parts(frame, water, frame.map(|f| &f.longitudinal_water))?;
+        let momentum =
+            self.surveyed_direct_parts(frame, momentum, frame.map(|f| &f.momentum_flux_m4_per_s2))?;
+        let water_flux_width = self.assemble_boundary_faces(
+            frame,
+            water_width,
+            frame.map(|f| &f.water_flux_width_m3_per_s),
+        )?;
+        let momentum_flux_width = self.assemble_boundary_faces(
+            frame,
+            momentum_width,
+            frame.map(|f| &f.momentum_flux_width_m4_per_s2),
+        )?;
         let (speed, dry_fronts) = match kept {
             Some(entry) => (entry.speeds.outer.clone(), entry.speeds.fronts.clone()),
             None => {
-                let speeds = CflSpeeds {
-                    outer: self.surveyed_face_speeds(result.wave_speed_m_per_s())?,
-                    internal: None,
-                    fronts: self.surveyed_fronts(geometry, fields, left, right)?,
-                };
+                let speeds = self.surveyed_cfl_speeds(
+                    geometry,
+                    fields,
+                    left,
+                    right,
+                    frame,
+                    result.as_deref(),
+                )?;
                 let entry = SpeedEntry {
                     speeds: speeds.clone(),
-                    riemann: Some(Arc::clone(&result)),
+                    riemann: result.clone(),
                 };
                 self.speed_memo.keep(key, entry);
                 (speeds.outer, speeds.fronts)
             }
         };
         let zero = self.constant(&water.high, 0.0)?;
+        // Direct rates carry their detected underflow bounds on the F64 path.
+        let numerical_zero = numerical
+            .as_ref()
+            .map(|(water, ..)| self.constant(&water.high, 0.0))
+            .transpose()?;
+        let water_bound = self.assemble_boundary_faces(
+            frame,
+            numerical_zero.as_ref(),
+            frame.map(|f| &f.water_underflow_bound),
+        )?;
+        let momentum_bound = self.assemble_boundary_faces(
+            frame,
+            numerical_zero.as_ref(),
+            frame.map(|f| &f.momentum_underflow_bound),
+        )?;
+        let prescribed_water =
+            self.prescribed_water_mask(frame, numerical_zero.as_ref(), left, right)?;
+        let work = result
+            .as_ref()
+            .map_or_else(PrismaticRiemannWork::default, |r| r.work());
+        let root_iterations = work
+            .maximum_root_iterations
+            .max(frame.map_or(0, |f| f.root_iterations));
         Ok(Flux {
-            boundary_traces: None,
-            prescribed_water: None,
+            boundary_traces: frame.and_then(|f| f.traces.clone()),
+            prescribed_water,
             water: water.high.clone(),
             momentum: momentum.high.clone(),
-            surveyed: Some(SurveyedRates { water, momentum }),
+            surveyed: Some(SurveyedRates {
+                water,
+                momentum,
+                direct: [is_direct(left), is_direct(right)],
+            }),
             speed,
             internal_speed: None,
             dry_fronts,
-            water_bound: zero.clone(),
-            momentum_bound: zero.clone(),
+            water_bound,
+            momentum_bound,
             riemann: Some(RiemannDiagnosticState {
                 water_flux_width,
                 momentum_flux_width,
-                root_iterations: work.maximum_root_iterations,
+                root_iterations,
                 surveyed_work: Some(work),
             }),
             left_pressure: zero.clone(),
@@ -131,12 +204,14 @@ where
 
     /// Selected water point with every wall component set to `+0.0`.
     ///
-    /// A wall face must enclose zero water flux and select a star or dry trace.
+    /// A wall face must enclose zero water flux and select a star or dry trace. The result
+    /// holds the faces from `start` on. A wall end is never direct, so it lies in that range.
     fn surveyed_wall_water(
         &self,
         result: &PrismaticPointRiemannResult<R>,
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
+        start: usize,
     ) -> Result<Parts<R>, ChannelError> {
         let c = &self.client;
         let bounds = result.water_flux_bound_m3_per_s();
@@ -145,17 +220,18 @@ where
             if !matches!(boundary, ChannelTensorBoundary::Wall) {
                 continue;
             }
-            let zero = self.constant(&water.high.narrow(0, face, 1)?, 0.0)?;
+            let lane = face - start;
+            let zero = self.constant(&water.high.narrow(0, lane, 1)?, 0.0)?;
             let contains_zero = c.mul(
-                &c.le(&bounds.lower().narrow(0, face, 1)?, &zero)?,
-                &c.ge(&bounds.upper().narrow(0, face, 1)?, &zero)?,
+                &c.le(&bounds.lower().narrow(0, lane, 1)?, &zero)?,
+                &c.ge(&bounds.upper().narrow(0, lane, 1)?, &zero)?,
             )?;
             if !self.all(&contains_zero)? {
                 return Err(ChannelError::numerical(format!(
                     "surveyed wall face={face} excludes zero water flux: inspect reflected Riemann arithmetic"
                 )));
             }
-            let code = result.trace_kind().narrow(0, face, 1)?.item::<i64>()?;
+            let code = result.trace_kind().narrow(0, lane, 1)?.item::<i64>()?;
             let kind = PrismaticPointTraceKind::from_code(code);
             if !matches!(
                 kind,
@@ -166,9 +242,9 @@ where
                 )));
             }
             water = Parts {
-                high: self.replace_face(&water.high, face, &zero)?,
-                low: self.replace_face(&water.low, face, &zero)?,
-                bound: self.replace_face(&water.bound, face, &zero)?,
+                high: self.replace_face(&water.high, lane, &zero)?,
+                low: self.replace_face(&water.low, lane, &zero)?,
+                bound: self.replace_face(&water.bound, lane, &zero)?,
             };
         }
         Ok(water)
@@ -181,7 +257,7 @@ where
         face: usize,
         replacement: &Tensor<R>,
     ) -> Result<Tensor<R>, ChannelError> {
-        let faces = self.count() + 1;
+        let faces = value.numel();
         let mut pieces = Vec::with_capacity(3);
         if face > 0 {
             pieces.push(value.narrow(0, 0, face)?);

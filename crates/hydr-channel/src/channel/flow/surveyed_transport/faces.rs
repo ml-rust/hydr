@@ -2,6 +2,7 @@ use super::error::boundary_error;
 use crate::channel::flow::{
     ChannelError, ChannelTensorBoundary,
     admission::Fields,
+    boundary::assembly::numerical_range,
     conserved_point::ConservedPoint,
     conserved_update::{exact_over, expanded},
     context::Context,
@@ -41,7 +42,9 @@ where
         + CertifiedSimpsonAlgorithms<R>
         + CertifiedBisectionAlgorithms<R>,
 {
-    /// Face states from the cell points. Exterior states are F64 with a `+0.0` low part.
+    /// Face states of the faces that a point Riemann problem solves, from the cell points.
+    ///
+    /// Exterior states are F64 with a `+0.0` low part. Direct end faces are left out.
     pub(super) fn surveyed_faces(
         &self,
         geometry: &SurveyedGeometry<R>,
@@ -50,11 +53,11 @@ where
         right: &ChannelTensorBoundary<R>,
     ) -> Result<Faces<R>, ChannelError> {
         let (area, discharge) = self.surveyed_states(geometry, fields, left, right)?;
-        let faces = self.count() + 1;
-        let side = |point: &ConservedPoint<R>, start: usize| {
+        let (first, faces) = numerical_range(self.count(), left, right);
+        let side = |point: &ConservedPoint<R>, offset: usize| {
             Ok::<_, ChannelError>(ConservedPoint {
-                high: point.high.narrow(0, start, faces)?,
-                low: point.low.narrow(0, start, faces)?,
+                high: point.high.narrow(0, first + offset, faces)?,
+                low: point.low.narrow(0, first + offset, faces)?,
             })
         };
         self.surveyed_face_points(
@@ -66,6 +69,9 @@ where
     }
 
     /// Area and discharge of the left exterior, every cell, then the right exterior.
+    ///
+    /// A direct end takes its rates from the policy. Its exterior holds a copy of the end cell,
+    /// which no point Riemann problem reads and whose dry front the direct frame replaces.
     pub(super) fn surveyed_states(
         &self,
         geometry: &SurveyedGeometry<R>,
@@ -121,6 +127,19 @@ where
         let c = &self.client;
         let cell_part = |value: &Tensor<R>| value.narrow(0, cell, 1);
         match boundary {
+            ChannelTensorBoundary::Stage { .. }
+            | ChannelTensorBoundary::Discharge { .. }
+            | ChannelTensorBoundary::QuiescentReservoir { .. }
+            | ChannelTensorBoundary::FluxPort(_) => Ok((
+                ConservedPoint {
+                    high: cell_part(&fields.area_point.high)?,
+                    low: cell_part(&fields.area_point.low)?,
+                },
+                ConservedPoint {
+                    high: cell_part(&fields.discharge_point.high)?,
+                    low: cell_part(&fields.discharge_point.low)?,
+                },
+            )),
             ChannelTensorBoundary::Wall => Ok((
                 ConservedPoint {
                     high: cell_part(&fields.area_point.high)?,
@@ -152,9 +171,6 @@ where
                     ConservedPoint::from_high(&discharge)?,
                 ))
             }
-            _ => Err(ChannelError::input(format!(
-                "surveyed boundary face={face} requires Wall or complete Exterior depth and velocity: replace scalar characteristic controls"
-            ))),
         }
     }
 }

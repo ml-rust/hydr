@@ -133,7 +133,6 @@ pub fn refusal(kind: Kind, boundary: BoundaryKind) -> Option<&'static str> {
             Kind::Surveyed,
             BoundaryKind::Stage | BoundaryKind::Discharge | BoundaryKind::QuiescentReservoir,
         ) => Some("surveyed-scalar-boundaries"),
-        (Kind::Surveyed, BoundaryKind::FluxPort) => Some("surveyed-flux-port"),
         _ => None,
     }
 }

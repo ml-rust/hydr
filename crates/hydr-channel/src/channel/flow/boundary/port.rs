@@ -7,8 +7,8 @@
 
 use super::{EndpointInterior, PortFront};
 use crate::channel::flow::{
-    ChannelError, ChannelTensorBoundary, admission::Fields, context::Context,
-    geometry::TensorGeometry, triangular::envelope::lower,
+    ChannelError, ChannelTensorBoundary, ChannelTensorFluxPort, admission::Fields,
+    context::Context, geometry::TensorGeometry, triangular::envelope::lower,
 };
 use numr::{
     dtype::DType,
@@ -87,7 +87,7 @@ where
 
     /// Rejects a port speed below the end cell's `|u| + c` and export from a dry end cell.
     ///
-    /// `fields` holds the accepted-start cell averages. `interior` holds the end-cell side of
+    /// Rectangular and triangular reaches only. `fields` holds the accepted-start cell averages. `interior` holds the end-cell side of
     /// each end face. The speed must bound both states. The required speed is rounded down, so
     /// a provider that rounds the same characteristic speed is not rejected.
     pub(in crate::channel::flow) fn check_flux_ports(
@@ -105,8 +105,8 @@ where
             TensorGeometry::Rectangular(_) => gravity,
             TensorGeometry::Triangular(_) => gravity * 0.5,
             TensorGeometry::Surveyed(_) => {
-                return Err(ChannelError::input(
-                    "surveyed FluxPort endpoint is unsupported: supply Wall or complete Exterior depth and velocity",
+                return Err(ChannelError::numerical(
+                    "surveyed flux ports take the hydraulic-depth speed check: inspect surveyed flux dispatch",
                 ));
             }
         };
@@ -129,27 +129,40 @@ where
             )?;
             let required = c.maximum(&average, &face)?;
             self.finite(&required, "flux port end cell characteristic speed")?;
-            let required = required.item::<f64>()?;
-            let speed = port.signal_speed_m_per_s().item::<f64>()?;
-            if speed < required {
-                return Err(ChannelError::input(format!(
-                    "flux port {} speed={speed} is below the end cell |u|+c={required}: supply a signal-speed bound of at least the end cell characteristic speed",
-                    side(endpoint)
-                ))
-                .at(cell));
-            }
-            let water = port.outward_water_rate_m3_per_s().item::<f64>()?;
-            let area = fields.area.narrow(0, cell, 1)?.item::<f64>()?;
-            if water > 0.0 && area <= 0.0 {
-                return Err(ChannelError::input(format!(
-                    "flux port {} exports water={water} m³/s from a dry end cell: supply zero or entering water at a dry end",
-                    side(endpoint)
-                ))
-                .at(cell));
-            }
+            let dry = fields.area.narrow(0, cell, 1)?.item::<f64>()? <= 0.0;
+            check_port(endpoint, cell, port, required.item::<f64>()?, dry)?;
         }
         Ok(())
     }
+}
+
+/// Rejects a port speed below `required` and export from a `dry` end cell.
+///
+/// `required` is a downward-rounded lower bound of the end cell's `|u| + c`.
+pub(in crate::channel::flow) fn check_port<R: Runtime<DType = DType>>(
+    endpoint: usize,
+    cell: usize,
+    port: &ChannelTensorFluxPort<R>,
+    required: f64,
+    dry: bool,
+) -> Result<(), ChannelError> {
+    let speed = port.signal_speed_m_per_s().item::<f64>()?;
+    if speed < required {
+        return Err(ChannelError::input(format!(
+            "flux port {} speed={speed} is below the end cell |u|+c={required}: supply a signal-speed bound of at least the end cell characteristic speed",
+            side(endpoint)
+        ))
+        .at(cell));
+    }
+    let water = port.outward_water_rate_m3_per_s().item::<f64>()?;
+    if water > 0.0 && dry {
+        return Err(ChannelError::input(format!(
+            "flux port {} exports water={water} m³/s from a dry end cell: supply zero or entering water at a dry end",
+            side(endpoint)
+        ))
+        .at(cell));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

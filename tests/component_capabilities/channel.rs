@@ -285,12 +285,8 @@ fn rejection_cases(kind: Kind, id: &str) -> Option<Vec<(Outcome, Variant, &'stat
                 )
             })
             .collect(),
-        "surveyed-scalar-boundaries" | "surveyed-flux-port" => {
-            let fragment = if id == "surveyed-flux-port" {
-                "surveyed FluxPort endpoint is unsupported"
-            } else {
-                "surveyed scalar boundary is unsupported"
-            };
+        "surveyed-scalar-boundaries" => {
+            let fragment = "surveyed scalar boundary is unsupported";
             let samples = match samples() {
                 Ok(samples) => samples,
                 Err(error) => return Some(vec![(Err(error.into()), Variant::Input, fragment)]),

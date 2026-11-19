@@ -24,17 +24,38 @@ pub(in crate::channel::flow) struct SurveyedFaces<R: Runtime<DType = DType>> {
 /// Integrate two-part face rates over `dt` and form cell transfers from the selected face points.
 ///
 /// Each face `bound` holds the rate radius carried through the product.
+///
+/// `direct` marks the left and right end faces whose rates come from the endpoint policy.
+/// Such a face point keeps one F64 part, `RN(rate · dt)`, with a `+0.0` low part. Its exact
+/// product tail joins the face `bound`. The end cell then receives exactly the F64 volume
+/// that a coordinator or a pool shares.
 pub(in crate::channel::flow) fn surveyed_faces<R>(
     client: &R::Client,
     water_rate: &Parts<R>,
     momentum_rate: &Parts<R>,
     dt: f64,
     count: usize,
+    direct: [bool; 2],
 ) -> Result<SurveyedFaces<R>, ChannelError>
 where
     R: Runtime<DType = DType>,
     R::Client: ExpansionClient<R>,
 {
+    let faces = water_rate.high.numel();
+    let single = if direct.contains(&true) {
+        let mut mask = vec![0.0; faces];
+        if direct[0] {
+            mask[0] = 1.0;
+        }
+        if direct[1] {
+            mask[faces - 1] = 1.0;
+        }
+        let mask = Tensor::from_slice(&mask, &[faces], client.device())?;
+        let zero = Tensor::zeros(&[faces], DType::F64, client.device())?;
+        Some((client.ne(&mask, &zero)?, zero))
+    } else {
+        None
+    };
     expanded(client, "surveyed shared face impulses", |a| {
         let duration =
             Tensor::full_scalar(water_rate.high.shape(), DType::F64, dt, client.device())?;
@@ -42,10 +63,25 @@ where
         let mut product = |rate: &Parts<R>| -> ArithmeticResult<_> {
             let rate = bounded(a, rate)?;
             let raw = a.expansion_mul(&rate, &duration)?;
+            let face = match &single {
+                None => parts(&raw),
+                Some((mask, zero)) => {
+                    let c = a.client();
+                    // Radius plus product tail, rounded upward.
+                    let radius = a.point(raw.abs_error())?;
+                    let tail = a.point(&c.abs(raw.low())?)?;
+                    let charged = a.add(&radius, &tail)?;
+                    Parts {
+                        high: raw.high().clone(),
+                        low: c.where_cond(mask, zero, raw.low())?,
+                        bound: c.where_cond(mask, charged.upper(), raw.abs_error())?,
+                    }
+                }
+            };
             // The center becomes the shared face point. Its radius is charged separately.
-            let point = exact(a, raw.high(), raw.low())?;
+            let point = exact(a, &face.high, &face.low)?;
             let transfer = transfer(a, &point, count)?;
-            Ok((parts(&raw), parts(&transfer)))
+            Ok((face, parts(&transfer)))
         };
         let (volume, water_delta) = product(water_rate)?;
         let (momentum, momentum_delta) = product(momentum_rate)?;
@@ -191,6 +227,7 @@ mod tests {
             &rate::<R>(&client, &zero, &zero, &zero)?,
             1.0,
             1,
+            [false, false],
         )?;
         assert_eq!(values(&faces.volume.high)?, vec![0.0, -impulse]);
         assert_eq!(values(&faces.volume.bound)?, vec![0.0, 0.0]);
@@ -225,6 +262,7 @@ mod tests {
             &self::rate::<R>(&client, &zero, &zero, &zero)?,
             rate,
             1,
+            [false, false],
         )?;
         let (high, low) = (
             values(&faces.volume.high)?[0],
@@ -244,7 +282,7 @@ mod tests {
         let (high, low, radius, dt) = (3.0, 2f64.powi(-60), 2f64.powi(-70), 0.1);
         let water = rate::<R>(&client, &[high, -high], &[low, -low], &[radius, radius])?;
         let momentum = rate::<R>(&client, &[-high, 0.0], &[-low, 0.0], &[radius, 0.0])?;
-        let faces = surveyed_faces::<R>(&client, &water, &momentum, dt, 1)?;
+        let faces = surveyed_faces::<R>(&client, &water, &momentum, dt, 1, [false, false])?;
         let direct = expanded(&client, "test direct face products", |a| {
             let duration =
                 Tensor::full_scalar(water.high.shape(), DType::F64, dt, client.device())?;
@@ -317,8 +355,81 @@ mod tests {
         Ok(())
     }
 
+    /// Direct end faces keep `RN(rate · dt)` and charge the product tail to their bound.
+    fn single_part_ends<R>(client: R::Client) -> TestResult
+    where
+        R: Runtime<DType = DType>,
+        R::Client: ExpansionClient<R>,
+    {
+        let bits = |v: &Tensor<R>| -> TestResult<Vec<u64>> {
+            Ok(values(v)?.iter().map(|x| x.to_bits()).collect())
+        };
+        let (rate, dt) = (1.0 + f64::EPSILON, 1.0 + 2.0 * f64::EPSILON);
+        let (high, low, radius) = (3.0, 2f64.powi(-60), 2f64.powi(-70));
+        // Faces 0 and 2 are direct ends with one-part rates. Face 1 is a two-part interior face.
+        let water = rate_parts::<R>(&client, [rate, high, -rate], [0.0, low, 0.0], radius)?;
+        let momentum = rate_parts::<R>(&client, [-rate, high, rate], [0.0, low, 0.0], radius)?;
+        let direct = surveyed_faces::<R>(&client, &water, &momentum, dt, 2, [true, true])?;
+        let riemann = surveyed_faces::<R>(&client, &water, &momentum, dt, 2, [false, false])?;
+        let product = rate * dt;
+        let tail = rate.mul_add(dt, -product);
+        assert_ne!(tail, 0.0);
+        for (face, riemann, sign) in [
+            (&direct.volume, &riemann.volume, 1.0),
+            (&direct.momentum, &riemann.momentum, -1.0),
+        ] {
+            let high = values(&face.high)?;
+            let low = values(&face.low)?;
+            let bound = values(&face.bound)?;
+            for (index, signed) in [(0, sign * product), (2, -sign * product)] {
+                assert_eq!(high[index].to_bits(), signed.to_bits());
+                assert_eq!(low[index].to_bits(), 0.0_f64.to_bits());
+                assert!(bound[index] >= tail.abs() && bound[index] <= 2.0 * tail.abs());
+            }
+            // The interior face keeps the exact two-part product of the Riemann rule.
+            for (actual, expected) in [
+                (&face.high, &riemann.high),
+                (&face.low, &riemann.low),
+                (&face.bound, &riemann.bound),
+            ] {
+                assert_eq!(bits(actual)?[1], bits(expected)?[1]);
+            }
+            assert_eq!(values(&riemann.low)?[0], tail * sign);
+        }
+        // One cell between two direct ends receives exactly both one-part end volumes.
+        let ends = self::rate::<R>(&client, &[rate, -rate], &[0.0, 0.0], &[0.0, 0.0])?;
+        let cell = surveyed_faces::<R>(&client, &ends, &ends, dt, 1, [true, true])?;
+        for delta in [&cell.water_delta, &cell.momentum_delta] {
+            assert_eq!(values(&delta.high)?[0].to_bits(), (2.0 * product).to_bits());
+            assert_eq!(values(&delta.low)?[0].to_bits(), 0.0_f64.to_bits());
+            assert_eq!(values(&delta.bound)?[0], 0.0);
+        }
+        let riemann = surveyed_faces::<R>(&client, &ends, &ends, dt, 1, [false, false])?;
+        assert_eq!(values(&riemann.water_delta.low)?[0], 2.0 * tail);
+        Ok(())
+    }
+
+    /// Three face rates with one radius on the interior face only.
+    fn rate_parts<R>(
+        client: &R::Client,
+        high: [f64; 3],
+        low: [f64; 3],
+        radius: f64,
+    ) -> TestResult<Parts<R>>
+    where
+        R: Runtime<DType = DType>,
+        R::Client: ExpansionClient<R>,
+    {
+        rate::<R>(client, &high, &low, &[0.0, radius, 0.0])
+    }
+
     fn cpu() -> CpuClient {
         CpuClient::new(CpuDevice::new())
+    }
+
+    #[test]
+    fn cpu_direct_end_faces_keep_one_part_and_charge_the_product_tail() -> TestResult {
+        single_part_ends::<CpuRuntime>(cpu())
     }
 
     #[test]
@@ -345,6 +456,11 @@ mod tests {
     mod cuda {
         use super::*;
         use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+
+        #[test]
+        fn cuda_direct_end_faces_keep_one_part_and_charge_the_product_tail() -> TestResult {
+            single_part_ends::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+        }
 
         #[test]
         fn cuda_cap_cell_retains_a_sub_ulp_shared_impulse() -> TestResult {

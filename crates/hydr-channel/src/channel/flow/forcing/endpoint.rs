@@ -91,22 +91,12 @@ where
         }
         match self {
             Self::Wall => Ok(()),
-            Self::FluxPort(port) => {
-                if matches!(
-                    &definition.geometry,
-                    ChannelGeometry::PrismaticSurveyed { .. }
-                ) {
-                    return Err(reject(
-                        "surveyed FluxPort endpoint is unsupported: supply Wall or complete Exterior depth and velocity",
-                    ));
+            Self::FluxPort(port) => port.check(c).map_err(|error| match error {
+                ChannelError::InvalidInput { context, .. } => {
+                    ChannelError::input(context).at(index)
                 }
-                port.check(c).map_err(|error| match error {
-                    ChannelError::InvalidInput { context, .. } => {
-                        ChannelError::input(context).at(index)
-                    }
-                    other => other,
-                })
-            }
+                other => other,
+            }),
             Self::Stage { elevation_m } => {
                 check_scalar(c, elevation_m, "stage elevation")?;
                 if !finite(c, elevation_m)? {
