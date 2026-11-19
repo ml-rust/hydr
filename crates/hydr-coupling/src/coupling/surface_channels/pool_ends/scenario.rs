@@ -1,11 +1,12 @@
 //! Pool-end test fixtures: the structure tanks with the reach's right end on a constant-area pond.
 
 use super::SurfaceChannelPoolEnd;
-use crate::channel::{ChannelBoundary, ChannelEnd, ChannelLateralInput};
+use crate::channel::{ChannelBoundary, ChannelEnd, ChannelGeometry, ChannelLateralInput};
+use crate::coupling::channel_pools::three_band_reach;
 use crate::coupling::surface_channels::pools::SurfaceChannelPools;
-use crate::coupling::surface_channels::pools::scenario::{declaration, pond};
+use crate::coupling::surface_channels::pools::scenario::{declaration, pond, with_nodes};
 use crate::coupling::surface_channels::structures::scenario::{
-    Batch, REACH, TestResult, inflow, withdrawal,
+    Batch, DATUM, REACH, Tanks, TestResult, client, inflow, withdrawal,
 };
 use crate::coupling::surface_channels::{
     SurfaceChannelError, SurfaceChannelForcingInterval, SurfaceChannelReachForcing,
@@ -35,6 +36,31 @@ pub fn ponded(ends: Vec<SurfaceChannelPoolEnd>) -> TestResult<SurfaceChannelPool
     let mut pools = declaration(vec![pond("pond", 0.0, POND_AREA, 2.0)?], false, Vec::new());
     pools.ends = ends;
     Ok(pools)
+}
+
+/// The batch of one three-band surveyed reach cell at water depth `depth` and the pond at
+/// volume `pond_volume`, with `pools` owning the reach's right end.
+///
+/// The cell is 2 m long. Its bottom band is 2 m wide with unit side slopes, so below depth 1 m
+/// it holds `2 * depth * (2 + depth)`.
+pub fn surveyed(
+    depth: f64,
+    pond_volume: f64,
+    pools: SurfaceChannelPools,
+) -> Result<Batch, SurfaceChannelError> {
+    let input = |error: Box<dyn std::error::Error>| SurfaceChannelError::Input(error.to_string());
+    let (mut setup, mut initial) = Tanks::at(0.0, depth).parts().map_err(input)?;
+    let mut definition = three_band_reach(1, 2.0);
+    definition.vertical_datum = DATUM.into();
+    if let ChannelGeometry::PrismaticSurveyed { profile, .. } = &mut definition.geometry {
+        profile.vertical_datum = DATUM.into();
+    }
+    definition.lateral_bindings = std::mem::take(&mut setup.reaches[0].definition.lateral_bindings);
+    definition.config = setup.reaches[0].definition.config.clone();
+    setup.reaches[0].definition = definition;
+    initial.reaches[0].1.volume_m3 = vec![2.0 * depth * (2.0 + depth)];
+    let (setup, initial) = with_nodes((setup, initial), pools, &[pond_volume], Vec::new());
+    Batch::new(client(), setup, initial)
 }
 
 /// Forcing of one interval toward `end` with `right` at the reach's right end and caller

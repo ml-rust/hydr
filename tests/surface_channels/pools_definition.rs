@@ -182,20 +182,16 @@ fn a_reach_end_has_one_owner() -> Result {
     Ok(())
 }
 
-/// Frozen criterion: a pool end on a surveyed reach rejects with `surveyed-pool-end`.
+/// Frozen criterion: a pool end on a surveyed reach admits and holds that one pool end.
 #[test]
-fn surveyed_reaches_take_no_pool_end() -> Result {
+fn surveyed_reaches_take_a_pool_end() -> Result {
     let mut case = ponded()?;
     case.pool_ends = vec![pool_end("outfall", ChannelEnd::Right, "pond")];
     let (mut setup, initial) = case.parts()?;
     setup.reaches[0].definition = surveyed_reach(0.0);
-    match Batch::new(crate::runtime::client(), setup, initial) {
-        Err(SurfaceChannelError::Input(message)) => {
-            assert!(message.starts_with("surveyed-pool-end"), "{message}");
-            Ok(())
-        }
-        other => Err(format!("a surveyed pool end rejects: {other:?}").into()),
-    }
+    let batch = Batch::new(crate::runtime::client(), setup, initial)?;
+    assert_eq!(batch.pool_end_ledgers()?.len(), 1);
+    Ok(())
 }
 
 /// Frozen criterion: support for another pool, a zero-volume stage off the curve origin, a

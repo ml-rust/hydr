@@ -34,7 +34,7 @@ use crate::channel::ChannelEnd;
 pub struct SurfaceChannelPoolEnd {
     /// Unique nonempty pool-end identity, distinct from every link, port, structure, and pool.
     pub id: String,
-    /// Exact identity of a rectangular or triangular setup reach.
+    /// Exact identity of a setup reach of any geometry.
     pub reach_id: String,
     /// Reach end the pool owns. No caller policy and no port binds it.
     pub end: ChannelEnd,
@@ -70,7 +70,7 @@ pub(super) struct CheckedPoolEnd {
 #[cfg(test)]
 mod tests {
     use super::scenario::{
-        POND_AREA, advance, check_paired, end_volumes, forcing, ponded, pool_end,
+        POND_AREA, advance, check_paired, end_volumes, forcing, ponded, pool_end, surveyed,
     };
     use crate::channel::ChannelBoundary;
     use crate::coupling::surface_channels::SurfaceChannelError;
@@ -248,6 +248,91 @@ mod tests {
                 "{message}"
             );
         }
+        Ok(())
+    }
+
+    /// A three-band surveyed reach cell fills the pond through its right end, and the transfer
+    /// then reverses.
+    ///
+    /// Frozen criteria, fixed before the first run:
+    /// - Every one of 20 intervals passes its mass bound, every pairing, and the composite balance.
+    /// - Every interval's pool-end volume equals the reach end volume bit for bit.
+    /// - The first 8 intervals carry more than 1e-6 m³ into the pond in some interval.
+    /// - The next 12 intervals carry more than 1e-6 m³ out of the pond in some interval.
+    /// - Each interval's pond volume change equals its pool-end volume within 1e-9 m³.
+    #[test]
+    fn a_surveyed_reach_end_fills_a_pool_then_reverses() -> TestResult {
+        let start = 0.45 * POND_AREA;
+        let pools = ponded(vec![pool_end("outfall", "pond")])?;
+        let mut batch = surveyed(0.5, start, pools)?;
+        let mut largest_in = 0.0_f64;
+        let mut largest_out = 0.0_f64;
+        for interval in 0..20 {
+            let before = volumes(&batch)?[0];
+            let rates = if interval < 8 {
+                [0.02, 0.0]
+            } else {
+                [0.0, 0.04]
+            };
+            batch = advance(&batch, DT, rates)?;
+            check(&batch, &[0.0])?;
+            check_paired(&batch)?;
+            let volume = end_volumes(&batch)?[0];
+            let change = volumes(&batch)?[0] - before;
+            assert!(
+                (change - volume).abs() <= 1e-9,
+                "interval={interval}, change={change}, volume={volume}"
+            );
+            largest_in = largest_in.max(if interval < 8 { volume } else { 0.0 });
+            largest_out = largest_out.max(if interval < 8 { 0.0 } else { -volume });
+        }
+        assert!(largest_in > 1e-6, "largest fill={largest_in}");
+        assert!(largest_out > 1e-6, "largest drain={largest_out}");
+        Ok(())
+    }
+
+    /// A surveyed reach cell and a pond at one stage stay at rest.
+    ///
+    /// Frozen criteria, fixed before the first run:
+    /// - Over 16 intervals with no caller input, the pond volume keeps its start bits.
+    /// - The reach cell state keeps its start value in every interval.
+    /// - Every pool-end volume is zero.
+    #[test]
+    fn a_surveyed_pool_end_at_rest_stays_at_rest() -> TestResult {
+        let start = 0.5 * POND_AREA;
+        let pools = ponded(vec![pool_end("outfall", "pond")])?;
+        let mut batch = surveyed(0.5, start, pools)?;
+        let cell = batch.reaches[0].state()?;
+        for _ in 0..16 {
+            batch = advance(&batch, DT, [0.0, 0.0])?;
+            check(&batch, &[0.0])?;
+            check_paired(&batch)?;
+            assert_eq!(volumes(&batch)?[0].to_bits(), start.to_bits());
+            assert_eq!(batch.reaches[0].state()?, cell);
+            assert_eq!(end_volumes(&batch)?[0].to_bits(), 0.0_f64.to_bits());
+        }
+        Ok(())
+    }
+
+    /// A surveyed reach cell with no water rejects at the accepted start.
+    ///
+    /// Frozen criteria, fixed before the first run:
+    /// - The first trial rejects with `pool-end-regime` and names the pool end.
+    /// - The batch time, the pond volume, and the reach cell state keep their values.
+    #[test]
+    fn a_dry_surveyed_pool_end_rejects() -> TestResult {
+        let pools = ponded(vec![pool_end("outfall", "pond")])?;
+        let volume = 0.45 * POND_AREA;
+        let batch = surveyed(0.0, volume, pools)?;
+        let cell = batch.reaches[0].state()?;
+        let message = trial_rejection(&batch, None)?;
+        assert!(
+            message.starts_with("pool-end-regime") && message.contains("\"outfall\""),
+            "{message}"
+        );
+        assert_eq!(batch.time().to_bits(), 0.0_f64.to_bits());
+        assert_eq!(volumes(&batch)?[0].to_bits(), volume.to_bits());
+        assert_eq!(batch.reaches[0].state()?, cell);
         Ok(())
     }
 }

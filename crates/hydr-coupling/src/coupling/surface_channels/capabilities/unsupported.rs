@@ -134,12 +134,6 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
         SURFACE_CHANNELS_DOC,
     ),
     unsupported(
-        "surveyed-pool-end",
-        UnsupportedReason::RejectedByAdmission,
-        "A pool end on a surveyed reach rejects.",
-        SURFACE_CHANNELS_DOC,
-    ),
-    unsupported(
         "pool-support",
         UnsupportedReason::RejectedByAdmission,
         "Pool support, source policies, or inflows that differ from the pools, a repeated storage support, a zero-volume stage off the curve origin, or a pool that joins no structure and no pool end rejects.",

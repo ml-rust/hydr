@@ -3,7 +3,7 @@
 //! Each rejection names its capability entry first.
 
 use super::{CheckedPoolEnd, SurfaceChannelPoolEnd};
-use crate::channel::{ChannelEnd, ChannelGeometry};
+use crate::channel::ChannelEnd;
 use crate::coupling::links::cutoffs::pool_attachment_admitted;
 use crate::coupling::surface_channels::bindings::channel_cells;
 use crate::coupling::surface_channels::pools::CheckedPools;
@@ -85,19 +85,6 @@ pub(in super::super) fn check_pool_ends(
             ));
         };
         let definition = &setup.reaches[reach].definition;
-        if matches!(
-            definition.geometry,
-            ChannelGeometry::PrismaticSurveyed { .. }
-        ) {
-            return Err(rejected(
-                "surveyed-pool-end",
-                id,
-                format!(
-                    "reach={:?} geometry=surveyed: surveyed reaches couple through bank links only; use a rectangular or triangular reach for a pool end",
-                    end.reach_id
-                ),
-            ));
-        }
         let cells = channel_cells(definition);
         let cell = match end.end {
             ChannelEnd::Left => 0,

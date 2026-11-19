@@ -4,7 +4,7 @@
 use crate::surface_channel_support::pools_fixture::{
     Batch, Case, PoolForcing, Result, channel, controlled_gate, controlled_pump, forcing, gate_law,
     inflow_binding, inflow_input, manual, operating, orifice_law, pond, pool, pool_end, pump_law,
-    signal, step, structure, surface, surveyed_reach, trajectory, transfer, weir_law,
+    signal, step, structure, surface, trajectory, transfer, weir_law,
 };
 use crate::surface_channels_fixture::{Outcome, construction_outcome, trial_outcome};
 use crate::surface_channels_variants::{Variant, structure_regime};
@@ -346,7 +346,6 @@ pub fn rejection_cases(id: &str) -> Option<Vec<Rejection>> {
             Input,
             "reach-end-ownership",
         )],
-        "surveyed-pool-end" => vec![(surveyed_pool_end(), Input, "surveyed-pool-end")],
         "pool-support" => vec![(
             edited(weir_case(), |c| {
                 c.structures[0].endpoint_a.node = channel();
@@ -420,15 +419,6 @@ fn capacity() -> Outcome {
         )],
     };
     trial_outcome(&batch, end, &forcing(&batch, end, &pools))
-}
-
-/// A pool end on the surveyed tank reach.
-fn surveyed_pool_end() -> Outcome {
-    let mut case = weir_case()?;
-    case.pool_ends = vec![pool_end("outfall", ChannelEnd::Right, "pond")];
-    let (mut setup, initial) = case.parts()?;
-    setup.reaches[0].definition = surveyed_reach(0.0);
-    construction_outcome(setup, initial)
 }
 
 /// `self` after a fallible edit.

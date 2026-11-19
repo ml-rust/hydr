@@ -25,9 +25,10 @@ A reach end has one owner: a caller policy, a port, or a pool end. The coordinat
 
 ### Couple a surveyed reach
 
-A surveyed reach joins the coordinator through lateral links only.
+A surveyed reach joins the coordinator through lateral links and pool ends.
 
-- Endpoints: supply `Wall` or complete `Exterior` at both ends of every interval. Any other endpoint rejects the trial with `SurfaceChannelError::Channel`.
+- Endpoints: supply `Wall` or complete `Exterior` at each end that no pool end owns, in every interval. Any other endpoint rejects the trial with `SurfaceChannelError::Channel`.
+- Pool end: the bed is the section minimum. A dry end cell at the accepted start rejects with `pool-end-regime`.
 - Bed: a surveyed cell's bed is the minimum elevation of the reach's surveyed section. The crest check and the reported stage use this bed.
 - Stage: the bed plus the depth from the reach's certified area-to-stage recovery.
 - Donor water: the lower bound of the two-part stored volume, as the reach's own step uses.
@@ -405,7 +406,6 @@ Other admission cases:
 
 | Case | Entry |
 | --- | --- |
-| Surveyed reach end | `surveyed-pool-end` |
 | Unknown reach or pool, or a reach without cells | `structure-endpoint-identity` |
 | End cell bed below the pool origin | `unobstructed-pool-connection` |
 | Port and pool end on one reach end, or two pool ends | `reach-end-ownership` |
@@ -638,14 +638,14 @@ Preserve every package field and floating-point value exactly. Follow the [persi
 | --- | --- |
 | Bank weirs between active surface cells and rectangular, triangular, or surveyed reach cells | Unobstructed connections |
 | Ports between a face line and a rectangular reach end of the face width | Ports on triangular or surveyed reach ends |
-| Surveyed reaches with `Wall` or complete `Exterior` endpoints | Surveyed reaches with any other endpoint, a port, or a pool end |
+| Surveyed reaches with `Wall` or complete `Exterior` endpoints | Surveyed reaches with any other endpoint or a port |
 | Reversal through one link, structure, pool end, or port between intervals | Normal momentum exchange through bank links, and child subcycling |
 | Surface rain, impervious land, Modified Green-Ampt soil, evaporation, and withdrawal | Device-resident forcing |
 | Caller lateral inflow and withdrawal on reaches | Runoff attachment to coordinator pools |
 | Level pools with local rain, bottom loss, evaporation, and external inflow | Pool ports. A pool holds no momentum. |
 | Weirs, submerged orifices, gates, and pumps between surface cells, channel cells, and pools | Partial orifice flow, pump priming, net positive suction head, and motor dynamics |
 | Fixed blockage scenarios with evidence | Blockage probability, inferred blockage, and geometry events over time |
-| Pool ends at a quiescent reservoir head on rectangular or triangular reaches | Dry or critical pool ends |
+| Pool ends at a quiescent reservoir head on rectangular, triangular, or surveyed reaches | Dry or critical pool ends |
 | Prescribed, actuated, and sampled-pump operation at sampled decisions | Continuous control feedback, minimum dwell, and native SWMM rules |
 | An orifice as a culvert approximation | Culvert inlet and outlet control |
 

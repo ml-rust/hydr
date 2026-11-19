@@ -181,7 +181,7 @@ pub(super) mod tests {
     }
 
     /// One frictionless three-band reach of `count` cells of `length_m`, at gravity 1.
-    fn definition(count: usize, length_m: f64) -> ChannelReachDefinition {
+    pub(in crate::coupling) fn definition(count: usize, length_m: f64) -> ChannelReachDefinition {
         ChannelReachDefinition {
             vertical_datum: DATUM.into(),
             provenance: "Explicit surveyed finite-pool reach".into(),

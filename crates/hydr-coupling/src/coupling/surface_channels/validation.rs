@@ -132,7 +132,6 @@ impl SurfaceChannelDefinition {
     /// - an empty or repeated identity, one equal to a link, port, structure, or pool identity,
     ///   or empty evidence (`duplicate-links`, `missing-link-evidence`)
     /// - an unknown reach or pool, or a reach without cells (`structure-endpoint-identity`)
-    /// - a surveyed reach (`surveyed-pool-end`)
     /// - an end cell bed below the pool origin (`unobstructed-pool-connection`)
     /// - a reach end with a port or a second pool end (`reach-end-ownership`)
     /// - a nonfinite or negative entrance loss (`pool-end-regime`)

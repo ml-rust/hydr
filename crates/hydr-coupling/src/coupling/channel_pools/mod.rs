@@ -30,6 +30,8 @@ mod topology;
 mod trial;
 
 pub use batch::ChannelPoolBatch;
+#[cfg(test)]
+pub(in crate::coupling) use batch::tests::definition as three_band_reach;
 pub use capabilities::channel_pool_capabilities;
 pub use definition::{
     ChannelPoolConfig, ChannelPoolConnection, ChannelPoolEndpoint, ChannelPoolInitialState,
