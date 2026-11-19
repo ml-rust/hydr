@@ -25,45 +25,34 @@ pub(in crate::channel::flow) struct SurveyedFaces<R: Runtime<DType = DType>> {
 ///
 /// Each face `bound` holds the rate radius carried through the product.
 ///
-/// `direct` marks the left and right end faces whose rates come from the endpoint policy.
-/// Such a face point keeps one F64 part, `RN(rate · dt)`, with a `+0.0` low part. Its exact
-/// product tail joins the face `bound`. The end cell then receives exactly the F64 volume
-/// that a coordinator or a pool shares.
+/// `single_water` and `single_momentum` mark the left and right end faces whose points keep
+/// one F64 part. Such a face point is `RN(rate · dt)` with a `+0.0` low part. Its exact
+/// product tail joins the face `bound`. A direct end face keeps one water part, so the end
+/// cell receives exactly the F64 volume that a coordinator or a pool shares.
 pub(in crate::channel::flow) fn surveyed_faces<R>(
     client: &R::Client,
     water_rate: &Parts<R>,
     momentum_rate: &Parts<R>,
     dt: f64,
     count: usize,
-    direct: [bool; 2],
+    single_water: [bool; 2],
+    single_momentum: [bool; 2],
 ) -> Result<SurveyedFaces<R>, ChannelError>
 where
     R: Runtime<DType = DType>,
     R::Client: ExpansionClient<R>,
 {
     let faces = water_rate.high.numel();
-    let single = if direct.contains(&true) {
-        let mut mask = vec![0.0; faces];
-        if direct[0] {
-            mask[0] = 1.0;
-        }
-        if direct[1] {
-            mask[faces - 1] = 1.0;
-        }
-        let mask = Tensor::from_slice(&mask, &[faces], client.device())?;
-        let zero = Tensor::zeros(&[faces], DType::F64, client.device())?;
-        Some((client.ne(&mask, &zero)?, zero))
-    } else {
-        None
-    };
+    let water_mask = single_mask::<R>(client, faces, single_water)?;
+    let momentum_mask = single_mask::<R>(client, faces, single_momentum)?;
     expanded(client, "surveyed shared face impulses", |a| {
         let duration =
             Tensor::full_scalar(water_rate.high.shape(), DType::F64, dt, client.device())?;
         let duration = a.expansion_point(&duration)?;
-        let mut product = |rate: &Parts<R>| -> ArithmeticResult<_> {
+        let mut product = |rate: &Parts<R>, single: &SingleMask<R>| -> ArithmeticResult<_> {
             let rate = bounded(a, rate)?;
             let raw = a.expansion_mul(&rate, &duration)?;
-            let face = match &single {
+            let face = match single {
                 None => parts(&raw),
                 Some((mask, zero)) => {
                     let c = a.client();
@@ -83,8 +72,8 @@ where
             let transfer = transfer(a, &point, count)?;
             Ok((face, parts(&transfer)))
         };
-        let (volume, water_delta) = product(water_rate)?;
-        let (momentum, momentum_delta) = product(momentum_rate)?;
+        let (volume, water_delta) = product(water_rate, &water_mask)?;
+        let (momentum, momentum_delta) = product(momentum_rate, &momentum_mask)?;
         Ok(SurveyedFaces {
             volume,
             momentum,
@@ -92,6 +81,34 @@ where
             momentum_delta,
         })
     })
+}
+
+/// The boolean face mask of the single-part end faces and a zero face array, or `None`.
+type SingleMask<R> = Option<(Tensor<R>, Tensor<R>)>;
+
+/// The single-part mask of the marked end faces, `[left, right]`.
+fn single_mask<R>(
+    client: &R::Client,
+    faces: usize,
+    ends: [bool; 2],
+) -> Result<SingleMask<R>, ChannelError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: ExpansionClient<R>,
+{
+    if !ends.contains(&true) {
+        return Ok(None);
+    }
+    let mut mask = vec![0.0; faces];
+    if ends[0] {
+        mask[0] = 1.0;
+    }
+    if ends[1] {
+        mask[faces - 1] = 1.0;
+    }
+    let mask = Tensor::from_slice(&mask, &[faces], client.device())?;
+    let zero = Tensor::zeros(&[faces], DType::F64, client.device())?;
+    Ok(Some((client.ne(&mask, &zero)?, zero)))
 }
 
 /// Add two expansions and select the center once.
@@ -228,6 +245,7 @@ mod tests {
             1.0,
             1,
             [false, false],
+            [false, false],
         )?;
         assert_eq!(values(&faces.volume.high)?, vec![0.0, -impulse]);
         assert_eq!(values(&faces.volume.bound)?, vec![0.0, 0.0]);
@@ -263,6 +281,7 @@ mod tests {
             rate,
             1,
             [false, false],
+            [false, false],
         )?;
         let (high, low) = (
             values(&faces.volume.high)?[0],
@@ -282,7 +301,15 @@ mod tests {
         let (high, low, radius, dt) = (3.0, 2f64.powi(-60), 2f64.powi(-70), 0.1);
         let water = rate::<R>(&client, &[high, -high], &[low, -low], &[radius, radius])?;
         let momentum = rate::<R>(&client, &[-high, 0.0], &[-low, 0.0], &[radius, 0.0])?;
-        let faces = surveyed_faces::<R>(&client, &water, &momentum, dt, 1, [false, false])?;
+        let faces = surveyed_faces::<R>(
+            &client,
+            &water,
+            &momentum,
+            dt,
+            1,
+            [false, false],
+            [false, false],
+        )?;
         let direct = expanded(&client, "test direct face products", |a| {
             let duration =
                 Tensor::full_scalar(water.high.shape(), DType::F64, dt, client.device())?;
@@ -369,8 +396,21 @@ mod tests {
         // Faces 0 and 2 are direct ends with one-part rates. Face 1 is a two-part interior face.
         let water = rate_parts::<R>(&client, [rate, high, -rate], [0.0, low, 0.0], radius)?;
         let momentum = rate_parts::<R>(&client, [-rate, high, rate], [0.0, low, 0.0], radius)?;
-        let direct = surveyed_faces::<R>(&client, &water, &momentum, dt, 2, [true, true])?;
-        let riemann = surveyed_faces::<R>(&client, &water, &momentum, dt, 2, [false, false])?;
+        let (ends, none) = ([true, true], [false, false]);
+        let direct = surveyed_faces::<R>(&client, &water, &momentum, dt, 2, ends, ends)?;
+        let riemann = surveyed_faces::<R>(&client, &water, &momentum, dt, 2, none, none)?;
+        // Each mask acts on its own rate only.
+        let split = surveyed_faces::<R>(&client, &water, &momentum, dt, 2, ends, none)?;
+        for (actual, expected) in [
+            (&split.volume.high, &direct.volume.high),
+            (&split.volume.low, &direct.volume.low),
+            (&split.volume.bound, &direct.volume.bound),
+            (&split.momentum.high, &riemann.momentum.high),
+            (&split.momentum.low, &riemann.momentum.low),
+            (&split.momentum.bound, &riemann.momentum.bound),
+        ] {
+            assert_eq!(bits(actual)?, bits(expected)?);
+        }
         let product = rate * dt;
         let tail = rate.mul_add(dt, -product);
         assert_ne!(tail, 0.0);
@@ -398,13 +438,13 @@ mod tests {
         }
         // One cell between two direct ends receives exactly both one-part end volumes.
         let ends = self::rate::<R>(&client, &[rate, -rate], &[0.0, 0.0], &[0.0, 0.0])?;
-        let cell = surveyed_faces::<R>(&client, &ends, &ends, dt, 1, [true, true])?;
+        let cell = surveyed_faces::<R>(&client, &ends, &ends, dt, 1, [true; 2], [true; 2])?;
         for delta in [&cell.water_delta, &cell.momentum_delta] {
             assert_eq!(values(&delta.high)?[0].to_bits(), (2.0 * product).to_bits());
             assert_eq!(values(&delta.low)?[0].to_bits(), 0.0_f64.to_bits());
             assert_eq!(values(&delta.bound)?[0], 0.0);
         }
-        let riemann = surveyed_faces::<R>(&client, &ends, &ends, dt, 1, [false, false])?;
+        let riemann = surveyed_faces::<R>(&client, &ends, &ends, dt, 1, none, none)?;
         assert_eq!(values(&riemann.water_delta.low)?[0], 2.0 * tail);
         Ok(())
     }

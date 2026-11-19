@@ -8,6 +8,7 @@ mod faces;
 mod flux;
 pub(super) mod friction;
 mod port;
+mod rest;
 pub(super) mod source_diagnostics;
 
 #[cfg(test)]

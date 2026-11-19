@@ -5,7 +5,7 @@ mod client;
 mod depth;
 mod error;
 #[cfg(test)]
-mod fixture;
+pub(super) mod fixture;
 mod interior;
 mod point;
 mod receipt;

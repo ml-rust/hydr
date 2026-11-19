@@ -127,6 +127,11 @@ where
             self.surveyed_direct_parts(frame, water, frame.map(|f| &f.longitudinal_water))?;
         let momentum =
             self.surveyed_direct_parts(frame, momentum, frame.map(|f| &f.momentum_flux_m4_per_s2))?;
+        let rest = self.surveyed_rest_momentum(geometry, fields, left, right, frame)?;
+        let momentum = match &rest {
+            Some(rest) => self.surveyed_rest_parts(momentum, rest)?,
+            None => momentum,
+        };
         let water_flux_width = self.assemble_boundary_faces(
             frame,
             water_width,
@@ -183,6 +188,10 @@ where
             Some(trace) => work.joined(trace),
             None => work,
         };
+        let work = match &rest {
+            Some(rest) => work.joined(rest.work),
+            None => work,
+        };
         let root_iterations = work
             .maximum_root_iterations
             .max(frame.map_or(0, |f| f.root_iterations));
@@ -195,6 +204,7 @@ where
                 water,
                 momentum,
                 direct: [is_direct(left), is_direct(right)],
+                rest: rest.as_ref().map_or([false; 2], |rest| rest.ends),
             }),
             speed,
             internal_speed: None,
@@ -267,7 +277,7 @@ where
     }
 
     /// Copy of `value` with `face` set to the one-element `replacement`.
-    fn replace_face(
+    pub(super) fn replace_face(
         &self,
         value: &Tensor<R>,
         face: usize,

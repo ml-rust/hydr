@@ -190,7 +190,8 @@ where
     /// Integrate two-part surveyed face rates as exact products and keep both parts of each face point.
     ///
     /// The product radius, which carries the rate radius, joins the detected underflow bound of its face.
-    /// A direct end face keeps one F64 part. Its product tail joins the same bound.
+    /// A direct end face keeps one F64 water part. Its momentum keeps one F64 part unless the
+    /// face carries the end cell's own point flux at rest. Each product tail joins the same bound.
     fn surveyed_transport(&self, flux: &Flux<R>, dt: f64) -> Result<Transport<R>, ChannelError> {
         let c = &self.client;
         let count = self.count();
@@ -199,7 +200,17 @@ where
                 "surveyed shared face impulses lack two-part point rates: compute the flux through the surveyed point solver",
             )
         })?;
-        let faces = surveyed_faces(c, &rates.water, &rates.momentum, dt, count, rates.direct)?;
+        let [left, right] = rates.direct;
+        let single_momentum = [left && !rates.rest[0], right && !rates.rest[1]];
+        let faces = surveyed_faces(
+            c,
+            &rates.water,
+            &rates.momentum,
+            dt,
+            count,
+            rates.direct,
+            single_momentum,
+        )?;
         let face_volume = faces.volume.high;
         self.check_prescribed(flux, &face_volume)?;
         let duration = self.constant(&flux.water, dt)?;

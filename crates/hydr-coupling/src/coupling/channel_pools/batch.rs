@@ -340,25 +340,13 @@ pub(super) mod tests {
         );
     }
 
-    /// A three-band lake at rest at depth 1 m stays at rest against a pool at stage 1 m.
+    /// Runs one three-band lake at rest at depth 1 m against a pool at stage 1 m.
     ///
-    /// A `Stage` of 1 m holds the unconnected end. Its trace pressure has the same bits as
-    /// the connected trace pressure, so the cell momentum stays exactly zero. An `Exterior`
-    /// face carries a two-part Riemann pressure instead. Its rounding differs from the
-    /// single-part trace pressure. The resulting transfer lies below the pool volume's
-    /// resolution, and the pool rejects it.
-    ///
-    /// Frozen criteria, each of 16 intervals of 0.125 s, at both ends, with entrance
-    /// losses `k = 0` and `k = 1`:
-    /// - cell depth within 1e-12 m of 1 m
-    /// - |Q| and |momentum| at most 1e-11
-    /// - composite storage change at most 1e-11 m³
-    /// - connection transfer at most 1e-11 m³
-    #[test]
-    fn surveyed_lake_at_rest_stays_at_rest_against_a_pool() -> TestResult {
+    /// `far` holds the unconnected end. The connected trace at rest carries the end cell's
+    /// own two-part point flux, as the far face does, so the cell transfer cancels.
+    fn lake_at_rest_against_a_pool(far: &ChannelBoundary) -> TestResult {
         // The three-band section holds 3 m² at depth 1 m.
         let volume = 128.0 * 3.0;
-        let held = ChannelBoundary::Stage { elevation_m: 1.0 };
         for endpoint in [ChannelPoolEndpoint::Left, ChannelPoolEndpoint::Right] {
             for loss in [0.0, 1.0] {
                 let (setup, initial) = single(1, 128.0, volume, endpoint, 1.0, 1.0, loss)?;
@@ -369,7 +357,7 @@ pub(super) mod tests {
                 for index in 0..16 {
                     let end = (index + 1) as f64 / 8.0;
                     current = current
-                        .trial_to(end, &forcing(&setup, current.time(), end, &held))?
+                        .trial_to(end, &forcing(&setup, current.time(), end, far))?
                         .into_next();
                     assert_eq!(current.time(), end);
                     let state = current.reach("reach").ok_or("Missing reach")?.state()?;
@@ -384,6 +372,34 @@ pub(super) mod tests {
             }
         }
         Ok(())
+    }
+
+    /// A three-band lake at rest stays at rest against a pool, with an `Exterior` far end.
+    ///
+    /// The far end holds the exterior state at rest at depth 1 m.
+    ///
+    /// Frozen criteria, each of 16 intervals of 0.125 s, at both ends, with entrance
+    /// losses `k = 0` and `k = 1`:
+    /// - cell depth within 1e-12 m of 1 m
+    /// - |Q| and |momentum| at most 1e-11
+    /// - composite storage change at most 1e-11 m³
+    /// - connection transfer at most 1e-11 m³
+    #[test]
+    fn surveyed_lake_at_rest_stays_at_rest_against_a_pool() -> TestResult {
+        lake_at_rest_against_a_pool(&exterior(1.0))
+    }
+
+    /// A three-band lake at rest stays at rest against a pool, with a `Wall` far end.
+    ///
+    /// Frozen criteria, each of 16 intervals of 0.125 s, at both ends, with entrance
+    /// losses `k = 0` and `k = 1`:
+    /// - cell depth within 1e-12 m of 1 m
+    /// - |Q| and |momentum| at most 1e-11
+    /// - composite storage change at most 1e-11 m³
+    /// - connection transfer at most 1e-11 m³
+    #[test]
+    fn surveyed_lake_at_rest_stays_at_rest_against_a_pool_and_a_wall() -> TestResult {
+        lake_at_rest_against_a_pool(&ChannelBoundary::Wall)
     }
 
     /// The frozen `three-bands-leaving` reference with pool area 1 m².

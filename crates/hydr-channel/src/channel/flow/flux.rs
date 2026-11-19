@@ -35,8 +35,15 @@ pub(super) struct SurveyedRates<R: Runtime<DType = DType>> {
     pub momentum: Parts<R>,
     /// Left and right end faces whose F64 rates come from the endpoint policy.
     ///
-    /// Each holds `+0.0` low parts and radii. Its face points keep one F64 part.
+    /// Each holds `+0.0` low parts and radii, except the momentum of a `rest` face. Its water
+    /// face point keeps one F64 part.
     pub direct: [bool; 2],
+    /// Direct end faces whose scalar trace is exactly the end cell's own state.
+    ///
+    /// Each momentum rate is the two-part point flux of the end cell, as an interior face
+    /// between two equal cells carries it. Its momentum face point keeps both parts. Every
+    /// other direct face keeps one F64 momentum part.
+    pub rest: [bool; 2],
 }
 
 /// Face rates for one interval.

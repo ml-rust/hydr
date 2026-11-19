@@ -1,4 +1,4 @@
-//! One-cell surveyed reaches on the frozen three-band profile, and their end-cell interiors.
+//! Surveyed reaches on the frozen three-band profile, and their end-cell interiors.
 
 use super::{
     interior::Interior,
@@ -58,6 +58,25 @@ where
     R: Runtime<DType = DType>,
     R::Client: Client<R>,
 {
+    reach_cells(client, 1, area, discharge, bed)
+}
+
+/// `cells` unit-length cells, each of area `area` and global discharge `discharge`, bed at `bed`.
+pub(in crate::channel::flow) fn reach_cells<R>(
+    client: R::Client,
+    cells: usize,
+    area: f64,
+    discharge: f64,
+    bed: f64,
+) -> TestResult<ChannelReach<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: Client<R>,
+{
+    let ids: Vec<String> = match cells {
+        1 => vec!["cell".into()],
+        _ => (0..cells).map(|index| format!("cell-{index}")).collect(),
+    };
     Ok(ChannelReach::new(
         client,
         ChannelReachDefinition {
@@ -65,11 +84,14 @@ where
             provenance: "Surveyed trace roots".into(),
             geometry: ChannelGeometry::PrismaticSurveyed {
                 profile: profile(bed),
-                cells: vec![SurveyedChannelCell {
-                    id: "cell".into(),
-                    length_m: 1.0,
-                    manning_n: 0.0,
-                }],
+                cells: ids
+                    .into_iter()
+                    .map(|id| SurveyedChannelCell {
+                        id,
+                        length_m: 1.0,
+                        manning_n: 0.0,
+                    })
+                    .collect(),
                 numerical: ChannelSurveyedConfig::default(),
             },
             lateral_bindings: Vec::new(),
@@ -80,8 +102,8 @@ where
         },
         ChannelInitialState {
             time_s: 0.0,
-            volume_m3: vec![area],
-            longitudinal_momentum_m4_per_s: vec![discharge],
+            volume_m3: vec![area; cells],
+            longitudinal_momentum_m4_per_s: vec![discharge; cells],
         },
     )?)
 }

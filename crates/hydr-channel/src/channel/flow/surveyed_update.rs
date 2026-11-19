@@ -278,6 +278,7 @@ pub(super) mod tests {
                 water: rate(&water),
                 momentum: rate(&zero),
                 direct: [false, false],
+                rest: [false, false],
             }),
             prescribed_water: None,
             water,
