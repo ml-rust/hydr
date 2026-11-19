@@ -26,15 +26,9 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
         SURFACE_CHANNELS_DOC,
     ),
     unsupported(
-        "surveyed-port-end",
-        UnsupportedReason::RejectedByAdmission,
-        "A port on a surveyed reach end rejects; surveyed reaches couple through bank links only.",
-        SURFACE_CHANNELS_DOC,
-    ),
-    unsupported(
         "port-section-mismatch",
         UnsupportedReason::RejectedByAdmission,
-        "A port on a triangular reach end rejects; only a rectangular end matches a strip of surface faces.",
+        "A port on a triangular reach end, or on a surveyed end whose section is not a rectangle, rejects. Only a rectangular section matches a strip of surface faces.",
         SURFACE_CHANNELS_DOC,
     ),
     unsupported(

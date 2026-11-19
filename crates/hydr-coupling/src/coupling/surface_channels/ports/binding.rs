@@ -339,6 +339,9 @@ mod tests {
             beta: Reach::rest(0.25, 1.5),
             link: false,
             ports: vec![east("p")],
+            surveyed: false,
+            open: Vec::new(),
+            ends: Vec::new(),
         }
     }
 

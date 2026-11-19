@@ -25,7 +25,8 @@
 //! Surface water entering a reach carries the surface velocity along the reach tangent.
 //! Channel water entering the surface carries the channel start velocity along the tangent.
 //!
-//! A [`SurfaceChannelPort`] binds a line of surface faces to one rectangular reach end.
+//! A [`SurfaceChannelPort`] binds a line of surface faces to one reach end of a rectangular
+//! or surveyed-rectangle reach.
 //! Each attempt runs the surface's hydrostatic HLL flux on every port face, with the reach
 //! end cell's accepted-start state as the ghost neighbour. The reach end takes the summed
 //! flux as a [`crate::channel::ChannelBoundary::FluxPort`]. The flux stays fixed for the

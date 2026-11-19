@@ -95,9 +95,10 @@ impl SurfaceChannelDefinition {
     /// Each port also rejects for:
     /// - an empty or repeated identity, one equal to a link identity, or empty evidence
     ///   (`duplicate-links`, `missing-link-evidence`)
-    /// - a triangular or empty reach (`port-section-mismatch`), or a surveyed reach
-    ///   (`surveyed-port-end`)
-    /// - face widths whose sum differs from the end cell width by more than
+    /// - a triangular or empty reach, or a surveyed reach whose section is not a rectangle
+    ///   (`port-section-mismatch`)
+    /// - face widths whose sum differs from the end cell width, or from the width of a surveyed
+    ///   rectangle, by more than
     ///   [`super::SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE`] times that width (`port-width-mismatch`)
     /// - an unknown reach, a second port on one reach end, a face with no active cell or two,
     ///   a caller open face, a face in two ports, faces off one axis, face line, or surface

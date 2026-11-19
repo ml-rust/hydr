@@ -114,7 +114,11 @@ where
 /// The minimum-elevation points form one contiguous run of at least two points.
 /// Points before the run share its first station and points after it share its last.
 /// Both end points reach the maximum stage.
-fn surveyed_rectangle_width(profile: &CrossSectionDefinition) -> Option<f64> {
+///
+/// Coordinators call this to check a port's width before a reach state exists.
+/// `coupling_end_state` uses the same test.
+#[doc(hidden)]
+pub fn surveyed_rectangle_width(profile: &CrossSectionDefinition) -> Option<f64> {
     let points = &profile.points;
     let minimum = points
         .iter()

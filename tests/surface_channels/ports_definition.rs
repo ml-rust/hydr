@@ -84,15 +84,15 @@ fn a_triangular_end_rejects_as_a_section_mismatch() -> Result {
     )
 }
 
-#[test]
-fn a_surveyed_end_rejects() -> Result {
+/// Setup whose `beta` reach is one surveyed cell with the profile `points` of (station, elevation).
+fn surveyed_beta(points: [(f64, f64); 4]) -> Result<SurfaceChannelSetup> {
     let mut setup = setup(&[])?;
     setup.reaches[1].definition = ChannelReachDefinition {
         geometry: ChannelGeometry::PrismaticSurveyed {
             profile: CrossSectionDefinition {
                 id: "section".into(),
                 vertical_datum: setup.reaches[1].definition.vertical_datum.clone(),
-                points: [(0.0, 4.0), (0.0, 0.0), (4.0, 0.0), (4.0, 4.0)]
+                points: points
                     .into_iter()
                     .map(|(station_m, elevation_m)| CrossSectionPoint {
                         station_m,
@@ -111,20 +111,51 @@ fn a_surveyed_end_rejects() -> Result {
         },
         ..rectangular(1, BETA_BED)
     };
-    let ports = vec![port(
+    Ok(setup)
+}
+
+fn beta_left() -> Vec<SurfaceChannelPort> {
+    vec![port(
         "p",
         BETA,
         ChannelEnd::Left,
         vec![y_face(0, 0), y_face(1, 0)],
-    )];
+    )]
+}
+
+#[test]
+fn a_surveyed_rectangle_end_of_the_face_width_admits() -> Result {
+    let mut setup = surveyed_beta([(0.0, 4.0), (0.0, 0.0), (4.0, 0.0), (4.0, 4.0)])?;
+    setup.ports = beta_left();
+    SurfaceChannelDefinition::new(setup)?;
+    Ok(())
+}
+
+#[test]
+fn a_surveyed_rectangle_off_the_face_width_rejects() -> Result {
+    let setup = surveyed_beta([(0.0, 4.0), (0.0, 0.0), (3.0, 0.0), (3.0, 4.0)])?;
     contains(
-        &rejection(setup, ports)?,
+        &rejection(setup, beta_left())?,
         &[
-            "surveyed-port-end",
+            "port-width-mismatch",
+            "port=\"p\"",
+            "face width=4",
+            "reach=\"beta\" end=left cell=\"cell-0\" width_m=3",
+        ],
+    )
+}
+
+#[test]
+fn a_surveyed_end_that_is_not_a_rectangle_rejects_as_a_section_mismatch() -> Result {
+    let setup = surveyed_beta([(0.0, 4.0), (1.0, 0.0), (3.0, 0.0), (4.0, 4.0)])?;
+    contains(
+        &rejection(setup, beta_left())?,
+        &[
+            "port-section-mismatch",
             "port=\"p\"",
             "reach=\"beta\"",
             "geometry=surveyed",
-            "couple through bank links only",
+            "a port needs a rectangular surveyed section",
         ],
     )
 }

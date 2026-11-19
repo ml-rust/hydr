@@ -15,7 +15,8 @@ pub const SURFACE_CHANNEL_TANGENT_TOLERANCE: f64 = 1e-9;
 /// The bound covers products such as `n · dx` against a declared width.
 pub const SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE: f64 = 16.0 * f64::EPSILON;
 
-/// One reach-end port between a line of surface faces and one end of a rectangular reach.
+/// One reach-end port between a line of surface faces and one end of a rectangular or
+/// surveyed-rectangle reach.
 ///
 /// One hydrostatic HLL flux crosses each face. The reach end cell is the ghost neighbour of
 /// every face. The coordinator owns the end: its caller forcing policy is `None`.
@@ -23,7 +24,8 @@ pub const SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE: f64 = 16.0 * f64::EPSILON;
 pub struct SurfaceChannelPort {
     /// Unique nonempty port identity, distinct from every link identity.
     pub id: String,
-    /// Exact identity of the ported setup reach. The reach must be rectangular.
+    /// Exact identity of the ported setup reach. The reach must be rectangular or a surveyed
+    /// reach whose section is a rectangle.
     pub reach_id: String,
     /// Reach end the port attaches to. One port binds each end at most.
     pub end: ChannelEnd,

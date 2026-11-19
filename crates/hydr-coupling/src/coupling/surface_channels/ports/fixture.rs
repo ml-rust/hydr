@@ -8,7 +8,8 @@ use super::SurfaceChannelPort;
 use crate::channel::ChannelEnd;
 use crate::channel::{
     ChannelConfig, ChannelGeometry, ChannelInitialState, ChannelReachDefinition,
-    RectangularChannelCell,
+    ChannelSurveyedConfig, CrossSectionDefinition, CrossSectionPoint, RectangularChannelCell,
+    SurveyedChannelCell,
 };
 use crate::solver::{
     Axis, BoundaryConditions, BoundaryFace, ForcingInterval, ForcingSchedule, InitialState,
@@ -114,6 +115,51 @@ pub fn rectangular(count: usize, bed: f64) -> ChannelReachDefinition {
         lateral_bindings: Vec::new(),
         config: ChannelConfig::default(),
     }
+}
+
+/// `count` surveyed cells of 2 m on one section of (station, elevation) `points`.
+///
+/// The section tops out 4 m above `bed`, as the rectangular fixture reach does.
+pub fn surveyed(count: usize, bed: f64, points: &[(f64, f64)]) -> ChannelReachDefinition {
+    ChannelReachDefinition {
+        vertical_datum: DATUM.into(),
+        provenance: "Surveyed reach at the surface grid edge".into(),
+        geometry: ChannelGeometry::PrismaticSurveyed {
+            profile: CrossSectionDefinition {
+                id: "section".into(),
+                vertical_datum: DATUM.into(),
+                points: points
+                    .iter()
+                    .map(|&(station_m, elevation_m)| CrossSectionPoint {
+                        station_m,
+                        elevation_m,
+                    })
+                    .collect(),
+                maximum_stage_m: bed + 4.0,
+                profile_provenance: "Analytical survey".into(),
+            },
+            cells: (0..count)
+                .map(|i| SurveyedChannelCell {
+                    id: format!("cell-{i}"),
+                    length_m: 2.0,
+                    manning_n: 0.0,
+                })
+                .collect(),
+            numerical: ChannelSurveyedConfig::default(),
+        },
+        lateral_bindings: Vec::new(),
+        config: ChannelConfig::default(),
+    }
+}
+
+/// A surveyed reach whose section is a rectangle of `width` on `bed`.
+pub fn surveyed_rectangle(count: usize, bed: f64, width: f64) -> ChannelReachDefinition {
+    let top = bed + 4.0;
+    surveyed(
+        count,
+        bed,
+        &[(0.0, top), (0.0, bed), (width, bed), (width, top)],
+    )
 }
 
 /// Bank weir between surface cell 1 and `alpha` cell 1, crest at 1.2 m.

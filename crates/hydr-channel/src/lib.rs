@@ -13,6 +13,8 @@ pub mod internal {
         ChannelCouplingForcing, ChannelCouplingTrial, ChannelReservoirOperands,
         SURFACE_EXCHANGE_BINDING_PREFIX,
     };
-    pub use crate::channel::flow::coupling_end_state::ChannelCouplingEndState;
+    pub use crate::channel::flow::coupling_end_state::{
+        ChannelCouplingEndState, surveyed_rectangle_width,
+    };
     pub use crate::channel::flow::coupling_reservation::ChannelCouplingReservation;
 }

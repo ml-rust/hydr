@@ -10,13 +10,15 @@ use super::super::{
     SurfaceChannelSetup,
 };
 use super::fixture::{
-    ALPHA, BETA, DATUM, REACH_WIDTH, TestResult, link, port, rectangular, x_face,
+    ALPHA, BETA, DATUM, REACH_WIDTH, TestResult, link, port, rectangular, surveyed_rectangle,
+    x_face,
 };
 use super::{PortInterval, SurfaceChannelPort};
 use crate::channel::ChannelEnd;
 use crate::channel::{ChannelBoundary, ChannelInitialState};
 use crate::solver::{
-    BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, SolverConfig, SolverSetup,
+    BoundaryConditions, BoundaryForcing, ForcingInterval, ForcingSchedule, InitialState,
+    SolverConfig, SolverSetup,
 };
 use crate::storage::LevelPoolConfig;
 use hydr_core::grid::CartesianGrid;
@@ -67,6 +69,12 @@ pub struct Scenario {
     /// Keep the fixture bank link on `alpha` cell 1.
     pub link: bool,
     pub ports: Vec<SurfaceChannelPort>,
+    /// Declare `alpha` as a surveyed rectangle of the port width in place of a rectangular reach.
+    pub surveyed: bool,
+    /// Held forcing of every open surface face. The other edge faces are walls.
+    pub open: Vec<BoundaryForcing>,
+    /// Caller policies at unported reach ends. Every other unported end is a wall.
+    pub ends: Vec<(&'static str, ChannelEnd, ChannelBoundary)>,
 }
 
 /// The `alpha` left end on the west edge.
@@ -113,7 +121,30 @@ impl Scenario {
             beta: Reach::rest(0.25, stage),
             link: true,
             ports,
+            surveyed: false,
+            open: Vec::new(),
+            ends: Vec::new(),
         }
+    }
+
+    /// One accepted interval toward `start + dt` under the declared end policies.
+    pub fn step(&self, batch: &Batch, dt: f64) -> TestResult<Batch> {
+        let start = batch.time();
+        let end = start + dt;
+        let mut held = forcing(&self.ports, start, end);
+        for reach in &mut held.reaches {
+            for (id, side, policy) in &self.ends {
+                if reach.reach_id != *id {
+                    continue;
+                }
+                let slot = match side {
+                    ChannelEnd::Left => &mut reach.left,
+                    ChannelEnd::Right => &mut reach.right,
+                };
+                *slot = Some(policy.clone());
+            }
+        }
+        Ok(batch.trial_to(end, &held)?.into_next())
     }
 
     /// Setup and initial state of this case.
@@ -126,7 +157,10 @@ impl Scenario {
             vec![true; CELLS],
             SpatialReference::new("Synthetic projected CRS".into(), DATUM.into(), [0.0; 2])?,
         )?;
-        let boundaries = BoundaryConditions::impermeable_walls();
+        let boundaries = BoundaryConditions::with_open_faces(
+            &domain,
+            self.open.iter().map(BoundaryForcing::face).collect(),
+        )?;
         let forcing = ForcingSchedule::new(
             &domain,
             &boundaries,
@@ -136,7 +170,7 @@ impl Scenario {
                 rain: vec![0.0; CELLS],
                 potential_evaporation: vec![0.0; CELLS],
                 withdrawal: vec![0.0; CELLS],
-                boundaries: Vec::new(),
+                boundaries: self.open.clone(),
             }],
         )?;
         let land = LandModel::impervious(&domain);
@@ -166,7 +200,11 @@ impl Scenario {
             reaches: vec![
                 SurfaceChannelReach {
                     id: ALPHA.into(),
-                    definition: rectangular(3, self.alpha.bed),
+                    definition: if self.surveyed {
+                        surveyed_rectangle(3, self.alpha.bed, REACH_WIDTH)
+                    } else {
+                        rectangular(3, self.alpha.bed)
+                    },
                 },
                 SurfaceChannelReach {
                     id: BETA.into(),

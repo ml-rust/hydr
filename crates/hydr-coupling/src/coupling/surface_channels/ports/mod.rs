@@ -1,6 +1,7 @@
 //! Coordinator reach-end ports: declarations, admission, static topology, and execution.
 //!
-//! A port binds one contiguous line of surface faces to one end of a rectangular reach.
+//! A port binds one contiguous line of surface faces to one end of a rectangular reach
+//! or of a surveyed reach whose section is a rectangle.
 //! The coordinator owns that end: the caller supplies no endpoint policy there.
 //!
 //! Each attempt runs one surface HLL flux per port face against the reach end's accepted-start
@@ -20,6 +21,7 @@ mod receipt;
 pub(super) mod scenario;
 mod topology;
 
+use super::bindings::channel_cells;
 use super::{
     SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE, SurfaceChannelError, SurfaceChannelPort,
     SurfaceChannelSetup,
@@ -27,6 +29,7 @@ use super::{
 use crate::channel::{ChannelEnd, ChannelGeometry};
 use crate::solver::BoundaryFace;
 use faces::{FACE_OWNERSHIP, check_faces};
+use hydr_channel::internal::surveyed_rectangle_width;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) use binding::PortBinding;
@@ -125,26 +128,39 @@ pub(super) fn check_ports(
             )));
         };
         let end = end_name(port.end);
-        let cells = match &setup.reaches[reach].definition.geometry {
-            ChannelGeometry::Rectangular { cells } => cells,
+        let definition = &setup.reaches[reach].definition;
+        let (count, surveyed_width) = match &definition.geometry {
+            ChannelGeometry::Rectangular { cells } => (cells.len(), None),
             ChannelGeometry::PrismaticTriangular { .. } => {
                 return Err(SurfaceChannelError::input(format!(
                     "port-section-mismatch: port={id:?} reach={:?} geometry=triangular: a port needs a rectangular end cell of the face width; use a rectangular reach or connect this reach through bank links",
                     port.reach_id
                 )));
             }
-            ChannelGeometry::PrismaticSurveyed { .. } => {
-                return Err(SurfaceChannelError::input(format!(
-                    "surveyed-port-end: port={id:?} reach={:?} geometry=surveyed: surveyed reaches couple through bank links only; use a rectangular reach for a port",
-                    port.reach_id
-                )));
+            ChannelGeometry::PrismaticSurveyed { profile, cells, .. } => {
+                let Some(width) = surveyed_rectangle_width(profile) else {
+                    return Err(SurfaceChannelError::input(format!(
+                        "port-section-mismatch: port={id:?} reach={:?} geometry=surveyed: a port needs a rectangular surveyed section; use a rectangular profile or connect this reach through bank links",
+                        port.reach_id
+                    )));
+                };
+                (cells.len(), Some(width))
             }
         };
         let cell = match port.end {
             ChannelEnd::Left => 0,
-            ChannelEnd::Right => cells.len().saturating_sub(1),
+            ChannelEnd::Right => count.saturating_sub(1),
         };
-        let Some(end_cell) = cells.get(cell) else {
+        let end_cell = match (&definition.geometry, surveyed_width) {
+            (ChannelGeometry::Rectangular { cells }, _) => cells
+                .get(cell)
+                .map(|c| (c.id.as_str(), c.width_m, c.bed_elevation_m)),
+            (_, Some(width)) => channel_cells(definition)
+                .get(cell)
+                .map(|&(cell_id, bed)| (cell_id, width, bed)),
+            _ => None,
+        };
+        let Some((cell_id, b, bed_elevation_m)) = end_cell else {
             return Err(SurfaceChannelError::input(format!(
                 "port-section-mismatch: port={id:?} reach={:?} has no cells: declare the reach cells",
                 port.reach_id
@@ -157,13 +173,12 @@ pub(super) fn check_ports(
             )));
         }
         let line = check_faces(&setup.surface.domain, &open, &mut claimed, id, &port.faces)?;
-        let b = end_cell.width_m;
         let tolerance = SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE * b;
         let gap = (line.width_m - b).abs();
         if !b.is_finite() || b <= 0.0 || gap.is_nan() || gap > tolerance {
             return Err(SurfaceChannelError::input(format!(
-                "port-width-mismatch: port={id:?} face width={}, reach={:?} end={end} cell={:?} width_m={b}, tolerance={tolerance}: set the end cell width to the face width sum",
-                line.width_m, port.reach_id, end_cell.id
+                "port-width-mismatch: port={id:?} face width={}, reach={:?} end={end} cell={:?} width_m={b}, tolerance={tolerance}: set the end cell width to the face width sum. A surveyed rectangle takes its bottom width as the end cell width",
+                line.width_m, port.reach_id, cell_id
             )));
         }
         checked.insert(
@@ -175,7 +190,7 @@ pub(super) fn check_ports(
                 cell,
                 faces: line.faces,
                 width_m: b,
-                ghost_bed_m: end_cell.bed_elevation_m,
+                ghost_bed_m: bed_elevation_m,
                 ghost_left: line.ghost_left,
                 face_beds_m: line.beds_m,
                 gravity: setup.reaches[reach].definition.config.gravity,
@@ -188,10 +203,11 @@ pub(super) fn check_ports(
 #[cfg(test)]
 mod tests {
     use super::fixture::{
-        ALPHA_BED, BETA_BED, REACH_WIDTH, TestResult, case, contains, four_ports, ported,
-        rejection, x_face, y_face,
+        ALPHA, ALPHA_BED, BETA_BED, REACH_WIDTH, TestResult, case, contains, four_ports, port,
+        ported, rectangular, rejection, surveyed, surveyed_rectangle, x_face, y_face,
     };
     use super::*;
+    use crate::channel::{ChannelReachDefinition, TriangularChannelCell};
     use ChannelEnd::{Left, Right};
 
     fn definition(
@@ -260,6 +276,121 @@ mod tests {
         // Ports synthesize no lateral bindings.
         assert_eq!(checked.coordinated[1], checked.setup.reaches[1].definition);
         Ok(())
+    }
+
+    /// Admission of a port on the left end of a surveyed `alpha` with the declared `definition`.
+    ///
+    /// Frozen criteria, fixed before the first run. The port covers the two west faces, 4 m.
+    /// - A rectangle of the face width admits. Its port holds width 4 m and the section bed.
+    /// - A three-band end and a triangle end reject with `port-section-mismatch`.
+    /// - A rectangle of 3 m rejects with `port-width-mismatch`.
+    /// - Each rejection leaves the declared setup equal to its copy from before the call.
+    fn alpha_left_on(
+        definition: ChannelReachDefinition,
+    ) -> TestResult<Result<Vec<CheckedPort>, String>> {
+        let (mut setup, _) = case(&[])?;
+        setup.reaches[0].definition = definition;
+        let before = setup.clone();
+        let ports = vec![port("p", ALPHA, Left, vec![x_face(0, 0), x_face(0, 1)])];
+        let outcome =
+            match super::super::SurfaceChannelDefinition::new(ported(setup.clone(), ports)) {
+                Ok(checked) => Ok(checked.ports),
+                Err(SurfaceChannelError::Input(message)) => Err(message),
+                Err(other) => {
+                    return Err(format!("expected an input rejection, got {other}").into());
+                }
+            };
+        assert_eq!(setup, before);
+        Ok(outcome)
+    }
+
+    #[test]
+    fn a_surveyed_rectangle_of_the_face_width_admits() -> TestResult {
+        let admitted = alpha_left_on(surveyed_rectangle(3, ALPHA_BED, REACH_WIDTH))?;
+        let ports = admitted.map_err(|message| format!("a rectangle rejected: {message}"))?;
+        let [port] = ports.as_slice() else {
+            return Err("one port admits".into());
+        };
+        assert_eq!(port.cell, 0);
+        assert_eq!(port.width_m.to_bits(), REACH_WIDTH.to_bits());
+        assert_eq!(port.ghost_bed_m.to_bits(), ALPHA_BED.to_bits());
+        Ok(())
+    }
+
+    #[test]
+    fn a_surveyed_rectangle_of_the_face_width_within_tolerance_admits() -> TestResult {
+        let within = REACH_WIDTH * (1.0 + SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE / 2.0);
+        let admitted = alpha_left_on(surveyed_rectangle(3, ALPHA_BED, within))?;
+        admitted.map_err(|message| format!("a rectangle rejected: {message}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn a_surveyed_rectangle_off_the_face_width_rejects() -> TestResult {
+        let Err(message) = alpha_left_on(surveyed_rectangle(3, ALPHA_BED, 3.0))? else {
+            return Err("a 3 m rectangle admitted against 4 m of faces".into());
+        };
+        contains(
+            &message,
+            &[
+                "port-width-mismatch",
+                "port=\"p\"",
+                "face width=4",
+                "reach=\"alpha\" end=left cell=\"cell-0\" width_m=3",
+            ],
+        )
+    }
+
+    #[test]
+    fn a_three_band_surveyed_end_rejects_as_a_section_mismatch() -> TestResult {
+        let top = ALPHA_BED + 4.0;
+        let three_bands = [
+            (0.0, top),
+            (1.0, 2.5),
+            (1.5, 1.5),
+            (2.0, ALPHA_BED),
+            (2.5, ALPHA_BED),
+            (3.0, 1.5),
+            (3.5, 2.5),
+            (4.0, top),
+        ];
+        let Err(message) = alpha_left_on(surveyed(3, ALPHA_BED, &three_bands))? else {
+            return Err("a three-band end admitted".into());
+        };
+        contains(
+            &message,
+            &[
+                "port-section-mismatch",
+                "port=\"p\"",
+                "reach=\"alpha\"",
+                "geometry=surveyed",
+                "a port needs a rectangular surveyed section",
+            ],
+        )
+    }
+
+    #[test]
+    fn a_triangular_end_rejects_as_a_section_mismatch() -> TestResult {
+        let triangle = ChannelReachDefinition {
+            geometry: ChannelGeometry::PrismaticTriangular {
+                left_bank_slope_h_per_v: 1.0,
+                right_bank_slope_h_per_v: 1.0,
+                bed_elevation_m: ALPHA_BED,
+                cells: (0..3)
+                    .map(|i| TriangularChannelCell {
+                        id: format!("cell-{i}"),
+                        length_m: 2.0,
+                        maximum_depth_m: 4.0,
+                        manning_n: 0.0,
+                    })
+                    .collect(),
+            },
+            ..rectangular(3, ALPHA_BED)
+        };
+        let Err(message) = alpha_left_on(triangle)? else {
+            return Err("a triangle end admitted".into());
+        };
+        contains(&message, &["port-section-mismatch", "geometry=triangular"])
     }
 
     #[test]

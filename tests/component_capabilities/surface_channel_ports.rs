@@ -248,31 +248,36 @@ pub fn rejection_cases(id: &str) -> Option<Vec<Rejection>> {
         )]
     };
     Some(match id {
-        "port-section-mismatch" => vec![(
-            beta_edited(
-                |s| {
-                    s.reaches[1].definition.geometry = ChannelGeometry::PrismaticTriangular {
-                        left_bank_slope_h_per_v: 1.0,
-                        right_bank_slope_h_per_v: 1.0,
-                        bed_elevation_m: 0.25,
-                        cells: vec![TriangularChannelCell {
-                            id: "cell-0".into(),
-                            length_m: 2.0,
-                            maximum_depth_m: 4.0,
-                            manning_n: 0.0,
-                        }],
-                    };
-                },
-                beta_right(),
+        "port-section-mismatch" => vec![
+            (
+                beta_edited(
+                    |s| s.reaches[1].definition = surveyed_trapezoid(0.25),
+                    beta_right(),
+                ),
+                Variant::Input,
+                "a port needs a rectangular surveyed section",
             ),
-            Variant::Input,
-            "a port needs a rectangular end cell of the face width",
-        )],
-        "surveyed-port-end" => vec![(
-            beta_edited(|s| s.reaches[1].definition = surveyed(0.25), beta_right()),
-            Variant::Input,
-            "surveyed reaches couple through bank links only",
-        )],
+            (
+                beta_edited(
+                    |s| {
+                        s.reaches[1].definition.geometry = ChannelGeometry::PrismaticTriangular {
+                            left_bank_slope_h_per_v: 1.0,
+                            right_bank_slope_h_per_v: 1.0,
+                            bed_elevation_m: 0.25,
+                            cells: vec![TriangularChannelCell {
+                                id: "cell-0".into(),
+                                length_m: 2.0,
+                                maximum_depth_m: 4.0,
+                                manning_n: 0.0,
+                            }],
+                        };
+                    },
+                    beta_right(),
+                ),
+                Variant::Input,
+                "a port needs a rectangular end cell of the face width",
+            ),
+        ],
         "port-width-mismatch" => vec![(
             beta_edited(
                 |s| s.reaches[1].definition = rectangular(3, 0.25),
@@ -333,8 +338,8 @@ pub fn rejection_cases(id: &str) -> Option<Vec<Rejection>> {
     })
 }
 
-/// Three surveyed cells of one rectangular section of the port width on `bed`.
-fn surveyed(bed: f64) -> ChannelReachDefinition {
+/// Three surveyed cells of one trapezoidal section of top width `REACH_WIDTH` on `bed`.
+fn surveyed_trapezoid(bed: f64) -> ChannelReachDefinition {
     let rectangular = rectangular(3, bed);
     ChannelReachDefinition {
         geometry: ChannelGeometry::PrismaticSurveyed {
@@ -343,8 +348,8 @@ fn surveyed(bed: f64) -> ChannelReachDefinition {
                 vertical_datum: rectangular.vertical_datum.clone(),
                 points: [
                     (0.0, 4.0),
-                    (0.0, bed),
-                    (REACH_WIDTH, bed),
+                    (1.0, bed),
+                    (REACH_WIDTH - 1.0, bed),
                     (REACH_WIDTH, 4.0),
                 ]
                 .into_iter()
@@ -354,7 +359,7 @@ fn surveyed(bed: f64) -> ChannelReachDefinition {
                 })
                 .collect(),
                 maximum_stage_m: 4.0,
-                profile_provenance: "Analytical rectangular survey".into(),
+                profile_provenance: "Analytical trapezoidal survey".into(),
             },
             cells: (0..3)
                 .map(|i| SurveyedChannelCell {
