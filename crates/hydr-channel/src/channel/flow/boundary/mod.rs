@@ -16,7 +16,11 @@ mod reservoir_head;
 pub(in crate::channel::flow) mod types;
 mod wave;
 
+pub(in crate::channel::flow) use algebra::{Bounds, boundary_rejection};
+pub(in crate::channel::flow) use kernel::{Lane, ScalarFrame};
 pub(in crate::channel::flow) use port::check_port;
+pub(in crate::channel::flow) use reservoir::Reservoir;
+pub(in crate::channel::flow) use reservoir_head::ReservoirHeads;
 pub(in crate::channel::flow) use types::{
     DirectBoundaryFrame, EndpointInterior, NativeBoundaryTraces, PortFront,
 };

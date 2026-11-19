@@ -233,10 +233,12 @@ where
             TensorGeometry::Triangular(geometry) => SpeedEntry {
                 speeds: self.triangular_speed(geometry, fields, left, right)?,
                 riemann: None,
+                frame: None,
             },
             TensorGeometry::Rectangular(_) => SpeedEntry {
                 speeds: self.rectangular_speed(fields, left, right)?,
                 riemann: None,
+                frame: None,
             },
         };
         Ok(self.speed_memo.keep(key, entry).speeds.clone())

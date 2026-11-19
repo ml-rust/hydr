@@ -176,7 +176,9 @@ fn characteristic_policies_and_invalid_complete_exterior_states_preserve_accepte
         initial(1, false),
     )?;
     let before = origin.snapshot_data()?;
-    let policies = [
+    // Certified surveyed traces admit the characteristic policies. A step leaves the
+    // accepted origin unchanged.
+    let characteristic = [
         ChannelBoundary::Stage { elevation_m: 1.0 },
         ChannelBoundary::Discharge {
             discharge_m3_per_s: 0.0,
@@ -185,6 +187,16 @@ fn characteristic_policies_and_invalid_complete_exterior_states_preserve_accepte
             elevation_m: 1.0,
             entrance_loss_coefficient: 0.0,
         },
+    ];
+    for policy in characteristic {
+        for left in [false, true] {
+            let mut boundaries = walls();
+            boundaries[usize::from(!left)] = policy.clone();
+            origin.step(0.001, &forcing(0.0, 0.001, boundaries))?;
+            assert_eq!(origin.snapshot_data()?, before);
+        }
+    }
+    let policies = [
         ChannelBoundary::Exterior {
             depth_m: -1.0,
             velocity_m_per_s: 0.0,

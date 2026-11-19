@@ -13,20 +13,13 @@ const CHANNELS_DOC: &str = "docs/channels.md";
 /// Summary of a component that exists on its own but has no attachment to this reach.
 const STANDALONE: &str = "exists as a standalone component; not attached to this reach";
 
-/// Endpoint policies of rectangular and triangular reaches.
+/// Endpoint policies of every reach geometry.
 const SCALAR_REACH_ADMITTED: &[BoundaryKind] = &[
     BoundaryKind::Wall,
     BoundaryKind::Exterior,
     BoundaryKind::Stage,
     BoundaryKind::Discharge,
     BoundaryKind::QuiescentReservoir,
-    BoundaryKind::FluxPort,
-];
-
-/// Endpoint policies of surveyed reaches.
-const SURVEYED_ADMITTED: &[BoundaryKind] = &[
-    BoundaryKind::Wall,
-    BoundaryKind::Exterior,
     BoundaryKind::FluxPort,
 ];
 
@@ -102,7 +95,7 @@ const FLUX_PORT_WET_DRY_FRONT: RegimeSupport = regime(
     Regime::WetDryFront,
 );
 
-/// Regimes of rectangular and triangular reaches.
+/// Regimes of every reach geometry.
 const SCALAR_REACH_REGIMES: &[RegimeSupport] = &[
     regime(
         RegimeScope::Boundary(BoundaryKind::Stage),
@@ -116,21 +109,6 @@ const SCALAR_REACH_REGIMES: &[RegimeSupport] = &[
         RegimeScope::Boundary(BoundaryKind::QuiescentReservoir),
         Regime::WetSubcritical,
     ),
-    EXTERIOR_WET_SUBCRITICAL,
-    EXTERIOR_SUPERCRITICAL,
-    EXTERIOR_DRY,
-    FLUX_PORT_WET_SUBCRITICAL,
-    FLUX_PORT_SUPERCRITICAL,
-    FLUX_PORT_DRY,
-    FLUX_PORT_WET_DRY_FRONT,
-    INTERIOR_WET_SUBCRITICAL,
-    INTERIOR_SUPERCRITICAL,
-    INTERIOR_DRY,
-    INTERIOR_WET_DRY_FRONT,
-];
-
-/// Regimes of surveyed reaches.
-const SURVEYED_REGIMES: &[RegimeSupport] = &[
     EXTERIOR_WET_SUBCRITICAL,
     EXTERIOR_SUPERCRITICAL,
     EXTERIOR_DRY,
@@ -381,30 +359,19 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
         "cuda_surveyed_sources_and_restart_use_actual_selected_device",
         "wgpu_rejects_surveyed_f64_without_fallback",
     ),
-    endpoints: &[
-        Endpoint {
-            id: EndpointId::ReachLeft,
-            admitted: SURVEYED_ADMITTED,
-        },
-        Endpoint {
-            id: EndpointId::ReachRight,
-            admitted: SURVEYED_ADMITTED,
-        },
-    ],
-    regimes: SURVEYED_REGIMES,
+    endpoints: &ENDPOINTS,
+    regimes: SCALAR_REACH_REGIMES,
     sources: SOURCES,
     options: &[],
     nested: &[],
     attachable_to: &[ComponentId::SurfaceChannels],
     unsupported: &[
-        unsupported(
-            "surveyed-scalar-boundaries",
-            UnsupportedReason::RejectedByAdmission,
-            "Stage, Discharge and QuiescentReservoir endpoints reject on surveyed reaches.",
-            CHANNELS_DOC,
-        ),
+        STAGE_OUTSIDE_WET_SUBCRITICAL,
+        DISCHARGE_OUTSIDE_WET_SUBCRITICAL,
+        RESERVOIR_OUTSIDE_WET_SUBCRITICAL,
         FLUX_PORT_SLOW_SIGNAL,
         FLUX_PORT_DRY_EXPORT,
+        INTEGRATED_ENDPOINT_DISCHARGE,
         unsupported(
             "surveyed-channel-pool-attachment",
             UnsupportedReason::RejectedByAdmission,
@@ -429,17 +396,23 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
     ],
     limits: &[
         LATERAL_OWNERSHIP,
+        RESERVOIR_HELD_ELEVATION,
         FLUX_PORT_PROVIDER,
         Limit {
             id: "surveyed-work-ceilings",
             summary: "Surveyed root, integration and native query work stops at the configured ceilings.",
             doc: CHANNELS_DOC,
         },
+        Limit {
+            id: "surveyed-trace-certificates",
+            summary: "Surveyed scalar traces and their signal speeds come from certified wave curves. An unresolved enclosure within the work ceilings rejects.",
+            doc: CHANNELS_DOC,
+        },
     ],
     summary: Summary {
         equations: "1D hydrostatic shallow-water equations for one unbranched horizontal surveyed reach with Manning resistance",
-        method: "first-order finite volumes, certified surveyed-section interface fluxes, forward Euler and split Manning friction with a bounded hydraulic radius",
-        assessment: "functional CPU and CUDA source and restart cases; reach convergence and field accuracy remain unestablished",
+        method: "first-order finite volumes, certified surveyed-section interface fluxes, certified surveyed endpoint traces, forward Euler and split Manning friction with a bounded hydraulic radius",
+        assessment: "functional CPU and CUDA source and restart cases with selected scalar-endpoint and flux-port cases; reach convergence and field accuracy remain unestablished",
     },
 };
 

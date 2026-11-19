@@ -11,7 +11,7 @@ use numr::{
 };
 
 #[derive(Clone)]
-pub(super) struct Bounds<R: Runtime<DType = DType>> {
+pub(in crate::channel::flow) struct Bounds<R: Runtime<DType = DType>> {
     pub lo: Tensor<R>,
     pub hi: Tensor<R>,
 }
@@ -50,7 +50,11 @@ where
             hi: upper::<R>(&self.client, &self.client.add(&a.hi, &b.hi)?)?,
         })
     }
-    pub(super) fn bsub(&self, a: &Bounds<R>, b: &Bounds<R>) -> Result<Bounds<R>, ChannelError> {
+    pub(in crate::channel::flow) fn bsub(
+        &self,
+        a: &Bounds<R>,
+        b: &Bounds<R>,
+    ) -> Result<Bounds<R>, ChannelError> {
         Ok(Bounds {
             lo: lower::<R>(&self.client, &self.client.sub(&a.lo, &b.hi)?)?,
             hi: upper::<R>(&self.client, &self.client.sub(&a.hi, &b.lo)?)?,
@@ -123,16 +127,21 @@ where
             .client
             .maximum(&self.client.abs(&a.lo)?, &self.client.abs(&a.hi)?)?)
     }
-    pub(super) fn boundary_require(
+    pub(in crate::channel::flow) fn boundary_require(
         &self,
         mask: &Tensor<R>,
         message: &str,
     ) -> Result<(), ChannelError> {
         if !self.all(mask)? {
-            return Err(ChannelError::numerical(format!(
-                "scalar channel boundary: {message}. Supply a resolved wet subcritical target or rescale inputs"
-            )));
+            return Err(boundary_rejection(message));
         }
         Ok(())
     }
+}
+
+/// The scalar endpoint rejection that names `message`.
+pub(in crate::channel::flow) fn boundary_rejection(message: &str) -> ChannelError {
+    ChannelError::numerical(format!(
+        "scalar channel boundary: {message}. Supply a resolved wet subcritical target or rescale inputs"
+    ))
 }

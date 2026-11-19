@@ -11,7 +11,7 @@ use numr::{
     tensor::Tensor,
 };
 
-pub(super) struct ReservoirHeads<R: Runtime<DType = DType>> {
+pub(in crate::channel::flow) struct ReservoirHeads<R: Runtime<DType = DType>> {
     pub velocity_head: Bounds<R>,
     pub entrance_loss_head: Bounds<R>,
     pub dissipation_head: Bounds<R>,
@@ -27,7 +27,7 @@ where
         + ShapeOps<R>
         + UnaryOps<R>,
 {
-    pub(super) fn reservoir_add_head(
+    pub(in crate::channel::flow) fn reservoir_add_head(
         &self,
         a: &Bounds<R>,
         b: &Bounds<R>,
@@ -84,7 +84,7 @@ where
             hi: c.where_cond(&active, &hi, &zero)?,
         })
     }
-    pub(super) fn reservoir_heads(
+    pub(in crate::channel::flow) fn reservoir_heads(
         &self,
         u: &Bounds<R>,
         k: &Tensor<R>,

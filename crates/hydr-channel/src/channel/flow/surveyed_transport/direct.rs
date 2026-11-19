@@ -6,7 +6,7 @@
 use crate::channel::flow::{
     ChannelError, ChannelTensorBoundary,
     admission::Fields,
-    boundary::{DirectBoundaryFrame, EndpointInterior, assembly::is_direct},
+    boundary::{DirectBoundaryFrame, assembly::is_direct},
     conserved_update::Parts,
     context::Context,
     geometry::SurveyedGeometry,
@@ -37,7 +37,8 @@ where
 {
     /// Rates at the direct end faces, or `None` when every face solves a point Riemann problem.
     ///
-    /// With `check`, each flux port first passes its admission against its end cell.
+    /// With `check`, each flux port first passes its admission against its end cell. Each
+    /// scalar end takes its certified trace on the end cell's wave curve.
     pub(super) fn surveyed_direct_frame(
         &self,
         geometry: &SurveyedGeometry<R>,
@@ -52,13 +53,9 @@ where
         if check {
             self.check_surveyed_flux_ports(geometry, fields, left, right)?;
         }
-        let interior = EndpointInterior {
-            area: self.endpoint_pair(&fields.area, &fields.area)?,
-            discharge: self.endpoint_pair(&fields.discharge, &fields.discharge)?,
-            depth: self.endpoint_pair(&fields.depth, &fields.depth)?,
-            velocity: self.endpoint_pair(&fields.velocity, &fields.velocity)?,
-        };
-        self.direct_boundary_frame(&interior, left, right)
+        self.direct_frame(left, right, || {
+            self.surveyed_scalar_frame(geometry, fields, left, right)
+        })
     }
 
     /// Two-part face rates with each direct entry placed around the numerical entries.

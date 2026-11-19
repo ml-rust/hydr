@@ -30,6 +30,39 @@ pub struct PrismaticRiemannWork {
     pub maximum_simpson_panels: usize,
 }
 
+impl PrismaticRiemannWork {
+    /// Work of two independent calls: summed counts and the larger of each maximum.
+    ///
+    /// A sum past `usize::MAX` saturates.
+    pub(crate) fn joined(self, other: Self) -> Self {
+        Self {
+            root_solves: self.root_solves.saturating_add(other.root_solves),
+            root_iterations: self.root_iterations.saturating_add(other.root_iterations),
+            maximum_root_iterations: self
+                .maximum_root_iterations
+                .max(other.maximum_root_iterations),
+            bracket_solves: self.bracket_solves.saturating_add(other.bracket_solves),
+            bracket_expansion_rounds: self
+                .bracket_expansion_rounds
+                .saturating_add(other.bracket_expansion_rounds),
+            maximum_bracket_expansion_rounds: self
+                .maximum_bracket_expansion_rounds
+                .max(other.maximum_bracket_expansion_rounds),
+            residual_points: self.residual_points.saturating_add(other.residual_points),
+            simpson_value_points: self
+                .simpson_value_points
+                .saturating_add(other.simpson_value_points),
+            simpson_derivative_points: self
+                .simpson_derivative_points
+                .saturating_add(other.simpson_derivative_points),
+            refinements: self.refinements.saturating_add(other.refinements),
+            maximum_simpson_panels: self
+                .maximum_simpson_panels
+                .max(other.maximum_simpson_panels),
+        }
+    }
+}
+
 pub(crate) enum QueryWork {
     Residual,
     SimpsonValue,
@@ -154,6 +187,48 @@ impl WorkLedger {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn joined_work_sums_counts_and_keeps_each_maximum() {
+        let first = PrismaticRiemannWork {
+            root_solves: 2,
+            root_iterations: 7,
+            maximum_root_iterations: 5,
+            bracket_solves: 1,
+            bracket_expansion_rounds: 3,
+            maximum_bracket_expansion_rounds: 3,
+            residual_points: 11,
+            simpson_value_points: 13,
+            simpson_derivative_points: 17,
+            refinements: 1,
+            maximum_simpson_panels: 8,
+        };
+        let second = PrismaticRiemannWork {
+            root_solves: 1,
+            root_iterations: 4,
+            maximum_root_iterations: 4,
+            residual_points: usize::MAX,
+            maximum_simpson_panels: 512,
+            ..PrismaticRiemannWork::default()
+        };
+        assert_eq!(
+            first.joined(second),
+            PrismaticRiemannWork {
+                root_solves: 3,
+                root_iterations: 11,
+                maximum_root_iterations: 5,
+                bracket_solves: 1,
+                bracket_expansion_rounds: 3,
+                maximum_bracket_expansion_rounds: 3,
+                residual_points: usize::MAX,
+                simpson_value_points: 13,
+                simpson_derivative_points: 17,
+                refinements: 1,
+                maximum_simpson_panels: 512,
+            }
+        );
+        assert_eq!(first.joined(PrismaticRiemannWork::default()), first);
+    }
 
     #[test]
     fn bracket_rounds_preserve_root_and_callback_counts() -> HydraulicResult<()> {

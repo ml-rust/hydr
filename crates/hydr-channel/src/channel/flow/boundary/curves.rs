@@ -82,8 +82,8 @@ where
         hi: &Tensor<R>,
     ) -> Result<Tensor<R>, ChannelError> {
         match &self.geometry {
-            TensorGeometry::Surveyed(_) => Err(ChannelError::input(
-                "surveyed scalar boundary curve is unsupported: supply Wall or complete Exterior depth and velocity",
+            TensorGeometry::Surveyed(_) => Err(ChannelError::numerical(
+                "surveyed scalar traces take the certified surveyed path: inspect direct-frame dispatch",
             )),
             TensorGeometry::Triangular(g) => self.triangular_curve_nominal(g, h, hi),
             TensorGeometry::Rectangular(_) => Ok(crate::numerics::curve(
@@ -158,18 +158,27 @@ where
         h: &Bounds<R>,
         u: &Bounds<R>,
     ) -> Result<Bounds<R>, ChannelError> {
-        let c = &self.client;
         let sound = self.boundary_sound(h)?;
+        self.boundary_characteristics(u, &sound)?;
+        Ok(sound)
+    }
+
+    /// Rejects unless `u - c < -margin` and `u + c > margin`, `margin = critical_relative · max(|u|, c)`.
+    pub(in crate::channel::flow) fn boundary_characteristics(
+        &self,
+        u: &Bounds<R>,
+        sound: &Bounds<R>,
+    ) -> Result<(), ChannelError> {
+        let c = &self.client;
         let scale = c.maximum(&self.babs(u)?, &sound.hi)?;
         let margin = c.mul_scalar(&scale, self.definition.config.boundary.critical_relative)?;
         self.boundary_require(
-            &c.lt(&self.bsub(u, &sound)?.hi, &c.neg(&margin)?)?,
+            &c.lt(&self.bsub(u, sound)?.hi, &c.neg(&margin)?)?,
             "incoming characteristic is unresolved",
         )?;
         self.boundary_require(
-            &c.gt(&self.badd(u, &sound)?.lo, &margin)?,
+            &c.gt(&self.badd(u, sound)?.lo, &margin)?,
             "outgoing characteristic is unresolved",
-        )?;
-        Ok(sound)
+        )
     }
 }

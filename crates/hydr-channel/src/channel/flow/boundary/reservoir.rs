@@ -22,7 +22,7 @@ use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedBisectionOptions
 use std::cell::RefCell;
 
 #[derive(Clone)]
-pub(super) struct Reservoir<R: Runtime<DType = DType>> {
+pub(in crate::channel::flow) struct Reservoir<R: Runtime<DType = DType>> {
     pub head: Tensor<R>,
     pub bounds: Bounds<R>,
     pub coefficient: Tensor<R>,
@@ -271,7 +271,7 @@ where
             })
             .collect()
     }
-    pub(super) fn boundary_reservoir_receipt(
+    pub(in crate::channel::flow) fn boundary_reservoir_receipt(
         &self,
         lane: &mut Lane<R>,
         reservoir: &Reservoir<R>,

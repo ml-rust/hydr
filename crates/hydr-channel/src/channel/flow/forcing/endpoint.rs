@@ -80,15 +80,6 @@ where
     ) -> Result<(), ChannelError> {
         let c = client;
         let reject = |message| ChannelError::input(message).at(index);
-        if matches!(
-            &definition.geometry,
-            ChannelGeometry::PrismaticSurveyed { .. }
-        ) && self.is_scalar()
-        {
-            return Err(reject(
-                "surveyed scalar boundary is unsupported: supply Wall or complete Exterior depth and velocity",
-            ));
-        }
         match self {
             Self::Wall => Ok(()),
             Self::FluxPort(port) => port.check(c).map_err(|error| match error {

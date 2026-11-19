@@ -5,8 +5,8 @@ use crate::channel_fixture::{
     initial, interval, lateral_inputs, pool_outcome, reach, step_outcome,
 };
 use crate::channel_variants::{
-    ENDPOINTS, PORT_SPEED, RECONSTRUCTIONS, boundary_kind, port, reconstruction_id, refusal,
-    samples, source_kind,
+    ENDPOINTS, PORT_SPEED, RECONSTRUCTIONS, boundary_kind, port, reconstruction_id, samples,
+    source_kind,
 };
 use hydr::capability::{
     BoundaryKind, EndpointId, Regime, RegimeScope, RegimeSupport, UnsupportedReason,
@@ -210,7 +210,7 @@ fn regime_case(
     })
 }
 
-/// Undeclared boundary regimes of rectangular and triangular reaches that admission rejects.
+/// Undeclared boundary regimes of every reach geometry that admission rejects.
 const SCALAR_REJECTED_REGIMES: [(BoundaryKind, Regime); 6] = [
     (BoundaryKind::Stage, Regime::Supercritical),
     (BoundaryKind::Stage, Regime::Dry),
@@ -285,26 +285,6 @@ fn rejection_cases(kind: Kind, id: &str) -> Option<Vec<(Outcome, Variant, &'stat
                 )
             })
             .collect(),
-        "surveyed-scalar-boundaries" => {
-            let fragment = "surveyed scalar boundary is unsupported";
-            let samples = match samples() {
-                Ok(samples) => samples,
-                Err(error) => return Some(vec![(Err(error.into()), Variant::Input, fragment)]),
-            };
-            samples
-                .into_iter()
-                .filter(|boundary| refusal(kind, boundary_kind(boundary)) == Some(id))
-                .flat_map(|boundary| {
-                    ENDPOINTS.map(|endpoint| {
-                        (
-                            one_cell(kind, 1.0, 0.0, endpoint, boundary.clone()),
-                            Variant::Input,
-                            fragment,
-                        )
-                    })
-                })
-                .collect()
-        }
         "surveyed-channel-pool-attachment" => vec![(
             pool_outcome(kind),
             Variant::Input,
@@ -387,9 +367,6 @@ fn channel_reach_regimes_match_admission() -> TestResult {
                     return Err(format!("{kind:?} {claim:?} at {endpoint:?}: {reason}").into());
                 }
             }
-        }
-        if kind == Kind::Surveyed {
-            continue;
         }
         for (boundary, regime) in SCALAR_REJECTED_REGIMES {
             let scope = RegimeScope::Boundary(boundary);

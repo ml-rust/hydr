@@ -1,3 +1,4 @@
+use crate::channel::flow::surveyed::PrismaticRiemannWork;
 use numr::{dtype::DType, runtime::Runtime, tensor::Tensor};
 use std::sync::Arc;
 
@@ -49,6 +50,8 @@ pub(in crate::channel::flow) struct DirectBoundaryFrame<R: Runtime<DType = DType
     pub root_iterations: usize,
     /// Receipts of the scalar trace endpoints. `None` when every direct endpoint is a port.
     pub traces: Option<Arc<NativeBoundaryTraces<R>>>,
+    /// Certified work of the surveyed trace solves. `None` without a surveyed scalar trace.
+    pub trace_work: Option<PrismaticRiemannWork>,
     /// Exterior dry-front states of the flux port endpoints.
     pub ports: Vec<PortFront<R>>,
 }

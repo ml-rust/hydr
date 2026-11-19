@@ -5,12 +5,18 @@ mod runtime;
 
 #[path = "channel_surveyed/admission.rs"]
 mod admission;
+#[path = "channel_surveyed/endpoints_admission.rs"]
+mod endpoints_admission;
+#[path = "channel_surveyed/endpoints_identity.rs"]
+mod endpoints_identity;
 #[allow(dead_code)]
 #[path = "channel_surveyed/endpoints_propagation_reference.rs"]
 mod endpoints_propagation_reference;
 #[allow(dead_code)]
 #[path = "channel_surveyed/endpoints_reference.rs"]
 mod endpoints_reference;
+#[path = "channel_surveyed/endpoints_traces.rs"]
+mod endpoints_traces;
 #[path = "channel_surveyed/fixtures.rs"]
 mod fixtures;
 #[path = "channel_surveyed/lifecycle.rs"]

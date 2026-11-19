@@ -37,6 +37,7 @@ mod snapshot;
 mod sources;
 mod speed_memo;
 mod stepping;
+mod surveyed_boundary;
 mod surveyed_recovery;
 mod surveyed_residuals;
 mod surveyed_transport;

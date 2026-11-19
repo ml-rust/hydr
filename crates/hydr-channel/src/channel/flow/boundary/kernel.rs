@@ -6,6 +6,7 @@ use super::{
 };
 use crate::channel::flow::{
     ChannelError, ChannelTensorBoundary, context::Context, geometry::TensorGeometry,
+    surveyed::PrismaticRiemannWork,
 };
 use numr::{
     dtype::DType,
@@ -18,14 +19,21 @@ use numr::{
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use std::sync::Arc;
 
-pub(super) struct Lane<R: Runtime<DType = DType>> {
+/// One solved scalar endpoint: its receipt, longitudinal water rate and underflow bounds.
+pub(in crate::channel::flow) struct Lane<R: Runtime<DType = DType>> {
     pub trace: NativeBoundaryTraces<R>,
     pub longitudinal: Tensor<R>,
     pub water_bound: Tensor<R>,
     pub momentum_bound: Tensor<R>,
 }
-/// Solved scalar lanes in endpoint order and their packed receipts.
-type ScalarLanes<R> = (Vec<Lane<R>>, Arc<NativeBoundaryTraces<R>>);
+
+/// Solved scalar lanes in endpoint order, their packed receipts and surveyed trace work.
+pub(in crate::channel::flow) struct ScalarFrame<R: Runtime<DType = DType>> {
+    pub lanes: Vec<Lane<R>>,
+    pub traces: Arc<NativeBoundaryTraces<R>>,
+    /// Certified surveyed trace work. `None` on rectangular and triangular reaches.
+    pub work: Option<PrismaticRiemannWork>,
+}
 
 struct Pending<R: Runtime<DType = DType>> {
     endpoint: usize,
@@ -55,15 +63,27 @@ where
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
     ) -> Result<Option<DirectBoundaryFrame<R>>, ChannelError> {
+        self.direct_frame(left, right, || self.scalar_lanes(interior, left, right))
+    }
+
+    /// Rates at the direct end faces from the flux ports and the `scalar` lanes.
+    ///
+    /// `scalar` runs after the ports are read. Returns `None` without a direct end face.
+    pub(in crate::channel::flow) fn direct_frame(
+        &self,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
+        scalar: impl FnOnce() -> Result<Option<ScalarFrame<R>>, ChannelError>,
+    ) -> Result<Option<DirectBoundaryFrame<R>>, ChannelError> {
         let ports = self.port_lanes(left, right)?;
-        let scalar = self.scalar_lanes(interior, left, right)?;
+        let scalar = scalar()?;
         if ports.is_empty() && scalar.is_none() {
             return Ok(None);
         }
         let c = &self.client;
-        let (lanes, traces) = match scalar {
-            Some((lanes, traces)) => (lanes, Some(traces)),
-            None => (Vec::new(), None),
+        let (lanes, traces, trace_work) = match scalar {
+            Some(frame) => (frame.lanes, Some(frame.traces), frame.work),
+            None => (Vec::new(), None, None),
         };
         let mut endpoints = Vec::with_capacity(2);
         let mut entries = Vec::with_capacity(2);
@@ -111,6 +131,7 @@ where
                 .and_then(|t| t.root_iterations.iter().copied().max())
                 .unwrap_or(0),
             traces,
+            trace_work,
             ports: ports.into_iter().map(PortLane::front).collect(),
         }))
     }
@@ -121,7 +142,7 @@ where
         interior: &EndpointInterior<R>,
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
-    ) -> Result<Option<ScalarLanes<R>>, ChannelError> {
+    ) -> Result<Option<ScalarFrame<R>>, ChannelError> {
         let mut pending = Vec::with_capacity(2);
         for (endpoint, request) in [left, right].into_iter().enumerate() {
             if !super::assembly::is_scalar(request) {
@@ -190,6 +211,18 @@ where
             }
             lanes.push(evaluated);
         }
+        Ok(Some(ScalarFrame {
+            traces: Arc::new(self.pack_lanes(&lanes)?),
+            lanes,
+            work: None,
+        }))
+    }
+
+    /// Receipts of solved lanes packed in endpoint order.
+    pub(in crate::channel::flow) fn pack_lanes(
+        &self,
+        lanes: &[Lane<R>],
+    ) -> Result<NativeBoundaryTraces<R>, ChannelError> {
         let c = &self.client;
         macro_rules! pack {
             ($field:ident) => {{
@@ -222,7 +255,7 @@ where
                     .collect(),
             })
         };
-        let traces = NativeBoundaryTraces {
+        Ok(NativeBoundaryTraces {
             depth_m: pack!(depth_m),
             area_m2: pack!(area_m2),
             outward_velocity_m_per_s: pack!(outward_velocity_m_per_s),
@@ -248,8 +281,7 @@ where
                 .iter()
                 .flat_map(|l| l.trace.root_iterations.iter().copied())
                 .collect(),
-        };
-        Ok(Some((lanes, Arc::new(traces))))
+        })
     }
     fn boundary_prepare(
         &self,
@@ -269,8 +301,8 @@ where
 
         let coefficient = match &self.geometry {
             TensorGeometry::Surveyed(_) => {
-                return Err(ChannelError::input(
-                    "surveyed scalar boundary is unsupported: supply Wall or complete Exterior depth and velocity",
+                return Err(ChannelError::numerical(
+                    "surveyed scalar traces take the certified surveyed path: inspect direct-frame dispatch",
                 ));
             }
             TensorGeometry::Rectangular(g) => g.width.narrow(0, index, 1)?,

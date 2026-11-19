@@ -4,7 +4,7 @@
 //! it is classified.
 
 use crate::channel_fixture::{KINDS, Kind, TestResult, definition, exterior};
-use hydr::capability::{BoundaryKind, EndpointId, SourceKind, UnsupportedReason};
+use hydr::capability::{BoundaryKind, EndpointId, SourceKind};
 use hydr::channel::{
     ChannelBoundary, ChannelError, ChannelFluxPort, ChannelLateralDirection, ChannelTensorBoundary,
     ChannelTensorFluxPort, ChannelTriangularReconstruction,
@@ -126,36 +126,21 @@ fn tensor_samples() -> Result<[ChannelTensorBoundary<crate::runtime::Runtime>; 6
     ])
 }
 
-/// Declared rejection that covers an unadmitted boundary kind.
-pub fn refusal(kind: Kind, boundary: BoundaryKind) -> Option<&'static str> {
-    match (kind, boundary) {
-        (
-            Kind::Surveyed,
-            BoundaryKind::Stage | BoundaryKind::Discharge | BoundaryKind::QuiescentReservoir,
-        ) => Some("surveyed-scalar-boundaries"),
-        _ => None,
-    }
-}
-
 #[test]
 fn channel_public_variants_are_classified() -> TestResult {
     for kind in KINDS {
         let capabilities = kind.capabilities();
         assert_eq!(Kind::of(&definition(kind, 1, false).geometry), kind);
+        // Every geometry admits every public endpoint policy at both ends.
         for boundary in samples()? {
             let class = boundary_kind(&boundary);
             for id in ENDPOINTS {
-                if capabilities.admits(id, class) {
-                    continue;
-                }
-                let refused = refusal(kind, class).ok_or(format!(
-                    "{kind:?}: `{}` is neither admitted nor refused",
-                    class.id()
-                ))?;
-                let entry = capabilities
-                    .unsupported_by_id(refused)
-                    .ok_or(format!("{kind:?}: `{refused}` is undeclared"))?;
-                assert_eq!(entry.reason, UnsupportedReason::RejectedByAdmission);
+                assert!(
+                    capabilities.admits(id, class),
+                    "{kind:?}: `{}` at `{}` is not admitted",
+                    class.id(),
+                    id.id()
+                );
             }
         }
         for endpoint in capabilities.endpoints {

@@ -80,12 +80,22 @@ where
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
     ) -> Result<Flux<R>, ChannelError> {
-        let frame = self.surveyed_direct_frame(geometry, fields, left, right, true)?;
-        let frame = frame.as_ref();
         let (start, len) = numerical_range(self.count(), left, right);
-        // A kept candidate evaluation of these exact operands holds this solve and its speeds.
+        // A kept candidate evaluation of these exact operands holds this solve, its direct
+        // end faces and its speeds.
         let key = self.speed_key(fields, left, right)?;
         let kept = self.speed_memo.find(&key, len > 0);
+        let frame = match kept.as_ref().and_then(|entry| entry.frame.clone()) {
+            Some(frame) => {
+                self.check_surveyed_flux_ports(geometry, fields, left, right)?;
+                Some(frame)
+            }
+            None => self
+                .surveyed_direct_frame(geometry, fields, left, right, true)?
+                .map(Arc::new),
+        };
+        let kept_frame = frame.clone();
+        let frame = frame.as_deref();
         let result = match kept.as_ref().and_then(|entry| entry.riemann.clone()) {
             Some(result) => Some(result),
             None if len > 0 => Some(Arc::new(
@@ -141,6 +151,7 @@ where
                 let entry = SpeedEntry {
                     speeds: speeds.clone(),
                     riemann: result.clone(),
+                    frame: kept_frame,
                 };
                 self.speed_memo.keep(key, entry);
                 (speeds.outer, speeds.fronts)
@@ -167,6 +178,11 @@ where
         let work = result
             .as_ref()
             .map_or_else(PrismaticRiemannWork::default, |r| r.work());
+        // Certified trace solves join the face work. Ports and Riemann-only reaches add nothing.
+        let work = match frame.and_then(|f| f.trace_work) {
+            Some(trace) => work.joined(trace),
+            None => work,
+        };
         let root_iterations = work
             .maximum_root_iterations
             .max(frame.map_or(0, |f| f.root_iterations));

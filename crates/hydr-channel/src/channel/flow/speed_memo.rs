@@ -6,8 +6,8 @@
 //! state over its fixed-point iterations. An accepted candidate can equal the next start state.
 
 use super::{
-    ChannelError, ChannelTensorBoundary, admission::Fields, cfl_speeds::CflSpeeds,
-    context::Context, surveyed_points::PrismaticPointRiemannResult,
+    ChannelError, ChannelTensorBoundary, admission::Fields, boundary::DirectBoundaryFrame,
+    cfl_speeds::CflSpeeds, context::Context, surveyed_points::PrismaticPointRiemannResult,
 };
 use numr::dtype::DType;
 use numr::ops::ShapeOps;
@@ -28,6 +28,8 @@ pub(super) struct SpeedEntry<R: Runtime<DType = DType>> {
     pub speeds: CflSpeeds<R>,
     /// The certified point Riemann result of a surveyed reach.
     pub riemann: Option<Arc<PrismaticPointRiemannResult<R>>>,
+    /// The direct end-face rates of a surveyed reach, with its certified scalar traces.
+    pub frame: Option<Arc<DirectBoundaryFrame<R>>>,
 }
 
 /// The most recent evaluations of one reach context.

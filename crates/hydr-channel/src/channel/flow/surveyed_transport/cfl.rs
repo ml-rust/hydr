@@ -55,7 +55,9 @@ where
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
     ) -> Result<SpeedEntry<R>, ChannelError> {
-        let frame = self.surveyed_direct_frame(geometry, fields, left, right, false)?;
+        let frame = self
+            .surveyed_direct_frame(geometry, fields, left, right, false)?
+            .map(Arc::new);
         let (_, len) = numerical_range(self.count(), left, right);
         let result = if len > 0 {
             Some(Arc::new(
@@ -70,10 +72,11 @@ where
                 fields,
                 left,
                 right,
-                frame.as_ref(),
+                frame.as_deref(),
                 result.as_deref(),
             )?,
             riemann: result,
+            frame,
         })
     }
 
