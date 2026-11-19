@@ -223,7 +223,7 @@ where
         right: &ChannelTensorBoundary<R>,
     ) -> Result<CflSpeeds<R>, ChannelError> {
         let key = self.speed_key(fields, left, right)?;
-        if let Some(entry) = self.speed_memo.find(&key, false) {
+        if let Some(entry) = self.speed_memo.find_speeds(&key, false) {
             return Ok(entry.speeds.clone());
         }
         let entry = match &self.geometry {

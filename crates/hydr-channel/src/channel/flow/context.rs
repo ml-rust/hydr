@@ -21,6 +21,11 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub lateral: super::sources::LateralContext<R>,
     /// Recent wave-bound evaluations, shared by every state of this reach.
     pub speed_memo: super::speed_memo::SpeedMemo<R>,
+    /// Recent surveyed point Riemann face results, shared by every state of this reach.
+    pub riemann_memo:
+        super::speed_memo::Memo<super::surveyed_points::PrismaticPointRiemannResult<R>>,
+    /// Recent surveyed scalar trace lanes, shared by every state of this reach.
+    pub lane_memo: super::speed_memo::Memo<super::boundary::TraceLane<R>>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -106,7 +111,9 @@ where
             manning,
             charge_reduction,
             lateral,
-            speed_memo: super::speed_memo::SpeedMemo::new(),
+            speed_memo: super::speed_memo::Memo::new(super::speed_memo::SPEED_CAPACITY),
+            riemann_memo: super::speed_memo::Memo::new(super::speed_memo::RIEMANN_CAPACITY),
+            lane_memo: super::speed_memo::Memo::new(super::speed_memo::LANE_CAPACITY),
         })
     }
 }

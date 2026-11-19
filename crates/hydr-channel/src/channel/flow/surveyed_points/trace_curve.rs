@@ -4,10 +4,11 @@
 //! certified curve value `f_K(A)` and, where a compression is possible, the 1-shock magnitude.
 
 use super::potential_range::{PotentialContext, PotentialEvaluation};
+use super::source_terms::{SourceRows, SourceTerms};
 use super::wave_curve;
 use crate::channel::{
     flow::surveyed::{
-        PrismaticRiemannConfig,
+        PrismaticRiemannConfig, PrismaticRiemannWork,
         error::{HydraulicError, HydraulicResult, checked},
         work::WorkLedger,
     },
@@ -29,6 +30,7 @@ use solvr::{
     common::arithmetic::{CertifiedExpansion, Interval},
     integrate::CertifiedSimpsonAlgorithms,
 };
+use std::cell::RefCell;
 
 /// Recovered source points with the band and boundary rows of their section owners.
 pub(crate) struct TraceCurveSources<R: Runtime<DType = DType>> {
@@ -36,6 +38,29 @@ pub(crate) struct TraceCurveSources<R: Runtime<DType = DType>> {
     pub(crate) bands: GatheredBands<R>,
     pub(crate) boundaries: BoundaryAreas<R>,
     pub(crate) source: PrismaticAreaPointRecovery<R>,
+    /// Source top widths and analytic source terms, evaluated once per source row.
+    terms: SourceTerms<R>,
+    /// Completed curve calls in call order.
+    kept: RefCell<Vec<KeptCurve<R>>>,
+}
+
+/// Exact operands of one curve call. `ledger` is the address of its work ledger.
+#[derive(PartialEq, Eq)]
+struct CurveKey {
+    ledger: usize,
+    panels: usize,
+    rows: Vec<i64>,
+    areas: Vec<u64>,
+}
+
+/// One completed curve call: its enclosure endpoints and its ledger work.
+struct KeptCurve<R: Runtime<DType = DType>> {
+    key: CurveKey,
+    before: PrismaticRiemannWork,
+    after: PrismaticRiemannWork,
+    curve: [Tensor<R>; 2],
+    shock: [Tensor<R>; 2],
+    compression: Tensor<R>,
 }
 
 /// Wave-curve enclosures at exact target areas, one row per target.
@@ -81,13 +106,81 @@ where
             bands,
             boundaries,
             source,
+            terms: SourceTerms::new(areas.high().numel()),
+            kept: RefCell::new(Vec::new()),
         })
     }
 
     /// Curve enclosures of source `rows[j]` at the exact area `areas[j]`.
     ///
     /// Every source must be wet. Each target must lie in `[0, cap area]`.
+    ///
+    /// A call that repeats an earlier call's rows, areas, panels and ledger in every bit takes
+    /// the kept enclosures and charges the kept work, so every bit matches a fresh call.
     pub(crate) fn curve(
+        &self,
+        rows: &Tensor<R>,
+        areas: &Tensor<R>,
+        config: &PrismaticRiemannConfig,
+        panels: usize,
+        work: &WorkLedger,
+    ) -> HydraulicResult<TraceCurve<R>> {
+        let c = self.geometry.client();
+        let key = CurveKey {
+            ledger: std::ptr::from_ref(work) as usize,
+            panels,
+            rows: rows.try_to_vec::<i64>()?,
+            areas: areas
+                .try_to_vec::<f64>()?
+                .into_iter()
+                .map(f64::to_bits)
+                .collect(),
+        };
+        let kept = self
+            .kept
+            .borrow()
+            .iter()
+            .find(|kept| kept.key == key)
+            .map(|kept| {
+                (
+                    kept.before,
+                    kept.after,
+                    kept.curve.clone(),
+                    kept.shock.clone(),
+                    kept.compression.clone(),
+                )
+            });
+        if let Some((
+            before,
+            after,
+            [curve_lower, curve_upper],
+            [shock_lower, shock_upper],
+            compression,
+        )) = kept
+        {
+            work.replay(before, after)?;
+            return checked(c, "surveyed trace kept side curve", |a| {
+                Ok(TraceCurve {
+                    curve: a.bounds(&curve_lower, &curve_upper)?,
+                    shock: a.bounds(&shock_lower, &shock_upper)?,
+                    compression,
+                })
+            });
+        }
+        let before = work.snapshot();
+        let curve = self.fresh_curve(rows, areas, config, panels, work)?;
+        self.kept.borrow_mut().push(KeptCurve {
+            key,
+            before,
+            after: work.snapshot(),
+            curve: [curve.curve.lower().clone(), curve.curve.upper().clone()],
+            shock: [curve.shock.lower().clone(), curve.shock.upper().clone()],
+            compression: curve.compression.clone(),
+        });
+        Ok(curve)
+    }
+
+    fn fresh_curve(
         &self,
         rows: &Tensor<R>,
         areas: &Tensor<R>,
@@ -126,7 +219,11 @@ where
                 panels,
                 work,
             },
-        )?;
+        )?
+        .with_source_rows(Some(SourceRows {
+            terms: &self.terms,
+            parents: rows.clone(),
+        }));
         let value = wave_curve::endpoint(&context, PhysicalEndpoint::Lower)?;
         checked(c, "surveyed trace side-curve values", |a| {
             let zero = Tensor::<R>::zeros(areas.shape(), DType::F64, c.device())?;

@@ -2,6 +2,7 @@
 
 mod bracket;
 mod client;
+mod contract;
 mod depth;
 mod error;
 #[cfg(test)]

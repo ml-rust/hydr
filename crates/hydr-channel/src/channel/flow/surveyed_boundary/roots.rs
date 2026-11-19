@@ -120,6 +120,46 @@ where
         .map_err(trace_error)
     }
 
+    /// Slope floor of `E` in normalized depth over `[a, b]`, at least `floor = κ_E = H`.
+    ///
+    /// Entering flow has `u_b < 0` and `dE/dd = 1 + (1 + k) |u_b| |u_b'| / g`. With
+    /// `u_b' = -T f_i'(A)` and `A f_i' >= c`, `|u_b'| >= T c / A = g / c`. So
+    /// `dE/dd >= 1 + (1 + k) |u_b| / c`. Over the bracket, `|u_b|` is at least the negated
+    /// upper velocity bound and `c` at most the upper sound bound. A bracket that admits
+    /// `u_b >= 0` keeps `floor`.
+    pub(super) fn surveyed_reservoir_slope(
+        &self,
+        interior: &Interior<R>,
+        reservoir: &Reservoir<R>,
+        evaluation: &Evaluation<'_>,
+        a: f64,
+        b: f64,
+        floor: f64,
+    ) -> Result<f64, ChannelError> {
+        let c = interior.sources.geometry.client();
+        let (lower, upper) = (self.tensor(&[a])?, self.tensor(&[b])?);
+        let t = checked(c, "surveyed reservoir slope bracket", |a| {
+            Ok(a.bounds(&lower, &upper)?)
+        })
+        .map_err(trace_error)?;
+        let point = self.surveyed_trace_point(interior, TraceDepth::Normalized(&t), evaluation)?;
+        let velocity = point.velocity.upper().item::<f64>()?;
+        let sound = point.sound.upper().item::<f64>()?;
+        let loss = reservoir.coefficient.item::<f64>()?;
+        if !(velocity < 0.0 && sound > 0.0 && sound.is_finite() && loss >= 0.0) {
+            return Ok(floor);
+        }
+        // Each nearest operation moves one step down, so every factor stays a lower bound.
+        let froude = (-velocity / sound).next_down();
+        let gain = ((1.0 + loss).next_down() * froude).next_down();
+        let kappa = (floor * (1.0 + gain).next_down()).next_down();
+        Ok(if kappa.is_finite() && kappa > floor {
+            kappa
+        } else {
+            floor
+        })
+    }
+
     /// Certified root of the increasing `residual` over `[lower, upper]` in normalized depth.
     ///
     /// `kappa` bounds the residual slope from below over the whole bracket. Solvr narrows

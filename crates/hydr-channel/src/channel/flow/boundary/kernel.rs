@@ -20,11 +20,18 @@ use solvr::optimize::roots::BatchedBisectionAlgorithms;
 use std::sync::Arc;
 
 /// One solved scalar endpoint: its receipt, longitudinal water rate and underflow bounds.
+#[derive(Clone)]
 pub(in crate::channel::flow) struct Lane<R: Runtime<DType = DType>> {
     pub trace: NativeBoundaryTraces<R>,
     pub longitudinal: Tensor<R>,
     pub water_bound: Tensor<R>,
     pub momentum_bound: Tensor<R>,
+}
+
+/// One solved surveyed scalar endpoint and the certified work that solved it.
+pub(in crate::channel::flow) struct TraceLane<R: Runtime<DType = DType>> {
+    pub lane: Lane<R>,
+    pub work: PrismaticRiemannWork,
 }
 
 /// Solved scalar lanes in endpoint order, their packed receipts and surveyed trace work.

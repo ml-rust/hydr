@@ -3,6 +3,7 @@
 use super::{
     bracket::Bracket,
     client::TraceClient,
+    contract::SlopeFloor,
     interior::Interior,
     point::Evaluation,
     request::TraceRequest,
@@ -100,19 +101,35 @@ where
         // The plan's slope floor holds at every certified depth above d_s. At the lower end of
         // an enclosure it is far larger than at t_L, so `root ± R / κ` contracts to the residual
         // width instead of stopping at the first ambiguous midpoint.
-        let narrow = |root: RootEnclosure| -> Result<Option<RootEnclosure>, ChannelError> {
-            let mut kappa = bracket.kappa;
-            if discharge {
-                let point =
-                    self.surveyed_trace_at(interior, &self.tensor(&[root.lower])?, evaluation)?;
-                if let Some(local) = self.surveyed_discharge_slope(interior, &point)? {
-                    kappa = kappa.max(local);
-                }
+        let local = |lower: f64| -> Result<f64, ChannelError> {
+            if !discharge {
+                return Ok(bracket.kappa);
             }
+            let point = self.surveyed_trace_at(interior, &self.tensor(&[lower])?, evaluation)?;
+            Ok(match self.surveyed_discharge_slope(interior, &point)? {
+                Some(local) => bracket.kappa.max(local),
+                None => bracket.kappa,
+            })
+        };
+        // Reservoir samples land on one side of the root, so the bracket contracts from both
+        // ends first. A `Discharge` enclosure already contracts through its local floor.
+        let slope: Option<Box<SlopeFloor<'_>>> = match request {
+            TraceRequest::Reservoir { reservoir, .. } => Some(Box::new(move |a: f64, b: f64| {
+                self.surveyed_reservoir_slope(interior, reservoir, evaluation, a, b, bracket.kappa)
+            })),
+            _ => None,
+        };
+        let contract = |lower: f64, upper: f64| match &slope {
+            Some(slope) => {
+                self.surveyed_trace_contract(evaluation, lower, upper, &*residual, &**slope)
+            }
+            None => Ok((lower, upper)),
+        };
+        let narrow = |root: RootEnclosure| -> Result<Option<RootEnclosure>, ChannelError> {
+            let (lower, upper) = contract(root.lower, root.upper)?;
+            let kappa = local(lower)?;
             Ok(
-                match self
-                    .surveyed_trace_root(evaluation, root.lower, root.upper, kappa, &*residual)?
-                {
+                match self.surveyed_trace_root(evaluation, lower, upper, kappa, &*residual)? {
                     RootOutcome::Root(root) => Some(root),
                     RootOutcome::NoRoot | RootOutcome::Unresolved => None,
                 },
@@ -123,10 +140,11 @@ where
         {
             return Ok(progress.record(root));
         }
+        let (lower, upper) = contract(bracket.lower, 1.0)?;
         let root = match self.surveyed_trace_root(
             evaluation,
-            bracket.lower,
-            1.0,
+            lower,
+            upper,
             bracket.kappa,
             &*residual,
         )? {
@@ -360,6 +378,64 @@ mod tests {
             );
         }
         Ok(())
+    }
+
+    /// The entering reservoir row contracts from `[0, 1]` around its 150-digit depth.
+    ///
+    /// Frozen criteria:
+    /// - the contracted bracket holds the reference depth and is narrower than `1e-6`
+    /// - the local slope floor near the root exceeds `κ_E = H`
+    /// - the largest certified residual rise over that bracket meets the local floor
+    fn reservoir_contraction_holds_the_reference<R>(client: R::Client) -> TestResult
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        let row = &rows()[2];
+        let reach = reach::<R>(client, row.area, row.discharge, 0.0)?;
+        let context = &reach.context;
+        let interior = interior(&reach, row.endpoint)?;
+        let TraceRequest::Reservoir { reservoir, .. } =
+            context.surveyed_trace_request(&interior, &policy(&reach, &row.policy)?)?
+        else {
+            return Err("a reservoir request is required".into());
+        };
+        let work = ledger(&reach)?;
+        let evaluation = Evaluation {
+            config: &geometry(&reach)?.riemann,
+            panels: PANELS,
+            work: &work,
+        };
+        let [kappa, _] = ends(&interior.cap)?;
+        let residual = |t: &Tensor<R>| {
+            let point = context.surveyed_trace_at(&interior, t, &evaluation)?;
+            context.surveyed_reservoir_residual(&interior, &point, &reservoir)
+        };
+        let slope = |a: f64, b: f64| {
+            context.surveyed_reservoir_slope(&interior, &reservoir, &evaluation, a, b, kappa)
+        };
+        let (lower, upper) =
+            context.surveyed_trace_contract(&evaluation, 0.0, 1.0, &residual, &slope)?;
+        let point = state(&reach, &interior, &evaluation, lower, upper)?;
+        let [low, high] = ends(&point.depth)?;
+        let [floor, ceil] = row.depth.map(f64::from_bits);
+        assert!(low <= floor && ceil <= high, "[{low:e}, {high:e}]");
+        assert!(upper - lower < 1e-6, "width={:e}", upper - lower);
+        let (t1, t2) = (lower - 1e-3, upper + 1e-3);
+        let local = slope(t1, t2)?;
+        assert!(local > kappa, "local={local:e}, H={kappa:e}");
+        let rise = |t: f64| -> TestResult<[f64; 2]> {
+            let point = state(&reach, &interior, &evaluation, t, t)?;
+            ends(&context.surveyed_reservoir_residual(&interior, &point, &reservoir)?)
+        };
+        let gain = rise(t2)?[1] - rise(t1)?[0];
+        assert!(gain >= local * (t2 - t1), "rise={gain:e}");
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_reservoir_contraction_holds_the_reference() -> TestResult {
+        reservoir_contraction_holds_the_reference::<CpuRuntime>(cpu())
     }
 
     #[test]

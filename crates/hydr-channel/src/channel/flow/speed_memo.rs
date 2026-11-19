@@ -1,9 +1,17 @@
-//! Recent candidate wave-bound evaluations, keyed by the exact bits of their operands.
+//! Recent evaluations, keyed by the exact bits of their operands.
 //!
 //! Wave bounds are a pure function of the reach context, the cell fields, and the endpoint
 //! operands. An operand set whose every bit matches a kept entry takes that entry's result, so
 //! every bit agrees with a fresh evaluation. A coordinator repeats a converged reach's candidate
 //! state over its fixed-point iterations. An accepted candidate can equal the next start state.
+//!
+//! Two parts of one evaluation read fewer operands, so they keep their own entries:
+//!
+//! - Surveyed point Riemann faces read the cell fields and the operands of the ends that a face
+//!   Riemann problem solves. A coordinator iterates a pool head at a direct end while the start
+//!   state stays fixed, so every iteration takes the start-state faces of the first.
+//! - A surveyed scalar trace lane reads the cell fields and its own end's policy. A head that
+//!   moves at one end leaves the other end's lane unchanged.
 
 use super::{
     ChannelError, ChannelTensorBoundary, admission::Fields, boundary::DirectBoundaryFrame,
@@ -16,12 +24,64 @@ use numr::tensor::Tensor;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
 
-/// Kept entries. A scalar-endpoint trial evaluates a prefriction and a postfriction state.
-const CAPACITY: usize = 2;
+/// Kept speed entries. A scalar-endpoint trial evaluates a prefriction and a postfriction state.
+pub(super) const SPEED_CAPACITY: usize = 2;
+
+/// Kept point Riemann results: the fixed start state and the latest candidate.
+pub(super) const RIEMANN_CAPACITY: usize = 2;
+
+/// Kept trace lanes: both ends at the fixed start state and at the latest candidate.
+pub(super) const LANE_CAPACITY: usize = 4;
+
+/// Kind code of a direct end, whose face no point Riemann problem solves.
+const DIRECT: u64 = 7;
 
 /// Endpoint kinds, lengths, and value bits of every operand of one evaluation.
 #[derive(PartialEq, Eq)]
 pub(super) struct SpeedKey(Vec<u64>);
+
+/// The most recent evaluations of one kind, least recently used first.
+pub(super) struct Memo<E> {
+    capacity: usize,
+    entries: Mutex<VecDeque<(SpeedKey, Arc<E>)>>,
+}
+
+impl<E> Memo<E> {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            entries: Mutex::new(VecDeque::with_capacity(capacity)),
+        }
+    }
+
+    /// The kept entry of `key` that `accept` admits. A found entry becomes the most recent.
+    pub fn find(&self, key: &SpeedKey, accept: impl Fn(&E) -> bool) -> Option<Arc<E>> {
+        // Entries hold only completed values, so a panic elsewhere leaves them valid.
+        let mut entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
+        let position = entries
+            .iter()
+            .position(|(kept, entry)| kept == key && accept(entry))?;
+        let found = entries.remove(position)?;
+        let entry = Arc::clone(&found.1);
+        entries.push_back(found);
+        Some(entry)
+    }
+
+    /// Keeps `entry` under `key` in place of the least recently used entry, and returns it.
+    pub fn keep(&self, key: SpeedKey, entry: E) -> Arc<E> {
+        let entry = Arc::new(entry);
+        let mut entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
+        entries.retain(|(kept, _)| *kept != key);
+        if entries.len() == self.capacity {
+            entries.pop_front();
+        }
+        entries.push_back((key, Arc::clone(&entry)));
+        entry
+    }
+}
+
+/// Recent wave-bound evaluations of one reach context.
+pub(super) type SpeedMemo<R> = Memo<SpeedEntry<R>>;
 
 /// One evaluation result.
 pub(super) struct SpeedEntry<R: Runtime<DType = DType>> {
@@ -32,38 +92,10 @@ pub(super) struct SpeedEntry<R: Runtime<DType = DType>> {
     pub frame: Option<Arc<DirectBoundaryFrame<R>>>,
 }
 
-/// The most recent evaluations of one reach context.
-pub(super) struct SpeedMemo<R: Runtime<DType = DType>> {
-    entries: Mutex<VecDeque<(SpeedKey, Arc<SpeedEntry<R>>)>>,
-}
-
 impl<R: Runtime<DType = DType>> SpeedMemo<R> {
-    pub fn new() -> Self {
-        Self {
-            entries: Mutex::new(VecDeque::with_capacity(CAPACITY)),
-        }
-    }
-
     /// The kept entry of `key` whose surveyed Riemann result is present when `riemann` holds.
-    pub fn find(&self, key: &SpeedKey, riemann: bool) -> Option<Arc<SpeedEntry<R>>> {
-        // Entries hold only completed values, so a panic elsewhere leaves them valid.
-        let entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
-        entries
-            .iter()
-            .find(|(kept, entry)| kept == key && (!riemann || entry.riemann.is_some()))
-            .map(|(_, entry)| Arc::clone(entry))
-    }
-
-    /// Keeps `entry` under `key` in place of the oldest entry, and returns it.
-    pub fn keep(&self, key: SpeedKey, entry: SpeedEntry<R>) -> Arc<SpeedEntry<R>> {
-        let entry = Arc::new(entry);
-        let mut entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
-        entries.retain(|(kept, _)| *kept != key);
-        if entries.len() == CAPACITY {
-            entries.pop_front();
-        }
-        entries.push_back((key, Arc::clone(&entry)));
-        entry
+    pub fn find_speeds(&self, key: &SpeedKey, riemann: bool) -> Option<Arc<SpeedEntry<R>>> {
+        self.find(key, |entry| !riemann || entry.riemann.is_some())
     }
 }
 
@@ -78,6 +110,41 @@ where
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
     ) -> Result<SpeedKey, ChannelError> {
+        self.operand_key(fields, [left, right].map(boundary_operands))
+    }
+
+    /// Bits of every field and of the operands of each end that a face Riemann problem solves.
+    ///
+    /// A direct end contributes its kind alone: its face takes the policy's rates, and its
+    /// exterior copies the end cell.
+    pub(super) fn riemann_key(
+        &self,
+        fields: &Fields<R>,
+        left: &ChannelTensorBoundary<R>,
+        right: &ChannelTensorBoundary<R>,
+    ) -> Result<SpeedKey, ChannelError> {
+        self.operand_key(fields, [face_operands(left), face_operands(right)])
+    }
+
+    /// Bits of every field, the end index `endpoint`, and the operands of its `policy`.
+    pub(super) fn lane_key(
+        &self,
+        fields: &Fields<R>,
+        endpoint: usize,
+        policy: &ChannelTensorBoundary<R>,
+    ) -> Result<SpeedKey, ChannelError> {
+        self.operand_key(
+            fields,
+            [(endpoint as u64, Vec::new()), boundary_operands(policy)],
+        )
+    }
+
+    /// Bits of every field and of `ends`, two kind codes with their operands.
+    fn operand_key(
+        &self,
+        fields: &Fields<R>,
+        ends: [(u64, Vec<&Tensor<R>>); 2],
+    ) -> Result<SpeedKey, ChannelError> {
         let mut parts: Vec<&Tensor<R>> = vec![
             &fields.area,
             &fields.depth,
@@ -91,8 +158,7 @@ where
             &fields.discharge_selection_bound,
         ];
         let mut key = Vec::with_capacity(4);
-        for boundary in [left, right] {
-            let (kind, operands) = boundary_operands(boundary);
+        for (kind, operands) in ends {
             key.push(kind);
             parts.extend(operands);
         }
@@ -105,6 +171,17 @@ where
         let values = self.client.cat(&flat, 0)?.try_to_vec::<f64>()?;
         key.extend(values.iter().map(|value| value.to_bits()));
         Ok(SpeedKey(key))
+    }
+}
+
+/// Kind code and operands of one end as a face Riemann problem reads it.
+fn face_operands<R: Runtime<DType = DType>>(
+    boundary: &ChannelTensorBoundary<R>,
+) -> (u64, Vec<&Tensor<R>>) {
+    if boundary.is_direct() {
+        (DIRECT, Vec::new())
+    } else {
+        boundary_operands(boundary)
     }
 }
 

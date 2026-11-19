@@ -17,7 +17,7 @@ pub(in crate::channel::flow) mod types;
 mod wave;
 
 pub(in crate::channel::flow) use algebra::{Bounds, boundary_rejection};
-pub(in crate::channel::flow) use kernel::{Lane, ScalarFrame};
+pub(in crate::channel::flow) use kernel::{Lane, ScalarFrame, TraceLane};
 pub(in crate::channel::flow) use port::check_port;
 pub(in crate::channel::flow) use reservoir::Reservoir;
 pub(in crate::channel::flow) use reservoir_head::ReservoirHeads;

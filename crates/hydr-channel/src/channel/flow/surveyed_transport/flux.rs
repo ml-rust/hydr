@@ -50,17 +50,22 @@ where
 {
     /// Solve every face outside the direct end faces from the two-part cell points.
     ///
-    /// The caller must leave at least one such face.
+    /// The caller must leave at least one such face. A kept solve of the same fields and
+    /// face operands returns in place of a fresh one.
     pub(super) fn surveyed_point_riemann(
         &self,
         geometry: &SurveyedGeometry<R>,
         fields: &Fields<R>,
         left: &ChannelTensorBoundary<R>,
         right: &ChannelTensorBoundary<R>,
-    ) -> Result<PrismaticPointRiemannResult<R>, ChannelError> {
+    ) -> Result<Arc<PrismaticPointRiemannResult<R>>, ChannelError> {
+        let key = self.riemann_key(fields, left, right)?;
+        if let Some(result) = self.riemann_memo.find(&key, |_| true) {
+            return Ok(result);
+        }
         let faces = self.surveyed_faces(geometry, fields, left, right)?;
         let (start, len) = numerical_range(self.count(), left, right);
-        geometry
+        let result = geometry
             .section
             .riemann_flux_points_tensor(
                 &geometry.face_owners.narrow(0, start, len)?,
@@ -70,7 +75,8 @@ where
                 &faces.right_discharge,
                 &geometry.riemann,
             )
-            .map_err(riemann_error)
+            .map_err(riemann_error)?;
+        Ok(self.riemann_memo.keep(key, result))
     }
 
     pub(in crate::channel::flow) fn surveyed_flux(
@@ -84,7 +90,7 @@ where
         // A kept candidate evaluation of these exact operands holds this solve, its direct
         // end faces and its speeds.
         let key = self.speed_key(fields, left, right)?;
-        let kept = self.speed_memo.find(&key, len > 0);
+        let kept = self.speed_memo.find_speeds(&key, len > 0);
         let frame = match kept.as_ref().and_then(|entry| entry.frame.clone()) {
             Some(frame) => {
                 self.check_surveyed_flux_ports(geometry, fields, left, right)?;
@@ -98,9 +104,7 @@ where
         let frame = frame.as_deref();
         let result = match kept.as_ref().and_then(|entry| entry.riemann.clone()) {
             Some(result) => Some(result),
-            None if len > 0 => Some(Arc::new(
-                self.surveyed_point_riemann(geometry, fields, left, right)?,
-            )),
+            None if len > 0 => Some(self.surveyed_point_riemann(geometry, fields, left, right)?),
             None => None,
         };
         let numerical = result
@@ -448,6 +452,83 @@ mod tests {
         );
         assert!(text.contains("face=Some(0)"), "{text}");
         Ok(())
+    }
+
+    /// A direct end's operands never reach a face Riemann problem.
+    ///
+    /// Frozen criteria:
+    /// - a solve under another reservoir head at the direct end returns the kept result
+    /// - a moved cell field solves again
+    /// - the kept water and momentum flux bits match a fresh reach
+    fn kept_faces_ignore_direct_end_operands<R>(client: R::Client) -> TestResult
+    where
+        R: Runtime<DType = DType>,
+        R::Client: Client<R>,
+    {
+        use crate::channel::flow::ChannelBoundary;
+        use std::sync::Arc;
+        let reservoir = |reach: &ChannelReach<R>, elevation_m| {
+            ChannelTensorBoundary::from_host(
+                &reach.context.client,
+                &ChannelBoundary::QuiescentReservoir {
+                    elevation_m,
+                    entrance_loss_coefficient: 0.0,
+                },
+            )
+        };
+        let solve = |reach: &ChannelReach<R>, elevation_m| -> TestResult<_> {
+            let context = &reach.context;
+            let TensorGeometry::Surveyed(geometry) = &context.geometry else {
+                return Err("surveyed geometry required".into());
+            };
+            let fields = context.fields(&reach.accepted.volume, &reach.accepted.momentum)?;
+            let wall = ChannelTensorBoundary::Wall;
+            let right = reservoir(reach, elevation_m)?;
+            Ok(context.surveyed_point_riemann(geometry, &fields, &wall, &right)?)
+        };
+        let kept = reach::<R>(client.clone())?;
+        let first = solve(&kept, 1.5)?;
+        let second = solve(&kept, 1.75)?;
+        assert!(Arc::ptr_eq(&first, &second));
+        let moved = moving_reach::<R>(
+            client.clone(),
+            &[20.0, 10.0, 15.5],
+            &[4.0, -2.0, 3.0],
+            &[0.0; 3],
+        )?;
+        let other = {
+            let context = &kept.context;
+            let TensorGeometry::Surveyed(geometry) = &context.geometry else {
+                return Err("surveyed geometry required".into());
+            };
+            let fields = context.fields(&moved.accepted.volume, &moved.accepted.momentum)?;
+            let right = reservoir(&kept, 1.75)?;
+            context.surveyed_point_riemann(
+                geometry,
+                &fields,
+                &ChannelTensorBoundary::Wall,
+                &right,
+            )?
+        };
+        assert!(!Arc::ptr_eq(&first, &other));
+        let fresh = solve(&reach::<R>(client)?, 1.75)?;
+        for (actual, expected) in [
+            (second.water_flux_m3_per_s(), fresh.water_flux_m3_per_s()),
+            (
+                second.momentum_flux_m4_per_s2(),
+                fresh.momentum_flux_m4_per_s2(),
+            ),
+        ] {
+            assert_eq!(bits(actual.high())?, bits(expected.high())?);
+            assert_eq!(bits(actual.low())?, bits(expected.low())?);
+            assert_eq!(bits(actual.abs_error())?, bits(expected.abs_error())?);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_surveyed_kept_faces_ignore_direct_end_operands() -> TestResult {
+        kept_faces_ignore_direct_end_operands::<CpuRuntime>(cpu())
     }
 
     #[test]

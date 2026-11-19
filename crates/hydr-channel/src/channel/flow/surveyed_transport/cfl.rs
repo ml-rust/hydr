@@ -60,9 +60,7 @@ where
             .map(Arc::new);
         let (_, len) = numerical_range(self.count(), left, right);
         let result = if len > 0 {
-            Some(Arc::new(
-                self.surveyed_point_riemann(geometry, fields, left, right)?,
-            ))
+            Some(self.surveyed_point_riemann(geometry, fields, left, right)?)
         } else {
             None
         };

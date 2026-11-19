@@ -115,6 +115,75 @@ impl WorkLedger {
         self.counts.set(counts);
         Ok(())
     }
+    /// Charges the work one earlier evaluation added between `before` and `after`.
+    ///
+    /// Counts add as the evaluation charged them. A maximum takes the larger value, which
+    /// matches the evaluation's own maximum on the same ledger: its `after` maximum never
+    /// exceeds this ledger's current maximum. A total past the query limit rejects as a
+    /// fresh evaluation would.
+    pub(crate) fn replay(
+        &self,
+        before: PrismaticRiemannWork,
+        after: PrismaticRiemannWork,
+    ) -> HydraulicResult<()> {
+        let mut counts = self.snapshot();
+        let add = |count: usize, from: usize, to: usize| {
+            count
+                .checked_add(to.saturating_sub(from))
+                .ok_or_else(|| self.exceeded())
+        };
+        counts.root_solves = add(counts.root_solves, before.root_solves, after.root_solves)?;
+        counts.root_iterations = add(
+            counts.root_iterations,
+            before.root_iterations,
+            after.root_iterations,
+        )?;
+        counts.bracket_solves = add(
+            counts.bracket_solves,
+            before.bracket_solves,
+            after.bracket_solves,
+        )?;
+        counts.bracket_expansion_rounds = add(
+            counts.bracket_expansion_rounds,
+            before.bracket_expansion_rounds,
+            after.bracket_expansion_rounds,
+        )?;
+        counts.residual_points = add(
+            counts.residual_points,
+            before.residual_points,
+            after.residual_points,
+        )?;
+        counts.simpson_value_points = add(
+            counts.simpson_value_points,
+            before.simpson_value_points,
+            after.simpson_value_points,
+        )?;
+        counts.simpson_derivative_points = add(
+            counts.simpson_derivative_points,
+            before.simpson_derivative_points,
+            after.simpson_derivative_points,
+        )?;
+        counts.refinements = add(counts.refinements, before.refinements, after.refinements)?;
+        let total = counts
+            .residual_points
+            .checked_add(counts.simpson_value_points)
+            .and_then(|n| n.checked_add(counts.simpson_derivative_points))
+            .ok_or_else(|| self.exceeded())?;
+        if total > self.limit {
+            return Err(self.exceeded());
+        }
+        counts.maximum_root_iterations = counts
+            .maximum_root_iterations
+            .max(after.maximum_root_iterations);
+        counts.maximum_bracket_expansion_rounds = counts
+            .maximum_bracket_expansion_rounds
+            .max(after.maximum_bracket_expansion_rounds);
+        counts.maximum_simpson_panels = counts
+            .maximum_simpson_panels
+            .max(after.maximum_simpson_panels);
+        self.counts.set(counts);
+        Ok(())
+    }
     pub(crate) fn begin_root(&self) -> HydraulicResult<()> {
         let mut counts = self.snapshot();
         counts.root_solves = counts
