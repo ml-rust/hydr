@@ -26,7 +26,18 @@ use numr::{
 use solvr::common::arithmetic::Interval;
 
 /// A rejection that finer quadrature can resolve: an enclosure exceeds its allowance.
-pub(super) struct Unresolved(pub ChannelError);
+pub(super) struct Unresolved {
+    pub error: ChannelError,
+    /// The failed allowance and its enclosure width, when the allowance bounds a width.
+    pub width: Option<(usize, f64)>,
+}
+
+impl Unresolved {
+    /// A rejection without a measured width. Refinement continues to the work ceiling.
+    pub(super) fn refinable(error: ChannelError) -> Self {
+        Self { error, width: None }
+    }
+}
 
 /// Nominal centers and certified enclosures of the trace fluxes.
 struct Fluxes<R: Runtime<DType = DType>> {
@@ -90,7 +101,7 @@ where
             TraceRequest::Discharge { outward, .. } => Some(outward),
             _ => None,
         };
-        let fluxes = self.surveyed_trace_fluxes(point, target)?;
+        let fluxes = self.surveyed_trace_fluxes(interior, point, target)?;
         if let Err(error) = self.surveyed_trace_allowances(interior, point, &fluxes)? {
             return Ok(Err(error));
         }
@@ -135,7 +146,7 @@ where
             let enclosure = bounds(&point.depth);
             if let Err(error) = self.boundary_reservoir_receipt(&mut lane, reservoir, &enclosure) {
                 return match error {
-                    ChannelError::Numerical { .. } => Ok(Err(Unresolved(error))),
+                    ChannelError::Numerical { .. } => Ok(Err(Unresolved::refinable(error))),
                     error => Err(error),
                 };
             }
@@ -164,18 +175,30 @@ where
         if self.all(&c.maximum(&incoming, &outgoing)?)? {
             return Err(error);
         }
-        Ok(Err(Unresolved(error)))
+        Ok(Err(Unresolved::refinable(error)))
     }
 
+    /// Flux enclosures of `point`. A `Discharge` trace takes its identities: the exact root
+    /// satisfies `A u_b = q`, so its water flux is `q`, and its momentum flux also meets the
+    /// enclosure `q² / A + g I`. Both stay narrow near the sonic depth, where direct interval
+    /// evaluation over the root depth enclosure widens like `1 / (c - u)`.
     fn surveyed_trace_fluxes(
         &self,
+        interior: &Interior<R>,
         point: &TracePoint<R>,
         target: Option<&Tensor<R>>,
     ) -> Result<Fluxes<R>, ChannelError> {
         let c = &self.client;
         let gravity = self.definition.config.gravity;
+        let identity = match target {
+            Some(target) => self.surveyed_discharge_momentum(interior, point, target)?,
+            None => None,
+        };
         checked(c, "surveyed trace physical fluxes", |a| {
-            let water = a.mul(&point.area, &point.velocity)?;
+            let water = match target {
+                Some(target) => a.point(target)?,
+                None => a.mul(&point.area, &point.velocity)?,
+            };
             let (lo, hi) = (point.velocity.lower(), point.velocity.upper());
             let zero = Tensor::<R>::zeros(&[1], DType::F64, c.device())?;
             let magnitude = a.bounds(
@@ -187,6 +210,14 @@ where
             let g = scalar(a, gravity)?;
             let pressure = a.mul(&g, &point.integral)?;
             let flux = a.add(&advective, &pressure)?;
+            // Both enclosures hold the exact momentum flux, so their intersection does too.
+            let flux = match &identity {
+                Some(identity) => a.bounds(
+                    &c.maximum(flux.lower(), identity.lower())?,
+                    &c.minimum(flux.upper(), identity.upper())?,
+                )?,
+                None => flux,
+            };
             let center = |value: &Interval<R>| c.midpoint(value.lower(), value.upper());
             let area = center(&point.area)?;
             let velocity = center(&point.velocity)?;
@@ -297,13 +328,85 @@ where
             &fluxes.water_defect,
             &fluxes.momentum_defect,
         ];
-        for ((mask, message), value) in checks.into_iter().zip(values) {
+        for (index, ((mask, message), value)) in checks.into_iter().zip(values).enumerate() {
             if !self.all(&mask)? {
                 let value = value.item::<f64>()?;
                 let message = format!("{message}, bound={value:e}");
-                return Ok(Err(Unresolved(boundary_rejection(&message))));
+                return Ok(Err(Unresolved {
+                    error: boundary_rejection(&message),
+                    width: Some((index, value)),
+                }));
             }
         }
         Ok(Ok(()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{
+        depth::RootProgress,
+        fixture::{geometry, interior, ledger, policy, reach_spaced},
+        point::{Evaluation, TraceDepth},
+    };
+    use super::*;
+    use crate::channel::flow::{
+        ChannelBoundary,
+        surveyed_update::tests::{TestResult, cpu},
+    };
+    use numr::runtime::cpu::CpuRuntime;
+
+    /// Three bands, g = 1, an end cell at rest at 1.5 m, and `Discharge` leaving at the frozen
+    /// rarefaction reference value. The trace lies close to its sonic depth, so the certified
+    /// root depth enclosure is wide against the momentum flux control.
+    ///
+    /// Frozen criteria, at 1024 Simpson panels:
+    /// - the momentum flux enclosure width stays below a tenth of its control
+    /// - the momentum flux center lies within that width of the direct `A u² + g I` center
+    #[test]
+    fn cpu_near_sonic_discharge_momentum_meets_its_control() -> TestResult {
+        let reach = reach_spaced::<CpuRuntime>(cpu(), 2, 0.8, 1.0, 5.125, 0.0, 0.0)?;
+        let context = &reach.context;
+        let interior = interior(&reach, 0)?;
+        let host = ChannelBoundary::Discharge {
+            discharge_m3_per_s: -1.6968414670944718,
+        };
+        let request = context.surveyed_trace_request(&interior, &policy(&reach, &host)?)?;
+        let TraceRequest::Discharge { outward, .. } = &request else {
+            return Err("a discharge request is required".into());
+        };
+        let work = ledger(&reach)?;
+        let evaluation = Evaluation {
+            config: &geometry(&reach)?.riemann,
+            panels: 1024,
+            work: &work,
+        };
+        let mut progress = RootProgress::default();
+        let root =
+            context.surveyed_trace_depth(&interior, &request, &evaluation, &mut progress)??;
+        let (lower, upper) = (
+            context.tensor(&[root.lower])?,
+            context.tensor(&[root.upper])?,
+        );
+        let t = checked(&context.client, "test root enclosure", |a| {
+            Ok(a.bounds(&lower, &upper)?)
+        })
+        .map_err(trace_error)?;
+        let point =
+            context.surveyed_trace_point(&interior, TraceDepth::Normalized(&t), &evaluation)?;
+        let fluxes = context.surveyed_trace_fluxes(&interior, &point, Some(outward))?;
+        let width = fluxes.momentum_width.item::<f64>()?;
+        let momentum = fluxes.momentum.item::<f64>()?;
+        let config = &reach.definition().config;
+        let control = config.riemann_momentum_flux_absolute_m4_per_s2
+            + config.riemann_flux_relative * momentum.abs();
+        assert!(
+            width <= 0.1 * control,
+            "width={width:e}, control={control:e}"
+        );
+        let direct = context.surveyed_trace_fluxes(&interior, &point, None)?;
+        let gap = (direct.momentum.item::<f64>()? - momentum).abs();
+        assert!(gap <= direct.momentum_width.item::<f64>()?, "gap={gap:e}");
+        Ok(())
     }
 }

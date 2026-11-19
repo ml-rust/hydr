@@ -4,8 +4,8 @@ use super::{
     client::TraceClient,
     error::trace_error,
     interior::Interior,
-    point::{Evaluation, TracePoint},
-    roots::RootOutcome,
+    point::{Evaluation, TraceDepth, TracePoint},
+    roots::{RootEnclosure, RootOutcome},
 };
 use crate::channel::flow::{
     ChannelError, boundary::boundary_rejection, context::Context, surveyed::error::checked,
@@ -33,13 +33,104 @@ where
     /// Both factors are nondecreasing, so their certified product at `t_L` bounds the slope
     /// over the whole bracket. The interior depth serves as `t_L` when `G(d_i) >= 0`. Otherwise
     /// the sonic root of `c - u_b` below `d_i` gives `t_L`, rounded up by its enclosure.
+    ///
+    /// The inner error is a rejection that finer quadrature can resolve. A target above
+    /// every certified discharge over the sonic enclosure exceeds the sonic outflow `A u_b(d_s)`,
+    /// the peak of the side curve, and rejects at any quadrature level.
     pub(super) fn surveyed_discharge_bracket(
         &self,
         interior: &Interior<R>,
         target: &Tensor<R>,
         evaluation: &Evaluation<'_>,
         iterations: &mut usize,
-    ) -> Result<Bracket, ChannelError> {
+    ) -> Result<Result<Bracket, ChannelError>, ChannelError> {
+        let (interior_t, sonic_slope) = self.surveyed_sonic_setup(interior)?;
+        // A candidate lower end: the upper bound of -G there and its slope floor.
+        let accept = |t: f64| -> Result<Option<(f64, f64)>, ChannelError> {
+            let point = self.surveyed_trace_at(interior, &self.tensor(&[t])?, evaluation)?;
+            let Some(kappa) = self.surveyed_discharge_slope(interior, &point)? else {
+                return Ok(None);
+            };
+            let discharge = self.surveyed_discharge_residual(interior, &point, target)?;
+            Ok(Some((discharge.upper().item::<f64>()?, kappa)))
+        };
+        if interior_t > 0.0
+            && let Some((discharge, kappa)) = accept(interior_t)?
+            && discharge <= 0.0
+        {
+            return Ok(Ok(Bracket {
+                lower: interior_t,
+                kappa,
+            }));
+        }
+        let root = match self.surveyed_sonic_root(interior, evaluation, interior_t, sonic_slope)? {
+            Ok(root) => root,
+            Err(error) => return Ok(Err(error)),
+        };
+        *iterations = (*iterations).max(root.iterations);
+        // Step up from the sonic enclosure until c - u_b has a positive certified lower bound.
+        let mut gap = (root.upper - root.lower).max(root.upper * f64::EPSILON);
+        let mut t = root.upper;
+        // The last depth without a certified subsonic gap, below every admissible lower end.
+        let mut below = root.lower;
+        let mut above = None;
+        for _ in 0..64 {
+            if let Some((discharge, kappa)) = accept(t)? {
+                if discharge <= 0.0 {
+                    return Ok(Ok(Bracket { lower: t, kappa }));
+                }
+                above = Some(t);
+                break;
+            }
+            below = t;
+            if t >= interior_t {
+                break;
+            }
+            t = (t + gap).min(interior_t);
+            gap *= 2.0;
+        }
+        // A doubled step can pass the root, where -G > 0. A target below the sonic outflow
+        // keeps G(t) >= 0 on (d_s, d_root], so bisection between the two ends finds it.
+        if let Some(mut above) = above {
+            for _ in 0..64 {
+                let middle = 0.5 * (below + above);
+                if !(below < middle && middle < above) {
+                    break;
+                }
+                match accept(middle)? {
+                    Some((discharge, kappa)) if discharge <= 0.0 => {
+                        return Ok(Ok(Bracket {
+                            lower: middle,
+                            kappa,
+                        }));
+                    }
+                    Some(_) => above = middle,
+                    None => below = middle,
+                }
+            }
+        }
+        // The sonic depth lies in the root enclosure and A u_b peaks there. A residual
+        // q - A u_b certainly positive over that enclosure puts q above the peak.
+        let (lower, upper) = (self.tensor(&[root.lower])?, self.tensor(&[root.upper])?);
+        let t = checked(&self.client, "surveyed sonic enclosure", |a| {
+            Ok(a.bounds(&lower, &upper)?)
+        })
+        .map_err(trace_error)?;
+        let peak = self.surveyed_trace_point(interior, TraceDepth::Normalized(&t), evaluation)?;
+        let residual = self.surveyed_discharge_residual(interior, &peak, target)?;
+        if residual.lower().item::<f64>()? > 0.0 {
+            return Err(boundary_rejection(
+                "requested discharge reaches the lower sonic uncertainty band: it exceeds the sonic outflow of the end cell",
+            ));
+        }
+        Ok(Err(unresolved_sonic("requested discharge")))
+    }
+
+    /// The interior normalized depth `t_i` and the sonic slope floor `H sqrt(g / d_i)`.
+    pub(super) fn surveyed_sonic_setup(
+        &self,
+        interior: &Interior<R>,
+    ) -> Result<(f64, f64), ChannelError> {
         let c = interior.sources.geometry.client();
         let gravity = self.definition.config.gravity;
         let (interior_t, sonic_slope) = checked(c, "surveyed discharge bracket", |a| {
@@ -60,28 +151,24 @@ where
             Ok((ratio.lower().clone(), slope.lower().clone()))
         })
         .map_err(trace_error)?;
-        let interior_t = interior_t.item::<f64>()?.min(1.0);
-        let sonic_slope = sonic_slope.item::<f64>()?;
-        // A candidate lower end: the upper bound of -G there and its slope floor.
-        let accept = |t: f64| -> Result<Option<(f64, f64)>, ChannelError> {
-            let point = self.surveyed_trace_at(interior, &self.tensor(&[t])?, evaluation)?;
-            let Some(kappa) = self.surveyed_discharge_slope(interior, &point)? else {
-                return Ok(None);
-            };
-            let discharge = self.surveyed_discharge_residual(interior, &point, target)?;
-            Ok(Some((discharge.upper().item::<f64>()?, kappa)))
-        };
-        if interior_t > 0.0
-            && let Some((discharge, kappa)) = accept(interior_t)?
-            && discharge <= 0.0
-        {
-            return Ok(Bracket {
-                lower: interior_t,
-                kappa,
-            });
-        }
-        // On the rarefaction branch dS/dd >= c T / A = sqrt(g T / A), and A <= T d gives
-        // sqrt(g / d). Below d_i it is at least sqrt(g / d_i), times H for t = d / H.
+        Ok((
+            interior_t.item::<f64>()?.min(1.0),
+            sonic_slope.item::<f64>()?,
+        ))
+    }
+
+    /// The certified outflow sonic root of `c - u_b` over `[0, t_i]`.
+    ///
+    /// On the rarefaction branch `dS/dd >= c T / A = sqrt(g T / A)`, and `A <= T d` gives
+    /// `sqrt(g / d)`. Below `d_i` it is at least `sqrt(g / d_i)`, times `H` for `t = d / H`.
+    /// The inner error marks a root that finer quadrature can establish.
+    pub(super) fn surveyed_sonic_root(
+        &self,
+        interior: &Interior<R>,
+        evaluation: &Evaluation<'_>,
+        interior_t: f64,
+        sonic_slope: f64,
+    ) -> Result<Result<RootEnclosure, ChannelError>, ChannelError> {
         if !(interior_t > 0.0 && sonic_slope > 0.0 && sonic_slope.is_finite()) {
             return Err(unresolved_sonic("sonic slope floor"));
         }
@@ -89,31 +176,14 @@ where
             let point = self.surveyed_trace_at(interior, t, evaluation)?;
             self.surveyed_sonic_residual(interior, &point)
         };
-        let root =
+        Ok(
             match self.surveyed_trace_root(evaluation, 0.0, interior_t, sonic_slope, &sonic)? {
-                RootOutcome::Root(root) => root,
+                RootOutcome::Root(root) => Ok(root),
                 RootOutcome::NoRoot | RootOutcome::Unresolved => {
-                    return Err(unresolved_sonic("outflow sonic depth"));
+                    Err(unresolved_sonic("outflow sonic depth"))
                 }
-            };
-        *iterations = (*iterations).max(root.iterations);
-        // Step up from the sonic enclosure until c - u_b has a positive certified lower bound.
-        let mut gap = (root.upper - root.lower).max(root.upper * f64::EPSILON);
-        let mut t = root.upper;
-        for _ in 0..64 {
-            if let Some((discharge, kappa)) = accept(t)? {
-                if discharge <= 0.0 {
-                    return Ok(Bracket { lower: t, kappa });
-                }
-                break;
-            }
-            if t >= interior_t {
-                break;
-            }
-            t = (t + gap).min(interior_t);
-            gap *= 2.0;
-        }
-        Err(unresolved_sonic("requested discharge"))
+            },
+        )
     }
 
     /// Normalized slope floor `κ_Q = H T(d) (c - u_b)(d)` of `-G` at and above the state `point`.
@@ -227,7 +297,7 @@ mod tests {
             &context.tensor(&[target])?,
             &evaluation,
             &mut iterations,
-        )?;
+        )??;
         // The certified lower end lies strictly above the 150-digit sonic depth.
         assert!(
             bracket.lower * CAP > f64::from_bits(SONIC_CEIL),
@@ -305,7 +375,7 @@ mod tests {
             &context.tensor(&[-5.06285120531442])?,
             &evaluation,
             &mut iterations,
-        )?;
+        )??;
         let [depth, _] = ends(&interior.depth)?;
         assert!(bracket.lower <= depth / CAP && bracket.lower >= (depth / CAP).next_down());
         assert_eq!(iterations, 0);

@@ -73,6 +73,24 @@ where
     R: Runtime<DType = DType>,
     R::Client: Client<R>,
 {
+    reach_spaced(client, cells, 1.0, GRAVITY, area, discharge, bed)
+}
+
+/// `cells` cells of length `length`, each of area `area` and global discharge `discharge`,
+/// under gravity `gravity` with the bed at `bed`.
+pub(super) fn reach_spaced<R>(
+    client: R::Client,
+    cells: usize,
+    length: f64,
+    gravity: f64,
+    area: f64,
+    discharge: f64,
+    bed: f64,
+) -> TestResult<ChannelReach<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: Client<R>,
+{
     let ids: Vec<String> = match cells {
         1 => vec!["cell".into()],
         _ => (0..cells).map(|index| format!("cell-{index}")).collect(),
@@ -88,7 +106,7 @@ where
                     .into_iter()
                     .map(|id| SurveyedChannelCell {
                         id,
-                        length_m: 1.0,
+                        length_m: length,
                         manning_n: 0.0,
                     })
                     .collect(),
@@ -96,14 +114,14 @@ where
             },
             lateral_bindings: Vec::new(),
             config: ChannelConfig {
-                gravity: GRAVITY,
+                gravity,
                 ..ChannelConfig::default()
             },
         },
         ChannelInitialState {
             time_s: 0.0,
-            volume_m3: vec![area; cells],
-            longitudinal_momentum_m4_per_s: vec![discharge; cells],
+            volume_m3: vec![area * length; cells],
+            longitudinal_momentum_m4_per_s: vec![discharge * length; cells],
         },
     )?)
 }

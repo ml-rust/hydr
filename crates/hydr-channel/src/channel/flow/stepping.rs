@@ -1,10 +1,21 @@
+mod capacity;
 mod entry;
 
+use capacity::{CapacityRetry, capacity_retry};
+
 use super::{
-    ChannelError, ChannelReach, ChannelStep, ChannelStepDiagnostics, accounting::Impulses,
-    boundary::assembly::is_scalar, conserved_point::ConservedPoint, engine::Accepted,
-    forcing::BoundChannelForcing, interval::IntervalControl, interval_start::IntervalStart,
-    interval_start::ReservedStart, receipt::LastInterval, surveyed_residuals::ExpandedImpulses,
+    ChannelError, ChannelReach, ChannelStep, ChannelStepDiagnostics,
+    accounting::Impulses,
+    boundary::assembly::is_scalar,
+    conserved_point::ConservedPoint,
+    engine::Accepted,
+    forcing::BoundChannelForcing,
+    interval::IntervalControl,
+    interval_start::IntervalStart,
+    interval_start::ReservedStart,
+    receipt::LastInterval,
+    surveyed_boundary::{EXHAUSTED, Margin},
+    surveyed_residuals::ExpandedImpulses,
 };
 use numr::dtype::DType;
 use numr::ops::{
@@ -105,6 +116,8 @@ where
             start_cfl,
         } = &*start;
         let start_cfl = *start_cfl;
+        // The accepted state's sonic outflow margin, read once on the first capacity loss.
+        let mut start_margin: Option<Option<Margin>> = None;
         for retries in 0..=config.max_retries {
             let end = if retries == 0 {
                 endpoint
@@ -294,7 +307,32 @@ where
                         Ok(speed) => speed,
                         Err(error @ ChannelError::Numerical { .. }) => {
                             reason = error.to_string();
-                            dt = control.shorten(dt, dt * 0.5, retries, reason.clone())?;
+                            // A candidate that loses sonic outflow capacity takes the
+                            // margin's crossing instead of halving, or rejects.
+                            let start = *start_margin.get_or_insert_with(|| {
+                                context.capacity_margin(fields, &forcing.left, &forcing.right)
+                            });
+                            let candidate = match start {
+                                Some(_) => context.capacity_margin(
+                                    &final_fields,
+                                    &forcing.left,
+                                    &forcing.right,
+                                ),
+                                None => None,
+                            };
+                            let exhausted = reason.contains(EXHAUSTED);
+                            let desired = match capacity_retry(
+                                start,
+                                candidate,
+                                exhausted,
+                                dt,
+                                config.min_step,
+                            ) {
+                                CapacityRetry::Halve => dt * 0.5,
+                                CapacityRetry::Shorten(next) => next,
+                                CapacityRetry::Lost(error) => return Err(error),
+                            };
+                            dt = control.shorten(dt, desired, retries, reason.clone())?;
                             continue;
                         }
                         Err(error) => return Err(error),

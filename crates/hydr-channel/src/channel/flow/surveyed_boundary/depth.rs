@@ -42,14 +42,15 @@ where
     ///
     /// `Discharge` solves `-G = σ Q - A u_b` over `[t_L, 1]` with `κ_Q`. A reservoir solves
     /// `E` over `[0, 1]` with `κ_E = H`. A kept enclosure narrows first; a failed narrowing
-    /// solves the whole bracket.
+    /// solves the whole bracket. The inner error is a `Discharge` bracket rejection that
+    /// finer quadrature can resolve.
     pub(super) fn surveyed_trace_depth(
         &self,
         interior: &Interior<R>,
         request: &TraceRequest<R>,
         evaluation: &Evaluation<'_>,
         progress: &mut RootProgress,
-    ) -> Result<RootEnclosure, ChannelError> {
+    ) -> Result<Result<RootEnclosure, ChannelError>, ChannelError> {
         if let TraceRequest::Reservoir { cap: true, .. } = request
             && progress.cap.is_none()
         {
@@ -57,11 +58,11 @@ where
             progress.cap = Some(point.velocity.lower().item::<f64>()? >= 0.0);
         }
         if progress.cap == Some(true) {
-            return Ok(RootEnclosure {
+            return Ok(Ok(RootEnclosure {
                 lower: 1.0,
                 upper: 1.0,
                 iterations: 0,
-            });
+            }));
         }
         let residual: Box<Residual<'_, R>> = match request {
             TraceRequest::Discharge { outward, .. } => Box::new(move |t: &Tensor<R>| {
@@ -82,12 +83,16 @@ where
             Some(bracket) => bracket,
             None => {
                 let bracket = match request {
-                    TraceRequest::Discharge { outward, .. } => self.surveyed_discharge_bracket(
-                        interior,
-                        outward,
-                        evaluation,
-                        &mut progress.iterations,
-                    )?,
+                    TraceRequest::Discharge { outward, .. } => match self
+                        .surveyed_discharge_bracket(
+                            interior,
+                            outward,
+                            evaluation,
+                            &mut progress.iterations,
+                        )? {
+                        Ok(bracket) => bracket,
+                        Err(error) => return Ok(Err(error)),
+                    },
                     _ => Bracket {
                         lower: 0.0,
                         kappa: interior.cap.lower().item::<f64>()?,
@@ -138,7 +143,7 @@ where
         if let Some(kept) = progress.enclosure
             && let Some(root) = narrow(kept)?
         {
-            return Ok(progress.record(root));
+            return Ok(Ok(progress.record(root)));
         }
         let (lower, upper) = contract(bracket.lower, 1.0)?;
         let root = match self.surveyed_trace_root(
@@ -165,7 +170,7 @@ where
         } else {
             root
         };
-        Ok(progress.record(root))
+        Ok(Ok(progress.record(root)))
     }
 }
 
@@ -243,7 +248,8 @@ mod tests {
             work: &work,
         };
         let mut progress = RootProgress::default();
-        let root = context.surveyed_trace_depth(&interior, &request, &evaluation, &mut progress)?;
+        let root =
+            context.surveyed_trace_depth(&interior, &request, &evaluation, &mut progress)??;
         let point = state(reach, &interior, &evaluation, root.lower, root.upper)?;
         ends(&point.depth)
     }
@@ -290,8 +296,12 @@ mod tests {
         };
         let target = context.tensor(&[10.184547080871404])?;
         let mut iterations = 0;
-        let bracket =
-            context.surveyed_discharge_bracket(&interior, &target, &evaluation, &mut iterations)?;
+        let bracket = context.surveyed_discharge_bracket(
+            &interior,
+            &target,
+            &evaluation,
+            &mut iterations,
+        )??;
         let residual = |t: &Tensor<R>| {
             let point = context.surveyed_trace_at(&interior, t, &evaluation)?;
             context.surveyed_discharge_residual(&interior, &point, &target)

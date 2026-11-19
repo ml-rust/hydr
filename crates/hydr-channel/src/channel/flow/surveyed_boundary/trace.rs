@@ -24,6 +24,12 @@ use numr::{
 };
 use std::sync::Arc;
 
+/// Closing text of a trace rejection that no quadrature level within the ceilings resolves.
+///
+/// The coordinator reads it to tell a precision floor from a rejection a shorter interval fixes.
+pub(in crate::channel::flow) const EXHAUSTED: &str =
+    "the enclosure cannot meet its control within the quadrature ceilings";
+
 impl<R: Runtime<DType = DType>> Context<R>
 where
     R::Client: TraceClient<R>,
@@ -89,6 +95,7 @@ where
         let mut progress = RootProgress::default();
         let mut panels = config.initial_simpson_panels;
         let mut refinement = 0;
+        let mut previous: Option<(usize, f64)> = None;
         loop {
             work.begin_refinement(panels, refinement)
                 .map_err(trace_error)?;
@@ -105,21 +112,33 @@ where
                 &mut progress,
             )? {
                 Ok(lane) => return Ok((lane, work.snapshot())),
-                Err(Unresolved(error)) => {
-                    if refinement >= config.max_refinements
-                        || panels > config.max_simpson_panels / 2
-                    {
+                Err(Unresolved { error, width }) => {
+                    // A width that one doubling fails to halve sits at its rounding floor.
+                    // Finer quadrature cannot meet the allowance, so the trace rejects now.
+                    let stalled = matches!(
+                        (previous, width),
+                        (Some((last, before)), Some((check, now))) if last == check && now > 0.5 * before
+                    );
+                    let ceiling = refinement >= config.max_refinements
+                        || panels > config.max_simpson_panels / 2;
+                    if stalled || ceiling {
                         let work = work.snapshot();
+                        let stop = if stalled {
+                            "Refinement no longer narrows the enclosure"
+                        } else {
+                            "Refinement stops"
+                        };
                         return Err(match error {
                             ChannelError::Numerical { cell, context } => ChannelError::Numerical {
                                 cell,
                                 context: format!(
-                                    "{context} Refinement stops at Simpson panels={panels}, refinements={refinement}, work={work:?}"
+                                    "{context} {stop} at Simpson panels={panels}, refinements={refinement}, work={work:?}: {EXHAUSTED}"
                                 ),
                             },
                             error => error,
                         });
                     }
+                    previous = width;
                     panels *= 2;
                     refinement += 1;
                 }
@@ -161,7 +180,11 @@ where
                 (point, depth.clone())
             }
             (None, TraceRequest::Discharge { .. } | TraceRequest::Reservoir { .. }) => {
-                let root = self.surveyed_trace_depth(interior, request, evaluation, progress)?;
+                let root =
+                    match self.surveyed_trace_depth(interior, request, evaluation, progress)? {
+                        Ok(root) => root,
+                        Err(error) => return Ok(Err(Unresolved::refinable(error))),
+                    };
                 let (lower, upper) = (self.tensor(&[root.lower])?, self.tensor(&[root.upper])?);
                 let t = checked(c, "surveyed trace root enclosure", |a| {
                     Ok(a.bounds(&lower, &upper)?)
