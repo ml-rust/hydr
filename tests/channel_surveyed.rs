@@ -5,6 +5,12 @@ mod runtime;
 
 #[path = "channel_surveyed/admission.rs"]
 mod admission;
+#[allow(dead_code)]
+#[path = "channel_surveyed/endpoints_propagation_reference.rs"]
+mod endpoints_propagation_reference;
+#[allow(dead_code)]
+#[path = "channel_surveyed/endpoints_reference.rs"]
+mod endpoints_reference;
 #[path = "channel_surveyed/fixtures.rs"]
 mod fixtures;
 #[path = "channel_surveyed/lifecycle.rs"]
@@ -17,3 +23,6 @@ mod physics;
 mod sources;
 #[path = "channel_surveyed/support.rs"]
 mod support;
+#[allow(dead_code)]
+#[path = "support/surveyed_profiles.rs"]
+mod surveyed_profiles;

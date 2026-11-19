@@ -22,6 +22,12 @@ mod reference;
 mod restoration;
 #[path = "support/runtime.rs"]
 mod runtime;
+#[allow(dead_code)]
+#[path = "support/surveyed_profiles.rs"]
+mod surveyed_profiles;
+#[allow(dead_code)]
+#[path = "channel_pools/surveyed_reference.rs"]
+mod surveyed_reference;
 
 #[test]
 fn native_finite_pool_forcing_preserves_views_aliases_signed_zero_and_destination_restarts()
