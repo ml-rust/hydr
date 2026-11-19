@@ -215,9 +215,13 @@ fn endpoint_bed(geometry: &ChannelGeometry, endpoint: usize) -> Result<f64, Chan
         ChannelGeometry::PrismaticTriangular {
             bed_elevation_m, ..
         } => Ok(*bed_elevation_m),
-        ChannelGeometry::PrismaticSurveyed { .. } => Err(ChannelPoolError::input(
-            "surveyed coordinator attachment is unsupported: use standalone reach advancement",
-        )),
+        // Every surveyed cell shares the section minimum as its bed.
+        ChannelGeometry::PrismaticSurveyed { profile, .. } => Ok(profile
+            .points
+            .iter()
+            .map(|point| point.elevation_m)
+            .reduce(f64::min)
+            .unwrap_or(profile.maximum_stage_m)),
     }
 }
 fn indices<R: Runtime<DType = DType>>(

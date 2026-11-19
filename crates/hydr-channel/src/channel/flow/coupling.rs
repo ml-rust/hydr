@@ -89,7 +89,7 @@ pub struct ChannelCouplingEndpoints<R: Runtime<DType = DType>> {
 #[doc(hidden)]
 pub struct ChannelCouplingAccounting<'a, R: Runtime<DType = DType>> {
     pub cell_volume_m3: &'a Tensor<R>,
-    /// Low parts of the cell volumes. The storage inventory requires them to be zero.
+    /// Low parts of the cell volumes. The storage inventory reduces nonzero low parts.
     pub cell_volume_low_m3: &'a Tensor<R>,
     pub lateral_volume_m3: &'a Tensor<R>,
     pub lateral_interval_volume_m3: Option<&'a Tensor<R>>,

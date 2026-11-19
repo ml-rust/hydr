@@ -1,13 +1,15 @@
 use super::fixture::{Result, batch, forcing, single};
 use super::reference::CASES;
 use hydr::channel::{
-    ChannelBoundary, ChannelGeometry, ChannelReach, ChannelSurveyedConfig, CrossSectionDefinition,
+    ChannelBoundary, ChannelGeometry, ChannelSurveyedConfig, CrossSectionDefinition,
     CrossSectionPoint, SurveyedChannelCell,
 };
 use hydr::coupling::{ChannelPoolBatch, ChannelPoolEndpoint, ChannelPoolError};
 
+/// A surveyed rectangle of the case width enters the coordinator and advances one interval.
+/// The connection volume equals the reach end face volume bit for bit.
 #[test]
-fn surveyed_reach_attachment_rejects_before_advancement_with_standalone_guidance() -> Result {
+fn surveyed_reach_attachment_admits_and_pairs_the_end_face_volume() -> Result {
     let (mut setup, initial) = single(CASES[0], ChannelPoolEndpoint::Right)?;
     setup.reaches[0].definition.geometry = ChannelGeometry::PrismaticSurveyed {
         profile: CrossSectionDefinition {
@@ -30,27 +32,20 @@ fn surveyed_reach_attachment_rejects_before_advancement_with_standalone_guidance
         }],
         numerical: ChannelSurveyedConfig::default(),
     };
-    let standalone = ChannelReach::<crate::runtime::Runtime>::new(
-        crate::runtime::client(),
-        setup.reaches[0].definition.clone(),
-        initial.reaches[0].clone(),
-    )?;
-    let error = ChannelPoolBatch::<crate::runtime::Runtime>::new(
-        crate::runtime::client(),
-        setup.clone(),
-        initial.clone(),
-    )
-    .err()
-    .ok_or("Surveyed reach attachment enters the finite-pool coordinator")?;
-    match error {
-        ChannelPoolError::Input(message) => {
-            assert!(message.contains("surveyed coordinator attachment is unsupported"));
-            assert!(message.contains("use standalone reach advancement"));
-        }
-        other => return Err(format!("Unexpected surveyed attachment rejection: {other}").into()),
-    }
-    assert_eq!(standalone.definition(), &setup.reaches[0].definition);
-    assert_eq!(standalone.time(), initial.reaches[0].time_s);
+    let origin = batch(setup.clone(), initial)?;
+    let before = origin.snapshot_data()?;
+    let next = origin
+        .trial_to(0.125, &forcing(&setup, 0.0, 0.125))?
+        .into_next();
+    assert_eq!(next.time().to_bits(), 0.125_f64.to_bits());
+    let receipt = next.last_step()?.ok_or("Missing finite-pool receipt")?;
+    let child = next.reach("reach").ok_or("Missing reach")?;
+    let child_receipt = child.last_step()?.ok_or("Missing channel receipt")?;
+    assert_eq!(
+        receipt.transfers[0].signed_volume_m3.to_bits(),
+        child_receipt.face_volume_m3[1].to_bits()
+    );
+    assert_eq!(origin.snapshot_data()?, before);
     Ok(())
 }
 

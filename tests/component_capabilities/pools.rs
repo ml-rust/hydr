@@ -7,7 +7,6 @@ use crate::pools_fixture::{
     Connected, Coupled, KINDS, Kind, Outcome, Pool, STEP, TestResult, Variant, channel_pool_case,
     channel_pool_outcome, channel_pool_step, construction_outcome, coupled_outcome,
     coupled_rejection, coupled_system, exchange_outcome, laws, operating_points, policy,
-    surveyed_geometry,
 };
 use crate::pools_variants::{
     CHANNEL_POOL_ENDPOINTS, endpoint_id, inflow_kind, inflow_samples, lateral_kind,
@@ -334,15 +333,6 @@ fn rejection_cases(
                 }
             }
             cases
-        }
-        (Kind::ChannelPools, "surveyed-reach-attachment") => {
-            let (mut setup, initial) = channel_pool_case(false, ChannelPoolEndpoint::Right)?;
-            setup.reaches[0].definition.geometry = surveyed_geometry(&setup.vertical_datum);
-            vec![(
-                channel_pool_step(setup, initial),
-                Variant::Input,
-                "surveyed coordinator attachment is unsupported",
-            )]
         }
         (Kind::ChannelPools, "dry-connections") => {
             let mut cases = Vec::new();

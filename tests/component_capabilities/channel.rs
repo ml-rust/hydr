@@ -285,11 +285,6 @@ fn rejection_cases(kind: Kind, id: &str) -> Option<Vec<(Outcome, Variant, &'stat
                 )
             })
             .collect(),
-        "surveyed-channel-pool-attachment" => vec![(
-            pool_outcome(kind),
-            Variant::Input,
-            "surveyed coordinator attachment is unsupported",
-        )],
         _ => return None,
     })
 }
@@ -346,8 +341,8 @@ fn channel_reaches_reject_declared_rejections() -> TestResult {
         }
         assert!(count > 0, "{kind:?} declares no admission rejection");
     }
-    // Control: the same pool connection admits rectangular and triangular reaches.
-    for kind in [Kind::Rectangular, Kind::Triangular] {
+    // Control: the same pool connection admits every reach kind.
+    for kind in KINDS {
         if let Some((_, reason)) = pool_outcome(kind)? {
             return Err(format!("{kind:?} pool connection: {reason}").into());
         }

@@ -118,12 +118,12 @@ pub fn lateral_kind(direction: ChannelLateralDirection) -> SourceKind {
     }
 }
 
-/// Nested reach of a channel geometry, or the declared rejection id.
-pub fn geometry_component(geometry: &ChannelGeometry) -> Result<ComponentId, &'static str> {
+/// Nested reach of a channel geometry.
+pub fn geometry_component(geometry: &ChannelGeometry) -> ComponentId {
     match geometry {
-        ChannelGeometry::Rectangular { .. } => Ok(ComponentId::ChannelReachRectangular),
-        ChannelGeometry::PrismaticTriangular { .. } => Ok(ComponentId::ChannelReachTriangular),
-        ChannelGeometry::PrismaticSurveyed { .. } => Err("surveyed-reach-attachment"),
+        ChannelGeometry::Rectangular { .. } => ComponentId::ChannelReachRectangular,
+        ChannelGeometry::PrismaticTriangular { .. } => ComponentId::ChannelReachTriangular,
+        ChannelGeometry::PrismaticSurveyed { .. } => ComponentId::ChannelReachSurveyed,
     }
 }
 
@@ -192,10 +192,11 @@ fn pool_public_variants_are_classified() -> TestResult {
         triangular.reaches[0].definition.geometry.clone(),
         surveyed_geometry("datum"),
     ] {
-        match geometry_component(&geometry) {
-            Ok(component) => assert!(channel_pools.nested.contains(&component)),
-            Err(id) => assert_refused(Kind::ChannelPools, id)?,
-        }
+        assert!(
+            channel_pools
+                .nested
+                .contains(&geometry_component(&geometry))
+        );
     }
     for direction in [
         ChannelLateralDirection::Inflow,

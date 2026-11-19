@@ -370,7 +370,7 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
     sources: SOURCES,
     options: &[],
     nested: &[],
-    attachable_to: &[ComponentId::SurfaceChannels],
+    attachable_to: SCALAR_REACH_PARENTS,
     unsupported: &[
         STAGE_OUTSIDE_WET_SUBCRITICAL,
         DISCHARGE_OUTSIDE_WET_SUBCRITICAL,
@@ -378,12 +378,6 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
         FLUX_PORT_SLOW_SIGNAL,
         FLUX_PORT_DRY_EXPORT,
         INTEGRATED_ENDPOINT_DISCHARGE,
-        unsupported(
-            "surveyed-channel-pool-attachment",
-            UnsupportedReason::RejectedByAdmission,
-            "Channel-to-pool connections reject surveyed reaches.",
-            "docs/channel-pools.md",
-        ),
         TRANSMISSIVE_ENDPOINTS,
         JUNCTIONS,
         STRUCTURES,

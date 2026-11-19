@@ -81,16 +81,11 @@ static CHANNEL_POOLS: ComponentCapabilities = ComponentCapabilities {
     nested: &[
         ComponentId::ChannelReachRectangular,
         ComponentId::ChannelReachTriangular,
+        ComponentId::ChannelReachSurveyed,
         ComponentId::LevelPool,
     ],
     attachable_to: &[],
     unsupported: &[
-        unsupported(
-            "surveyed-reach-attachment",
-            UnsupportedReason::RejectedByAdmission,
-            "Surveyed reaches reject; advance them as standalone reaches.",
-            CHANNEL_POOLS_DOC,
-        ),
         unsupported(
             "dry-connections",
             UnsupportedReason::RejectedByAdmission,

@@ -259,7 +259,7 @@ pub fn channel_pool_case(
     crate::channel_pool_fixture::single(*case, endpoint)
 }
 
-/// One-cell rectangular survey on `datum`, the geometry the coordinator refuses.
+/// One-cell rectangular survey on `datum`.
 pub fn surveyed_geometry(datum: &str) -> ChannelGeometry {
     ChannelGeometry::PrismaticSurveyed {
         profile: CrossSectionDefinition {
