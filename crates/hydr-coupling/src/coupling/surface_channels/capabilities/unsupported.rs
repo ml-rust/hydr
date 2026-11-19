@@ -26,12 +26,6 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
         SURFACE_CHANNELS_DOC,
     ),
     unsupported(
-        "surveyed-connected-endpoint",
-        UnsupportedReason::RejectedByAdmission,
-        "A surveyed reach endpoint other than Wall or Exterior rejects, and so does a port; surveyed reaches couple laterally only.",
-        SURFACE_CHANNELS_DOC,
-    ),
-    unsupported(
         "surveyed-port-end",
         UnsupportedReason::RejectedByAdmission,
         "A port on a surveyed reach end rejects; surveyed reaches couple through bank links only.",

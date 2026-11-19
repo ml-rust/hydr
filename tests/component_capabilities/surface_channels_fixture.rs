@@ -1,11 +1,9 @@
 //! Surface/channel cases and rejection outcomes for the capability checks.
 
 use crate::surface_channel_support::fixture::{self, Result};
-use crate::surface_channel_support::scenario::{
-    Batch, CELL_LENGTH, ReachSpec, Spec, forcing, weir,
-};
+use crate::surface_channel_support::scenario::{Batch, CELL_LENGTH, ReachSpec, Spec, weir};
 use crate::surface_channels_variants::{Variant, variant};
-use hydr::channel::{ChannelBoundary, ChannelGeometry, TriangularChannelCell};
+use hydr::channel::{ChannelGeometry, TriangularChannelCell};
 use hydr::coupling::{
     SurfaceChannelForcingInterval, SurfaceChannelInitialState, SurfaceChannelSetup,
     SurfaceChannelStepDiagnostics,
@@ -53,23 +51,6 @@ pub fn edited(edit: impl FnOnce(&mut SurfaceChannelSetup)) -> Outcome {
     let (mut setup, initial) = fixture::case()?;
     edit(&mut setup);
     construction_outcome(setup, initial)
-}
-
-/// `pair` with a surveyed reach whose `left` and `right` endpoints hold for one interval.
-pub fn surveyed_pair_outcome(
-    surface_stage: f64,
-    channel_stage: f64,
-    left: ChannelBoundary,
-    right: ChannelBoundary,
-) -> Outcome {
-    let spec = Spec::new(1, 1, SURFACE_BED, surface_stage - SURFACE_BED)
-        .reach(ReachSpec::new(REACH, 0.0, &[channel_stage; 2]).surveyed())
-        .link(weir("bank", 0, REACH, 0, CREST, 2.0));
-    let batch = spec.build()?;
-    let mut held = forcing(&batch, STEP, &[]);
-    held.reaches[0].left = Some(left);
-    held.reaches[0].right = Some(right);
-    trial_outcome(&batch, STEP, &held)
 }
 
 /// Runs one trial of `batch` and fails when a rejection changes the batch.

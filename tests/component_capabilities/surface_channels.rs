@@ -6,7 +6,7 @@ use crate::surface_channel_support::fixture::{
 use crate::surface_channel_support::scenario::{Batch, ReachSpec, Spec, forcing, weir};
 use crate::surface_channels_fixture::{
     CREST, Outcome, REACH, STEP, accept, construction_outcome, edited, green_ampt, pair,
-    surveyed_pair_outcome, trial_outcome, triangular, with_rates,
+    trial_outcome, triangular, with_rates,
 };
 use crate::surface_channels_variants::{
     Variant, WEIR_REGIMES, geometry_component, lateral_kind, weir_regime,
@@ -313,20 +313,6 @@ fn rejection_cases(id: &str) -> Option<Vec<Rejection>> {
                 "an unobstructed connection is unsupported",
             ),
         ],
-        "surveyed-connected-endpoint" => [
-            ChannelBoundary::Stage { elevation_m: 0.5 },
-            ChannelBoundary::Discharge {
-                discharge_m3_per_s: 0.0,
-            },
-        ]
-        .map(|boundary| {
-            (
-                surveyed_pair_outcome(1.5, 0.5, ChannelBoundary::Wall, boundary),
-                Variant::Channel,
-                "surveyed coordinator endpoints left=Wall",
-            )
-        })
-        .into(),
         "duplicate-links" => vec![
             (
                 edited(|s| s.links[1].id = "link-b".into()),

@@ -353,7 +353,13 @@ static SURVEYED: ComponentCapabilities = ComponentCapabilities {
     contract: Some(CHANNEL_CONTRACT_VERSION),
     snapshot_schema: Some(CHANNEL_SNAPSHOT_SCHEMA),
     precision: &[Precision::F64],
-    arithmetic: MANNING_ARITHMETIC,
+    arithmetic: &[
+        ArithmeticRequirement::F64Ieee754Basic,
+        ArithmeticRequirement::NearestEvenGradualUnderflow,
+        ArithmeticRequirement::RoundToNearestSqrt,
+        ArithmeticRequirement::FusedMulAdd,
+        ArithmeticRequirement::CorrectlyRoundedElementary,
+    ],
     runtimes: &runtimes(
         "native_strided_sources_copy_operands_and_replay_complete_packages",
         "cuda_surveyed_sources_and_restart_use_actual_selected_device",

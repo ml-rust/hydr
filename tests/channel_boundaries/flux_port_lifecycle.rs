@@ -133,20 +133,13 @@ fn surveyed_reach() -> Result<Reach, Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn surveyed_reaches_admit_standalone_flux_ports_and_reject_coordinated_ones() -> TestResult {
+fn surveyed_reaches_admit_standalone_and_coordinated_flux_ports() -> TestResult {
     let origin = surveyed_reach()?;
     let closed = port(0.0, 0.0, 10.0, Some(10.0))?;
     let wall = ChannelBoundary::Wall;
     for (left, right) in [(&closed, &wall), (&wall, &closed)] {
         advance(origin.clone(), 1, 0.25, left, right)?;
-        let Err(error) = origin.bind_coupling_host(0.0, 0.25, Some(left), Some(right), &[]) else {
-            return Err("a coordinated surveyed port was admitted".into());
-        };
-        let message = error.to_string();
-        assert!(
-            message.contains("surveyed coordinator endpoints") && message.contains("FluxPort"),
-            "{message}"
-        );
+        origin.bind_coupling_host(0.0, 0.25, Some(left), Some(right), &[])?;
     }
     Ok(())
 }

@@ -1,6 +1,7 @@
 //! Private coordinator read: the accepted-start state of one rectangular reach end cell.
 
 use super::{ChannelEnd, ChannelError, ChannelGeometry, ChannelReach};
+use crate::channel::CrossSectionDefinition;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, MidpointOps, NextRepresentableOps, ReduceOps, ScalarOps,
@@ -47,47 +48,95 @@ where
 {
     /// Accepted-start area, discharge, depth and discharge per width of the `end` cell.
     ///
-    /// Only rectangular reaches have one section that a strip of surface faces can match.
+    /// Only a rectangular section has one width that a strip of surface faces can match.
+    /// A surveyed reach qualifies when its profile is a rectangle. Its depth is `area / width`.
     ///
     /// # Errors
-    /// Rejects triangular and surveyed reaches, and returns field recovery errors.
+    /// Rejects triangular reaches and surveyed profiles that are not rectangles with
+    /// `port-section-mismatch`. Returns field recovery errors.
     #[doc(hidden)]
     pub fn coupling_end_state(
         &self,
         end: ChannelEnd,
     ) -> Result<ChannelCouplingEndState<R>, ChannelError> {
-        let ChannelGeometry::Rectangular { cells } = &self.definition().geometry else {
-            let geometry = match &self.definition().geometry {
-                ChannelGeometry::PrismaticTriangular { .. } => "triangular",
-                _ => "surveyed",
-            };
-            return Err(ChannelError::input(format!(
-                "coupling end state geometry={geometry}: a reach-end port needs a rectangular end cell of the port width; use a rectangular reach or connect this reach through bank links"
-            )));
-        };
         let cell = match end {
             ChannelEnd::Left => 0,
             ChannelEnd::Right => self.context.count() - 1,
         };
-        let declared = &cells[cell];
+        let (bed_elevation_m, width_m, surveyed) = match &self.definition().geometry {
+            ChannelGeometry::Rectangular { cells } => {
+                (cells[cell].bed_elevation_m, cells[cell].width_m, false)
+            }
+            ChannelGeometry::PrismaticSurveyed { profile, .. } => {
+                let width = surveyed_rectangle_width(profile).ok_or_else(|| {
+                    ChannelError::input(
+                        "port-section-mismatch: a reach-end port needs a rectangular surveyed section; use a rectangular profile or connect this reach through bank links",
+                    )
+                })?;
+                (
+                    self.definition().geometry.cell(cell).bed_elevation_m,
+                    width,
+                    true,
+                )
+            }
+            ChannelGeometry::PrismaticTriangular { .. } => {
+                return Err(ChannelError::input(
+                    "port-section-mismatch: a reach-end port needs a rectangular end cell of the port width; triangular geometry has none, so use a rectangular reach or connect this reach through bank links",
+                ));
+            }
+        };
         let c = &self.context.client;
         let fields = self
             .context
             .fields(&self.accepted.volume, &self.accepted.momentum)?;
         let area = fields.area.narrow(0, cell, 1)?.contiguous()?;
-        let depth = fields.depth.narrow(0, cell, 1)?.contiguous()?;
+        let depth = if surveyed {
+            c.div_scalar(&area, width_m)?
+        } else {
+            fields.depth.narrow(0, cell, 1)?.contiguous()?
+        };
         let discharge = fields.discharge.narrow(0, cell, 1)?.contiguous()?;
-        let discharge_per_width = c.div_scalar(&discharge, declared.width_m)?;
+        let discharge_per_width = c.div_scalar(&discharge, width_m)?;
         Ok(ChannelCouplingEndState {
             cell,
-            bed_elevation_m: declared.bed_elevation_m,
-            width_m: declared.width_m,
+            bed_elevation_m,
+            width_m,
             area_m2: area,
             discharge_m3_per_s: discharge,
             depth_m: depth,
             discharge_per_width_m2_per_s: discharge_per_width,
         })
     }
+}
+
+/// Bottom width `b` of a surveyed profile that is a rectangle, else `None`.
+///
+/// The minimum-elevation points form one contiguous run of at least two points.
+/// Points before the run share its first station and points after it share its last.
+/// Both end points reach the maximum stage.
+fn surveyed_rectangle_width(profile: &CrossSectionDefinition) -> Option<f64> {
+    let points = &profile.points;
+    let minimum = points
+        .iter()
+        .map(|point| point.elevation_m)
+        .reduce(f64::min)?;
+    let first = points.iter().position(|p| p.elevation_m == minimum)?;
+    let last = points.iter().rposition(|p| p.elevation_m == minimum)?;
+    if last == first
+        || points[first..=last]
+            .iter()
+            .any(|p| p.elevation_m != minimum)
+    {
+        return None;
+    }
+    let left = points[first].station_m;
+    let right = points[last].station_m;
+    let walls = points[..first].iter().all(|p| p.station_m == left)
+        && points[last + 1..].iter().all(|p| p.station_m == right);
+    let top = profile.maximum_stage_m;
+    let reaches = points.first()?.elevation_m == top && points.last()?.elevation_m == top;
+    let width = right - left;
+    (walls && reaches && width > 0.0).then_some(width)
 }
 
 #[cfg(test)]
@@ -235,7 +284,7 @@ mod tests {
             "{error}"
         );
         let message = error.to_string();
-        assert!(message.contains("geometry=triangular"), "{message}");
+        assert!(message.contains("port-section-mismatch"), "{message}");
         assert!(message.contains("rectangular end cell"), "{message}");
         Ok(())
     }

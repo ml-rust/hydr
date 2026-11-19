@@ -1,4 +1,4 @@
-//! Surveyed reaches coupled to the surface through lateral bank weirs only.
+//! Surveyed reaches coupled to the surface through bank weirs.
 
 use crate::fixture::{Result, contains, input_rejection};
 use crate::restoration::{run, state};
@@ -7,7 +7,7 @@ use hydr::channel::{
     ChannelBoundary, ChannelGeometry, ChannelLateralDirection, ChannelLateralInput,
     CrossSectionPoint,
 };
-use hydr::coupling::{SurfaceChannelError, SurfaceChannelStepDiagnostics};
+use hydr::coupling::SurfaceChannelStepDiagnostics;
 use hydr::forcing::WaterAmount;
 
 const REACH: &str = "river";
@@ -158,47 +158,26 @@ fn surveyed_reach_restart_is_bitwise() -> Result {
 }
 
 #[test]
-fn surveyed_connected_endpoint_rejects() -> Result {
+fn surveyed_scalar_and_exterior_endpoints_admit() -> Result {
     let batch = floodplain().build()?;
     let before = batch.snapshot_data()?;
-    let scalar = [
+    let held = [
         ChannelBoundary::Stage { elevation_m: 1.0 },
         ChannelBoundary::QuiescentReservoir {
             elevation_m: 1.0,
             entrance_loss_coefficient: 0.0,
         },
+        ChannelBoundary::Exterior {
+            depth_m: 1.0,
+            velocity_m_per_s: 0.0,
+        },
     ];
-    for boundary in scalar {
+    for boundary in held {
         let mut interval = forcing(&batch, 0.1, &[]);
         interval.reaches[0].left = Some(boundary);
-        match batch.trial_to(0.1, &interval) {
-            Err(SurfaceChannelError::Channel { reach_id, source }) => {
-                assert_eq!(reach_id, REACH);
-                contains(
-                    &source.to_string(),
-                    &[
-                        "surveyed coordinator endpoints left=",
-                        "right=Wall",
-                        "lateral bindings only",
-                    ],
-                )?;
-            }
-            Err(other) => return Err(format!("expected a channel rejection, got {other}").into()),
-            Ok(_) => return Err("a surveyed scalar endpoint must reject".into()),
-        }
+        batch.trial_to(0.1, &interval)?;
     }
-    assert_eq!(
-        batch.snapshot_data()?,
-        before,
-        "a rejection changed the batch"
-    );
-    // Wall and complete Exterior endpoints admit.
-    let mut interval = forcing(&batch, 0.1, &[]);
-    interval.reaches[0].right = Some(ChannelBoundary::Exterior {
-        depth_m: 1.0,
-        velocity_m_per_s: 0.0,
-    });
-    batch.trial_to(0.1, &interval)?;
+    assert_eq!(batch.snapshot_data()?, before, "a trial changed the batch");
     Ok(())
 }
 

@@ -35,43 +35,6 @@ pub(super) fn reject_reserved_boundary(boundary_id: &str) -> Result<(), ChannelE
     Ok(())
 }
 
-/// Endpoint name for coordinator endpoint errors. `None` is a coordinator-owned connection.
-fn endpoint_name<R: Runtime<DType = DType>>(endpoint: Option<&ChannelTensorBoundary<R>>) -> &str {
-    match endpoint {
-        None => "connected",
-        Some(ChannelTensorBoundary::Wall) => "Wall",
-        Some(ChannelTensorBoundary::Exterior { .. }) => "Exterior",
-        Some(ChannelTensorBoundary::Stage { .. }) => "Stage",
-        Some(ChannelTensorBoundary::QuiescentReservoir { .. }) => "QuiescentReservoir",
-        Some(ChannelTensorBoundary::Discharge { .. }) => "Discharge",
-        Some(ChannelTensorBoundary::FluxPort(_)) => "FluxPort",
-    }
-}
-
-/// Admit a surveyed reach into a coordinator only through lateral bindings.
-///
-/// Both endpoints must hold an external `Wall` or `Exterior` policy.
-/// A connected endpoint or a scalar policy rejects.
-fn check_lateral_only<R: Runtime<DType = DType>>(
-    left: Option<&ChannelTensorBoundary<R>>,
-    right: Option<&ChannelTensorBoundary<R>>,
-) -> Result<(), ChannelError> {
-    let admitted = |endpoint: Option<&ChannelTensorBoundary<R>>| {
-        matches!(
-            endpoint,
-            Some(ChannelTensorBoundary::Wall | ChannelTensorBoundary::Exterior { .. })
-        )
-    };
-    if admitted(left) && admitted(right) {
-        return Ok(());
-    }
-    Err(ChannelError::input(format!(
-        "surveyed coordinator endpoints left={}, right={}: surveyed reaches join a coordinator through lateral bindings only; supply Wall or complete Exterior at both endpoints",
-        endpoint_name(left),
-        endpoint_name(right)
-    )))
-}
-
 /// External policies and lateral operands copied once from caller storage.
 #[derive(Debug)]
 #[doc(hidden)]
@@ -234,9 +197,6 @@ where
         right: Option<ChannelTensorBoundary<R>>,
         lateral: Vec<ChannelTensorLateralInput<R>>,
     ) -> Result<ChannelCouplingForcing<R>, ChannelError> {
-        if self.context.surveyed() {
-            check_lateral_only(left.as_ref(), right.as_ref())?;
-        }
         super::definition::check_forcing_interval(self.time(), end_s, start_s, end_s)?;
         self.context.lateral.check_endpoints(
             &self.context.client,
@@ -291,13 +251,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::{
-        ChannelBoundary, ChannelLateralBinding, ChannelLateralDirection, ChannelLateralInput,
-        ChannelReach,
-        surveyed_update::tests::{TestResult, cpu, moving_reach},
+        ChannelBoundary, ChannelEnd, ChannelFluxPort, ChannelGeometry, ChannelLateralBinding,
+        ChannelLateralDirection, ChannelLateralInput, ChannelReach,
+        surveyed_update::tests::{TestResult, cpu, exact_sum, moving_reach},
     };
-    use super::{ChannelCouplingTrial, SURFACE_EXCHANGE_BINDING_PREFIX};
+    use super::{ChannelCouplingTrial, ChannelReservoirOperands, SURFACE_EXCHANGE_BINDING_PREFIX};
+    use crate::channel::CrossSectionPoint;
     use crate::forcing::WaterAmount;
+    use numr::runtime::RuntimeClient;
     use numr::runtime::cpu::CpuRuntime;
+    use numr::tensor::Tensor;
 
     /// Coordinated surveyed reach with one reserved withdrawal binding at the middle cell.
     fn coordinated() -> TestResult<ChannelReach<CpuRuntime>> {
@@ -367,30 +330,180 @@ mod tests {
         Ok(())
     }
 
+    /// Coordinated survey of the given cell volumes, with a profile of the given points.
+    fn coordinated_survey(
+        volumes: &[f64],
+        points: &[(f64, f64)],
+    ) -> TestResult<ChannelReach<CpuRuntime>> {
+        let standalone = moving_reach::<CpuRuntime>(
+            cpu(),
+            volumes,
+            &vec![0.0; volumes.len()],
+            &vec![0.0; volumes.len()],
+        )?;
+        let mut definition = standalone.definition().clone();
+        if let ChannelGeometry::PrismaticSurveyed { profile, .. } = &mut definition.geometry {
+            profile.points = points
+                .iter()
+                .map(|&(station_m, elevation_m)| CrossSectionPoint {
+                    station_m,
+                    elevation_m,
+                })
+                .collect();
+        }
+        definition.lateral_bindings = vec![ChannelLateralBinding {
+            boundary_id: format!("{SURFACE_EXCHANGE_BINDING_PREFIX}bank:withdrawal"),
+            cell_id: "cell-1".into(),
+            direction: ChannelLateralDirection::Withdrawal,
+            ownership_assertion: "coordinator surface exchange".into(),
+        }];
+        Ok(ChannelReach::new_coordinated(
+            cpu(),
+            definition,
+            standalone.context.original_initial.clone(),
+        )?)
+    }
+
+    const RECTANGLE: [(f64, f64); 4] = [(-1.0, 3.5), (-1.0, 0.0), (1.0, 0.0), (1.0, 3.5)];
+    const TRIANGLE: [(f64, f64); 3] = [(-1.0, 3.5), (0.0, 0.0), (1.0, 3.5)];
+
+    fn closed_port() -> TestResult<ChannelBoundary> {
+        Ok(ChannelBoundary::FluxPort(ChannelFluxPort::new(
+            0.0,
+            0.0,
+            10.0,
+            Some(10.0),
+            "closed test port",
+        )?))
+    }
+
     #[test]
-    fn surveyed_connected_or_scalar_endpoint_rejects() -> TestResult {
-        let reach = coordinated()?;
+    fn surveyed_none_end_steps_and_conserves_water() -> TestResult {
+        let reach = coordinated_survey(&[10.0, 8.0, 6.0], &RECTANGLE)?;
+        let before = exact_sum(
+            [&reach.accepted.volume.high, &reach.accepted.volume.low]
+                .into_iter()
+                .map(|part| part.try_to_vec::<f64>())
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .flatten(),
+        );
+        let client = cpu();
+        let elevation = Tensor::from_slice(&[0.5], &[1], client.device())?;
+        let loss = Tensor::from_slice(&[0.0], &[1], client.device())?;
         let wall = ChannelBoundary::Wall;
-        let stage = ChannelBoundary::Stage { elevation_m: 1.0 };
-        let inputs = [withdrawal(0.0)];
-        for (left, right, names) in [
-            (None, Some(&wall), "left=connected, right=Wall"),
-            (Some(&wall), None, "left=Wall, right=connected"),
-            (Some(&stage), Some(&wall), "left=Stage, right=Wall"),
-        ] {
+        let forcing = reach.bind_coupling_host(0.0, 0.05, Some(&wall), None, &[withdrawal(0.0)])?;
+        let next = match reach.trial_coupled(
+            0.05,
+            &forcing,
+            None,
+            Some(ChannelReservoirOperands {
+                elevation_m: &elevation,
+                entrance_loss_coefficient: &loss,
+            }),
+        )? {
+            ChannelCouplingTrial::Accepted(next) => next,
+            ChannelCouplingTrial::Shorter { reason, .. } => {
+                return Err(format!("a short surveyed interval must accept: {reason}").into());
+            }
+        };
+        let outward = next
+            .coupling_endpoints()?
+            .outward_volume_m3
+            .try_to_vec::<f64>()?;
+        assert_eq!(outward[0], 0.0, "the wall end exchanges no water");
+        assert!(outward[1] > 0.0, "the reservoir below the end stage drains");
+        let data = next.snapshot_data()?;
+        let after = exact_sum(
+            data.volume_m3
+                .iter()
+                .chain(&data.volume_low_m3)
+                .copied()
+                .chain(before.iter().map(|part| -part)),
+        );
+        let change: f64 = after.iter().sum();
+        let ledger = &data.ledger;
+        let boundary = ledger.boundary_in_m3 - ledger.boundary_out_m3;
+        assert!(
+            (boundary + outward[1]).abs() <= f64::EPSILON * outward[1],
+            "boundary={boundary:e}, outward={:e}",
+            outward[1]
+        );
+        let bound =
+            ledger.storage_selection_abs_bound_m3 + ledger.numerical_transfer_underflow_bound_m3;
+        let slack = f64::EPSILON * change.abs().max(outward[1]);
+        assert!(
+            (change + outward[1]).abs() <= bound + slack,
+            "change={change:e}, outward={:e}, bound={bound:e}",
+            outward[1]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn surveyed_rectangle_port_end_accepts() -> TestResult {
+        let reach = coordinated_survey(&[10.0, 8.0, 6.0], &RECTANGLE)?;
+        let state = reach.coupling_end_state(ChannelEnd::Right)?;
+        assert_eq!(state.cell, 2);
+        assert_eq!(state.width_m, 2.0);
+        assert_eq!(state.bed_elevation_m, 0.0);
+        assert_eq!(state.area_m2.try_to_vec::<f64>()?, vec![1.2]);
+        assert_eq!(state.depth_m.try_to_vec::<f64>()?, vec![0.6]);
+        let port = closed_port()?;
+        let wall = ChannelBoundary::Wall;
+        let forcing =
+            reach.bind_coupling_host(0.0, 0.05, Some(&wall), Some(&port), &[withdrawal(0.0)])?;
+        match reach.trial_coupled(0.05, &forcing, None, None)? {
+            ChannelCouplingTrial::Accepted(_) => Ok(()),
+            ChannelCouplingTrial::Shorter { reason, .. } => {
+                Err(format!("a short port interval must accept: {reason}").into())
+            }
+        }
+    }
+
+    #[test]
+    fn surveyed_non_rectangle_port_end_rejects_and_keeps_state() -> TestResult {
+        let reach = coordinated_survey(&[10.0, 6.0, 2.0], &TRIANGLE)?;
+        let before = reach.snapshot_data()?;
+        for end in [ChannelEnd::Left, ChannelEnd::Right] {
             let error = reach
-                .bind_coupling_host(0.0, 0.05, left, right, &inputs)
+                .coupling_end_state(end)
                 .err()
-                .ok_or(
-                    "a surveyed reach without external Wall or Exterior endpoints must reject",
-                )?;
+                .ok_or("a non-rectangular surveyed end must reject")?;
             let message = error.to_string();
-            assert!(
-                message.contains("surveyed coordinator endpoints"),
-                "{message}"
-            );
-            assert!(message.contains(names), "{message}");
-            assert!(message.contains("lateral bindings only"), "{message}");
+            assert!(message.contains("port-section-mismatch"), "{message}");
+        }
+        assert_eq!(reach.snapshot_data()?, before);
+        Ok(())
+    }
+
+    #[test]
+    fn surveyed_free_end_admits_every_standalone_policy() -> TestResult {
+        let reach = coordinated_survey(&[10.0, 8.0, 6.0], &RECTANGLE)?;
+        let policies = [
+            ChannelBoundary::Wall,
+            ChannelBoundary::Exterior {
+                depth_m: 0.5,
+                velocity_m_per_s: 0.0,
+            },
+            ChannelBoundary::Stage { elevation_m: 0.5 },
+            ChannelBoundary::Discharge {
+                discharge_m3_per_s: 0.0,
+            },
+            ChannelBoundary::QuiescentReservoir {
+                elevation_m: 0.5,
+                entrance_loss_coefficient: 0.0,
+            },
+            closed_port()?,
+        ];
+        let inputs = [withdrawal(0.0)];
+        for policy in &policies {
+            reach
+                .bind_coupling_host(0.0, 0.05, None, Some(policy), &inputs)
+                .map_err(|error| format!("{policy:?} at the right end: {error}"))?;
+            reach
+                .bind_coupling_host(0.0, 0.05, Some(policy), None, &inputs)
+                .map_err(|error| format!("{policy:?} at the left end: {error}"))?;
         }
         Ok(())
     }
