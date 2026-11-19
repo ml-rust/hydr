@@ -3,20 +3,20 @@
 
 pub(super) const CELLS: &[[u64; 6]] = &[
     [
-        0x40051e1d7424ef26,
-        0x40051e1d7424ef27,
-        0xbffa2a2faa6ceb54,
-        0xbffa2a2faa6ceb53,
-        0x3fed0cb4a934b0ca,
-        0x3fed0cb4a934b0cb,
+        0x40094036de050262,
+        0x40094036de050263,
+        0xbff7d70a3d70a3d7,
+        0xbff7d70a3d70a3d7,
+        0x3ff09f55195ee5b7,
+        0x3ff09f55195ee5b8,
     ],
     [
-        0x400d577e0faa6381,
-        0x400d577e0faa6382,
-        0xbff3602077e81fc9,
-        0xbff3602077e81fc8,
-        0x3ff29e0b872558fb,
-        0x3ff29e0b872558fc,
+        0x400d586be536dca4,
+        0x400d586be536dca5,
+        0xbff35f5e68747f65,
+        0xbff35f5e68747f64,
+        0x3ff29e7dc574bb6f,
+        0x3ff29e7dc574bb70,
     ],
     [
         0x40134d4837fbaa16,

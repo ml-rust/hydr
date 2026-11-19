@@ -2,6 +2,16 @@
 //!
 //! Criteria are frozen before any run. A test that misses one fails.
 //!
+//! Frozen criteria, `resource/surveyed-endpoint-attachments-plan.md` §6:
+//!
+//! - Flux port, standalone: rectangle and three bands, uniform state, exact physical flux at
+//!   both ends. Relative change of every `A` and `Q` `<= 1e-12` over 50 intervals. Each port
+//!   rejection fires.
+//! - Mass, standalone: every standalone row. Each interval: ledger residual within its bound.
+//!   `Discharge` face volume equals `RN(σ Q dt)` bit for bit. End face low parts equal `+0.0`.
+//!
+//! The tests below refine those rows:
+//!
 //! - Uniform flow: the `rectangle-3` and `three-bands` profiles at a uniform state, with
 //!   ports at both ends that supply the exact physical flux of that state. After `INTERVALS`
 //!   accepted intervals, the relative change of every cell area and discharge is at most

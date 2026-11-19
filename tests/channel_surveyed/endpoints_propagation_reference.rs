@@ -147,12 +147,12 @@ pub const PROPAGATION: &[Propagation] = &[
         length_m: 20.0,
         time_s: 2.0,
         policy: Policy::Discharge {
-            discharge_m3_per_s: -1.6968414670944718,
+            discharge_m3_per_s: -1.49,
         },
-        trace_depth: v(0.8099999999999999, 0x3fe9eb851eb851ea, 0x3fe9eb851eb851eb),
-        trace_area: v(2.2760999999999996, 0x40023573eab367a0, 0x40023573eab367a1),
-        trace_discharge: v(-1.6968414670944718, 0xbffb26433cfaadbd, 0xbffb26433cfaadbd),
-        trace_momentum_flux: v(2.098248961447792, 0x4000c936c062461b, 0x4000c936c062461c),
+        trace_depth: v(1.0388995162050898, 0x3ff09f55195ee5b7, 0x3ff09f55195ee5b8),
+        trace_area: v(3.1563546510008544, 0x40094036de050262, 0x40094036de050263),
+        trace_discharge: v(-1.49, 0xbff7d70a3d70a3d7, 0xbff7d70a3d70a3d7),
+        trace_momentum_flux: v(2.1564427351304043, 0x400140650c78a7ae, 0x400140650c78a7af),
         meshes: [
             Mesh {
                 cells: 25,
