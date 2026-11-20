@@ -396,7 +396,7 @@ These checks cover prismatic triangular reaches only. They establish no general-
 
 ## Scalar channel-boundary checks
 
-[Scalar endpoint cases](../tests/channel_boundaries.rs) define Stage and Discharge acceptance for rectangular and triangular reaches. Scalar inputs require strictly wet-subcritical interior water and traces. These requirements establish no general inlet/outlet suitability.
+[Scalar endpoint cases](../tests/channel_boundaries.rs) define Stage and Discharge acceptance for rectangular and triangular reaches. [Surveyed endpoint checks](#surveyed-endpoint-checks) cover surveyed reaches. Scalar inputs require strictly wet-subcritical interior water and traces. These requirements establish no general inlet/outlet suitability.
 
 ### Independent traces and incoming waves
 
@@ -468,6 +468,43 @@ Reported depth intervals must contain the independently calculated solution. Com
 Across reservoir grids, maximum mean errors remain below `0.006146 m` for depth and `0.02084 m³/s` for discharge.
 
 These are local boundary checks. Finite-storage feedback has separate checks below.
+
+## Surveyed endpoint checks
+
+Surveyed reaches accept `Stage`, `Discharge`, `QuiescentReservoir`, and `FluxPort` ends, and attach to ports, pool ends, and channel/pool connections. The criteria below were fixed before any run. A case that misses its criterion fails, and no one loosens the criterion. The references use 150-digit arithmetic on the actual binary64 inputs. The profiles are a rectangle, a triangle, a three-band section, and a wide-bottom section.
+
+### Standalone reaches
+
+| Case | Enforced criterion |
+| --- | --- |
+| [Lake at rest](../tests/channel_surveyed/endpoints_rest.rs) | A rectangle and a three-band reach of 8 cells at rest. Each of `Stage`, `Discharge(0)`, `QuiescentReservoir` with `K = 0` and `1`, and a `FluxPort` with zero water and the reference pressure, at the left end, the right end, and both. Rest depths lie in each band. Over 50 intervals every `\|Q\|` and stage change stays within `1e-12`. |
+| [Traces](../tests/channel_surveyed/endpoints_traces.rs) | The reservoir and literal rarefaction and shock fixtures above, rerun on the rectangle and triangle profiles. The three-band and wide-bottom sections run `Stage`, `Discharge`, and `QuiescentReservoir`, entering and leaving, at both ends, with trace depths in every band and within `1e-6 m` of each knot. Each reference lies inside the certified depth enclosure. Depth, velocity, discharge, and momentum flux agree within `1e-11` absolute plus `1e-12` relative. |
+| [Triangle identity](../tests/channel_surveyed/endpoints_identity.rs) | A triangle profile and a triangular reach start in the same state with `Wall` and `Exterior` ends. At every interior face of the first interval, the surveyed flux enclosure and the triangular certified bracket intersect. |
+| [Propagation](../tests/channel_surveyed/endpoints_propagation.rs) | Three bands, `20 m`, `g = 1`, initial depth `1.5 m` at rest, `25/50/100` cells, `t = 2 s`. `Stage`, `Discharge`, and `QuiescentReservoir` each drive a rarefaction and a shock across a knot. Mean depth and discharge errors fall strictly with refinement. Each finest error stays below `25%` of the physical signal. Right-end errors equal left-end errors within `1e-12` relative. |
+| [Admission](../tests/channel_surveyed/endpoints_admission.rs) | Dry, critical, supercritical, and above-cap states reject for each scalar policy. A rejection leaves the reach unchanged bit for bit. |
+| [Flux port](../tests/channel_boundaries/flux_port_surveyed.rs) | A rectangle and a three-band reach in a uniform state, with ports that supply the exact physical flux at both ends. Over 50 intervals the relative change of every area and discharge stays within `1e-12`. A port below `\|u\| + sqrt(g A / T)` rejects. Export from a dry end cell rejects, and import into one admits. |
+| Mass | Every interval keeps the ledger residual within its bound. A `Discharge` face volume equals the rounded product of rate and duration bit for bit. |
+| [Restart](../tests/channel_surveyed/endpoints_restart.rs) | For every policy, snapshot, restore, import, and resume match the uninterrupted run bit for bit. A forged trace or reservoir receipt rejects. |
+
+These cases establish no surveyed convergence acceptance and no measured-event accuracy.
+
+### Coupled reaches
+
+| Case | Enforced criterion |
+| --- | --- |
+| [Channel/pool references](../tests/channel_pools/surveyed.rs) | The 18 finite-storage fixtures run on the surveyed rectangle and triangle at both ends. Six three-band cases follow. Trace, transfer, head, pool volume, reach volume, and momentum agree within `1e-10` absolute plus `1e-10` relative. |
+| [Channel/pool rest and reversal](../tests/channel_pools/surveyed_rest.rs) | A lake keeps depth `1 m` within `1e-12`, and discharge, momentum, and storage change stay within `1e-11` over 16 intervals, at both ends with `K = 0` and `1`. Transfers in both directions exceed `1e-6 m³`. |
+| [Two-part inventory](../tests/channel_pools/surveyed_inventory.rs) | On three bands with nonzero low parts, every interval keeps the composite residual within the mass bound. |
+| [Channel/pool oscillation](../tests/channel_pools/surveyed_mode.rs) | The rectangular mode of the finite-storage oscillation runs on a surveyed rectangle with 50, 100, and 200 cells. The same refinement and finest-error limits hold. |
+| [Channel/pool restart](../tests/channel_pools/surveyed_restoration.rs) | Trusted and cold replay continue bit for bit on a rectangle and on three bands. Forged shared transfer packets reject. |
+| [Pool end](../tests/surface_channels/pools_reach_end_surveyed.rs) | The reach-end criteria of the pool-end case above hold on a rectangle, a triangle, and three bands. The pool-end volume equals the reach face volume bit for bit. |
+| [Port](../tests/surface_channels/ports_surveyed.rs) | A surveyed rectangle of the face width meets every criterion of the rest, uniform-flow, step-limit, donor, bed-step, and order cases above. Its port receipts equal the rectangular reach's receipts on the first attempt. |
+| [Port dam break and seiche](../tests/surface_channels/ports_surveyed_dam_break.rs) | The Ritter, Stoker, sonic-point, and seiche cases above run on a surveyed rectangle. For Ritter and Stoker, at every spacing the L1 depth difference from the rectangular run stays within that run's own L1 error against the exact solution. The seiche checks its period, the port pairing, and the reversal flag. |
+| [Port admission](../tests/surface_channels/ports_definition.rs) | A surveyed end that is not a rectangle and a triangular reach end reject with `port-section-mismatch`. A surveyed rectangle off the face width rejects with `port-width-mismatch`. |
+| [Structure link](../tests/surface_channels/structures_surface_reach_surveyed.rs) | A one-cell walled surveyed rectangle replaces the rectangular reach in the surface-to-reach orifice case. The same criteria hold. |
+| Restart | [Port](../tests/surface_channels/ports_restart_surveyed.rs) and [pool-end](../tests/surface_channels/pools_restart_surveyed.rs) packages restore bit for bit. Forged receipts, ledgers, and pool packages reject. |
+
+These cases establish no measured-event accuracy.
 
 ## Finite channel/pool checks
 
@@ -608,7 +645,7 @@ Use the [surface/channel guide](surface-channels.md) to declare bank links, port
 | Order | Link and reach declaration order change no bit |
 | Recalculation | Nonconvergence halves the interval. A weir volume that would cross heads levels them within one interval. Integrated inputs request recomputation. |
 | Continuation | Snapshot, restore, import, resume, and forecast continuation match the uninterrupted run bit for bit. Forged packages reject. A standalone surface restore of a coupled package rejects. |
-| Surveyed reaches | Flood then recession through one link pairs and balances each interval. Restart matches the uninterrupted run bit for bit. Non-`Wall`/`Exterior` endpoints and a crest below the section minimum reject. CPU only. |
+| Surveyed reaches | Flood then recession through one link pairs and balances each interval, on a rectangle and on three bands. Restart matches the uninterrupted run bit for bit. A crest below the section minimum rejects. Scalar and exterior endpoints admit. CPU and CUDA. |
 
 ### Reference and refinement
 
@@ -626,7 +663,7 @@ These cases establish no weir-coefficient accuracy, bank-mapping proof, or measu
 
 ### Reach-end ports
 
-A port joins a rectangular reach end to a line of surface edge faces. The criteria below were fixed before any run.
+A port joins a rectangular reach end, or a surveyed rectangle end, to a line of surface edge faces. The criteria below were fixed before any run.
 
 | Case | Enforced criterion |
 | --- | --- |
@@ -699,6 +736,7 @@ The CUDA tests of these components also run the same case on CPU and compare com
 | Structure laws | Free and submerged weir, orifice, and free, mixed and submerged gate outputs match bit for bit over a dense head grid of more than 700 lanes |
 | Level pools, reservoirs, subcatchments | Per-element states match bit for bit. Batch totals and residual diagnostics agree within `volume_absolute + volume_relative * scale`. |
 | Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart through one bank link. A second case drains a reach through a port and a bank link together, refills it, and drains it again, with restart. Its cell states also match bit for bit. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. A third case runs pools with an orifice, a pump, an actuated gate, and a pool end across relay decisions and a gate arrival. After every accepted interval the text of every child state, package, and ledger is equal between CPU and CUDA, signed zero included. |
+| Surveyed endpoints | Four cases run on both clients: a standalone `Stage` and `FluxPort`, a port on a surveyed rectangle with a bank link, a pool end on three bands, and a channel/pool connection on three bands. Each restarts bit for bit. Cell volumes and momenta equal the CPU run bit for bit every interval. CPU and CUDA ledgers differ by at most the sum of their reported bounds. |
 
 Those totals and diagnostics differ in their last bits between CPU and CUDA. CUDA execution establishes no GPU accuracy qualification.
 

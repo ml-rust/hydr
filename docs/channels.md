@@ -68,7 +68,7 @@ A boundary trace gives the depth and velocity used to calculate flow across an e
 
 Scalar policies prescribe one hydraulic quantity and solve for the remaining trace state. They require a runtime that declares correctly rounded F64 square roots. Unsupported arithmetic rejects the interval without fallback.
 
-Surveyed reaches accept only `Wall` or complete `Exterior` data at both endpoints. `Stage`, `Discharge`, `QuiescentReservoir`, and `FluxPort` remain unsupported for surveyed geometry. The scalar-policy and flux port sections below apply to rectangular and triangular reaches.
+Rectangular, triangular, and surveyed reaches accept every policy below at either end. A surveyed reach solves a scalar trace from certified wave curves. It rejects the interval when an enclosure stays unresolved within the surveyed work ceilings.
 
 | Policy | Required input | Meaning |
 | --- | --- | --- |
@@ -129,7 +129,7 @@ Interior water and the boundary trace must remain wet and strictly subcritical. 
 
 This policy holds the supplied reservoir elevation over its forcing interval. It does not advance finite reservoir storage.
 
-For rectangular or triangular channels whose pool levels respond to transfers, use [channel-to-pool connections](channel-pools.md).
+For rectangular, triangular, or surveyed channels whose pool levels respond to transfers, use [channel-to-pool connections](channel-pools.md).
 
 Use this approximation only where rapid reservoir mixing is appropriate. Jets, seiches, dry connections, and critical transitions remain unsupported.
 
@@ -171,15 +171,14 @@ Each rejection is an input error that names the endpoint, the value, and the fix
 | Empty provenance | Blank text or a control character | Name the provider and the basis of the bound |
 | Slow signal | The speed lies below `\|u\| + c` of the end cell | Supply a bound of at least the end cell's characteristic speed |
 | Dry export | A positive water rate from a dry end cell | Supply zero or entering water |
-| Surveyed reach | Any port on surveyed geometry, standalone or in a coordinator | Use `Wall` or complete `Exterior` |
 
-The reach checks the speed against its accepted-start end cell. Here `c = sqrt(g h)` for a rectangle and `sqrt(g h / 2)` for a triangle. The provider certifies the rates and their bound against its own state.
+The reach checks the speed against its accepted-start end cell. Here `c = sqrt(g h)` for a rectangle and `sqrt(g h / 2)` for a triangle. A surveyed section uses `c = sqrt(g A / T)`, with area `A` and top width `T`. The provider certifies the rates and their bound against its own state.
 
 `ChannelTensorFluxPort::new` builds the same port from F64 tensors of shape `[1]` for `step_tensor`. Binding checks every value on the reach device.
 
 #### Ends a coordinator owns
 
-The [surface/channel coordinator](surface-channels.md#couple-a-reach-end-to-the-surface) owns the end of a reach that it ports. Set that end to `None` in `SurfaceChannelReachForcing`. The coordinator binds a `FluxPort` there on each attempt, from the surface's HLL flux at the port faces. Every other end takes your policy, as in a standalone reach. A ported end must be rectangular, with an end cell width equal to the port face width.
+The [surface/channel coordinator](surface-channels.md#couple-a-reach-end-to-the-surface) owns the end of a reach that it ports. Set that end to `None` in `SurfaceChannelReachForcing`. The coordinator binds a `FluxPort` there on each attempt, from the surface's HLL flux at the port faces. Every other end takes your policy, as in a standalone reach. A ported end must be a rectangular reach or a surveyed rectangle, with an end cell width equal to the port face width. A surveyed end of any other shape rejects with `port-section-mismatch`.
 
 ### Read scalar compatibility controls
 
@@ -279,7 +278,7 @@ Hydr copies tensor inputs into private device storage. Reusing caller buffers af
 
 The host `step()` interface uploads its operands once into this shared path. Explicit checkpoint-data calls copy retained operands to host values.
 
-For rectangular or triangular channels, [channel-to-pool connections](channel-pools.md) coordinate transfers with finite storage. Surveyed pool connections remain unsupported.
+For rectangular, triangular, or surveyed channels, [channel-to-pool connections](channel-pools.md) coordinate transfers with finite storage.
 
 The [native-forcing checks](../tests/channel_tensor_forcing.rs) compare complete host and tensor continuation.
 
@@ -329,7 +328,7 @@ Receipt discharge uses the outward sign. This differs from the longitudinal sign
 
 A rounded discharge can fall inside a certified uncertainty band at the original geometry cap. Approximate admission keeps the original discharge and reports bounded compatibility mismatches. Both delivered and compatible velocities must remain strictly subcritical.
 
-An approximate cap trace does not establish an exact cap root. Certified targets outside the cap range reject. Compatibility bounds never enlarge conservation allowances.
+An approximate cap trace does not establish an exact cap root. Certified targets outside the cap range reject. A surveyed trace above the section's maximum depth rejects, and surveyed reaches never report an approximate cap trace. Compatibility bounds never enlarge conservation allowances.
 
 Reservoir traces additionally contain `reservoir: Some(ChannelReservoirTrace)`. Its depth bounds contain the solution of the reservoir head relation. The head-mismatch bound measures disagreement with that law.
 
@@ -343,7 +342,7 @@ Surveyed receipts also retain cumulative root and integration work in `surveyed_
 
 To calculate interface fluxes outside a reach, call `riemann_flux_points_tensor` on a certified section batch. See [exact conserved points](prismatic-fluxes.md#calculate-fluxes-from-exact-conserved-points). Reach advancement does not call it.
 
-Scalar boundary receipts report endpoint flux widths for rectangular and triangular reaches. All use the same budgets below.
+Scalar boundary receipts report endpoint flux widths for rectangular, triangular, and surveyed reaches. All use the same budgets below.
 
 | Diagnostic | Meaning |
 | --- | --- |
@@ -395,7 +394,7 @@ Construct the destination with the same definition, config, and original initial
 
 Both restoration paths retain the destination's configured client. Importing saved data recalculates the complete last interval, including lateral inputs, counters, scalar traces, and triangular flux certificates.
 
-Surveyed restart data also retain the original profile, surveyed numerical controls, flux certificates, work, and friction-geometry receipts. Import recalculates the complete surveyed interval. Modified profile or numerical-control bits reject restoration.
+Surveyed restart data also retain the original profile, surveyed numerical controls, flux certificates, work, and friction-geometry receipts. Import recalculates the complete surveyed interval. Modified profile or numerical-control bits reject restoration. A forged scalar trace or reservoir receipt rejects restoration.
 
 Geometry variants and original geometry bits bind both restart paths. Changed triangular slopes or bed bits reject restoration. Equal area laws do not make different bank declarations interchangeable.
 
@@ -492,7 +491,7 @@ This bound covers radius selection only. It excludes native power arithmetic and
 
 Unresolved geometry, capacity, fluxes, or exhausted work limits return errors without exposing partial face results. Inspect the error before changing inputs or work limits. A shorter interval cannot resolve every geometry or work error.
 
-Surveyed reaches use the same lateral rate, exact-volume, immutable-step, and restart interfaces described above. The [surface/channel coordinator](surface-channels.md#couple-a-surveyed-reach) attaches surveyed reaches through these lateral bindings, with `Wall` or complete `Exterior` endpoints only. Functional CPU/CUDA source and restart checks establish no reach convergence or measured-event accuracy. Spatial, temporal, and wet/dry-front acceptance remain incomplete.
+Surveyed reaches use the same lateral rate, exact-volume, immutable-step, and restart interfaces described above. The [surface/channel coordinator](surface-channels.md#couple-a-surveyed-reach) attaches surveyed reaches through these lateral bindings, and through ports and pool ends. Functional CPU/CUDA source and restart checks establish no reach convergence or measured-event accuracy. Spatial, temporal, and wet/dry-front acceptance remain incomplete.
 
 ### Select triangular reconstruction
 
@@ -540,8 +539,8 @@ The solver represents hydrostatic, one-dimensional shallow-water flow. It exclud
 - Geometry: Rectangular width and bed can vary between cells. Triangles require one common bed and bank slopes. Surveyed reaches require one horizontal profile.
 - Profiles: Certified surveyed profiles support reach advancement. Mixed sections, longitudinally varying surveyed or triangular profiles, and changing geometry remain unsupported.
 - Boundaries: Scalar policies require resolved wet-subcritical traces. Complete exterior data supports other flow regimes. Use walls only for physical closures. Transmissive policies remain unsupported.
-- Connections: [Channel-to-pool connections](channel-pools.md) coordinate rectangular or triangular reaches with finite pool storage. Surveyed attachments, general junctions, and structures remain unsupported.
-- Surface: [Surface/channel coupling](surface-channels.md) exchanges water between surface cells and rectangular or triangular reach cells over bank weirs.
+- Connections: [Channel-to-pool connections](channel-pools.md) coordinate rectangular, triangular, or surveyed reaches with finite pool storage. General junctions and structures remain unsupported.
+- Surface: [Surface/channel coupling](surface-channels.md) exchanges water between surface cells and rectangular, triangular, or surveyed reach cells over bank weirs.
 - Losses: Separate abrupt contraction and expansion losses remain unsupported.
 - Drainage: This solver supplies no SWMM drainage, surcharge, or pressurized-pipe model.
 - Accuracy: Read [acceptance coverage](acceptance.md) for numerical cases and limits. Numerical agreement establishes no measured-event accuracy.

@@ -13,7 +13,7 @@ Read capabilities with `surface_channel_capabilities()`. It returns a `Component
 | Surface | `SolverSetup` and `InitialState` | Exterior faces, land model, and surface forcing keep their surface rules. |
 | Reaches | `SurfaceChannelReach` entries | Rectangular, triangular, or surveyed geometry. |
 | Links | `SurfaceChannelLink` entries | One bank weir between one active surface cell and one channel cell. |
-| Ports | `SurfaceChannelPort` entries | One line of surface faces against one rectangular reach end. See [reach-end ports](#couple-a-reach-end-to-the-surface). |
+| Ports | `SurfaceChannelPort` entries | One line of surface faces against one reach end of rectangular section. See [reach-end ports](#couple-a-reach-end-to-the-surface). |
 | Pools | `pools`, `pool_support`, `pool_sources`, `pool_inflows`, `storage` | Level pools with their sources and external inflows. See [level pools](#add-level-pools). |
 | Structures | `SurfaceChannelStructure` entries | One weir, orifice, gate, or pump between two nodes. See [structures](#join-nodes-through-structures). |
 | Pool ends | `SurfaceChannelPoolEnd` entries | One reach end against one pool. See [pool ends](#couple-a-reach-end-to-a-pool). |
@@ -25,15 +25,17 @@ A reach end has one owner: a caller policy, a port, or a pool end. The coordinat
 
 ### Couple a surveyed reach
 
-A surveyed reach joins the coordinator through lateral links and pool ends.
+A surveyed reach joins the coordinator through bank links, structure links, ports, and pool ends.
 
-- Endpoints: supply `Wall` or complete `Exterior` at each end that no pool end owns, in every interval. Any other endpoint rejects the trial with `SurfaceChannelError::Channel`.
+- Endpoints: an end that no port or pool end owns takes any channel endpoint policy, as in a standalone reach. See [channel endpoints](channels.md#choose-both-endpoint-conditions).
+- Port: only a surveyed rectangle takes a port. Its width is the distance between the first and last bottom points of the profile. See [reach-end ports](#couple-a-reach-end-to-the-surface).
 - Pool end: the bed is the section minimum. A dry end cell at the accepted start rejects with `pool-end-regime`.
+- Structure link: a structure endpoint can name a surveyed channel cell.
 - Bed: a surveyed cell's bed is the minimum elevation of the reach's surveyed section. The crest check and the reported stage use this bed.
 - Stage: the bed plus the depth from the reach's certified area-to-stage recovery.
 - Donor water: the lower bound of the two-part stored volume, as the reach's own step uses.
 
-Surveyed reaches keep the [surveyed limits](channels.md#set-surveyed-numerical-controls). Surveyed links run in the CPU checks only. The CUDA runtime evidence covers rectangular reaches, through a bank link in one case and a port with a bank link in another.
+Surveyed reaches keep the [surveyed limits](channels.md#set-surveyed-numerical-controls). The CUDA runtime evidence also covers a surveyed rectangle through a port with a bank link, and a three-band reach through a pool end.
 
 A reach without links advances on the same common interval with its own forcing.
 
@@ -174,14 +176,16 @@ A port joins one reach end to a line of surface faces. A river mouth that discha
 | Field | Meaning |
 | --- | --- |
 | `id` | Unique nonempty identity, distinct from every link identity |
-| `reach_id` | Ported setup reach. It must be rectangular. |
+| `reach_id` | Ported setup reach. It must be rectangular, or surveyed with a rectangular profile. |
 | `end` | `ChannelEnd::Left` or `ChannelEnd::Right`. One port binds each end at most. |
 | `faces` | Surface faces in any order. Admission sorts them along their face line. |
 | `mapping_evidence` | Your evidence that the faces and the reach end share this location |
 
 Each face has one active surface cell. Its other side is an inactive cell or lies off the grid. The faces share one axis, one face line, and one surface side, with no gap. A face is never a caller open face, and it belongs to one port only.
 
-The face widths must sum to the end cell width `b` within `SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE · b`. The tolerance is `16 · f64::EPSILON`. Set the end cell width to the face width sum. A rectangular reach can vary its width by cell.
+The face widths must sum to the end cell width `b` within `SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE · b`. The tolerance is `16 · f64::EPSILON`. Set the end cell width to the face width sum. A rectangular reach can vary its width by cell. A surveyed rectangle has one width for every cell, its bottom width `b`.
+
+A surveyed profile is a rectangle when its lowest points form one flat run of at least two points. Every point before the run shares the run's first station. Every point after it shares the run's last station. Both end points sit at `maximum_stage_m`. Any other surveyed profile rejects with `port-section-mismatch`. Such a section changes width with depth, so it cannot match a strip of equal-width surface faces.
 
 ### Port flux law
 
@@ -231,8 +235,7 @@ Set `left` or `right` of `SurfaceChannelReachForcing` to `None` at a ported end.
 
 | Case | Entry |
 | --- | --- |
-| Triangular reach end | `port-section-mismatch` |
-| Surveyed reach end | `surveyed-port-end` |
+| Triangular reach end, or a surveyed end whose profile is not a rectangle | `port-section-mismatch` |
 | Face width sum off the end cell width | `port-width-mismatch` |
 | Bad face set, two ports on one end, or an unknown reach | `port-face-ownership` |
 | Empty or repeated port identity, or empty evidence | `duplicate-links`, `missing-link-evidence` |
@@ -382,7 +385,7 @@ A pool end joins one reach end to one pool. The reach end takes `QuiescentReserv
 | Field | Meaning |
 | --- | --- |
 | `id` | Unique nonempty identity, distinct from every link, port, structure, and pool identity |
-| `reach_id` | Rectangular or triangular setup reach |
+| `reach_id` | Rectangular, triangular, or surveyed setup reach |
 | `end` | `ChannelEnd::Left` or `ChannelEnd::Right` |
 | `pool_id` | Coordinator pool |
 | `entrance_loss_coefficient` | Finite nonnegative loss against the incoming channel velocity head |
@@ -637,8 +640,8 @@ Preserve every package field and floating-point value exactly. Follow the [persi
 | Supported | Excluded |
 | --- | --- |
 | Bank weirs between active surface cells and rectangular, triangular, or surveyed reach cells | Unobstructed connections |
-| Ports between a face line and a rectangular reach end of the face width | Ports on triangular or surveyed reach ends |
-| Surveyed reaches with `Wall` or complete `Exterior` endpoints | Surveyed reaches with any other endpoint or a port |
+| Ports between a face line and a rectangular reach end, or a surveyed rectangle end, of the face width | Ports on triangular reach ends and on surveyed ends that are not rectangles |
+| Surveyed reaches with any channel endpoint policy at an unowned end | Scalar endpoints on dry, critical, or supercritical water, as on every reach |
 | Reversal through one link, structure, pool end, or port between intervals | Normal momentum exchange through bank links, and child subcycling |
 | Surface rain, impervious land, Modified Green-Ampt soil, evaporation, and withdrawal | Device-resident forcing |
 | Caller lateral inflow and withdrawal on reaches | Runoff attachment to coordinator pools |

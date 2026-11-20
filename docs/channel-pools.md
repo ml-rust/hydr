@@ -24,7 +24,7 @@ Import the coordinator types from `hydr::coupling`.
 
 Each endpoint has one owner. Both endpoints of a reach can connect to pools.
 
-Connection beds come from the channel geometry. The pool curve must represent water storage at each connection bed.
+Connection beds come from the channel geometry. A surveyed reach takes the minimum elevation of its section as the bed. The pool curve must represent water storage at each connection bed.
 
 All reaches use the same gravity value. Their initial times match the common initial time exactly.
 
@@ -105,6 +105,8 @@ Use `last_step()?` for the final common interval and `ledger()?` for lifetime wa
 
 Pools store water volume, without a directed momentum counter.
 
+A surveyed reach stores each cell volume as a high part and a low part. The combined storage adds both parts. The rounding bound of that sum counts against the mass allowance. Rectangular and triangular reaches have a zero low part and keep the single-part total.
+
 Read child outputs through `reach(id)` and `pools()`. Detailed output calls can return device-transfer errors.
 
 Iteration stages are numerical values. Check `iteration.pool_wet` before interpreting them as physical levels.
@@ -136,7 +138,7 @@ Active connections must remain wet throughout the accepted interval. A connectio
 
 | Supported | Excluded |
 | --- | --- |
-| Existing rectangular and prismatic triangular reaches | General channel junctions and surveyed-profile dynamics |
+| Rectangular, prismatic triangular, and surveyed reaches | General channel junctions |
 | Multiple declared endpoints per pool | Inferred geographic connections or overlapping represented storage |
 | Exchange-only pools and channel lateral inputs | Pool structures, local pool sources, and surface coordination. The [surface/channel coordinator](surface-channels.md) provides them. |
 | Reversing flow inside the wet-subcritical branch | Dry connections, critical transitions, jets, and oscillating pool surfaces |

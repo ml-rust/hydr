@@ -66,7 +66,7 @@ Use [coupled level pools](coupled-level-pools.md) for declared pool-to-pool tran
 
 Use [runoff-to-pool connections](runoff-pools.md) to generate upstream inflows and accept both engines over one common interval. Every runoff outlet must drain without receiving-pool feedback.
 
-Rectangular, triangular, and surveyed reaches attach to the surface solver through the [surface/channel coordinator](surface-channels.md). Surveyed reaches attach through lateral links only. A rectangular reach end also attaches through a [reach-end port](surface-channels.md#couple-a-reach-end-to-the-surface). Level pools, weirs, orifices, gates, and pumps attach to the surface solver and the reaches through the same coordinator. See [pools](surface-channels.md#add-level-pools) and [structures](surface-channels.md#join-nodes-through-structures). A reach end also meets a pool through a [pool end](surface-channels.md#couple-a-reach-end-to-a-pool). Sampled controls operate gates and pumps there. See [controls](surface-channels.md#operate-gates-and-pumps).
+Rectangular, triangular, and surveyed reaches attach to the surface solver through the [surface/channel coordinator](surface-channels.md). A rectangular reach end, or a surveyed rectangle end, also attaches through a [reach-end port](surface-channels.md#couple-a-reach-end-to-the-surface). Level pools, weirs, orifices, gates, and pumps attach to the surface solver and the reaches through the same coordinator. See [pools](surface-channels.md#add-level-pools) and [structures](surface-channels.md#join-nodes-through-structures). A reach end also meets a pool through a [pool end](surface-channels.md#couple-a-reach-end-to-a-pool). Sampled controls operate gates and pumps there. See [controls](surface-channels.md#operate-gates-and-pumps).
 
 ### Channel flow and geometry
 
@@ -76,15 +76,15 @@ Use [certified section bounds](prismatic-sections.md) for native depth queries o
 
 Use [channel flow](channels.md) to advance an unbranched rectangular, triangular, or fixed surveyed reach with explicit endpoint conditions.
 
-For surveyed reaches, supply one profile meeting [prismatic certification requirements](prismatic-sections.md#check-whether-the-profile-qualifies). Supply ordered cell lengths and roughness, initial volumes and momenta, and `ChannelSurveyedConfig`. Choose `Wall` or complete `Exterior` endpoints. Scalar endpoints and finite-pool attachments remain unsupported. Surface links attach through the [surface/channel coordinator](surface-channels.md#couple-a-surveyed-reach).
+For surveyed reaches, supply one profile meeting [prismatic certification requirements](prismatic-sections.md#check-whether-the-profile-qualifies). Supply ordered cell lengths and roughness, initial volumes and momenta, and `ChannelSurveyedConfig`. Choose any endpoint policy at each end: `Wall`, `Exterior`, `Stage`, `Discharge`, `QuiescentReservoir`, or `FluxPort`. Scalar endpoints require wet subcritical water. Finite pools attach through [channel-to-pool connections](channel-pools.md). Surface links attach through the [surface/channel coordinator](surface-channels.md#couple-a-surveyed-reach).
 
 Surveyed advancement supports lateral rates, exact interval volumes, diagnostics, and complete restart through the same channel API. Supply a CPU or CUDA F64 client. Read [surveyed numerical controls and limits](channels.md#set-surveyed-numerical-controls) before selecting tolerances or interpreting accuracy.
 
-Use [channel-to-pool connections](channel-pools.md) for rectangular or triangular reaches when finite pool levels respond to channel transfers. `ChannelPoolBatch` accepts both components together and retains their combined restart data.
+Use [channel-to-pool connections](channel-pools.md) for rectangular, triangular, or surveyed reaches when finite pool levels respond to channel transfers. `ChannelPoolBatch` accepts both components together and retains their combined restart data.
 
 Surface state remains separate from these channel/pool calculations.
 
-Use [surface/channel coupling](surface-channels.md) when water crosses a bank between surface cells and rectangular, triangular, or surveyed reach cells, or a rectangular reach end meets a line of surface faces. Use it also in these cases:
+Use [surface/channel coupling](surface-channels.md) when water crosses a bank between surface cells and rectangular, triangular, or surveyed reach cells, or a rectangular or surveyed-rectangle reach end meets a line of surface faces. Use it also in these cases:
 
 - A pond spills onto the surface.
 - An orifice joins the surface to a reach.
