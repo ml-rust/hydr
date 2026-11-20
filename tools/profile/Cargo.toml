@@ -16,6 +16,10 @@ path = "src/main.rs"
 name = "channel-profile"
 path = "src/channel.rs"
 
+[[bin]]
+name = "channel-pool-profile"
+path = "src/channel_pool.rs"
+
 [features]
 cuda = ["hydr/cuda", "numr/cuda"]
 
