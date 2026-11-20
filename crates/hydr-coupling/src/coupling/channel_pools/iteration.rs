@@ -66,11 +66,16 @@ where
             reason: "hydraulic map rejected the complete candidate".into(),
         }
     };
+    // The map keeps its latest evaluation, whose input packet is its iterate. With no history
+    // and unit mixing, the root is the last iterate, so its evaluation is the candidate.
+    let latest: RefCell<Option<NativeEvaluation<R>>> = RefCell::new(None);
     let map = |x: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
-        context
+        let evaluation = context
             .evaluate(accepted, end, forcing, x)
-            .map(|result| result.interval.output_packet)
-            .map_err(record)
+            .map_err(record)?;
+        let output = evaluation.interval.output_packet.clone();
+        *latest.borrow_mut() = Some(evaluation);
+        Ok(output)
     };
     let options = AndersonOptions {
         m: 0,
@@ -102,7 +107,19 @@ where
             context.setup.config.iteration_limit
         )));
     }
-    let evaluation = context.evaluate(accepted, end, forcing, &root.x)?;
+    // Reevaluation repeats the same calculation on the same operands, so it runs only when
+    // the root is not the latest evaluated iterate.
+    let evaluation = match latest.into_inner() {
+        Some(evaluation)
+            if evaluation
+                .interval
+                .input_packet
+                .shares_storage_with(&root.x) =>
+        {
+            evaluation
+        }
+        _ => context.evaluate(accepted, end, forcing, &root.x)?,
+    };
     if !context
         .residuals(&root.x, &evaluation.interval.output_packet)?
         .converged

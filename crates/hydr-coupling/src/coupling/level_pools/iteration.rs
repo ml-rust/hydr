@@ -185,9 +185,16 @@ where
         + AndersonAlgorithms<R>,
 {
     let error = RefCell::new(None);
+    // The map keeps its latest iterate and evaluation. With no history and unit mixing, the
+    // root is the last iterate, so its evaluation is the candidate.
+    let latest: RefCell<Option<(Tensor<R>, Evaluation<R>)>> = RefCell::new(None);
     let map = |x: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
         match context.evaluate(pools, end, prepared, external, x) {
-            Ok(evaluation) => Ok(evaluation.packet),
+            Ok(evaluation) => {
+                let packet = evaluation.packet.clone();
+                *latest.borrow_mut() = Some((x.clone(), evaluation));
+                Ok(packet)
+            }
             Err(e) => {
                 let mut slot =
                     error
@@ -254,7 +261,12 @@ where
             config.iteration_limit
         )));
     }
-    let final_evaluation = context.evaluate(pools, end, prepared, external, &root.x)?;
+    // Reevaluation repeats the same calculation on the same operands, so it runs only when
+    // the root is not the latest evaluated iterate.
+    let final_evaluation = match latest.into_inner() {
+        Some((input, evaluation)) if input.shares_storage_with(&root.x) => evaluation,
+        _ => context.evaluate(pools, end, prepared, external, &root.x)?,
+    };
     let (head, volume, flags) = context.residuals(&root.x, &final_evaluation.packet)?;
     if !flags || head > config.head_absolute_m || volume > config.transfer_absolute_m3 {
         return Err(CoupledLevelPoolError::numerical(
