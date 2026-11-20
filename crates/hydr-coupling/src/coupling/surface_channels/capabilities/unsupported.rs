@@ -236,12 +236,6 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
         "docs/integration.md",
     ),
     unsupported(
-        "surveyed-gpu-execution",
-        UnsupportedReason::Unqualified,
-        "Surveyed links run on CPU evidence only; no CUDA test executes a coupled surveyed reach.",
-        SURFACE_CHANNELS_DOC,
-    ),
-    unsupported(
         "measured-event-accuracy",
         UnsupportedReason::Unqualified,
         "No measured-event assessment establishes field accuracy.",

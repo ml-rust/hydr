@@ -50,6 +50,8 @@ mod subcatchment;
 mod surface_channel_pools;
 #[path = "runtime_backends/surface_channels.rs"]
 mod surface_channels;
+#[path = "runtime_backends/surveyed_endpoints.rs"]
+mod surveyed_endpoints;
 #[path = "runtime_backends/triangular_channels.rs"]
 mod triangular_channels;
 

@@ -2,10 +2,10 @@
 
 #[allow(dead_code)]
 #[path = "../surface_channels/fixture.rs"]
-mod fixture;
+pub(crate) mod fixture;
 #[allow(dead_code)]
 #[path = "../surface_channels/ports_fixture.rs"]
-mod ports_fixture;
+pub(crate) mod ports_fixture;
 #[allow(dead_code)]
 #[path = "../surface_channels/scenario.rs"]
 mod scenario;

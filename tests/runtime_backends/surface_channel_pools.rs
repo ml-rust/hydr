@@ -16,7 +16,7 @@
 
 #[allow(dead_code, unused_imports)]
 #[path = "../surface_channels/pools_fixture.rs"]
-mod pools_fixture;
+pub(crate) mod pools_fixture;
 
 use super::{Result, runtime};
 use hydr::channel::{ChannelBoundary, ChannelEnd, ChannelLateralInput};
