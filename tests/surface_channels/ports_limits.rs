@@ -5,6 +5,7 @@ use crate::ports_fixture::{
     ALPHA, Batch, CELLS, GRAVITY, LENGTH, Reach, Scenario, balanced, east, last, port, reach_cells,
     step, still, west, y_face,
 };
+use crate::ports_sections::first_cell_section;
 use hydr::channel::{ChannelConfig, ChannelEnd};
 use hydr::coupling::{SurfaceChannelPort, SurfaceChannelPortRegime};
 use hydr::model::CellState;
@@ -64,7 +65,9 @@ fn covered(name: &str, case: &Scenario, dt: f64, intervals: usize) -> Result {
         for port in &ports {
             speeds.push(face_speeds(&batch, port)?);
         }
-        batch = case.step(&batch, dt)?;
+        batch = case
+            .step(&batch, dt)
+            .map_err(|error| format!("{name}: {error}"))?;
         let step = last(&batch)?;
         let duration = step.end_s - step.start_s;
         for (transfer, required) in step.ports.iter().zip(&speeds) {
@@ -96,8 +99,8 @@ fn moving(h: f64, qx: f64) -> Vec<CellState> {
 }
 
 /// `alpha` in state `alpha` against `surface` through the east port, on a flat 1 m bed.
-fn east_case(alpha: Reach, surface: Vec<CellState>) -> Scenario {
-    let mut case = Scenario::rest(1.0, 1.5, 1.0, vec![east("p")]);
+pub(crate) fn east_case(alpha: Reach, surface: Vec<CellState>, surveyed: bool) -> Scenario {
+    let mut case = Scenario::rest(1.0, 1.5, 1.0, vec![east("p")]).with_surveyed(surveyed);
     case.surface = surface;
     case.alpha = alpha;
     case.link = false;
@@ -106,26 +109,39 @@ fn east_case(alpha: Reach, surface: Vec<CellState>) -> Scenario {
 
 #[test]
 fn the_port_speed_covers_every_face_state_and_both_children_limit_the_interval() -> Result {
+    speed_covers_every_face_state(false)
+}
+
+/// Port speed coverage on the rectangular reach, or on its surveyed rectangle.
+pub(crate) fn speed_covers_every_face_state(surveyed: bool) -> Result {
     let h = 0.5;
     let q = 2.0 * h * (GRAVITY * h).sqrt();
-    let mut seiche = Scenario::rest(1.0, 1.6, 0.5, vec![west("p")]);
+    let mut seiche = Scenario::rest(1.0, 1.6, 0.5, vec![west("p")]).with_surveyed(surveyed);
     seiche.alpha = Reach::rest(0.5, 1.75);
     covered("seiche", &seiche, 0.25, 20)?;
     covered(
         "supercritical",
-        &east_case(Reach::uniform(1.0, h, q), moving(h, -q)),
+        &east_case(Reach::uniform(1.0, h, q), moving(h, -q), surveyed),
         0.1,
         10,
     )?;
     covered(
         "dry floodplain",
-        &east_case(Reach::uniform(1.0, h, 0.0), vec![still(0.0); CELLS]),
+        &east_case(
+            Reach::uniform(1.0, h, 0.0),
+            vec![still(0.0); CELLS],
+            surveyed,
+        ),
         0.1,
         20,
     )?;
     covered(
         "shock",
-        &east_case(Reach::uniform(1.0, 1.0, 10.0), vec![still(1.0); CELLS]),
+        &east_case(
+            Reach::uniform(1.0, 1.0, 10.0),
+            vec![still(1.0); CELLS],
+            surveyed,
+        ),
         0.1,
         10,
     )?;
@@ -139,7 +155,8 @@ fn the_port_speed_covers_every_face_state_and_both_children_limit_the_interval()
             ChannelEnd::Right,
             (0..4).map(|column| y_face(column, 2)).collect(),
         )],
-    );
+    )
+    .with_surveyed(surveyed);
     north.alpha = Reach::rest(0.5, 1.9);
     north.alpha_size = [8.0, LENGTH];
     north.link = false;
@@ -148,10 +165,19 @@ fn the_port_speed_covers_every_face_state_and_both_children_limit_the_interval()
 
 #[test]
 fn the_port_speed_binds_the_common_interval() -> Result {
+    port_speed_binds(false)
+}
+
+/// The binding port speed on the rectangular reach, or on its surveyed rectangle.
+pub(crate) fn port_speed_binds(surveyed: bool) -> Result {
     // A reach end at 10 m/s runs into still water. Its |u| + c exceeds the HLL bound of the
     // port faces. The port speed enters the end cell's CFL frequency in both directions.
     let (h, u) = (1.0, 10.0);
-    let case = east_case(Reach::uniform(1.0, h, h * u), vec![still(1.0); CELLS]);
+    let case = east_case(
+        Reach::uniform(1.0, h, h * u),
+        vec![still(1.0); CELLS],
+        surveyed,
+    );
     let batch = step(&case.build()?, 1.0)?;
     let diagnostics = last(&batch)?;
     assert!(
@@ -204,15 +230,8 @@ fn side(states: &[[f64; 4]]) -> Result<TensorFaceState<crate::runtime::Runtime>>
 fn west_reference(batch: &Batch, faces: &[BoundaryFace]) -> Result<Vec<[f64; 4]>> {
     let end = reach_cells(batch, ALPHA)?[0].clone();
     let reach_bed = batch.setup().reaches[0].definition.geometry.clone();
-    let hydr::channel::ChannelGeometry::Rectangular { cells } = reach_bed else {
-        return Err("alpha is rectangular".into());
-    };
-    let ghost = [
-        end.depth_m,
-        -(end.discharge_m3_per_s / cells[0].width_m),
-        0.0,
-        cells[0].bed_elevation_m,
-    ];
+    let (width, bed) = first_cell_section(&reach_bed).ok_or("alpha is a rectangular section")?;
+    let ghost = [end.depth_m, -(end.discharge_m3_per_s / width), 0.0, bed];
     let surface = batch.surface().state()?;
     let bed = batch.surface().domain().bed();
     let cells: Vec<[f64; 4]> = faces
@@ -254,8 +273,13 @@ fn receipt(batch: &Batch, face: BoundaryFace) -> Result<FaceTransfer> {
 
 #[test]
 fn a_draining_end_cell_takes_the_hll_flux_of_its_start_states() -> Result {
+    draining_end_cell(false)
+}
+
+/// The draining end cell on the rectangular reach, or on its surveyed rectangle.
+pub(crate) fn draining_end_cell(surveyed: bool) -> Result {
     // Only the reach end cell holds water, and the floodplain is dry.
-    let mut case = Scenario::rest(1.0, 0.0, 1.0, vec![west("p")]);
+    let mut case = Scenario::rest(1.0, 0.0, 1.0, vec![west("p")]).with_surveyed(surveyed);
     case.link = false;
     case.alpha = Reach {
         bed: 1.0,

@@ -21,8 +21,9 @@ fn beta_bank() -> SurfaceChannelLink {
 }
 
 /// Two ports on `alpha`, two bank links, and a reach above its floodplain.
-fn parts() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
-    let mut case = Scenario::rest(1.0, 1.6, 0.5, vec![west("p-west"), east("p-east")]);
+fn parts(surveyed: bool) -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
+    let mut case =
+        Scenario::rest(1.0, 1.6, 0.5, vec![west("p-west"), east("p-east")]).with_surveyed(surveyed);
     case.alpha = Reach::rest(0.5, 1.75);
     let (mut setup, initial) = case.parts()?;
     setup.links.push(beta_bank());
@@ -30,8 +31,8 @@ fn parts() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
 }
 
 /// The same case with every declaration list reversed, port faces included.
-fn reversed() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
-    let (mut setup, mut initial) = parts()?;
+fn reversed(surveyed: bool) -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
+    let (mut setup, mut initial) = parts(surveyed)?;
     setup.ports.reverse();
     for port in &mut setup.ports {
         port.faces.reverse();
@@ -61,11 +62,16 @@ fn accepted(batch: &Batch) -> Result<String> {
 
 #[test]
 fn declaration_order_changes_no_accepted_bit() -> Result {
+    declaration_order(false)
+}
+
+/// Declaration order on the rectangular `alpha`, or on its surveyed rectangle.
+pub(crate) fn declaration_order(surveyed: bool) -> Result {
     let build = |(setup, initial): (SurfaceChannelSetup, SurfaceChannelInitialState)| {
         Batch::new(crate::runtime::client(), setup, initial)
     };
-    let mut ordered = build(parts()?)?;
-    let mut flipped = build(reversed()?)?;
+    let mut ordered = build(parts(surveyed)?)?;
+    let mut flipped = build(reversed(surveyed)?)?;
     let mut moved = 0.0;
     for index in 0..INTERVALS {
         let start = ordered.time();

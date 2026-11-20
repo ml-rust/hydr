@@ -118,6 +118,44 @@ pub fn rectangular(count: usize, bed: f64) -> ChannelReachDefinition {
     sized(count, bed, [REACH_WIDTH, LENGTH])
 }
 
+/// The reach of [`sized`] as `count` surveyed cells on one rectangular section of `width`.
+///
+/// The section runs from the bed to 4 m above it, as the rectangular cells do.
+pub fn surveyed_sized(count: usize, bed: f64, [width, length]: [f64; 2]) -> ChannelReachDefinition {
+    ChannelReachDefinition {
+        provenance: "Surveyed rectangular reach at the surface grid edge".into(),
+        geometry: ChannelGeometry::PrismaticSurveyed {
+            profile: CrossSectionDefinition {
+                id: "port-section".into(),
+                vertical_datum: DATUM.into(),
+                points: [
+                    (0.0, bed + 4.0),
+                    (0.0, bed),
+                    (width, bed),
+                    (width, bed + 4.0),
+                ]
+                .into_iter()
+                .map(|(station_m, elevation_m)| CrossSectionPoint {
+                    station_m,
+                    elevation_m,
+                })
+                .collect(),
+                maximum_stage_m: bed + 4.0,
+                profile_provenance: "Analytical rectangular survey of the port width".into(),
+            },
+            cells: (0..count)
+                .map(|i| SurveyedChannelCell {
+                    id: format!("cell-{i}"),
+                    length_m: length,
+                    manning_n: 0.0,
+                })
+                .collect(),
+            numerical: ChannelSurveyedConfig::default(),
+        },
+        ..sized(count, bed, [width, length])
+    }
+}
+
 /// Rectangular reach of `count` cells of `[width, length]` on `bed`, in m.
 pub fn sized(count: usize, bed: f64, [width, length]: [f64; 2]) -> ChannelReachDefinition {
     ChannelReachDefinition {
@@ -201,6 +239,8 @@ pub struct Scenario {
     pub beta: Reach,
     /// `alpha` cell width and length, in m.
     pub alpha_size: [f64; 2],
+    /// Declare `alpha` as a surveyed rectangle of its cell width in place of rectangular cells.
+    pub surveyed: bool,
     /// Keep the bank link on `alpha` cell 1.
     pub link: bool,
     pub ports: Vec<SurfaceChannelPort>,
@@ -225,11 +265,18 @@ impl Scenario {
             alpha: Reach::rest(alpha_bed, stage),
             beta: Reach::rest(0.25, stage),
             alpha_size: [REACH_WIDTH, LENGTH],
+            surveyed: false,
             link: true,
             ports,
             open: Vec::new(),
             ends: Vec::new(),
         }
+    }
+
+    /// This case with `alpha` surveyed when `surveyed` is true.
+    pub fn with_surveyed(mut self, surveyed: bool) -> Self {
+        self.surveyed = surveyed;
+        self
     }
 
     /// Forcing over `[start, end]`: no policy at each ported end, the declared policy or a
@@ -323,7 +370,11 @@ impl Scenario {
             reaches: vec![
                 SurfaceChannelReach {
                     id: ALPHA.into(),
-                    definition: sized(3, self.alpha.bed, self.alpha_size),
+                    definition: if self.surveyed {
+                        surveyed_sized(3, self.alpha.bed, self.alpha_size)
+                    } else {
+                        sized(3, self.alpha.bed, self.alpha_size)
+                    },
                 },
                 SurfaceChannelReach {
                     id: BETA.into(),

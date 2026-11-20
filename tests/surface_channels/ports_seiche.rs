@@ -66,6 +66,11 @@ fn sign_changes(intervals: &[Interval]) -> Vec<f64> {
 
 #[test]
 fn a_tilted_basin_through_the_port_rings_at_its_period() -> Result {
+    tilted_basin_period(false)
+}
+
+/// The period of the tilted basin on the rectangular reach, or on its surveyed rectangle.
+pub(crate) fn tilted_basin_period(surveyed: bool) -> Result {
     let length = 2.0 * SIDE_M;
     let exact = 2.0 * length / (GRAVITY * DEPTH_M).sqrt();
     let amplitude = TILT * DEPTH_M;
@@ -74,7 +79,8 @@ fn a_tilted_basin_through_the_port_rings_at_its_period() -> Result {
         let n = (SIDE_M / dx).round() as usize;
         let line = Line::new(Order::ReachFirst, n, dx, |x| {
             DEPTH_M + amplitude * (1.0 - 2.0 * x / length)
-        });
+        })
+        .with_surveyed(surveyed);
         // Every interval checks the pairing, the step mass bound, and the composite balance.
         let (_, intervals) = advance(line.batch()?, PERIODS * exact)?;
         let flags = intervals.iter().filter(|i| i.port.reversed).count();
@@ -111,8 +117,8 @@ fn a_tilted_basin_through_the_port_rings_at_its_period() -> Result {
 ///
 /// Every interval checks the step mass bound and the lifetime composite balance.
 /// Returns the port receipts of every interval and the last batch.
-fn seiche(intervals: usize) -> Result<(Vec<SurfaceChannelPortTransfer>, Batch)> {
-    let mut case = Scenario::rest(1.0, 1.6, 0.5, vec![west("p")]);
+fn seiche(intervals: usize, surveyed: bool) -> Result<(Vec<SurfaceChannelPortTransfer>, Batch)> {
+    let mut case = Scenario::rest(1.0, 1.6, 0.5, vec![west("p")]).with_surveyed(surveyed);
     case.alpha = Reach::rest(0.5, 1.75);
     let mut batch = case.build()?;
     let mut run = Vec::with_capacity(intervals);
@@ -128,7 +134,12 @@ fn seiche(intervals: usize) -> Result<(Vec<SurfaceChannelPortTransfer>, Batch)> 
 
 #[test]
 fn pairing_and_composite_balance_hold_through_inflow_and_outflow() -> Result {
-    let (run, last) = seiche(SEICHE_INTERVALS)?;
+    pairing_through_inflow_and_outflow(false)
+}
+
+/// Pairing through inflow and outflow on the rectangular reach, or on its surveyed rectangle.
+pub(crate) fn pairing_through_inflow_and_outflow(surveyed: bool) -> Result {
+    let (run, last) = seiche(SEICHE_INTERVALS, surveyed)?;
     let (mut inflow, mut outflow) = (false, false);
     for transfer in &run {
         assert!(transfer.paired_gap_m3.abs() <= transfer.paired_bound_m3);
@@ -143,7 +154,12 @@ fn pairing_and_composite_balance_hold_through_inflow_and_outflow() -> Result {
 
 #[test]
 fn a_reversal_sets_the_reversed_flag() -> Result {
-    let (run, _) = seiche(SEICHE_INTERVALS)?;
+    reversal_flag(false)
+}
+
+/// The reversal flag on the rectangular reach, or on its surveyed rectangle.
+pub(crate) fn reversal_flag(surveyed: bool) -> Result {
+    let (run, _) = seiche(SEICHE_INTERVALS, surveyed)?;
     let mut previous: Option<f64> = None;
     let mut reversals = 0;
     for transfer in &run {

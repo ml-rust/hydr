@@ -25,19 +25,19 @@ use crate::ports_fixture::{
 use crate::ports_line::{Interval, Line, Order, WIDTH, advance, twin_depths};
 use hydr::coupling::SurfaceChannelPortRegime;
 
-type Reference = fn(f64, f64, f64) -> (f64, f64);
+pub(crate) type Reference = fn(f64, f64, f64) -> (f64, f64);
 
 /// Length of each side of the line, in m.
-const SIDE_M: f64 = 8.0;
+pub(crate) const SIDE_M: f64 = 8.0;
 
 /// Frozen spacings: three halvings, in m.
-const SPACINGS: [f64; 4] = [0.5, 0.25, 0.125, 0.0625];
+pub(crate) const SPACINGS: [f64; 4] = [0.5, 0.25, 0.125, 0.0625];
 
 /// Frozen final time, in s.
 const END_S: f64 = 1.0;
 
 /// Distance of the dam west of the port in the crossing cases, in m.
-const OFFSET_M: f64 = 1.0;
+pub(crate) const OFFSET_M: f64 = 1.0;
 
 /// Frozen bound on the coupled L1 error against the twin's at the same spacing.
 const TWIN_RATIO: f64 = 1.25;
@@ -55,16 +55,23 @@ const SHOCK_CELLS: f64 = 2.0;
 const STOKER_RIGHT_M: f64 = 0.25;
 
 /// One refined dam break at spacing `dx`, run to [`END_S`].
-struct Run {
-    line: Line,
-    coupled: Vec<f64>,
+pub(crate) struct Run {
+    pub(crate) line: Line,
+    pub(crate) coupled: Vec<f64>,
     twin: Vec<f64>,
     intervals: Vec<Interval>,
 }
 
-fn run(order: Order, dx: f64, dam: f64, exact: Reference) -> Result<Run> {
+/// One dam break on the rectangular reach, or on its surveyed rectangle when `surveyed`.
+pub(crate) fn run(
+    order: Order,
+    dx: f64,
+    dam: f64,
+    exact: Reference,
+    surveyed: bool,
+) -> Result<Run> {
     let n = (SIDE_M / dx).round() as usize;
-    let line = Line::new(order, n, dx, |x| exact(x - dam, 0.0, GRAVITY).0);
+    let line = Line::new(order, n, dx, |x| exact(x - dam, 0.0, GRAVITY).0).with_surveyed(surveyed);
     let (batch, intervals) = advance(line.batch()?, END_S)?;
     let coupled = line.depths_of(&batch)?;
     let twin = twin_depths(line.twin()?, END_S)?;
@@ -78,7 +85,7 @@ fn run(order: Order, dx: f64, dam: f64, exact: Reference) -> Result<Run> {
 }
 
 /// L1 depth error of `depths` at [`END_S`], in m².
-fn l1(line: &Line, depths: &[f64], dam: f64, exact: Reference) -> f64 {
+pub(crate) fn l1(line: &Line, depths: &[f64], dam: f64, exact: Reference) -> f64 {
     line.centres()
         .iter()
         .zip(depths)
@@ -92,12 +99,17 @@ fn orders(errors: &[f64]) -> Vec<f64> {
 }
 
 /// Runs every spacing, checks the twin ratio and the order, and returns the runs.
-fn crossing(label: &str, order: Order, exact: Reference) -> Result<Vec<Run>> {
+pub(crate) fn crossing(
+    label: &str,
+    order: Order,
+    exact: Reference,
+    surveyed: bool,
+) -> Result<Vec<Run>> {
     let dam = SIDE_M - OFFSET_M;
     let mut runs = Vec::with_capacity(SPACINGS.len());
     let mut errors = Vec::with_capacity(SPACINGS.len());
     for dx in SPACINGS {
-        let run = run(order, dx, dam, exact)?;
+        let run = run(order, dx, dam, exact, surveyed)?;
         let coupled = l1(&run.line, &run.coupled, dam, exact);
         let twin = l1(&run.line, &run.twin, dam, exact);
         println!("{label}: dx={dx}, coupled L1={coupled:.12e}, twin L1={twin:.12e}");
@@ -119,12 +131,12 @@ fn crossing(label: &str, order: Order, exact: Reference) -> Result<Vec<Run>> {
 
 #[test]
 fn ritter_from_the_reach_onto_a_dry_strip_matches_the_twin_and_refines() -> Result {
-    crossing("Ritter reach to strip", Order::ReachFirst, ritter).map(drop)
+    crossing("Ritter reach to strip", Order::ReachFirst, ritter, false).map(drop)
 }
 
 #[test]
 fn ritter_from_the_strip_into_a_dry_reach_matches_the_twin_and_refines() -> Result {
-    crossing("Ritter strip to reach", Order::SurfaceFirst, ritter).map(drop)
+    crossing("Ritter strip to reach", Order::SurfaceFirst, ritter, false).map(drop)
 }
 
 /// Port discharge per width over the second half of the run, positive eastward, in m²/s.
@@ -144,11 +156,11 @@ fn port_discharge(order: Order, intervals: &[Interval]) -> Result<f64> {
 }
 
 /// Ritter's dam at the port face: the sonic point sits on the port.
-fn sonic(label: &str, order: Order) -> Result {
+pub(crate) fn sonic(label: &str, order: Order, surveyed: bool) -> Result {
     let exact = 8.0 / 27.0 * GRAVITY.sqrt();
     let mut errors = Vec::with_capacity(SPACINGS.len());
     for dx in SPACINGS {
-        let run = run(order, dx, SIDE_M, ritter)?;
+        let run = run(order, dx, SIDE_M, ritter, surveyed)?;
         let q = port_discharge(order, &run.intervals)?;
         let error = (q - exact).abs() / exact;
         println!("{label}: dx={dx}, q={q:.12e}, exact={exact:.12e}, relative={error:.6e}");
@@ -165,12 +177,12 @@ fn sonic(label: &str, order: Order) -> Result {
 
 #[test]
 fn a_ritter_dam_at_the_reach_end_passes_the_sonic_discharge() -> Result {
-    sonic("Sonic reach to strip", Order::ReachFirst)
+    sonic("Sonic reach to strip", Order::ReachFirst, false)
 }
 
 #[test]
 fn a_ritter_dam_at_the_strip_edge_passes_the_sonic_discharge() -> Result {
-    sonic("Sonic strip to reach", Order::SurfaceFirst)
+    sonic("Sonic strip to reach", Order::SurfaceFirst, false)
 }
 
 /// Numerical shock position of `run`, in m.
@@ -187,8 +199,8 @@ fn shock(run: &Run, mid: f64) -> Result<f64> {
 }
 
 /// Stoker with the shock crossing the port from the west side.
-fn stoker_crossing(label: &str, order: Order) -> Result {
-    let runs = crossing(label, order, stoker)?;
+pub(crate) fn stoker_crossing(label: &str, order: Order, surveyed: bool) -> Result {
+    let runs = crossing(label, order, stoker, surveyed)?;
     let (star_h, star_q) = stoker(0.0, 1.0, GRAVITY);
     let speed = star_q / (star_h - STOKER_RIGHT_M);
     let exact = SIDE_M - OFFSET_M + speed * END_S;
@@ -208,18 +220,23 @@ fn stoker_crossing(label: &str, order: Order) -> Result {
 
 #[test]
 fn stoker_from_the_reach_crosses_the_port_and_refines() -> Result {
-    stoker_crossing("Stoker reach to strip", Order::ReachFirst)
+    stoker_crossing("Stoker reach to strip", Order::ReachFirst, false)
 }
 
 #[test]
 fn stoker_from_the_strip_crosses_the_port_and_refines() -> Result {
-    stoker_crossing("Stoker strip to reach", Order::SurfaceFirst)
+    stoker_crossing("Stoker strip to reach", Order::SurfaceFirst, false)
 }
 
 #[test]
 fn a_dam_break_onto_a_dry_floodplain_runs_and_balances() -> Result {
+    dry_floodplain(false)
+}
+
+/// The floodplain dam break on the rectangular reach, or on its surveyed rectangle.
+pub(crate) fn dry_floodplain(surveyed: bool) -> Result {
     // A still reach releases onto the dry 4 x 2 floodplain through its port.
-    let mut case = Scenario::rest(1.0, 0.0, 1.0, vec![west("p")]);
+    let mut case = Scenario::rest(1.0, 0.0, 1.0, vec![west("p")]).with_surveyed(surveyed);
     case.link = false;
     case.alpha = Reach::uniform(1.0, 0.5, 0.0);
     let mut batch = case.build()?;

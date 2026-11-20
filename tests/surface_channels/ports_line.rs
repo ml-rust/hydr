@@ -10,7 +10,8 @@
 use crate::fixture::Result;
 use crate::impervious::impervious_solver;
 use crate::ports_fixture::{
-    ALPHA, Batch, DATUM, balanced, forcing, last, port, reach_cells, sized, transfer, x_face,
+    ALPHA, Batch, DATUM, balanced, forcing, last, port, reach_cells, sized, surveyed_sized,
+    transfer, x_face,
 };
 use hydr::channel::{ChannelEnd, ChannelInitialState};
 use hydr::coupling::{
@@ -48,6 +49,8 @@ pub enum Order {
 pub struct Line {
     pub order: Order,
     pub dx: f64,
+    /// Declare the reach as a surveyed rectangle of the strip width.
+    pub surveyed: bool,
     /// Initial still-water depth of every composite cell, west to east, in m.
     pub depths: Vec<f64>,
 }
@@ -58,8 +61,15 @@ impl Line {
         Self {
             order,
             dx,
+            surveyed: false,
             depths: (0..2 * n).map(|i| depth(centre(i, dx))).collect(),
         }
+    }
+
+    /// This line with a surveyed reach when `surveyed` is true.
+    pub fn with_surveyed(mut self, surveyed: bool) -> Self {
+        self.surveyed = surveyed;
+        self
     }
 
     /// Cells per side.
@@ -112,7 +122,11 @@ impl Line {
             },
             reaches: vec![SurfaceChannelReach {
                 id: ALPHA.into(),
-                definition: sized(n, 0.0, [WIDTH, self.dx]),
+                definition: if self.surveyed {
+                    surveyed_sized(n, 0.0, [WIDTH, self.dx])
+                } else {
+                    sized(n, 0.0, [WIDTH, self.dx])
+                },
             }],
             links: Vec::new(),
             ports: vec![face],

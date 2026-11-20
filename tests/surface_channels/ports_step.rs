@@ -65,7 +65,7 @@ fn outlet(step: Step, columns: usize, row: usize) -> BoundaryForcing {
 }
 
 /// The coupled case, at rest at the downstream stage.
-fn coupled(step: Step) -> Scenario {
+fn coupled(step: Step, surveyed: bool) -> Scenario {
     let mut case = Scenario::rest(
         step.surface_bed,
         step.stage,
@@ -76,7 +76,8 @@ fn coupled(step: Step) -> Scenario {
             ChannelEnd::Right,
             vec![x_face(0, 0), x_face(0, 1)],
         )],
-    );
+    )
+    .with_surveyed(surveyed);
     case.link = false;
     case.open = (0..2).map(|row| outlet(step, 4, row)).collect();
     case.ends = vec![(
@@ -216,8 +217,8 @@ fn east_volume(faces: &[hydr::solver::FaceTransfer], columns: usize) -> f64 {
 }
 
 /// Steady inflow, outflow, and upstream stages of the coupled case.
-fn coupled_steady(step: Step) -> Result<(f64, f64, Vec<f64>)> {
-    let case = coupled(step);
+fn coupled_steady(step: Step, surveyed: bool) -> Result<(f64, f64, Vec<f64>)> {
+    let case = coupled(step, surveyed);
     let mut batch = case.build()?;
     let mut fields = coupled_fields(&batch)?;
     for _ in 0..MAXIMUM_INTERVALS {
@@ -280,8 +281,8 @@ fn relative(a: f64, b: f64) -> f64 {
 }
 
 /// Runs both systems to steady flow and checks the frozen criteria.
-fn agrees(step: Step) -> Result {
-    let (inflow, outflow, stages) = coupled_steady(step)?;
+fn agrees(step: Step, surveyed: bool) -> Result {
+    let (inflow, outflow, stages) = coupled_steady(step, surveyed)?;
     assert!(inflow > 0.0, "{step:?}: water must run through the port");
     assert!(
         relative(inflow, outflow) <= BALANCE,
@@ -301,20 +302,36 @@ fn agrees(step: Step) -> Result {
     Ok(())
 }
 
+/// Steady flow up a bed step, on the rectangular reach or on its surveyed rectangle.
+pub(crate) fn steady_up(surveyed: bool) -> Result {
+    agrees(
+        Step {
+            reach_bed: 0.0,
+            surface_bed: 0.2,
+            stage: 0.95,
+        },
+        surveyed,
+    )
+}
+
+/// Steady flow down a bed step, on the rectangular reach or on its surveyed rectangle.
+pub(crate) fn steady_down(surveyed: bool) -> Result {
+    agrees(
+        Step {
+            reach_bed: 0.2,
+            surface_bed: 0.0,
+            stage: 1.15,
+        },
+        surveyed,
+    )
+}
+
 #[test]
 fn steady_flow_up_a_bed_step_matches_the_pure_2d_twin() -> Result {
-    agrees(Step {
-        reach_bed: 0.0,
-        surface_bed: 0.2,
-        stage: 0.95,
-    })
+    steady_up(false)
 }
 
 #[test]
 fn steady_flow_down_a_bed_step_matches_the_pure_2d_twin() -> Result {
-    agrees(Step {
-        reach_bed: 0.2,
-        surface_bed: 0.0,
-        stage: 1.15,
-    })
+    steady_down(false)
 }

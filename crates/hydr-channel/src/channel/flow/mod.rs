@@ -17,6 +17,7 @@ pub(crate) mod coupling;
 pub(crate) mod coupling_end_state;
 pub(crate) mod coupling_reservation;
 mod coupling_reserved;
+mod coupling_rest_wall;
 mod definition;
 mod engine;
 mod error;

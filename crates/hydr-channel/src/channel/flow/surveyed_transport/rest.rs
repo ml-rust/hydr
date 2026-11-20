@@ -76,7 +76,6 @@ where
         if !ends.contains(&true) {
             return Ok(None);
         }
-        let c = &self.client;
         let count = self.count();
         let mut cells = Vec::with_capacity(2);
         let mut faces = Vec::with_capacity(2);
@@ -86,6 +85,56 @@ where
                 faces.push(face);
             }
         }
+        let (momentum, work) = self.surveyed_cell_rest_points(geometry, fields, &cells, &faces)?;
+        Ok(Some(RestMomentum {
+            ends,
+            momentum,
+            work,
+        }))
+    }
+
+    /// Two-part momentum flux of a `Wall` face at `end` whose end cell rests exactly.
+    ///
+    /// `None` unless both discharge parts of the end cell are zero. A wall face mirrors the
+    /// end cell, and a mirror of a cell at rest is the cell itself. So the face solves the
+    /// point Riemann problem with the end cell on both sides, as an interior rest face does.
+    pub(in crate::channel::flow) fn surveyed_wall_rest_point(
+        &self,
+        geometry: &SurveyedGeometry<R>,
+        fields: &Fields<R>,
+        end: usize,
+    ) -> Result<Option<[f64; 2]>, ChannelError> {
+        let count = self.count();
+        let (cell, face) = if end == 0 { (0, 0) } else { (count - 1, count) };
+        let high = fields
+            .discharge_point
+            .high
+            .narrow(0, cell, 1)?
+            .item::<f64>()?;
+        let low = fields
+            .discharge_point
+            .low
+            .narrow(0, cell, 1)?
+            .item::<f64>()?;
+        if high != 0.0 || low != 0.0 {
+            return Ok(None);
+        }
+        let (momentum, _) = self.surveyed_cell_rest_points(geometry, fields, &[cell], &[face])?;
+        Ok(Some([
+            momentum.high.item::<f64>()?,
+            momentum.low.item::<f64>()?,
+        ]))
+    }
+
+    /// Point fluxes of the faces `faces`, each with its cell of `cells` on both sides.
+    fn surveyed_cell_rest_points(
+        &self,
+        geometry: &SurveyedGeometry<R>,
+        fields: &Fields<R>,
+        cells: &[usize],
+        faces: &[usize],
+    ) -> Result<(Parts<R>, PrismaticRiemannWork), ChannelError> {
+        let c = &self.client;
         let pick = |value: &Tensor<R>, rows: &[usize]| {
             let pieces = rows
                 .iter()
@@ -96,8 +145,8 @@ where
         };
         let point = |value: &ConservedPoint<R>| {
             Ok::<_, ChannelError>(ConservedPoint {
-                high: pick(&value.high, &cells)?,
-                low: pick(&value.low, &cells)?,
+                high: pick(&value.high, cells)?,
+                low: pick(&value.low, cells)?,
             })
         };
         let area = point(&fields.area_point)?;
@@ -106,7 +155,7 @@ where
         let result = geometry
             .section
             .riemann_flux_points_tensor(
-                &pick(&geometry.face_owners, &faces)?,
+                &pick(&geometry.face_owners, faces)?,
                 &states.left_area,
                 &states.left_discharge,
                 &states.right_area,
@@ -114,11 +163,7 @@ where
                 &geometry.riemann,
             )
             .map_err(riemann_error)?;
-        Ok(Some(RestMomentum {
-            ends,
-            momentum: parts(result.momentum_flux_m4_per_s2()),
-            work: result.work(),
-        }))
+        Ok((parts(result.momentum_flux_m4_per_s2()), result.work()))
     }
 
     /// Copy of the face momentum rates with each rest end face set to its point flux.

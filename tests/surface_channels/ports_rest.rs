@@ -86,6 +86,11 @@ fn at_rest(batch: &Batch, stage: f64, name: &str) -> Result {
 
 #[test]
 fn a_lake_at_rest_stays_at_rest_on_flat_and_stepped_beds_through_one_and_four_faces() -> Result {
+    lake_at_rest(false)
+}
+
+/// The lake at rest on the rectangular reach, or on its surveyed rectangle.
+pub(crate) fn lake_at_rest(surveyed: bool) -> Result {
     let stage = 1.6;
     // The reach bed equals the surface bed, lies below it, and lies above it. The bank crest
     // at 1.2 m stays above every bed and below the stage.
@@ -93,7 +98,7 @@ fn a_lake_at_rest_stays_at_rest_on_flat_and_stepped_beds_through_one_and_four_fa
         for shape in shapes() {
             let name = format!("{} on bed {alpha_bed}", shape.name);
             let case = shaped(
-                Scenario::rest(SURFACE_BED, stage, alpha_bed, Vec::new()),
+                Scenario::rest(SURFACE_BED, stage, alpha_bed, Vec::new()).with_surveyed(surveyed),
                 &shape,
             );
             let mut batch = case.build()?;
@@ -117,6 +122,11 @@ fn a_lake_at_rest_stays_at_rest_on_flat_and_stepped_beds_through_one_and_four_fa
 
 #[test]
 fn water_below_the_higher_bed_moves_nothing() -> Result {
+    water_below_the_higher_bed(false)
+}
+
+/// Water below the higher bed on the rectangular reach, or on its surveyed rectangle.
+pub(crate) fn water_below_the_higher_bed(surveyed: bool) -> Result {
     // The reach stage lies below the dry surface bed, then the surface stage lies below the
     // dry reach bed.
     let cases = [(0.8, 0.5), (1.3, 1.5)];
@@ -124,7 +134,7 @@ fn water_below_the_higher_bed_moves_nothing() -> Result {
         for shape in shapes() {
             let name = format!("{} at stage {stage}", shape.name);
             let mut case = shaped(
-                Scenario::rest(SURFACE_BED, stage, alpha_bed, Vec::new()),
+                Scenario::rest(SURFACE_BED, stage, alpha_bed, Vec::new()).with_surveyed(surveyed),
                 &shape,
             );
             case.link = false;
@@ -167,10 +177,18 @@ fn relative(a: f64, b: f64) -> f64 {
 
 #[test]
 fn a_four_face_port_keeps_mirror_cells_equal() -> Result {
+    four_face_mirror(false)
+}
+
+/// The four-face mirror on the rectangular reach, or on its surveyed rectangle.
+pub(crate) fn four_face_mirror(surveyed: bool) -> Result {
     // The reach stands above the surface and drains across the whole north edge. The grid
     // mirrors about x = 4 m: column c of each row mirrors column 3 - c.
     let [_, four] = shapes();
-    let mut case = shaped(Scenario::rest(SURFACE_BED, 1.6, 0.5, Vec::new()), &four);
+    let mut case = shaped(
+        Scenario::rest(SURFACE_BED, 1.6, 0.5, Vec::new()).with_surveyed(surveyed),
+        &four,
+    );
     case.link = false;
     case.alpha = Reach::rest(0.5, 1.8);
     let mut batch = case.build()?;

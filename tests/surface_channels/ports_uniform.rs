@@ -32,11 +32,11 @@ const UNIFORM: f64 = 1e-12;
 /// Uniform flow at Froude number `froude`. `toward_surface` runs the reach into the surface.
 ///
 /// Reach-positive discharge runs toward the right end, into the surface along `-x`.
-fn uniform(froude: f64, toward_surface: bool) -> Scenario {
+pub(crate) fn uniform(froude: f64, toward_surface: bool, surveyed: bool) -> Scenario {
     let speed = froude * (GRAVITY * DEPTH).sqrt();
     let velocity = if toward_surface { speed } else { -speed };
     let q = DEPTH * velocity;
-    let mut case = Scenario::rest(BED, BED + DEPTH, BED, vec![east("p")]);
+    let mut case = Scenario::rest(BED, BED + DEPTH, BED, vec![east("p")]).with_surveyed(surveyed);
     case.link = false;
     case.alpha = Reach::uniform(BED, DEPTH, q);
     case.surface = vec![
@@ -77,9 +77,14 @@ fn change(actual: f64, expected: f64, scale: f64) -> f64 {
 }
 
 /// Runs one uniform case. Every interval checks the port regime and its exact flux.
-fn holds(froude: f64, toward_surface: bool, regime: SurfaceChannelPortRegime) -> Result {
-    let name = format!("Fr {froude}, toward surface {toward_surface}");
-    let case = uniform(froude, toward_surface);
+pub(crate) fn holds(
+    froude: f64,
+    toward_surface: bool,
+    regime: SurfaceChannelPortRegime,
+    surveyed: bool,
+) -> Result {
+    let name = format!("Fr {froude}, toward surface {toward_surface}, surveyed {surveyed}");
+    let case = uniform(froude, toward_surface, surveyed);
     let mut batch = case.build()?;
     let surface = batch.surface().state()?.cells().to_vec();
     let reach = reach_cells(&batch, ALPHA)?;
@@ -141,12 +146,22 @@ fn holds(froude: f64, toward_surface: bool, regime: SurfaceChannelPortRegime) ->
 
 #[test]
 fn subcritical_uniform_flow_crosses_the_port_unchanged_both_ways() -> Result {
-    holds(0.5, true, SurfaceChannelPortRegime::Subcritical)?;
-    holds(0.5, false, SurfaceChannelPortRegime::Subcritical)
+    holds(0.5, true, SurfaceChannelPortRegime::Subcritical, false)?;
+    holds(0.5, false, SurfaceChannelPortRegime::Subcritical, false)
 }
 
 #[test]
 fn supercritical_uniform_flow_crosses_the_port_unchanged_both_ways() -> Result {
-    holds(2.0, true, SurfaceChannelPortRegime::SupercriticalToSurface)?;
-    holds(2.0, false, SurfaceChannelPortRegime::SupercriticalToReach)
+    holds(
+        2.0,
+        true,
+        SurfaceChannelPortRegime::SupercriticalToSurface,
+        false,
+    )?;
+    holds(
+        2.0,
+        false,
+        SurfaceChannelPortRegime::SupercriticalToReach,
+        false,
+    )
 }

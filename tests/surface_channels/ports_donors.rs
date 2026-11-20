@@ -25,9 +25,9 @@ const INTERVALS: usize = 3;
 const NET: f64 = 1e-12;
 
 /// The case and its batch: short `alpha` cells, supercritical inflow at the right end.
-fn shared() -> Result<(Scenario, Batch)> {
+pub(crate) fn shared(surveyed: bool) -> Result<(Scenario, Batch)> {
     let velocity = -2.0 * (GRAVITY * DEPTH).sqrt();
-    let mut case = Scenario::rest(0.0, 0.0, ALPHA_BED, vec![west("p")]);
+    let mut case = Scenario::rest(0.0, 0.0, ALPHA_BED, vec![west("p")]).with_surveyed(surveyed);
     case.link = false;
     case.alpha = Reach::uniform(ALPHA_BED, DEPTH, DEPTH * velocity);
     case.alpha_size = [4.0, 0.125];
@@ -73,7 +73,12 @@ fn links_pair(step: &SurfaceChannelStepDiagnostics) -> Result {
 
 #[test]
 fn the_donor_factor_shares_the_end_cell_water_net_of_port_outflow() -> Result {
-    let (case, mut batch) = shared()?;
+    donor_factor(false)
+}
+
+/// The shared donor cell on the rectangular reach, or on its surveyed rectangle.
+pub(crate) fn donor_factor(surveyed: bool) -> Result {
+    let (case, mut batch) = shared(surveyed)?;
     for _ in 0..INTERVALS {
         let held = reach_cells(&batch, ALPHA)?[0].volume_m3;
         batch = case.step(&batch, 1.0)?;

@@ -218,6 +218,33 @@ fn port_flux(
     })
 }
 
+/// Whether a still port hands its reach end the reach's own `Wall` for this attempt.
+///
+/// A port moves no water in the attempt when its reach rate and every face rate are exactly
+/// zero. If the end cell of a surveyed reach also rests in both discharge parts, the end takes
+/// its `Wall` face. At rest a wall face mirrors the end cell onto itself, so it carries the
+/// two-part rest pressure of the interior faces, and the end cell holds still bit for bit.
+/// One F64 port rate cannot carry that two-part value.
+///
+/// The reach receipt records the wall flux the reach applies, both parts. The port receipt
+/// keeps the coordinator's port rates, so a surveyed rectangle and a rectangular reach of the
+/// same start state give the same port receipt.
+///
+/// Rectangular reaches keep their flux port. Their interior faces carry one F64 pressure,
+/// which the port rate already matches at rest.
+fn rest_wall<R: Runtime<DType = DType>>(
+    reach: &ChannelReach<R>,
+    port: &CheckedPort,
+    flux: &PortFlux,
+) -> Result<bool, crate::channel::ChannelError>
+where
+    R::Client: Ops<R>,
+{
+    let still = flux.outward_water_rate_m3_per_s == 0.0
+        && flux.face_rate_m3_per_s.iter().all(|&rate| rate == 0.0);
+    Ok(still && reach.coupling_rest_wall(port.end)?.is_some())
+}
+
 impl<R: Runtime<DType = DType>> Context<R>
 where
     R::Client: Ops<R>,
@@ -259,6 +286,14 @@ where
         let scalar = |value: f64| Tensor::<R>::from_slice(&[value], &[1], device);
         let mut boundaries = Vec::with_capacity(binding.fluxes.len());
         for (port, flux) in topology.ports.iter().zip(&binding.fluxes) {
+            let reach = &reaches[port.reach_index];
+            if rest_wall(reach, port, flux).map_err(|source| SurfaceChannelError::Channel {
+                reach_id: reach_ids[port.reach_index].to_string(),
+                source,
+            })? {
+                boundaries.push(ChannelTensorBoundary::Wall);
+                continue;
+            }
             let tensor = ChannelTensorFluxPort::new(
                 scalar(flux.outward_water_rate_m3_per_s)?,
                 scalar(flux.outward_momentum_rate_m4_per_s2)?,
@@ -324,9 +359,10 @@ mod tests {
     use super::super::super::SurfaceChannelPortTransfer;
     use super::super::fixture::{BETA, TestResult, x_face};
     use super::super::scenario::{
-        Batch, CELLS, GRAVITY, Reach, Scenario, east, receipt, step, still,
+        Batch, CELLS, GRAVITY, Reach, Scenario, east, receipt, step, still, west,
     };
     use super::raised;
+    use crate::coupling::SurfaceChannelPortRegime;
     use crate::solver::BoundaryFace;
     use hydr_core::model::CellState;
 
@@ -380,6 +416,51 @@ mod tests {
         assert!(batch.time() <= limits.cfl_limit_s);
         // An unported reach keeps its caller endpoints.
         assert!(batch.reach(BETA).is_some());
+        Ok(())
+    }
+
+    /// A still port hands the rest end cell of a surveyed rectangle its own wall face.
+    ///
+    /// The reach rests at stage 0.8 m on a 0.5 m bed, below the dry surface bed at 1 m, so the
+    /// port moves no water. The end cell's two-part rest pressure has a nonzero low part.
+    ///
+    /// Frozen criteria, for the surveyed rectangle over 50 intervals of 0.1 s:
+    /// - every port transfer has the `Dry` regime and a `+0.0` signed volume
+    /// - the ported end face carries both momentum parts of the next interior face
+    /// - every reach cell stays bit-identical to its start
+    ///
+    /// The rectangular reach of the same state keeps its flux port and the same rest bits.
+    #[test]
+    fn a_still_port_hands_a_surveyed_rest_end_its_wall_face() -> TestResult {
+        for surveyed in [true, false] {
+            let mut case = Scenario::rest(1.0, 0.8, 0.5, vec![west("p")]);
+            case.surveyed = surveyed;
+            case.link = false;
+            let mut batch = case.build()?;
+            let start = batch
+                .reach(super::super::fixture::ALPHA)
+                .ok_or("alpha")?
+                .state()?;
+            for _ in 0..50 {
+                batch = step(&batch, 0.1)?;
+                let transfer = &receipt(&batch)?.transfers[0];
+                assert_eq!(transfer.regime, SurfaceChannelPortRegime::Dry);
+                assert_eq!(transfer.signed_volume_m3.to_bits(), 0.0f64.to_bits());
+                let reach = batch.reach(super::super::fixture::ALPHA).ok_or("alpha")?;
+                let last = reach.last_step()?.ok_or("a reach receipt")?;
+                let parts = |face: usize| {
+                    [
+                        last.face_momentum_m4_per_s[face].to_bits(),
+                        last.face_momentum_low_m4_per_s[face].to_bits(),
+                    ]
+                };
+                if surveyed {
+                    assert_ne!(last.face_momentum_low_m4_per_s[1], 0.0);
+                }
+                assert_eq!(parts(0), parts(1), "surveyed={surveyed}");
+                assert_eq!(reach.state()?, start, "surveyed={surveyed}");
+            }
+        }
         Ok(())
     }
 

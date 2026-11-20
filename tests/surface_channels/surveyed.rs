@@ -2,7 +2,8 @@
 
 use crate::fixture::{Result, contains, input_rejection};
 use crate::restoration::{run, state};
-use crate::scenario::{Batch, ReachSpec, Spec, depths, forcing, last, weir};
+use crate::scenario::{Batch, CELL_LENGTH, ReachSpec, Spec, depths, forcing, last, weir};
+use crate::surveyed_references::surveyed_profiles::THREE_BANDS;
 use hydr::channel::{
     ChannelBoundary, ChannelGeometry, ChannelLateralDirection, ChannelLateralInput,
     CrossSectionPoint,
@@ -210,5 +211,65 @@ fn surveyed_crest_below_section_bed_rejects() -> Result {
     // A crest at the section minimum admits.
     setup.links[0].crest_elevation_m = 1.3;
     hydr::coupling::SurfaceChannelDefinition::new(setup)?;
+    Ok(())
+}
+
+/// The floodplain case with the reach cells on the three-band section of the frozen profiles.
+///
+/// The section holds `3 m²` at its first knot, `1 m` deep, so each cell stores `3 m² * 2 m`.
+fn three_band_floodplain() -> Result<Batch> {
+    let (mut setup, mut initial) = floodplain().parts()?;
+    let ChannelGeometry::PrismaticSurveyed { profile, .. } =
+        &mut setup.reaches[0].definition.geometry
+    else {
+        return Err("the floodplain reach must be surveyed".into());
+    };
+    profile.points = THREE_BANDS
+        .points
+        .iter()
+        .map(|point| CrossSectionPoint {
+            station_m: f64::from_bits(point[0]),
+            elevation_m: f64::from_bits(point[1]),
+        })
+        .collect();
+    profile.maximum_stage_m = f64::from_bits(THREE_BANDS.cap);
+    let state = &mut initial
+        .reaches
+        .iter_mut()
+        .find(|(id, _)| id == REACH)
+        .ok_or("the river state is missing")?
+        .1;
+    state.volume_m3 = vec![3.0 * CELL_LENGTH; state.volume_m3.len()];
+    Ok(Batch::new(crate::runtime::client(), setup, initial)?)
+}
+
+#[test]
+fn three_band_reach_flood_and_recession_pair_and_balance_each_interval() -> Result {
+    let mut batch = three_band_floodplain()?;
+    let mut flooded = false;
+    while batch.time() < 60.0 && !flooded {
+        batch = advance_with(&batch, 4.0, 0.0)?;
+        check_pairing(&last(&batch)?)?;
+        flooded = depths(&batch)?[0] > 0.1;
+    }
+    assert!(flooded, "the three-band reach must flood the surface");
+    let flood = batch.link_ledgers()?[0].channel_to_surface_m3;
+    assert!(flood > 0.0);
+    let mut receded = false;
+    while batch.time() < 600.0 && !receded {
+        batch = advance_with(&batch, 0.0, 4.0)?;
+        let step = last(&batch)?;
+        check_pairing(&step)?;
+        receded = step.links[0].signed_volume_m3 > 0.0;
+    }
+    assert!(
+        receded,
+        "the floodplain must drain back through the same link"
+    );
+    let ledger = &batch.link_ledgers()?[0];
+    assert!(ledger.channel_to_surface_m3 >= flood && ledger.surface_to_channel_m3 > 0.0);
+    let balance = batch.ledger()?;
+    assert!(balance.residual_m3.abs() <= balance.bound_m3, "{balance:?}");
+    assert!(balance.channel_exchange_in_m3 > 0.0 && balance.channel_exchange_out_m3 > 0.0);
     Ok(())
 }

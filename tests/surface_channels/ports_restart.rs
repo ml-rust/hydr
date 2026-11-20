@@ -12,7 +12,7 @@ use hydr::solver::Solver;
 /// Requested duration of every interval, in s.
 const DT: f64 = 0.25;
 /// Intervals before the checkpoint, and after it. The port runs both ways before the end.
-const HALF: usize = 40;
+pub(crate) const HALF: usize = 40;
 
 /// A reach above its floodplain drains through a port and a bank link, then refills.
 fn case() -> Scenario {
@@ -22,7 +22,7 @@ fn case() -> Scenario {
 }
 
 /// `batch` after `count` more intervals.
-fn run(mut batch: Batch, count: usize) -> Result<Batch> {
+pub(crate) fn run(mut batch: Batch, count: usize) -> Result<Batch> {
     for _ in 0..count {
         batch = step(&batch, DT)?;
     }
@@ -32,7 +32,7 @@ fn run(mut batch: Batch, count: usize) -> Result<Batch> {
 /// Debug text of the package, the ledgers, and the live surface state.
 ///
 /// Debug text shows every bit of finite values, signed zero included.
-fn state(batch: &Batch) -> Result<String> {
+pub(crate) fn state(batch: &Batch) -> Result<String> {
     Ok(format!(
         "{} {} {:?} {:?} {:?} {:?} {:?}",
         batch.time(),
