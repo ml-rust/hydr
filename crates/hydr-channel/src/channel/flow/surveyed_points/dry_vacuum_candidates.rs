@@ -1,4 +1,5 @@
 use super::{
+    dry_vacuum_mirror::MirrorRows,
     dry_vacuum_types::{DryVacuumCandidate, DryVacuumPendingFan, DryVacuumPossibilities},
     point_candidate_types::DryPoint,
     point_root_session::PointRootSession,
@@ -24,6 +25,7 @@ pub(super) fn assemble<R>(
     parent: &Tensor<R>,
     possible: &DryVacuumPossibilities<R>,
     sonic: Vec<SourceSonicCertificate<R>>,
+    mirror: &MirrorRows<R>,
 ) -> HydraulicResult<(Vec<DryVacuumCandidate<R>>, Tensor<R>)>
 where
     R: Runtime<DType = DType>,
@@ -153,8 +155,9 @@ where
                 query,
                 area,
                 discharge: a.expansion_point(&z)?,
+                momentum_upper: c.index_select(&mirror.momentum, 0, &rows)?,
                 #[cfg(test)]
-                depth: a.point(&z)?,
+                depth: a.bounds(&z, &c.index_select(&mirror.depth, 0, &rows)?)?,
             })));
         }
         let coverage = c.maximum(
@@ -169,4 +172,191 @@ where
         )?;
         Ok((output, c.mul(&complete, &coverage)?))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::channel::flow::surveyed_points::{
+        chart_fixture,
+        dry_vacuum_types::{DryVacuumCandidate, DryVacuumStatus},
+        point_root_session::PointRootSession,
+        source_fixture_support as frozen,
+        wet_depth::fixture as support,
+    };
+    use frozen::{Result, hydraulic};
+
+    #[test]
+    fn configured_cpu_dry_vacuum_candidates_keep_retained_exteriors_and_work_limits() -> Result {
+        use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
+        let config = ParallelismConfig::new(Some(2), Some(257));
+        let client = CpuClient::new(CpuDevice::new()).with_parallelism(config);
+        controls::run::<CpuRuntime>(&client)
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn actual_cuda_dry_vacuum_candidates_keep_retained_exteriors_and_work_limits() -> Result {
+        use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
+        controls::run::<CudaRuntime>(&CudaClient::new(CudaDevice::new(0))?)
+    }
+
+    mod controls {
+        use super::{
+            DryVacuumCandidate, DryVacuumStatus, PointRootSession, Result, chart_fixture, frozen,
+            hydraulic, support,
+        };
+        use crate::channel::flow::surveyed_points::source_sonic_types::SourceSonicStatus;
+        use numr::{
+            dtype::DType,
+            ops::BinaryOps,
+            runtime::{Runtime, RuntimeClient},
+            tensor::Tensor,
+        };
+
+        pub(super) fn run<R>(client: &R::Client) -> Result
+        where
+            R: Runtime<DType = DType>,
+            R::Client: support::DepthClient<R>,
+        {
+            retained_exterior::<R>(client)?;
+            exhausted::<R>(client)
+        }
+
+        fn retained_exterior<R>(client: &R::Client) -> Result
+        where
+            R: Runtime<DType = DType>,
+            R::Client: support::DepthClient<R>,
+        {
+            let config = chart_fixture::config();
+            let section = chart_fixture::rectangle::<R>(client, 1., 4.)?;
+            let owners = support::rows::<R>(client, &[0])?;
+            let low = 2.0_f64.powi(-80);
+            let area = [1.0_f64.to_bits(), low.to_bits(), 0];
+            let discharge = [3.0_f64.to_bits(), (3. * low).to_bits(), 0];
+            let inputs = [area, discharge, [0; 3], [0; 3]]
+                .iter()
+                .map(|v| frozen::expansion::<R>(client, &[*v], true))
+                .collect::<Result<Vec<_>>>()?;
+            chart_fixture::with_inputs(client, section, owners, inputs, &config, |pair, work| {
+                let owners = support::rows::<R>(client, &[0])?;
+                let mut session =
+                    hydraulic(PointRootSession::new(pair, &owners, config.root.max_points))?;
+                let result = hydraulic(session.certify_dry_vacuum(&owners))?;
+                assert_eq!(
+                    result.status.try_to_vec::<i64>()?,
+                    [DryVacuumStatus::Complete as i64]
+                );
+                assert_eq!(result.candidates.len(), 1);
+                let DryVacuumCandidate::Exterior(exterior) = &result.candidates[0] else {
+                    return Err("Moving retained source lacks its exterior certificate".into());
+                };
+                assert_eq!(frozen::components(&exterior.area)?, [area]);
+                assert_eq!(frozen::components(&exterior.discharge)?, [discharge]);
+                assert_eq!(
+                    frozen::components(exterior.recovery.requested_areas_m2())?,
+                    [area]
+                );
+                assert_eq!(
+                    exterior.query.query.original_rows.try_to_vec::<i64>()?,
+                    [101]
+                );
+                let selected = hydraulic(
+                    session
+                        .sources
+                        .select_rows(&exterior.parent_rows, &exterior.query),
+                )?;
+                let retained = hydraulic(crate::channel::flow::surveyed::error::checked::<R, _>(
+                    client,
+                    "retained exterior source expression",
+                    |a| {
+                        exterior.query.retained_endpoint_area(
+                            a,
+                            &selected.bands,
+                            &selected.boundaries,
+                        )
+                    },
+                ))?;
+                assert_eq!(frozen::components(&retained)?, [area]);
+                support::with_rectangle::<R, _>(
+                    client,
+                    1.,
+                    4.,
+                    &[[1., 3., 0., 0.]],
+                    &config,
+                    |other, _| {
+                        assert!(other.select_rows(&owners, &exterior.query).is_err());
+                        Ok(())
+                    },
+                )?;
+                let zero = Tensor::zeros(&[1], DType::F64, client.device())?;
+                client.copy_into(exterior.area.high(), &zero)?;
+                client.copy_into(exterior.discharge.low(), &zero)?;
+                client.copy_into(exterior.recovery.requested_areas_m2().low(), &zero)?;
+                client.copy_into(
+                    &exterior.query.query.original_rows,
+                    &support::rows::<R>(client, &[99])?,
+                )?;
+                let before = work.snapshot();
+                let repeated = hydraulic(session.certify_dry_vacuum(&owners))?;
+                assert_eq!(work.snapshot(), before);
+                let DryVacuumCandidate::Exterior(exterior) = &repeated.candidates[0] else {
+                    return Err("Repeated retained source loses its exterior certificate".into());
+                };
+                assert_eq!(frozen::components(&exterior.area)?, [area]);
+                assert_eq!(frozen::components(&exterior.discharge)?, [discharge]);
+                assert_eq!(
+                    frozen::components(exterior.recovery.requested_areas_m2())?,
+                    [area]
+                );
+                assert_eq!(
+                    exterior.query.query.original_rows.try_to_vec::<i64>()?,
+                    [101]
+                );
+                Ok(())
+            })
+        }
+        fn exhausted<R>(client: &R::Client) -> Result
+        where
+            R: Runtime<DType = DType>,
+            R::Client: support::DepthClient<R>,
+        {
+            let config = chart_fixture::config();
+            support::with_rectangle::<R, _>(
+                client,
+                1.,
+                4.,
+                &[[1., 0., 0., 0.], [0., 0., 0., 0.]],
+                &config,
+                |pair, work| {
+                    let parents = support::rows::<R>(client, &[0, 1])?;
+                    let mut session = hydraulic(PointRootSession::new(pair, &parents, 1))?;
+                    let owner = support::rows::<R>(client, &[0])?;
+                    let result = hydraulic(session.certify_dry_vacuum(&owner))?;
+                    assert_eq!(
+                        result.status.try_to_vec::<i64>()?,
+                        [DryVacuumStatus::Pending as i64]
+                    );
+                    assert_eq!(
+                        result.sonic_status[0].try_to_vec::<i64>()?,
+                        [SourceSonicStatus::WorkLimit as i64]
+                    );
+                    assert_eq!(result.edges[0].head.available.try_to_vec::<f64>()?, [0.]);
+                    assert_eq!(result.edges[0].head_exact_zero.try_to_vec::<f64>()?, [0.]);
+                    assert_eq!(result.edges[0].front_exact_zero.try_to_vec::<f64>()?, [0.]);
+                    let before = work.snapshot();
+                    hydraulic(session.certify_dry_vacuum(&owner))?;
+                    assert_eq!(work.snapshot(), before);
+                    assert_eq!(session.callback_points(), 0);
+                    let dry =
+                        hydraulic(session.certify_dry_vacuum(&support::rows::<R>(client, &[1])?))?;
+                    assert_eq!(
+                        dry.status.try_to_vec::<i64>()?,
+                        [DryVacuumStatus::Complete as i64]
+                    );
+                    assert_eq!(work.snapshot(), before);
+                    Ok(())
+                },
+            )
+        }
+    }
 }

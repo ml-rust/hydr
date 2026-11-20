@@ -144,7 +144,7 @@ where
 
 /// Zero-one mask, in face order, of the faces whose captured states are exact mirrors.
 /// Components compare by value, so +0.0 and -0.0 low parts count as equal.
-fn mirror_mask<R>(
+pub(super) fn mirror_mask<R>(
     a: &mut Arithmetic<'_, R>,
     input: &CapturedPointInput<R>,
     invocation_rows: &Tensor<R>,

@@ -72,7 +72,8 @@ pub(super) struct WetStarDomain<R: Runtime<DType = DType>> {
     pub(super) invocation_owner: Tensor<R>,
     pub(super) parent_rows: Tensor<R>,
     pub(super) query: SupportedAreaQuery<R>,
-    pub(super) endpoints: [WetStarEndpoint<R>; 2],
+    /// Boxed: the two endpoints dominate the domain size, and domains move by value.
+    pub(super) endpoints: Box<[WetStarEndpoint<R>; 2]>,
     pub(super) side_operands: [WetStarSideRange<R>; 2],
     pub(super) side_velocity: [Interval<R>; 2],
     pub(super) side_discharge: [Interval<R>; 2],

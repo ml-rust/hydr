@@ -181,7 +181,7 @@ where
             invocation_owner: copy(owners)?,
             parent_rows: copy(parent_rows)?,
             query,
-            endpoints: [lower, upper],
+            endpoints: Box::new([lower, upper]),
             side_operands: [left_operands, right_operands],
             side_velocity,
             side_discharge: [left_discharge, right_discharge],

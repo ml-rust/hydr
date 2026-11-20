@@ -315,3 +315,50 @@ pub(super) fn config() -> PrismaticRiemannConfig {
         ..Default::default()
     }
 }
+
+/// The reach face budgets: water, momentum and relative allowances of 1e-12, root tolerances
+/// of 1e-15, and gravity 9.81 m/s².
+pub(super) fn reach_config() -> PrismaticRiemannConfig {
+    let mut config = PrismaticRiemannConfig {
+        gravity_m_per_s2: 9.81,
+        water_flux_atol_m3_per_s: 1e-12,
+        momentum_flux_atol_m4_per_s2: 1e-12,
+        flux_rtol: 1e-12,
+        ..Default::default()
+    };
+    config.root.atol = 1e-15;
+    config.root.rtol = 1e-15;
+    config
+}
+
+/// One wall face of a rectangle of `width` and cap depth 4 m under [`reach_config`].
+///
+/// The left side holds the two-part area and discharge bits. The right side is their mirror.
+pub(super) fn wall_face<R>(
+    client: &R::Client,
+    width: f64,
+    [area, discharge]: [[u64; 2]; 2],
+) -> Result<
+    std::result::Result<
+        super::point_output::PrismaticPointRiemannResult<R>,
+        crate::channel::flow::surveyed::PrismaticRiemannError,
+    >,
+>
+where
+    R: Runtime<DType = DType>,
+    R::Client: super::wet_depth::fixture::DepthClient<R>,
+{
+    let section = rectangle::<R>(client, width, 4.0)?;
+    let owners = super::wet_depth::fixture::rows::<R>(client, &[0])?;
+    let negate = |bits: u64| (-f64::from_bits(bits)).to_bits();
+    let point = |[high, low]: [u64; 2]| expansion::<R>(client, &[[high, low, 0]], true);
+    let mirrored = [negate(discharge[0]), negate(discharge[1])];
+    Ok(section.riemann_flux_points_tensor(
+        &owners,
+        &point(area)?,
+        &point(discharge)?,
+        &point(area)?,
+        &point(mirrored)?,
+        &reach_config(),
+    ))
+}

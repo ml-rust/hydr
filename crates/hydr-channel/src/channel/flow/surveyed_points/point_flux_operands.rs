@@ -31,6 +31,8 @@ pub(super) struct Operands<R: Runtime<DType = DType>> {
     pub(super) numerical: Option<super::source_sonic_numerical::SourceSonicNumericalEvidence<R>>,
     /// Panel level of a star candidate's rows.
     pub(super) star_level: Option<super::source_binding::SourcePanelLevel>,
+    /// Momentum flux upper bound of a dry candidate's rows.
+    pub(super) momentum_upper: Option<Tensor<R>>,
 }
 
 pub(super) fn candidate<R>(
@@ -101,6 +103,7 @@ where
                 captured: None,
                 numerical: None,
                 star_level: Some(wave.star.level.clone()),
+                momentum_upper: None,
             }));
         }
         PointCandidate::Fan(f) => {
@@ -136,6 +139,11 @@ where
             None
         },
         star_level: None,
+        momentum_upper: if let PointCandidate::Dry(d) = candidate {
+            Some(c.index_select(&d.momentum_upper, 0, &rows)?)
+        } else {
+            None
+        },
     }))
 }
 
@@ -176,6 +184,11 @@ where
             .map(|proof| proof.selected(a, rows))
             .transpose()?,
         star_level: operand.star_level.clone(),
+        momentum_upper: operand
+            .momentum_upper
+            .as_ref()
+            .map(|upper| c.index_select(upper, 0, rows))
+            .transpose()?,
     })
 }
 

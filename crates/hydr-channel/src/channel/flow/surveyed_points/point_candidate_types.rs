@@ -31,6 +31,9 @@ pub(super) struct DryPoint<R: Runtime<DType = DType>> {
     pub(super) query: SupportedAreaQuery<R>,
     pub(super) area: CertifiedExpansion<R>,
     pub(super) discharge: CertifiedExpansion<R>,
+    /// Upper bound of the momentum flux. Zero for an exact dry face. A mirror face with an
+    /// open vacuum sign holds the bound of its star box.
+    pub(super) momentum_upper: Tensor<R>,
     #[cfg(test)]
     pub(super) depth: Interval<R>,
 }

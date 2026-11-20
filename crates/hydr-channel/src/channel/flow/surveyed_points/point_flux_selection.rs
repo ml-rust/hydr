@@ -7,7 +7,7 @@ use super::{
     source_sonic_types::SonicSide,
 };
 use crate::channel::{
-    flow::surveyed::error::{HydraulicResult, checked},
+    flow::surveyed::error::{Arithmetic, HydraulicResult, checked},
     section::{AreaAnchor, AreaDirection, AreaQuery, PhysicalEndpoint, source_difference},
 };
 use numr::{
@@ -19,7 +19,7 @@ use numr::{
     runtime::{Runtime, RuntimeClient},
     tensor::Tensor,
 };
-use solvr::integrate::CertifiedSimpsonAlgorithms;
+use solvr::{common::arithmetic::Interval, integrate::CertifiedSimpsonAlgorithms};
 
 pub(super) fn evaluate<R>(
     sources: &mut PairedSources<'_, R>,
@@ -334,6 +334,7 @@ where
                 a.point(&zero)?
             };
         }
+        let momentum_evaluation = dry_momentum(a, &operand)?;
         Ok(SelectedPointFlux {
             candidate: operand.candidate,
             kind: PointFluxKind::Dry,
@@ -363,9 +364,30 @@ where
             discharge_discrepancy: interval!(),
             velocity_arithmetic: expansion!(),
             momentum_arithmetic: expansion!(),
-            momentum_evaluation: interval!(),
+            momentum_evaluation,
             momentum_projection: interval!(),
             reflected: zero.clone(),
         })
+    })
+}
+
+/// Momentum flux bounds of dry rows: `[0, upper]`, or exactly 0 without an upper bound.
+pub(super) fn dry_momentum<R>(
+    a: &mut Arithmetic<'_, R>,
+    operand: &Operands<R>,
+) -> HydraulicResult<Interval<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>,
+{
+    let zero = Tensor::zeros(operand.owners.shape(), a.dtype(), a.client().device())?;
+    Ok(match &operand.momentum_upper {
+        Some(upper) => a.bounds(&zero, upper)?,
+        None => a.point(&zero)?,
     })
 }

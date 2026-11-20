@@ -1720,7 +1720,7 @@ mod tests {
                             .find(|r| r.id == id)
                             .ok_or("Missing captured source")?;
                         for wave in &result.waves {
-                            for endpoint in &wave.star.endpoints {
+                            for endpoint in wave.star.endpoints.iter() {
                                 for side in &endpoint.sides {
                                     assert_eq!(
                                         frozen::components(&side.source_discharge)?,
@@ -1819,7 +1819,7 @@ mod tests {
                         } else if shock.shock_stationary.try_to_vec::<f64>()? == [1.] {
                             assert_eq!(speed, [0., 0.]);
                         }
-                        for endpoint in &wave.star.endpoints {
+                        for endpoint in wave.star.endpoints.iter() {
                             for side in &endpoint.sides {
                                 assert_eq!(
                                     frozen::components(&side.source_discharge)?,

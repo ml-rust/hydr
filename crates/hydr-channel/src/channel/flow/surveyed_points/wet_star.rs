@@ -561,7 +561,7 @@ mod tests {
                 "wet star diagnostic identities",
                 |a| {
                     let stage = pair.select_rows(&domain.parent_rows, &domain.query)?;
-                    for endpoint in &domain.endpoints {
+                    for endpoint in domain.endpoints.iter() {
                         let area = a.expansion_interval(&endpoint.area)?;
                         for (lower, upper) in area
                             .lower()
