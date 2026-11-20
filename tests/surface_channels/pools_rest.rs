@@ -1,6 +1,6 @@
 //! A pond and the surface at rest through a submerged weir, an orifice, and an open gate.
 //!
-//! Frozen criterion, fixed before the first run (plan §5, "Pond and surface at rest"):
+//! Frozen criterion, fixed before the first run, "Pond and surface at rest":
 //! 50 intervals: every link volume `0.0` bit for bit, regime `EqualHeads`, stage change
 //! `<= 1e-12 m`.
 //!

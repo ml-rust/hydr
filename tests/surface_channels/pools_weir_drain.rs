@@ -1,6 +1,6 @@
 //! A pond draining over a free weir onto a low reach cell.
 //!
-//! Frozen criterion, fixed before the first run (plan §5, "Pond drain over a free weir"):
+//! Frozen criterion, fixed before the first run, "Pond drain over a free weir"):
 //! a constant-area pool and a free weir onto a low reach cell that stays below the crest. Exact
 //! `h(t) = (h0^{-1/2} + C_w L t / (2A))^{-2}`. At `T`: finest relative error of `h <= 1e-6`,
 //! order `>= 1.8` on the two finest pairs.

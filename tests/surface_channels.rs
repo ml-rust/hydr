@@ -41,10 +41,10 @@ mod pools_order;
 mod pools_orifice_fill;
 #[path = "surface_channels/pools_reach_end.rs"]
 mod pools_reach_end;
-#[path = "surface_channels/pools_rest.rs"]
-mod pools_rest;
 #[path = "surface_channels/pools_reach_end_surveyed.rs"]
 mod pools_reach_end_surveyed;
+#[path = "surface_channels/pools_rest.rs"]
+mod pools_rest;
 #[path = "surface_channels/pools_restart.rs"]
 mod pools_restart;
 #[path = "surface_channels/pools_restart_surveyed.rs"]

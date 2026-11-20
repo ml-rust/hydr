@@ -341,10 +341,11 @@ mod tests {
 
     /// Frozen criteria, fixed before the first run:
     /// - The valid coordinator builds.
-    /// - Each `operation-ownership` row of the plan that a declaration can hold rejects, and its
-    ///   message names the entry first: a declaration without a child, zero owners, two owners,
-    ///   a dynamic owner on another law, an unknown signal node, an unbound or unknown controller
-    ///   signal, a signal bound twice, and a child off the common time.
+    /// - Each `operation-ownership` rejection that the capability declarations list and a
+    ///   declaration can hold rejects, and its message names the entry first: a declaration
+    ///   without a child, zero owners, two owners, a dynamic owner on another law, an unknown
+    ///   signal node, an unbound or unknown controller signal, a signal bound twice, and a child
+    ///   off the common time.
     /// - The coordinator builds every child on its own structure links, fresh, so a child
     ///   context that differs and a child that is not fresh have no representation.
     #[test]

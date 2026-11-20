@@ -1,6 +1,6 @@
 //! Gates between ponds: a prescribed opening ramp and an actuated stage rule.
 //!
-//! Frozen criteria, fixed before the first run (plan §5):
+//! Frozen criteria, fixed before the first run:
 //!
 //! | Claim | Frozen criterion |
 //! | --- | --- |

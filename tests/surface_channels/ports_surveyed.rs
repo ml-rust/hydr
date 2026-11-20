@@ -1,6 +1,6 @@
 //! Reach-end ports on a surveyed rectangle of the face width.
 //!
-//! Frozen criterion (plan section 6): each rectangular port test holds with `alpha` declared
+//! Frozen criterion: each rectangular port test holds with `alpha` declared
 //! as one surveyed rectangle of the same width, bed, and start state. Every test here runs the
 //! rectangular test body with the surveyed reach, so its criteria are those of the original.
 //!

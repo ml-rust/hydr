@@ -1,6 +1,6 @@
 //! A controlled pump that starts and stops on the stage of its sump.
 //!
-//! Frozen criterion, fixed before the first run (plan §5, "Controlled pump"):
+//! Frozen criterion, fixed before the first run, "Controlled pump"):
 //! `ControlledPumpBatch` starts and stops on sump stage. Commands switch at the exact decision
 //! times. Flat-curve volume criterion per running interval: `|V - Q0 dt| <= 8 ε Q0 dt`, `ε` the
 //! `f64` machine epsilon, and `|ΣV - Q0 T| <= 8 ε N Q0 T` over the `N` running intervals of

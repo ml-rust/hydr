@@ -103,9 +103,10 @@ where
             }
         };
         let discharge = matches!(request, TraceRequest::Discharge { .. });
-        // The plan's slope floor holds at every certified depth above d_s. At the lower end of
-        // an enclosure it is far larger than at t_L, so `root ± R / κ` contracts to the residual
-        // width instead of stopping at the first ambiguous midpoint.
+        // The certified slope lower bound `bracket.kappa` holds at every certified depth above
+        // d_s. At the lower end of an enclosure the local slope is far larger than at t_L, so
+        // `root ± R / κ` contracts to the residual width instead of stopping at the first
+        // ambiguous midpoint.
         let local = |lower: f64| -> Result<f64, ChannelError> {
             if !discharge {
                 return Ok(bracket.kappa);

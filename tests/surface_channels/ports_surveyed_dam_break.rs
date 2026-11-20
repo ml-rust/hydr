@@ -1,6 +1,6 @@
 //! Dam breaks and seiches through a reach-end port on a surveyed rectangle.
 //!
-//! Frozen criterion (plan section 6): every frozen criterion of `ports_dam_break.rs` and
+//! Frozen criterion: every frozen criterion of `ports_dam_break.rs` and
 //! `ports_seiche.rs` holds with the reach declared as a surveyed rectangle of the strip width.
 //! The L1 depth difference between the surveyed and the rectangular run is at most the
 //! rectangular run's own L1 depth error against the analytic solution, at every spacing.

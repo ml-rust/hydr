@@ -1,6 +1,6 @@
 //! A culvert-approximating orifice between a surface tank and a surveyed walled reach cell.
 //!
-//! Frozen criterion (plan section 6, "Structure link to a surveyed cell"): a one-cell walled
+//! Frozen criterion, "Structure link to a surveyed cell"): a one-cell walled
 //! surveyed rectangle in place of the rectangular reach, with the criteria of
 //! `structures_surface_reach.rs`. Exact `Δh(t) = (sqrt(Δh0) - k t / 2)^2`,
 //! `k = C_d a sqrt(2g) (1/A_1 + 1/A_2)`. At `t*/2`: finest relative error `<= 1e-6`, order

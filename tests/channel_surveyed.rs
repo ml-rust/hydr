@@ -17,10 +17,10 @@ mod endpoints_propagation_reference;
 #[allow(dead_code)]
 #[path = "channel_surveyed/endpoints_reference.rs"]
 mod endpoints_reference;
-#[path = "channel_surveyed/endpoints_restart.rs"]
-mod endpoints_restart;
 #[path = "channel_surveyed/endpoints_rest.rs"]
 mod endpoints_rest;
+#[path = "channel_surveyed/endpoints_restart.rs"]
+mod endpoints_restart;
 #[path = "channel_surveyed/endpoints_support.rs"]
 mod endpoints_support;
 #[path = "channel_surveyed/endpoints_traces.rs"]

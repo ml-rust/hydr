@@ -1,6 +1,6 @@
 //! Pooled checkpoints on a surveyed reach: bitwise restart and forged pool-end packages.
 //!
-//! Frozen criterion (plan section 6, "Coordinated restart"): the case of `pools_restart.rs`
+//! Frozen criterion, "Coordinated restart"): the case of `pools_restart.rs`
 //! with the reach a surveyed rectangle, whose right end is a pool end into the pond.
 //!
 //! - Snapshot and restore, import into a fresh batch, and resume each match the checkpoint

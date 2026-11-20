@@ -1,6 +1,6 @@
 //! A surveyed reach end into a pool: filling, then reversing, on three profiles.
 //!
-//! Frozen criterion (plan section 6, "Surface pool end"): every `pools_reach_end.rs`
+//! Frozen criterion, "Surface pool end"): every `pools_reach_end.rs`
 //! criterion for the same case holds on the rectangle, the triangle, and three bands.
 //! Pool-end pairing is exact.
 //!

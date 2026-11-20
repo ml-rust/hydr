@@ -1,6 +1,6 @@
 //! A pond filling through a submerged orifice from a closed surface tank.
 //!
-//! Frozen criterion, fixed before the first run (plan §5, "Pond fill through an orifice from
+//! Frozen criterion, fixed before the first run, "Pond fill through an orifice from
 //! the surface"): a one-cell closed surface tank and a constant-area pool. Exact
 //! `Δh(t) = (sqrt(Δh0) - k t / 2)^2`, `k = C_d a sqrt(2g) (1/A_1 + 1/A_2)`. At `t*/2`: finest
 //! relative error `<= 1e-6`, order `>= 1.8`. After `t*`: heads level within the head allowance,

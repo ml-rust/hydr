@@ -1,7 +1,7 @@
 //! Ported checkpoints on a surveyed rectangle: bitwise round trips, restart against the
 //! uninterrupted run, and forged port data.
 //!
-//! Frozen criterion (plan section 6, "Coordinated restart"): the case of `ports_restart.rs`
+//! Frozen criterion, "Coordinated restart"): the case of `ports_restart.rs`
 //! with `alpha` a surveyed rectangle of the port width continues bit for bit after snapshot,
 //! restore, import, resume, and continue. A forged port receipt or ledger rejects.
 
@@ -219,4 +219,3 @@ fn surveyed_forged_port_ledgers_reject() -> Result {
     forged.counters.ports.surface_in_m3 *= 1.5;
     rejects(&forged, &["counters.ports.surface_in_m3"])
 }
-

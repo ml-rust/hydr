@@ -1,6 +1,6 @@
 //! A reach end into a pool: filling, then reversing, against the frozen `channel_pools` cases.
 //!
-//! Frozen criterion, fixed before the first run (plan §5, "Pool end"): `pools_reach_end.rs`:
+//! Frozen criterion, fixed before the first run, "Pool end": `pools_reach_end.rs`:
 //! reach end into a pool, filling then reversing. Every `channel_pools` frozen criterion for
 //! the same case holds. Pool-end pairing is exact.
 //!

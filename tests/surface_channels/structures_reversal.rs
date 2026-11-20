@@ -1,6 +1,6 @@
 //! A tide through a bidirectional orifice: reversal and mirror symmetry.
 //!
-//! Frozen criteria, fixed before the first run (plan §5):
+//! Frozen criteria, fixed before the first run:
 //!
 //! | Claim | Frozen criterion |
 //! | --- | --- |

@@ -1,7 +1,7 @@
 //! Pumps between pools and surface tanks: flat curve, linear curve, suction cap, and a dry
 //! surface cell with an outlet.
 //!
-//! Frozen criteria, fixed before the first run (plan §5):
+//! Frozen criteria, fixed before the first run:
 //!
 //! | Claim | Frozen criterion |
 //! | --- | --- |

@@ -1,7 +1,7 @@
 //! Competing withdrawals from one pool: shared donor factor, rain credit, and no incoming
 //! credit.
 //!
-//! Frozen criterion, fixed before the first run (plan §5, "Competing donors"): one pool feeds a
+//! Frozen criterion, fixed before the first run, "Competing donors": one pool feeds a
 //! surface cell, a channel cell, and another pool with demand above storage. Factor below one.
 //! Pool volume `>= 0`. Rain on the pool funds withdrawals. Incoming water funds none.
 //!

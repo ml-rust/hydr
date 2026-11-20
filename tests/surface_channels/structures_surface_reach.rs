@@ -1,6 +1,6 @@
 //! A culvert-approximating orifice between a surface tank and a walled reach cell.
 //!
-//! Frozen criterion, fixed before the first run (plan §5, "Culvert-approximating orifice
+//! Frozen criterion, fixed before the first run, "Culvert-approximating orifice
 //! between surface and reach"): a one-cell surface tank and a one-cell walled reach, with the
 //! same exact solution and criteria as the orifice fill. Exact
 //! `Δh(t) = (sqrt(Δh0) - k t / 2)^2`, `k = C_d a sqrt(2g) (1/A_1 + 1/A_2)`. At `t*/2`: finest

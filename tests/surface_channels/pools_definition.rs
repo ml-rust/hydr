@@ -1,5 +1,5 @@
 //! Admission of pools, structure links, pool ends, and operating children: one test per
-//! rejection row of the plan, each matching its capability entry.
+//! rejection that the capability declarations list, each matching its capability entry.
 
 use crate::pools_fixture::{
     Batch, Case, PoolForcing, Result, channel, controlled_gate, gate_law, manual, operating,

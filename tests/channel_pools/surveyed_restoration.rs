@@ -1,6 +1,6 @@
 //! Coordinated restart of a surveyed channel/pool setup.
 //!
-//! Frozen criterion (plan section 6, "Coordinated restart"): the trusted restore and the cold
+//! Frozen criterion, "Coordinated restart"): the trusted restore and the cold
 //! import of a package taken after three intervals continue bit for bit as the uninterrupted
 //! run does, and a forged shared transfer packet rejects. The cases are the frozen
 //! rectangular surveyed case and the first three-band case.
