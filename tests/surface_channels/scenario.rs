@@ -30,6 +30,8 @@ pub struct ReachSpec {
     pub bindings: Vec<(String, usize, ChannelLateralDirection)>,
     /// A surveyed 1 m rectangular section replaces the rectangular cells.
     pub surveyed: bool,
+    /// Root probe of a surveyed section. Default: the surveyed config default.
+    pub probe: solvr::optimize::CertifiedRootProbe,
 }
 
 impl ReachSpec {
@@ -40,12 +42,19 @@ impl ReachSpec {
             depths: depths.to_vec(),
             bindings: Vec::new(),
             surveyed: false,
+            probe: ChannelSurveyedConfig::default().normalized_root.probe,
         }
     }
 
     /// The same reach as one surveyed 1 m rectangular section. Stored volumes stay equal.
     pub fn surveyed(mut self) -> Self {
         self.surveyed = true;
+        self
+    }
+
+    /// The same reach with `probe` in its surveyed root controls.
+    pub fn probe(mut self, probe: solvr::optimize::CertifiedRootProbe) -> Self {
+        self.probe = probe;
         self
     }
 
@@ -231,7 +240,11 @@ pub fn surveyed_geometry(bed: f64, count: usize) -> ChannelGeometry {
 fn reach_definition(reach: &ReachSpec) -> ChannelReachDefinition {
     let count = reach.depths.len();
     let geometry = if reach.surveyed {
-        surveyed_geometry(reach.bed, count)
+        let mut geometry = surveyed_geometry(reach.bed, count);
+        if let ChannelGeometry::PrismaticSurveyed { numerical, .. } = &mut geometry {
+            numerical.normalized_root.probe = reach.probe;
+        }
+        geometry
     } else {
         ChannelGeometry::Rectangular {
             cells: (0..count)

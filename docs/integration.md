@@ -260,7 +260,7 @@ Each row names a component that also declares [capabilities](#read-component-cap
 | Component | Package type | Schema constant (value) | Contract constant (value) | Import call | Nested packages |
 | --- | --- | --- | --- | --- | --- |
 | Surface solver | `SnapshotData` | `SNAPSHOT_SCHEMA` (`hydr-checkpoint-3`) | `CONTRACT_VERSION` (`hydr-swe-numr-cpu-2`) | `Solver::restore_data` | none |
-| [Channel](channels.md) | `ChannelSnapshotData` | `CHANNEL_SNAPSHOT_SCHEMA` (`hydr-channel-checkpoint-2`) | `CHANNEL_CONTRACT_VERSION` (`hydr-channel-1d-numr-cpu-3`) | `ChannelReach::import_snapshot` | none |
+| [Channel](channels.md) | `ChannelSnapshotData` | `CHANNEL_SNAPSHOT_SCHEMA` (`hydr-channel-checkpoint-3`) | `CHANNEL_CONTRACT_VERSION` (`hydr-channel-1d-numr-cpu-4`) | `ChannelReach::import_snapshot` | none |
 | [Level pool](level-pool.md) | `LevelPoolSnapshotData` | `LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-level-pool-checkpoint-1`) | `LEVEL_POOL_CONTRACT_VERSION` (`hydr-level-pool-numr-cpu-1`) | `LevelPoolBatch::restore_data` | none |
 | [Subcatchment](subcatchment.md) | `SubcatchmentSnapshotData` | `SUBCATCHMENT_SNAPSHOT_SCHEMA` (`hydr-subcatchment-checkpoint-1`) | `SUBCATCHMENT_CONTRACT_VERSION` (`hydr-subcatchment-numr-cpu-2`) | `SubcatchmentBatch::restore_data` | none |
 | [Reservoir](reservoir.md) | `ReservoirSnapshotData` | `RESERVOIR_SNAPSHOT_SCHEMA` (`hydr-reservoir-checkpoint-1`) | `RESERVOIR_CONTRACT_VERSION` (`hydr-reservoir-numr-cpu-2`) | `ReservoirBatch::restore_data` | none |
@@ -269,9 +269,9 @@ Each row names a component that also declares [capabilities](#read-component-cap
 | [Controlled gate](controlled-gates.md) | `ControlledGateSnapshotData` | `CONTROLLED_GATE_SNAPSHOT_SCHEMA` (`hydr-controlled-gate-checkpoint-1`) | `CONTROLLED_GATE_CONTRACT_VERSION` (`hydr-controlled-gate-numr-cpu-1`) | `ControlledGateBatch::restore_data` | Operating control, gate actuator |
 | [Controlled pump](controlled-pumps.md) | `ControlledPumpSnapshotData` | `CONTROLLED_PUMP_SNAPSHOT_SCHEMA` (`hydr-controlled-pump-checkpoint-1`) | `CONTROLLED_PUMP_CONTRACT_VERSION` (`hydr-controlled-pump-numr-cpu-1`) | `ControlledPumpBatch::restore_data` | Operating control |
 | [Coupled level pool](coupled-level-pools.md) | `CoupledLevelPoolSnapshotData` | `COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-coupled-level-pool-checkpoint-1`) | `COUPLED_LEVEL_POOL_CONTRACT_VERSION` (`hydr-coupled-level-pool-numr-cpu-2`) | `CoupledLevelPoolBatch::restore_data` | Level pool |
-| [Channel pool](channel-pools.md) | `ChannelPoolSnapshotData` | `CHANNEL_POOL_SNAPSHOT_SCHEMA` (`hydr-channel-pool-checkpoint-1`) | `CHANNEL_POOL_CONTRACT_VERSION` (`hydr-channel-pool-numr-cpu-2`) | `ChannelPoolBatch::import_snapshot` | Channel (per reach), level pool |
+| [Channel pool](channel-pools.md) | `ChannelPoolSnapshotData` | `CHANNEL_POOL_SNAPSHOT_SCHEMA` (`hydr-channel-pool-checkpoint-2`) | `CHANNEL_POOL_CONTRACT_VERSION` (`hydr-channel-pool-numr-cpu-3`) | `ChannelPoolBatch::import_snapshot` | Channel (per reach), level pool |
 | [Runoff pool](runoff-pools.md) | `RunoffPoolSnapshotData` | `RUNOFF_POOL_SNAPSHOT_SCHEMA` (`hydr-runoff-pool-checkpoint-1`) | `RUNOFF_POOL_CONTRACT_VERSION` (`hydr-runoff-pool-numr-cpu-2`) | `RunoffPoolBatch::restore_data` | Subcatchment, coupled level pool |
-| [Surface/channel](surface-channels.md) | `SurfaceChannelSnapshotData` | `SURFACE_CHANNEL_SNAPSHOT_SCHEMA` (`hydr-surface-channel-checkpoint-5`) | `SURFACE_CHANNEL_CONTRACT_VERSION` (`hydr-surface-channel-numr-cpu-7`) | `SurfaceChannelBatch::import_snapshot`, `SurfaceChannelBatch::resume` | Surface solver, channel (per reach), level pool, controlled gate, controlled pump |
+| [Surface/channel](surface-channels.md) | `SurfaceChannelSnapshotData` | `SURFACE_CHANNEL_SNAPSHOT_SCHEMA` (`hydr-surface-channel-checkpoint-6`) | `SURFACE_CHANNEL_CONTRACT_VERSION` (`hydr-surface-channel-numr-cpu-8`) | `SurfaceChannelBatch::import_snapshot`, `SurfaceChannelBatch::resume` | Surface solver, channel (per reach), level pool, controlled gate, controlled pump |
 
 Import follows these rules:
 

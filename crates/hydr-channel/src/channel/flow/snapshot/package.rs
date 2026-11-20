@@ -11,9 +11,9 @@ use numr::runtime::Runtime;
 use solvr::optimize::roots::BatchedBisectionAlgorithms;
 
 /// Schema identity of the channel snapshot package.
-pub const CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-channel-checkpoint-2";
+pub const CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-channel-checkpoint-3";
 /// Numerical contract identity of the channel snapshot package.
-pub const CHANNEL_CONTRACT_VERSION: &str = "hydr-channel-1d-numr-cpu-3";
+pub const CHANNEL_CONTRACT_VERSION: &str = "hydr-channel-1d-numr-cpu-4";
 
 /// Complete caller-owned continuation values. Preserve every floating-point bit when encoding.
 #[derive(Clone, Debug, PartialEq)]

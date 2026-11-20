@@ -136,7 +136,8 @@ Star roots start from the supplied water depths. Solvr expands the search within
 | Control | Meaning |
 | --- | --- |
 | `root.atol`, `root.rtol` | Root-width allowances in normalized depth |
-| `root.max_iterations` | Maximum bisection midpoint rounds |
+| `root.max_iterations` | Maximum probe rounds. The worst case equals bisection's round count |
+| `root.probe` | Probe placement. Default: `SlackSecant`. `Midpoint` probes bisection midpoints. Probes never certify a sign |
 | `max_bracket_expansions` | Maximum search expansions. Default: `4096`. Zero checks the initial endpoints only. |
 | `root.max_points` | Shared equation-evaluation ceiling for search and bisection, including repeated endpoint evaluations |
 

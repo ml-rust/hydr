@@ -307,7 +307,17 @@ fields!(
     rtol,
     max_iterations,
     max_points,
+    probe,
 );
+
+impl FloatBits for solvr::optimize::CertifiedRootProbe {
+    fn append_bits(&self, bits: &mut Vec<u64>) {
+        bits.push(match self {
+            Self::Midpoint => 0,
+            Self::SlackSecant => 1,
+        });
+    }
+}
 fields!(
     ChannelSurveyedConfig,
     recovery,

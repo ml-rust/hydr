@@ -73,6 +73,7 @@ fn strict_config() -> PrismaticRiemannConfig {
             rtol: 1e-15,
             max_iterations: 256,
             max_points: 1 << 20,
+            probe: solvr::optimize::CertifiedRootProbe::SlackSecant,
         },
         max_bracket_expansions: 4096,
         initial_simpson_panels: 4,

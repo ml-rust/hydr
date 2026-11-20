@@ -1,6 +1,6 @@
 use super::error::{HydraulicError, HydraulicResult};
 use crate::channel::section::PrismaticRecoveryConfig;
-use solvr::optimize::CertifiedBisectionOptions;
+use solvr::optimize::{CertifiedBisectionOptions, CertifiedRootProbe};
 
 /// Accuracy allowances and native work ceilings for surveyed Godunov fluxes.
 #[derive(Clone, Debug)]
@@ -15,7 +15,7 @@ pub struct PrismaticRiemannConfig {
     pub momentum_flux_atol_m4_per_s2: f64,
     /// Relative flux-width allowance times the largest absolute endpoint. Default: `1e-10`.
     pub flux_rtol: f64,
-    /// Normalized-depth root controls. `max_iterations` limits midpoint rounds. Root convergence alone never accepts a flux.
+    /// Normalized-depth root controls. `max_iterations` limits probe rounds. Default probe: `SlackSecant`. Root convergence alone never accepts a flux.
     pub root: CertifiedBisectionOptions,
     /// Maximum upper-bracket expansion rounds, at most `i64::MAX`. Zero checks initial endpoints only. Default: `4096`.
     pub max_bracket_expansions: usize,
@@ -37,7 +37,10 @@ impl Default for PrismaticRiemannConfig {
             water_flux_atol_m3_per_s: 1e-9,
             momentum_flux_atol_m4_per_s2: 1e-8,
             flux_rtol: 1e-10,
-            root: CertifiedBisectionOptions::default(),
+            root: CertifiedBisectionOptions {
+                probe: CertifiedRootProbe::SlackSecant,
+                ..CertifiedBisectionOptions::default()
+            },
             max_bracket_expansions: 4096,
             initial_simpson_panels: 4,
             max_simpson_panels: 4096,
@@ -108,6 +111,12 @@ mod tests {
         assert_eq!(config.max_bracket_expansions, 4096);
         config.max_bracket_expansions = 0;
         config.check()
+    }
+
+    #[test]
+    fn root_probe_defaults_to_slack_secant() {
+        let config = PrismaticRiemannConfig::default();
+        assert_eq!(config.root.probe, CertifiedRootProbe::SlackSecant);
     }
 
     #[test]

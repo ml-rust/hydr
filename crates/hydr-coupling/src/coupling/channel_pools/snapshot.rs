@@ -9,9 +9,9 @@ use numr::{dtype::DType, runtime::Runtime};
 use std::sync::Arc;
 
 /// Schema identity of the channel pool snapshot package.
-pub const CHANNEL_POOL_SNAPSHOT_SCHEMA: &str = "hydr-channel-pool-checkpoint-1";
+pub const CHANNEL_POOL_SNAPSHOT_SCHEMA: &str = "hydr-channel-pool-checkpoint-2";
 /// Numerical contract identity of the channel pool snapshot package.
-pub const CHANNEL_POOL_CONTRACT_VERSION: &str = "hydr-channel-pool-numr-cpu-2";
+pub const CHANNEL_POOL_CONTRACT_VERSION: &str = "hydr-channel-pool-numr-cpu-3";
 
 /// Complete caller-owned continuation. Preserve every floating-point bit when encoding.
 #[derive(Clone, Debug, PartialEq)]

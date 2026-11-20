@@ -1618,11 +1618,13 @@ mod tests {
                 &config,
                 |pair, work| {
                     let rows = support::rows::<R>(client, &[0])?;
-                    let mut session = hydraulic(PointRootSession::new(pair, &rows, 14))?;
+                    // Each side spends four bracket points, two endpoints, one midpoint, and
+                    // the secant point paired with it.
+                    let mut session = hydraulic(PointRootSession::new(pair, &rows, 16))?;
                     for side in [SonicSide::Left, SonicSide::Right] {
                         hydraulic(session.start_source_sonic(&rows, side))?;
                     }
-                    assert_eq!(session.callback_points(), 14);
+                    assert_eq!(session.callback_points(), 16);
                     assert_eq!(work.snapshot().root_iterations, 2);
                     assert_eq!(work.snapshot().maximum_root_iterations, 1);
                     let before = work.snapshot();
@@ -1630,7 +1632,7 @@ mod tests {
                         atol: 0.0,
                         rtol: 0.0,
                     }))?;
-                    assert_eq!(session.callback_points(), 14);
+                    assert_eq!(session.callback_points(), 16);
                     assert_eq!(work.snapshot().residual_points, before.residual_points);
                     for request in &session.sonic.requests {
                         assert_eq!(request.domains[0].iterations, 1);

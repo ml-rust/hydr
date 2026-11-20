@@ -12,7 +12,12 @@ use crate::channel::flow::{
     context::Context,
     surveyed::{error::checked, work::QueryWork},
 };
-use numr::{dtype::DType, ops::BinaryOps, runtime::Runtime, tensor::Tensor};
+use numr::{
+    dtype::DType,
+    ops::{BinaryOps, ShapeOps},
+    runtime::Runtime,
+    tensor::Tensor,
+};
 use solvr::optimize::roots::CertifiedBisectionAlgorithms;
 use solvr::{
     common::arithmetic::Interval,
@@ -20,7 +25,7 @@ use solvr::{
 };
 use std::cell::Cell;
 
-/// Certified normalized-depth root enclosure and the midpoint rounds that produced it.
+/// Certified normalized-depth root enclosure and the probe rounds that produced it.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct RootEnclosure {
     pub lower: f64,
@@ -160,6 +165,37 @@ where
         })
     }
 
+    /// Residual enclosures at every point of `t`, one trace evaluation per point.
+    ///
+    /// A trace state holds one depth enclosure. A paired probe sends two points of the one
+    /// row in the same callback, so each point takes its own evaluation.
+    fn surveyed_trace_points(
+        &self,
+        residual: &Residual<'_, R>,
+        t: &Tensor<R>,
+    ) -> Result<CertifiedRootValues<R>, ChannelError> {
+        let count = t.numel();
+        if count == 1 {
+            let value = residual(t)?;
+            return Ok(CertifiedRootValues {
+                lower: value.lower().clone(),
+                upper: value.upper().clone(),
+            });
+        }
+        let mut lower = Vec::with_capacity(count);
+        let mut upper = Vec::with_capacity(count);
+        for index in 0..count {
+            let value = residual(&t.narrow(0, index, 1)?.contiguous()?)?;
+            lower.push(value.lower().clone());
+            upper.push(value.upper().clone());
+        }
+        let join = |parts: &[Tensor<R>]| self.client.cat(&parts.iter().collect::<Vec<_>>(), 0);
+        Ok(CertifiedRootValues {
+            lower: join(&lower)?,
+            upper: join(&upper)?,
+        })
+    }
+
     /// Certified root of the increasing `residual` over `[lower, upper]` in normalized depth.
     ///
     /// `kappa` bounds the residual slope from below over the whole bracket. Solvr narrows
@@ -187,12 +223,9 @@ where
                     .work
                     .charge(QueryWork::Residual, query.point.numel())
                     .map_err(trace_error)
-                    .and_then(|()| residual(&query.point));
+                    .and_then(|()| self.surveyed_trace_points(residual, &query.point));
                 match value {
-                    Ok(value) => Ok(CertifiedRootValues {
-                        lower: value.lower().clone(),
-                        upper: value.upper().clone(),
-                    }),
+                    Ok(value) => Ok(value),
                     Err(error) => {
                         let first = cause.take().unwrap_or(error);
                         cause.set(Some(first));

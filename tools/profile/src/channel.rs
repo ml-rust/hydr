@@ -1,6 +1,7 @@
 //! Profiles standalone channel intervals on fixed reach fixtures.
 //!
-//! Usage: `channel-profile <rect|triangular|surveyed|trace> <intervals>`.
+//! Usage: `channel-profile <rect|triangular|surveyed|trace> <intervals> [midpoint|slack-secant]`.
+//! The optional probe sets the root probe of the surveyed and trace reaches. Default: `slack-secant`.
 //!
 //! Prints one row per accepted interval: duration, allocation calls, and requested bytes.
 //! Run it under `perf stat -e instructions:u` with `0` intervals and with `N` intervals:
@@ -9,6 +10,7 @@
 //! `trace` steps the frozen three-band scalar endpoint trace rows, one row per interval.
 
 mod alloc;
+mod probe;
 
 #[allow(dead_code)]
 #[path = "../../../tests/channel_surveyed/endpoints_reference.rs"]
@@ -25,7 +27,7 @@ mod surveyed_profiles;
 mod trace;
 
 use alloc::{Counting, Totals};
-use standalone::{Kind, Result, reach, step};
+use standalone::{Kind, Result, reach_with, step};
 
 #[global_allocator]
 static GLOBAL: Counting = Counting;
@@ -40,14 +42,15 @@ fn digest(text: &str) -> u64 {
 
 fn main() -> Result {
     let args: Vec<String> = std::env::args().collect();
-    let usage = "usage: channel-profile <rect|triangular|surveyed|trace> <intervals>";
+    let usage = "usage: channel-profile <rect|triangular|surveyed|trace> <intervals> [midpoint|slack-secant]";
     let name = args.get(1).ok_or(usage)?;
     let intervals: usize = args.get(2).ok_or(usage)?.parse()?;
+    let probe = probe::parse(args.get(3))?;
     if name == "trace" {
-        return trace::run(intervals);
+        return trace::run(intervals, probe);
     }
     let kind = Kind::parse(name).ok_or_else(|| format!("case={name:?}: {usage}"))?;
-    let mut current = reach(kind)?;
+    let mut current = reach_with(kind, probe)?;
     println!("interval dt_s alloc_calls alloc_bytes root_solves root_iterations residual_points");
     for index in 0..intervals {
         let start = current.time();

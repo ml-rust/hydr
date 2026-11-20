@@ -22,7 +22,9 @@ const PROFILE: &str = "three-bands";
 const SPAN_S: f64 = 1.0 / 1048576.0;
 
 /// The one-cell reach of `row` at its interior state.
-fn reach(row: &Trace) -> Result<ChannelReach<Runtime>> {
+fn reach(row: &Trace, probe: solvr::optimize::CertifiedRootProbe) -> Result<ChannelReach<Runtime>> {
+    let mut numerical = ChannelSurveyedConfig::default();
+    numerical.normalized_root.probe = probe;
     let profile = CrossSectionDefinition {
         id: row.profile.name.into(),
         vertical_datum: "Synthetic SI datum".into(),
@@ -48,7 +50,7 @@ fn reach(row: &Trace) -> Result<ChannelReach<Runtime>> {
                 length_m: 1.0,
                 manning_n: 0.0,
             }],
-            numerical: ChannelSurveyedConfig::default(),
+            numerical,
         },
         lateral_bindings: Vec::new(),
         config: ChannelConfig {
@@ -68,7 +70,7 @@ fn reach(row: &Trace) -> Result<ChannelReach<Runtime>> {
 }
 
 /// Steps `intervals` reference rows and prints one receipt row each.
-pub fn run(intervals: usize) -> Result {
+pub fn run(intervals: usize, probe: solvr::optimize::CertifiedRootProbe) -> Result {
     let rows: Vec<&Trace> = MULTIBAND
         .iter()
         .filter(|row| row.profile.name == PROFILE)
@@ -79,7 +81,7 @@ pub fn run(intervals: usize) -> Result {
     for index in 0..intervals {
         let position = index % rows.len();
         let row = rows[position];
-        let origin = reach(row)?;
+        let origin = reach(row, probe)?;
         let policy = row.policy.boundary();
         let (left, right) = match row.end {
             End::Left => (policy, ChannelBoundary::Wall),

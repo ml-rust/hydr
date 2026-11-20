@@ -414,7 +414,7 @@ Exact continuation requires the same build, dependency sources, runtime arithmet
 
 Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `CHANNEL_SNAPSHOT_SCHEMA` and `CHANNEL_CONTRACT_VERSION`. `import_snapshot` compares both before any other check and rejects a foreign value with an input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected. These include earlier layouts and packages with surveyed low parts.
 
-The current identities are `hydr-channel-checkpoint-2` and `hydr-channel-1d-numr-cpu-3`. Contract `hydr-channel-1d-numr-cpu-2` predates correctly rounded `exp`, `log` and `pow`, and rejects by identity. Retained forcing can hold a `FluxPort`, with its provenance. Packages of schema `hydr-channel-checkpoint-1` reject by identity. Capture a new package to recover.
+The current identities are `hydr-channel-checkpoint-3` and `hydr-channel-1d-numr-cpu-4`. Contract `hydr-channel-1d-numr-cpu-3` predates secant probes in surveyed roots, and contract `hydr-channel-1d-numr-cpu-2` predates correctly rounded `exp`, `log` and `pow`. Both reject by identity. Retained forcing can hold a `FluxPort`, with its provenance. Packages of schema `hydr-channel-checkpoint-2` hold no root probe, and packages of schema `hydr-channel-checkpoint-1` predate `FluxPort`. Both reject by identity. Capture a new package to recover.
 
 Import checks continuation consistency. The application owns content hashes and the authenticity of earlier history.
 
@@ -483,7 +483,7 @@ Surveyed reaches use piecewise constant states and the [surveyed interface solve
 
 Use `ChannelSurveyedConfig` for depth recovery, root solving, integration work limits, and friction-geometry allowances.
 
-See [root controls](prismatic-fluxes.md#choose-bounds-and-work-limits) for search and bisection limits. `normalized_root` supplies the root controls for a reach. Integration panels divide each integration interval. Point ceilings bound native root and integration evaluations.
+See [root controls](prismatic-fluxes.md#choose-bounds-and-work-limits) for search and bisection limits. `normalized_root` supplies the root controls for a reach. Its `max_iterations` limits probe rounds. Its `probe` defaults to `SlackSecant`, and the reach package records it. Integration panels divide each integration interval. Point ceilings bound native root and integration evaluations.
 
 With positive roughness, split Manning resistance uses the original area and bounded hydraulic radius. `friction_geometry_atol_m4_per_s` and `friction_geometry_rtol` bound momentum uncertainty from radius selection. `ChannelStepDiagnostics.friction_geometry` records that bound.
 

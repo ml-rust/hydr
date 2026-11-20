@@ -42,11 +42,11 @@ fn package() -> Result<(Batch, ChannelPoolSnapshotData)> {
 fn channel_pool_package_carries_identity() -> Result {
     assert_eq!(
         CHANNEL_POOL_SNAPSHOT_SCHEMA,
-        "hydr-channel-pool-checkpoint-1"
+        "hydr-channel-pool-checkpoint-2"
     );
     assert_eq!(
         CHANNEL_POOL_CONTRACT_VERSION,
-        "hydr-channel-pool-numr-cpu-2"
+        "hydr-channel-pool-numr-cpu-3"
     );
     let (_, package) = package()?;
     assert_eq!(package.schema, CHANNEL_POOL_SNAPSHOT_SCHEMA);
@@ -57,7 +57,12 @@ fn channel_pool_package_carries_identity() -> Result {
 #[test]
 fn channel_pool_import_rejects_foreign_schema() -> Result {
     let (origin, package) = package()?;
-    for found in ["hydr-channel-pool-checkpoint-0", ""] {
+    // Schema `1` packages predate the root probe field and must be captured again.
+    for found in [
+        "hydr-channel-pool-checkpoint-1",
+        "hydr-channel-pool-checkpoint-0",
+        "",
+    ] {
         let mut changed = package.clone();
         changed.schema = found.into();
         assert_rejected(
@@ -76,17 +81,25 @@ fn channel_pool_import_rejects_foreign_schema() -> Result {
 
 #[test]
 fn channel_pool_import_rejects_foreign_contract() -> Result {
-    let (origin, mut changed) = package()?;
-    changed.contract = "hydr-channel-pool-numr-gpu-1".into();
-    assert_rejected(
-        &origin,
-        &changed,
-        &[
-            "channel pool checkpoint contract",
-            "found \"hydr-channel-pool-numr-gpu-1\"",
-            CHANNEL_POOL_CONTRACT_VERSION,
-        ],
-    )
+    let (origin, package) = package()?;
+    // Contract `2` predates secant probes in surveyed roots.
+    for found in [
+        "hydr-channel-pool-numr-gpu-1",
+        "hydr-channel-pool-numr-cpu-2",
+    ] {
+        let mut changed = package.clone();
+        changed.contract = found.into();
+        assert_rejected(
+            &origin,
+            &changed,
+            &[
+                "channel pool checkpoint contract",
+                &format!("found \"{found}\""),
+                CHANNEL_POOL_CONTRACT_VERSION,
+            ],
+        )?;
+    }
+    Ok(())
 }
 
 #[test]

@@ -26,6 +26,7 @@ cuda = ["hydr/cuda", "numr/cuda"]
 [dependencies]
 hydr = { path = "../.." }
 numr = { workspace = true }
+solvr = { workspace = true }
 
 # The counting allocator needs one unsafe trait impl, so the workspace `forbid` cannot apply.
 [lints.rust]

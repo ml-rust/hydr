@@ -129,7 +129,9 @@ impl RootSourceWitness {
     }
 }
 
-fn config_signature(value: &PrismaticRiemannConfig) -> ([u64; 8], [usize; 7]) {
+fn config_signature(
+    value: &PrismaticRiemannConfig,
+) -> ([u64; 8], [usize; 7], solvr::optimize::CertifiedRootProbe) {
     // Exhaustive field matching forces future numerical controls into the fixed-policy witness.
     let PrismaticRiemannConfig {
         gravity_m_per_s2,
@@ -153,6 +155,7 @@ fn config_signature(value: &PrismaticRiemannConfig) -> ([u64; 8], [usize; 7]) {
         rtol,
         max_iterations,
         max_points,
+        probe,
     } = root;
     (
         [
@@ -174,5 +177,6 @@ fn config_signature(value: &PrismaticRiemannConfig) -> ([u64; 8], [usize; 7]) {
             *max_refinements,
             *max_native_query_points,
         ],
+        *probe,
     )
 }

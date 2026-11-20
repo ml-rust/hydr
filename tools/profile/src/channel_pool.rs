@@ -1,6 +1,7 @@
 //! Profiles channel/pool linear-mode oscillation intervals, surveyed and rectangular.
 //!
-//! Usage: `channel-pool-profile <surveyed-mode|rect-mode> <cells> <intervals>`.
+//! Usage: `channel-pool-profile <surveyed-mode|rect-mode> <cells> <intervals> [midpoint|slack-secant]`.
+//! The optional probe sets the root probe of the surveyed reach. Default: `slack-secant`.
 //!
 //! Each interval is a `trial_to` toward the half period, accepted with `into_next`, as in
 //! `tests/channel_pools/surveyed_mode.rs` and `linear_mode.rs`. Prints one row per accepted
@@ -12,6 +13,7 @@
 //! analytical rectangular reach at `cfl 0.4`.
 
 mod alloc;
+mod probe;
 
 #[allow(dead_code)]
 #[path = "../../../tests/channel_pools/fixture.rs"]
@@ -34,7 +36,7 @@ mod surveyed_reference;
 
 use alloc::{Counting, Totals};
 use fixture::{Batch, Result, batch, forcing};
-use hydr::channel::{ChannelBoundary, ChannelInitialState};
+use hydr::channel::{ChannelBoundary, ChannelGeometry, ChannelInitialState};
 use hydr::coupling::{ChannelPoolEndpoint, ChannelPoolInitialState, ChannelPoolSetup};
 use reference::CASES;
 use surveyed_fixture::{definition, single, surveyed_case};
@@ -107,12 +109,23 @@ struct Row {
 
 fn main() -> Result {
     let args: Vec<String> = std::env::args().collect();
-    let usage = "usage: channel-pool-profile <surveyed-mode|rect-mode> <cells> <intervals>";
+    let usage = "usage: channel-pool-profile <surveyed-mode|rect-mode> <cells> <intervals> [midpoint|slack-secant]";
     let name = args.get(1).ok_or(usage)?;
     let count: usize = args.get(2).ok_or(usage)?.parse()?;
     let intervals: usize = args.get(3).ok_or(usage)?.parse()?;
+    let probe = probe::parse(args.get(4))?;
     let (setup, initial) = match name.as_str() {
-        "surveyed-mode" => surveyed_mode(count)?,
+        "surveyed-mode" => {
+            let (mut setup, initial) = surveyed_mode(count)?;
+            for reach in &mut setup.reaches {
+                if let ChannelGeometry::PrismaticSurveyed { numerical, .. } =
+                    &mut reach.definition.geometry
+                {
+                    numerical.normalized_root.probe = probe;
+                }
+            }
+            (setup, initial)
+        }
         "rect-mode" => rect_mode(count)?,
         other => return Err(format!("case={other:?}: {usage}").into()),
     };

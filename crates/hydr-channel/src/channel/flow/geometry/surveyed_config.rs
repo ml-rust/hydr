@@ -1,14 +1,14 @@
 use super::super::{ChannelConfig, ChannelError};
 use crate::channel::flow::surveyed::config::PrismaticRiemannConfig;
 use crate::channel::section::PrismaticRecoveryConfig;
-use solvr::optimize::CertifiedBisectionOptions;
+use solvr::optimize::{CertifiedBisectionOptions, CertifiedRootProbe};
 
 /// Geometry allowances and work ceilings for a constant surveyed reach.
 #[derive(Clone, Debug)]
 pub struct ChannelSurveyedConfig {
     /// Recovered geometric-depth enclosure allowances, in metres.
     pub recovery: PrismaticRecoveryConfig,
-    /// Normalized-depth root controls. `max_iterations` limits midpoint rounds.
+    /// Normalized-depth root controls. `max_iterations` limits probe rounds. Default probe: `SlackSecant`.
     pub normalized_root: CertifiedBisectionOptions,
     /// Maximum upper-bracket expansion rounds, at most `i64::MAX`. Zero checks initial endpoints only. Default: `4096`.
     pub max_bracket_expansions: usize,
@@ -35,6 +35,7 @@ impl Default for ChannelSurveyedConfig {
                 rtol: 1e-15,
                 max_iterations: 256,
                 max_points: 1 << 20,
+                probe: CertifiedRootProbe::SlackSecant,
             },
             max_bracket_expansions: 4096,
             initial_simpson_panels: 4,
@@ -71,6 +72,7 @@ impl ChannelSurveyedConfig {
             .all(|(a, b)| a.to_bits() == b.to_bits())
             && self.normalized_root.max_iterations == other.normalized_root.max_iterations
             && self.normalized_root.max_points == other.normalized_root.max_points
+            && self.normalized_root.probe == other.normalized_root.probe
             && self.max_bracket_expansions == other.max_bracket_expansions
             && self.initial_simpson_panels == other.initial_simpson_panels
             && self.max_simpson_panels == other.max_simpson_panels
@@ -155,5 +157,26 @@ mod tests {
             original.normalized_root.max_iterations
         );
         Ok(())
+    }
+
+    #[test]
+    fn root_probe_defaults_to_slack_secant_and_keeps_identity() {
+        let original = ChannelSurveyedConfig::default();
+        assert_eq!(
+            original.normalized_root.probe,
+            CertifiedRootProbe::SlackSecant
+        );
+        assert_eq!(
+            original
+                .riemann_config(&ChannelConfig::default())
+                .root
+                .probe,
+            CertifiedRootProbe::SlackSecant
+        );
+        let mut midpoint = original.clone();
+        midpoint.normalized_root.probe = CertifiedRootProbe::Midpoint;
+        assert!(!original.same_bits(&midpoint));
+        let riemann = midpoint.riemann_config(&ChannelConfig::default());
+        assert_eq!(riemann.root.probe, CertifiedRootProbe::Midpoint);
     }
 }

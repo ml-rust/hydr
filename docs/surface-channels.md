@@ -610,7 +610,7 @@ Construct a `restore` or `import_snapshot` destination with the same setup and o
 
 Pass `data.surface.setup.forcing.clone()` to `resume` for a plain restart.
 
-`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-5`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-7`). Import checks both first. A package of an earlier format, schema `hydr-surface-channel-checkpoint-4` or contract `hydr-surface-channel-numr-cpu-6`, rejects by identity. Capture a new package. Import checks every nested package identity, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
+`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-6`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-8`). Import checks both first. A package of an earlier format, schema `hydr-surface-channel-checkpoint-5` or contract `hydr-surface-channel-numr-cpu-7`, rejects by identity. Those identities predate secant probes in surveyed roots. Capture a new package. Import checks every nested package identity, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
 
 The replay includes decision completion. At a decision end, the recalculation samples the converged stages and completes each operating child, then compares the child packages.
 

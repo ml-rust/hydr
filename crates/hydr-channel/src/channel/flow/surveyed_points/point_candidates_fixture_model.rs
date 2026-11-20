@@ -22,6 +22,7 @@ impl Config {
                 rtol: f[7],
                 max_iterations: n[0],
                 max_points: n[1],
+                probe: solvr::optimize::CertifiedRootProbe::Midpoint,
             },
             max_bracket_expansions: n[2],
             initial_simpson_panels: n[3],

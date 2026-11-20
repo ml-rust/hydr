@@ -280,6 +280,9 @@ mod tests {
 
     /// With the bracket's sonic-side slope floor, `root ± R / κ` stops at the first ambiguous
     /// midpoint. The floor at the enclosure's lower end contracts it to the residual width.
+    ///
+    /// Midpoint probes isolate the slope floor. A secant probe reaches the residual width
+    /// without the local floor.
     fn local_slope_floor_contracts_the_enclosure<R>(client: R::Client) -> TestResult
     where
         R: Runtime<DType = DType>,
@@ -290,8 +293,10 @@ mod tests {
         let context = &reach.context;
         let interior = interior(&reach, row.endpoint)?;
         let work = ledger(&reach)?;
+        let mut config = geometry(&reach)?.riemann.clone();
+        config.root.probe = solvr::optimize::CertifiedRootProbe::Midpoint;
         let evaluation = Evaluation {
-            config: &geometry(&reach)?.riemann,
+            config: &config,
             panels: PANELS,
             work: &work,
         };

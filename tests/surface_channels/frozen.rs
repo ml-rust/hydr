@@ -18,12 +18,18 @@
 //! the schema to `5` and the contract to `7`. Each case maps its text back to the format before
 //! pools and reproduces the digest of contract `6`, then maps on to the format before ports.
 //! No accepted bit moves.
+//!
+//! Secant probes in certified surveyed roots bump the schema to `6` and the contract to `8`,
+//! with channel schema `3` and channel contract `4`. The surveyed case moves accepted bits. It
+//! also runs with `Midpoint` probes and maps that text back to the format before root probes,
+//! which reproduces the digest of contract `7`. The rectangular case moves only its identities.
 
 use crate::fixture::Result;
 use crate::restoration::{network, state};
 use crate::scenario::{Batch, ReachSpec, Spec, forcing, last, step, weir};
 use hydr::channel::{ChannelLateralDirection, ChannelLateralInput};
 use hydr::forcing::WaterAmount;
+use solvr::optimize::CertifiedRootProbe;
 
 /// FNV-1a 64-bit digest of `text`.
 fn digest(text: &str) -> u64 {
@@ -87,15 +93,46 @@ fn before_pools(text: &str) -> String {
     .replace(", structures: [], pool_ends: [], pools: []", "")
 }
 
-/// Fails unless `batch` matches the frozen `expected` digest, its text in the format before
-/// pools matches the `current` digest of that format, and its text in the format before ports
-/// matches the `earlier` digest of that format.
-fn check(batch: &Batch, expected: u64, current: u64, earlier: u64) -> Result {
-    let text = state(batch)?;
-    let actual = digest(&text);
+/// The text in the format before secant probes in surveyed roots.
+///
+/// That format names schema `5` and contract `7`, with channel schema `2` and channel contract
+/// `3` in the nested packages. Its root controls hold no probe field. A run with `Midpoint`
+/// probes changes no other field, so this text reproduces the digest of that format bit for bit.
+fn before_root_probe(text: &str) -> String {
+    text.replace(
+        "hydr-surface-channel-checkpoint-6",
+        "hydr-surface-channel-checkpoint-5",
+    )
+    .replace(
+        "hydr-surface-channel-numr-cpu-8",
+        "hydr-surface-channel-numr-cpu-7",
+    )
+    .replace("hydr-channel-checkpoint-3", "hydr-channel-checkpoint-2")
+    .replace("hydr-channel-1d-numr-cpu-4", "hydr-channel-1d-numr-cpu-3")
+    .replace(", probe: Midpoint", "")
+}
+
+/// Fails unless `batch` matches the frozen `expected` digest.
+fn check_current(batch: &Batch, expected: u64) -> Result {
+    let actual = digest(&state(batch)?);
     if actual != expected {
         return Err(format!(
             "state digest={actual:#018x}, frozen={expected:#018x}: an accepted bit changed"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+/// Fails unless the text of `batch` in the format before root probes matches the `probed`
+/// digest, its text in the format before pools matches the `current` digest of that format, and
+/// its text in the format before ports matches the `earlier` digest of that format.
+fn check_earlier(batch: &Batch, probed: u64, current: u64, earlier: u64) -> Result {
+    let text = before_root_probe(&state(batch)?);
+    let unprobed = digest(&text);
+    if unprobed != probed {
+        return Err(format!(
+            "digest before root probes={unprobed:#018x}, frozen={probed:#018x}: a field other than the identities and the probe changed"
         )
         .into());
     }
@@ -138,7 +175,9 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
             assert_eq!(link.level_factor, 1.0, "{link:?}");
         }
     }
-    check(
+    check_current(&batch, 0x334d_f9db_6dcb_719e)?;
+    // The network holds no surveyed reach, so only the identities move.
+    check_earlier(
         &batch,
         0x169a_8c05_9590_e7c0,
         0xba64_0fc6_cc65_ea08,
@@ -153,10 +192,26 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
     // agree with the earlier ones within the head and transfer budgets.
     //
     // The digest under contract `5` was 0x0511_a7a3_d27d_263f. Only the identities differ.
+    check_current(
+        &flood(CertifiedRootProbe::SlackSecant)?,
+        0xe58a_2aad_5be8_651f,
+    )?;
+    // `Midpoint` probes reproduce the accepted bits before secant probes.
+    check_earlier(
+        &flood(CertifiedRootProbe::Midpoint)?,
+        0x6e58_b9a2_e2d8_5cd6,
+        0x84a2_1234_ef25_3316,
+        0xcfe8_ea92_adc0_edf6,
+    )
+}
+
+/// The surveyed flood case after three accepted intervals with `probe` in its root controls.
+fn flood(probe: CertifiedRootProbe) -> Result<Batch> {
     let mut spec = Spec::new(1, 1, 1.0, 0.0)
         .reach(
             ReachSpec::new("river", 0.0, &[1.0, 1.0])
                 .surveyed()
+                .probe(probe)
                 .binding("tributary", 1, ChannelLateralDirection::Inflow),
         )
         .link(weir("bank", 0, "river", 0, 1.05, 2.0));
@@ -173,10 +228,5 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
         let interval = forcing(&batch, end, &[("river", inflow)]);
         batch = batch.trial_to(end, &interval)?.into_next();
     }
-    check(
-        &batch,
-        0x6e58_b9a2_e2d8_5cd6,
-        0x84a2_1234_ef25_3316,
-        0xcfe8_ea92_adc0_edf6,
-    )
+    Ok(batch)
 }

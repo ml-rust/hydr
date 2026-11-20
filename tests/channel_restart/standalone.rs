@@ -120,7 +120,9 @@ fn triangular() -> Result<Reach> {
     )?)
 }
 
-fn surveyed() -> Result<Reach> {
+fn surveyed(probe: solvr::optimize::CertifiedRootProbe) -> Result<Reach> {
+    let mut numerical = ChannelSurveyedConfig::default();
+    numerical.normalized_root.probe = probe;
     let points = [(-5.0, 4.0), (-1.0, 0.0), (1.0, 0.0), (5.0, 4.0)]
         .into_iter()
         .map(|(station_m, elevation_m)| CrossSectionPoint {
@@ -146,7 +148,7 @@ fn surveyed() -> Result<Reach> {
                     manning_n: 0.03,
                 })
                 .collect(),
-            numerical: ChannelSurveyedConfig::default(),
+            numerical,
         },
         lateral_bindings: binding("cell-1"),
         config: ChannelConfig::default(),
@@ -162,12 +164,12 @@ fn surveyed() -> Result<Reach> {
     )?)
 }
 
-/// The fixture reach of `kind` at its initial state.
-pub fn reach(kind: Kind) -> Result<Reach> {
+/// The fixture reach of `kind` at its initial state. A surveyed reach uses `probe`.
+pub fn reach_with(kind: Kind, probe: solvr::optimize::CertifiedRootProbe) -> Result<Reach> {
     match kind {
         Kind::Rectangular => rectangular(),
         Kind::Triangular => triangular(),
-        Kind::Surveyed => surveyed(),
+        Kind::Surveyed => surveyed(probe),
     }
 }
 
