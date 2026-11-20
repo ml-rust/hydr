@@ -1,8 +1,9 @@
 //! Interior identity of a surveyed triangle profile with a triangular reach.
 //!
-//! Frozen criterion, "Interior identity, triangle": the triangle profile against a triangular reach with `first-order-reference`,
-//! same state, `Wall`/`Exterior` ends. At every interior face of the first interval, the
-//! surveyed flux enclosure and the triangular certified bracket intersect.
+//! Frozen criterion, "Interior identity, triangle": the triangle profile against a triangular
+//! reach with `first-order-reference`, same state, `Wall`/`Exterior` ends. At every interior
+//! face of the first interval, the surveyed flux enclosure and the triangular certified
+//! bracket intersect.
 //!
 //! The surveyed enclosure is the certified point Riemann bound of the surveyed section, which
 //! the surveyed reach solves on its first interval. The triangular bracket holds the face rate
