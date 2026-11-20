@@ -192,6 +192,7 @@ where
             candidate,
             lower_endpoint,
             upper_endpoint,
+            at_point: false,
         })
     }
 }

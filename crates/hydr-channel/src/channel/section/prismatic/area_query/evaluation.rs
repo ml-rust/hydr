@@ -228,8 +228,6 @@ where
     };
     let lower_above = clip(a, &supported.lower_endpoint.above_start)?;
     let lower_below = clip(a, &supported.lower_endpoint.below_end)?;
-    let upper_above = clip(a, &supported.upper_endpoint.above_start)?;
-    let upper_below = clip(a, &supported.upper_endpoint.below_end)?;
     let lower = inverse::recover(
         a,
         context,
@@ -239,15 +237,25 @@ where
         &lower_below,
     )
     .map_err(query_error)?;
-    let upper = inverse::recover(
-        a,
-        context,
-        rows,
-        &supported.candidate,
-        &upper_above,
-        &upper_below,
-    )
-    .map_err(query_error)?;
+    // A singleton parameter gives both endpoints the same differences, so one inverse serves both.
+    let separate = if supported.at_point {
+        None
+    } else {
+        let upper_above = clip(a, &supported.upper_endpoint.above_start)?;
+        let upper_below = clip(a, &supported.upper_endpoint.below_end)?;
+        Some(
+            inverse::recover(
+                a,
+                context,
+                rows,
+                &supported.candidate,
+                &upper_above,
+                &upper_below,
+            )
+            .map_err(query_error)?,
+        )
+    };
+    let upper = separate.as_ref().unwrap_or(&lower);
     let candidate = c.mul(&lower.candidate, &upper.candidate)?;
     let bounds = |a: &mut Arithmetic<'_, R>,
                   lower: &Tensor<R>,

@@ -8,7 +8,7 @@ use super::{secant, types::PressureEndpoint};
 use crate::channel::section::prismatic::boundary_area::BoundaryAreas;
 use crate::channel::{
     flow::surveyed::error::{Arithmetic, HydraulicResult},
-    section::{GatheredBands, HydraulicGeometry, PrismaticAreaPointRecovery},
+    section::{Constitutive, GatheredBands, HydraulicGeometry, PrismaticAreaPointRecovery},
 };
 use numr::{
     dtype::DType,
@@ -21,6 +21,8 @@ use numr::{
 };
 
 /// Consume one supported physical endpoint without evaluating the opposite endpoint.
+/// `target` is the recovered geometry of `endpoint` when the caller holds it.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn pressure_endpoint<R>(
     a: &mut Arithmetic<'_, R>,
     geometry: &HydraulicGeometry<R>,
@@ -29,6 +31,7 @@ pub(crate) fn pressure_endpoint<R>(
     source: &PrismaticAreaPointRecovery<R>,
     boundaries: &BoundaryAreas<R>,
     gravity: f64,
+    target: Option<&Constitutive<R>>,
 ) -> HydraulicResult<PressureEndpoint<R>>
 where
     R: Runtime<DType = DType>,
@@ -49,8 +52,15 @@ where
         "pressure endpoint requires a singleton physical query. Select one supported endpoint",
     )?;
     let delta = source_difference(a, bands, endpoint, source, boundaries)?;
-    let target = geometry.recover_query(a, bands, endpoint)?;
-    let k = secant::secant(a, geometry, bands, source, &target, &delta.lower, gravity)?;
+    let recovered;
+    let target = match target {
+        Some(target) => target,
+        None => {
+            recovered = geometry.recover_query(a, bands, endpoint)?.state;
+            &recovered
+        }
+    };
+    let k = secant::secant(a, geometry, bands, source, target, &delta.lower, gravity)?;
     finish(a, delta.lower, k)
 }
 #[cfg(test)]
@@ -76,8 +86,8 @@ where
     let delta = source_difference(a, bands, query, source, boundaries)?;
     let lower_query = query.endpoint(a, bands, PhysicalEndpoint::Lower)?;
     let upper_query = query.endpoint(a, bands, PhysicalEndpoint::Upper)?;
-    let lower_geometry = geometry.recover_query(a, bands, &lower_query)?;
-    let upper_geometry = geometry.recover_query(a, bands, &upper_query)?;
+    let lower_geometry = geometry.recover_query(a, bands, &lower_query)?.state;
+    let upper_geometry = geometry.recover_query(a, bands, &upper_query)?.state;
     let lower_k = secant::secant(
         a,
         geometry,

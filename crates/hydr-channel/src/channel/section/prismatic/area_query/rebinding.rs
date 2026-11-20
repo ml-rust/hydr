@@ -5,6 +5,7 @@ use numr::{
     dtype::DType,
     ops::{CompareOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps},
     runtime::{Runtime, RuntimeClient},
+    tensor::Tensor,
 };
 use solvr::common::arithmetic::Interval;
 use std::sync::Arc;
@@ -44,6 +45,19 @@ where
         )?;
         let parameter = a.bounds(parameter.lower(), parameter.upper())?;
         self.reconstruct(a, bands, parameter)
+    }
+
+    /// Rebind to the singleton parameter `point`. Its endpoints then reuse these certificates.
+    pub(crate) fn with_parameter_point(
+        &self,
+        a: &mut Arithmetic<'_, R>,
+        bands: &GatheredBands<R>,
+        point: &Tensor<R>,
+    ) -> HydraulicResult<Self> {
+        let parameter = a.point(point)?;
+        let mut query = self.with_parameter_bounds(a, bands, &parameter)?;
+        query.at_point = true;
+        Ok(query)
     }
 }
 

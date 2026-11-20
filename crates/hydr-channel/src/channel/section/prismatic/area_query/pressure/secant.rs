@@ -1,4 +1,4 @@
-use super::super::AreaQueryGeometry;
+use super::super::super::hydraulic_geometry::Constitutive;
 use super::{bottom, weights};
 use crate::channel::{
     flow::surveyed::{
@@ -22,7 +22,7 @@ pub(super) fn secant<R>(
     geometry: &HydraulicGeometry<R>,
     bands: &GatheredBands<R>,
     source: &PrismaticAreaPointRecovery<R>,
-    target: &AreaQueryGeometry<R>,
+    target: &Constitutive<R>,
     delta: &CertifiedExpansion<R>,
     gravity: f64,
 ) -> HydraulicResult<Interval<R>>
@@ -40,7 +40,7 @@ where
     let zero = scalar(a, 0.0)?;
     let one = scalar(a, 1.0)?;
     let first = source.depth_m();
-    let second = &target.state.depth;
+    let second = &target.depth;
     let low = a.bounds(
         &c.minimum(first.lower(), second.lower())?,
         &c.minimum(first.upper(), second.upper())?,

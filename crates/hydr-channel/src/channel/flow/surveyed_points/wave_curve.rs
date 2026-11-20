@@ -116,6 +116,10 @@ where
             Some(parents) => Some(parents.select(c, &rare_rows)?),
             None => None,
         };
+        let targets = match &context.target_rows {
+            Some(targets) => Some(targets.select(c, &rare_rows)?),
+            None => None,
+        };
         let selected = PotentialContext::new(
             context.geometry,
             &bands,
@@ -128,7 +132,8 @@ where
                 work: context.evaluation.work,
             },
         )?
-        .with_source_rows(parents);
+        .with_source_rows(parents)
+        .with_target_rows(targets);
         let increment = endpoint_increment(&selected, PhysicalEndpoint::Lower)?;
         rare = checked(c, "point rare branch capture", |a| {
             let value = CurveValue {
@@ -167,6 +172,10 @@ where
             let query = query.select(a, rows)?;
             let boundaries = context.boundaries.select(a, rows)?;
             let target_area = query.retained_endpoint_area(a, &bands, &boundaries)?;
+            let target = match &context.target_rows {
+                Some(targets) => Some(targets.state(a, Some(rows))?),
+                None => None,
+            };
             let pressure = pressure_endpoint(
                 a,
                 context.geometry,
@@ -175,6 +184,7 @@ where
                 &source,
                 &boundaries,
                 context.evaluation.config.gravity_m_per_s2,
+                target.as_ref(),
             )?;
             if conditional {
                 shock_points::conditional(a, source.requested_areas_m2(), &target_area, &pressure)
@@ -378,6 +388,7 @@ mod tests {
                                     context.source,
                                     context.boundaries,
                                     context.evaluation.config.gravity_m_per_s2,
+                                    None,
                                 )?;
                                 let center = a.expansion_bounds(
                                     &Tensor::from_slice(

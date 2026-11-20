@@ -47,10 +47,9 @@ where
                 operand.query.query.parameter.lower(),
                 operand.query.query.parameter.upper(),
             )?;
-            let parameter = a.point(&midpoint)?;
             let endpoint = operand
                 .query
-                .with_parameter_bounds(a, &stage.bands, &parameter)?;
+                .with_parameter_point(a, &stage.bands, &midpoint)?;
             let mut raw = endpoint.retained_endpoint_area(a, &stage.bands, &stage.boundaries)?;
             if let Some([captured, _]) = &operand.captured {
                 raw = a.expansion_bounds(captured.high(), captured.low(), captured.abs_error())?;

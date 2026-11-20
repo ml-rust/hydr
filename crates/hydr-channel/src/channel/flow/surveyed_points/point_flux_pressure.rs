@@ -97,6 +97,11 @@ where
     let source = &selected.sources[side];
     let anchor = scale(a, source.hydrostatic_integral_m3(), gravity)?;
     let source_anchor = selection_anchor(a, source.hydrostatic_point_m3(), gravity)?;
+    // The secant and the direct pressure read one recovery of `query`.
+    let direct = sources
+        .geometry
+        .recover_query(a, &selected.bands, query)?
+        .state;
     let increment = pressure_endpoint(
         a,
         sources.geometry,
@@ -105,12 +110,9 @@ where
         source,
         &selected.boundaries,
         gravity,
+        Some(&direct),
     )?;
     let evaluation = a.add(&anchor, &increment.physical_increment)?;
-    let direct = sources
-        .geometry
-        .recover_query(a, &selected.bands, query)?
-        .state;
     let direct_pressure = scale(a, &direct.integral, gravity)?;
     let (evaluation, valid) = super::wet_star::intersection(a, &evaluation, &direct_pressure)?;
     if a.client()

@@ -54,8 +54,7 @@ where
             let rows = c.index_select(invocation_rows, 0, &query.owner)?;
             let bands = pair.bands.select(a, &rows)?;
             let chart = chart.select(a, &query.owner)?;
-            let parameter = a.point(&query.point)?;
-            let target = chart.with_parameter_bounds(a, &bands, &parameter)?;
+            let target = chart.with_parameter_point(a, &bands, &query.point)?;
             Ok((rows, target))
         })?;
         // Absent levels mean every invocation row is at the initial panel level.

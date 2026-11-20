@@ -216,6 +216,7 @@ where
                 above_start: interval(a, &self.upper_endpoint.above_start, rows)?,
                 below_end: interval(a, &self.upper_endpoint.below_end, rows)?,
             },
+            at_point: self.at_point,
         })
     }
 }

@@ -1,4 +1,5 @@
 use super::potential_range::{PotentialContext, PotentialValue, scatter, zero_value};
+use super::target_states::TargetRows;
 use super::{analytic_bottom, potential_lanes};
 use crate::channel::{
     flow::surveyed::{
@@ -38,7 +39,7 @@ where
         + RuntimeClient<R>
         + CertifiedSimpsonAlgorithms<R>,
 {
-    absolute(context, &context.source_query()?)
+    absolute(context, &context.source_query()?, None)
 }
 
 pub(super) fn endpoint_potential<R>(
@@ -59,12 +60,14 @@ where
     let query = checked(context.geometry.client(), "point potential endpoint", |a| {
         context.query.endpoint(a, context.bands, endpoint)
     })?;
-    absolute(context, &query)
+    absolute(context, &query, context.target_rows.as_ref())
 }
 
+/// `target` holds the geometry of `query` when it is the context's kept target.
 fn absolute<R>(
     context: &PotentialContext<'_, R>,
     query: &SupportedAreaQuery<R>,
+    target: Option<&TargetRows<'_, R>>,
 ) -> HydraulicResult<PotentialValue<R>>
 where
     R: Runtime<DType = DType>,
@@ -80,10 +83,15 @@ where
     let c = context.geometry.client();
     let (mut result, rows) = checked(c, "point absolute potential dispatch", |a| {
         let raw = query.retained_endpoint_area(a, context.bands, context.boundaries)?;
-        let state = context
-            .geometry
-            .recover_query(a, context.bands, query)?
-            .state;
+        let state = match target {
+            Some(target) => target.state(a, None)?,
+            None => {
+                context
+                    .geometry
+                    .recover_query(a, context.bands, query)?
+                    .state
+            }
+        };
         let analytic = admitted_analytic(
             a,
             context.bands,

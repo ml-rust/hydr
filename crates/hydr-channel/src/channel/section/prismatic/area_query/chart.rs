@@ -66,6 +66,9 @@ pub(crate) struct SupportedAreaQuery<R: Runtime<DType = DType>> {
     pub(crate) candidate: Tensor<R>,
     pub(super) lower_endpoint: EndpointDifferences<R>,
     pub(super) upper_endpoint: EndpointDifferences<R>,
+    /// Every row holds the certificates of its own singleton parameter.
+    /// Either physical endpoint then reproduces these certificates bit for bit.
+    pub(super) at_point: bool,
 }
 
 impl<R> AreaQuery<R>

@@ -58,10 +58,9 @@ where
                 let parents = c.index_select(rows, 0, &query.owner)?;
                 let selected = sources.select_sources(a, &parents)?;
                 let chart = chart.select(a, &query.owner)?;
-                let parameter = a.point(&query.point)?;
                 Ok((
                     parents,
-                    chart.with_parameter_bounds(a, &selected.bands, &parameter)?,
+                    chart.with_parameter_point(a, &selected.bands, &query.point)?,
                     numerical.selected(a, &query.owner)?,
                 ))
             })?;

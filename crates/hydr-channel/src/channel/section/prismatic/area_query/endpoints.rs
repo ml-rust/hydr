@@ -39,6 +39,11 @@ where
     ) -> HydraulicResult<Self> {
         admission::matching_model(Arc::ptr_eq(&self.query.model, &bands.model))?;
         admission::matching_owners(a, bands, &self.query.owners)?;
+        if self.at_point && self.query.band_count == bands.band_count {
+            // Both endpoints are the singleton parameter, and its reconstruction repeats these
+            // certificates from the same normalized scale, anchor, and owner bands.
+            return self.retained(a);
+        }
         let parameter = match (self.query.direction, endpoint) {
             (AreaDirection::Add, PhysicalEndpoint::Lower)
             | (AreaDirection::Subtract, PhysicalEndpoint::Upper) => self.query.parameter.lower(),
@@ -46,7 +51,55 @@ where
             | (AreaDirection::Subtract, PhysicalEndpoint::Lower) => self.query.parameter.upper(),
         };
         let parameter = a.point(parameter)?;
-        self.reconstruct(a, bands, parameter)
+        let mut query = self.reconstruct(a, bands, parameter)?;
+        query.at_point = true;
+        Ok(query)
+    }
+
+    /// Owned copies of every certificate. Copies keep each bit and the singleton marker.
+    fn retained(&self, a: &mut Arithmetic<'_, R>) -> HydraulicResult<Self> {
+        let interval =
+            |a: &mut Arithmetic<'_, R>, value: &Interval<R>| a.bounds(value.lower(), value.upper());
+        let expansion =
+            |a: &mut Arithmetic<'_, R>,
+             value: &solvr::common::arithmetic::CertifiedExpansion<R>| {
+                a.expansion_bounds(value.high(), value.low(), value.abs_error())
+            };
+        let c = a.client();
+        let copy = |value: &Tensor<R>| -> HydraulicResult<Tensor<R>> {
+            let owned = Tensor::empty(value.shape(), value.dtype(), c.device())?;
+            c.copy_into(&owned, value)?;
+            Ok(owned)
+        };
+        Ok(Self {
+            query: AreaQuery {
+                model: Arc::clone(&self.query.model),
+                anchor: selection::capture_anchor(a, &self.query.anchor)?,
+                offsets: super::chart::ExpandedBounds {
+                    lower: expansion(a, &self.query.offsets.lower)?,
+                    upper: expansion(a, &self.query.offsets.upper)?,
+                },
+                direction: self.query.direction,
+                scale: expansion(a, &self.query.scale)?,
+                parameter: interval(a, &self.query.parameter)?,
+                owners: copy(&self.query.owners)?,
+                original_rows: copy(&self.query.original_rows)?,
+                band_count: self.query.band_count,
+            },
+            area: interval(a, &self.area)?,
+            above_start: interval(a, &self.above_start)?,
+            below_end: interval(a, &self.below_end)?,
+            candidate: copy(&self.candidate)?,
+            lower_endpoint: super::chart::EndpointDifferences {
+                above_start: interval(a, &self.lower_endpoint.above_start)?,
+                below_end: interval(a, &self.lower_endpoint.below_end)?,
+            },
+            upper_endpoint: super::chart::EndpointDifferences {
+                above_start: interval(a, &self.upper_endpoint.above_start)?,
+                below_end: interval(a, &self.upper_endpoint.below_end)?,
+            },
+            at_point: true,
+        })
     }
 
     /// Reprove only changed rows. Preserve every untouched certificate and the complete original affine expression.
@@ -89,6 +142,7 @@ where
         if rows.numel() == 0 {
             return Ok(self);
         }
+        self.at_point = false;
         let selected_bands = bands.select(a, rows)?;
         let selected =
             self.select(a, rows)?

@@ -3,6 +3,7 @@ use super::potential_absolute::endpoint_potential;
 use super::potential_range::{PotentialContext, PotentialEvaluation};
 use super::source_binding::SourcePanelLevel;
 use super::source_terms::SourceRows;
+use super::target_states::{TargetRows, TargetStates};
 use super::wave_curve;
 use super::wave_curve_types::{CurveValue, EndpointCurve, scatter_value, unavailable};
 use crate::channel::{
@@ -103,6 +104,8 @@ where
         checked(c, "paired right local placeholder", |a| unavailable(a, n))?,
     ];
     let mut local_evidence = [None, None];
+    // Both sides and the shared target read one geometry per target row.
+    let targets = TargetStates::new(parent.geometry, &stage.bands, &target_query);
     for (side, rows) in local_rows.iter().enumerate() {
         if rows.numel() == 0 {
             continue;
@@ -131,7 +134,11 @@ where
                 work: parent.evaluation.work,
             },
         )?
-        .with_source_rows(Some(parents));
+        .with_source_rows(Some(parents))
+        .with_target_rows(Some(TargetRows {
+            states: &targets,
+            rows: rows.clone(),
+        }));
         let value = wave_curve::endpoint(&context, PhysicalEndpoint::Lower)?;
         let assemble = |curve: &CurveValue<R>| {
             checked(c, "paired local wave assembly", |a| {
@@ -198,7 +205,11 @@ where
                 panels: level.panels(),
                 work: parent.evaluation.work,
             },
-        )?;
+        )?
+        .with_target_rows(Some(TargetRows {
+            states: &targets,
+            rows: union_rows.clone(),
+        }));
         let value = endpoint_potential(&context, PhysicalEndpoint::Lower)?;
         target_value = checked(c, "paired shared target assembly", |a| {
             scatter_value(
@@ -213,6 +224,7 @@ where
             )
         })?;
     }
+    drop(targets);
     Ok(EndpointTerms {
         stage,
         target_query,

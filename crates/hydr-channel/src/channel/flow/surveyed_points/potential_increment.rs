@@ -108,10 +108,15 @@ where
                 };
                 let target_area = select_expansion(a, &target_area, &nonzero_rows)?;
                 let delta = select_expansion(a, &delta, &nonzero_rows)?;
-                let target_state = context
-                    .geometry
-                    .recover_query(a, &bands, &target_query)?
-                    .state;
+                let target_state = match &context.target_rows {
+                    Some(targets) => targets.state(a, Some(&nonzero_rows))?,
+                    None => {
+                        context
+                            .geometry
+                            .recover_query(a, &bands, &target_query)?
+                            .state
+                    }
+                };
                 let target =
                     admitted_analytic(a, &bands, &target_area, &target_state.depth, gravity)?;
                 let analytic = potential_analytic::difference(

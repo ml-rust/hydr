@@ -1,4 +1,4 @@
-use super::super::AreaQueryGeometry;
+use super::super::super::hydraulic_geometry::Constitutive;
 use crate::channel::{
     flow::surveyed::{
         analytic_bottom,
@@ -21,7 +21,7 @@ pub(super) fn refine<R>(
     a: &mut Arithmetic<'_, R>,
     bands: &GatheredBands<R>,
     source: &PrismaticAreaPointRecovery<R>,
-    target: &AreaQueryGeometry<R>,
+    target: &Constitutive<R>,
     current: &Interval<R>,
     gravity: f64,
 ) -> HydraulicResult<Interval<R>>
@@ -54,13 +54,13 @@ where
     let source_difference = a.expansion_interval(&source_difference)?;
     let supported = c.mul(
         &c.le(source_difference.upper(), zero.upper())?,
-        &c.le(target.state.area.upper(), &end)?,
+        &c.le(target.area.upper(), &end)?,
     )?;
     let rectangular = c.mul(&rectangular, &supported)?;
     let pointed = c.mul(&pointed, &supported)?;
     let source_area = a.expansion_interval(source.requested_areas_m2())?;
     let first = choose(a, &rectangular, &source_area, &zero)?;
-    let second = choose(a, &rectangular, &target.state.area, &zero)?;
+    let second = choose(a, &rectangular, &target.area, &zero)?;
     let first = scale(a, &first, 0.5)?;
     let second = scale(a, &second, 0.5)?;
     let mean = a.add(&first, &second)?;
@@ -69,7 +69,7 @@ where
     let rectangular_k = scale(a, &rectangular_k, gravity)?;
 
     let first = choose(a, &pointed, source.depth_m(), &zero)?;
-    let second = choose(a, &pointed, &target.state.depth, &zero)?;
+    let second = choose(a, &pointed, &target.depth, &zero)?;
     let maximum = a.bounds(
         &c.maximum(first.lower(), second.lower())?,
         &c.maximum(first.upper(), second.upper())?,
