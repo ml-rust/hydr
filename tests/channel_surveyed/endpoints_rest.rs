@@ -1,6 +1,6 @@
 //! Lake at rest on standalone surveyed reaches under every endpoint policy.
 //!
-//! Frozen criteria, `resource/surveyed-endpoint-attachments-plan.md` §6:
+//! Frozen criteria:
 //!
 //! - Lake at rest, standalone: `endpoints_rest.rs`: rectangle and three bands, 8 cells at rest,
 //!   each of `Stage(η)`, `Discharge(0)`, `QuiescentReservoir(η, k ∈ {0, 1})`, and a `FluxPort`

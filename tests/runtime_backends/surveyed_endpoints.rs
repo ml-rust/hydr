@@ -1,6 +1,6 @@
 //! Surveyed endpoint attachments on configured runtime clients.
 //!
-//! Frozen criterion (`resource/surveyed-endpoint-attachments-plan.md` section 6, "CUDA"):
+//! Frozen criterion, "CUDA":
 //! - Each run completes on the client.
 //! - Each run restarts bit for bit: restore and import continue to the uninterrupted result.
 //! - Cell volumes and momenta of the CUDA run equal the CPU run bit for bit, every interval.

@@ -2,7 +2,7 @@
 //!
 //! Criteria are frozen before any run. A test that misses one fails.
 //!
-//! Frozen criteria, `resource/surveyed-endpoint-attachments-plan.md` §6:
+//! Frozen criteria:
 //!
 //! - Flux port, standalone: rectangle and three bands, uniform state, exact physical flux at
 //!   both ends. Relative change of every `A` and `Q` `<= 1e-12` over 50 intervals. Each port

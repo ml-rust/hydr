@@ -1,6 +1,6 @@
 //! Restart of standalone surveyed reaches under every endpoint policy.
 //!
-//! Frozen criteria, `resource/surveyed-endpoint-attachments-plan.md` §6:
+//! Frozen criteria:
 //!
 //! - Restart, standalone: `endpoints_restart.rs`, every policy. Snapshot, restore, import, and
 //!   resume match the uninterrupted run bit for bit. A forged trace or reservoir receipt

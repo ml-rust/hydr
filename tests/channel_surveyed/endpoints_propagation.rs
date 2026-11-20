@@ -1,6 +1,6 @@
 //! Refinement of surveyed endpoint propagation against the frozen exact cell averages.
 //!
-//! Frozen criteria, `resource/surveyed-endpoint-attachments-plan.md` §6:
+//! Frozen criteria:
 //!
 //! - Propagation refinement: `endpoints_propagation.rs`: three bands, `20 m`, `g = 1`, initial
 //!   depth `1.5 m` at rest, meshes `25/50/100`, `t = 2 s`. `Stage` to `0.81 m` (rarefaction

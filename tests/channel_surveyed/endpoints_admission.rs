@@ -1,6 +1,6 @@
 //! Rejections of surveyed scalar endpoints outside the wet subcritical branch.
 //!
-//! Frozen criterion, `resource/surveyed-endpoint-attachments-plan.md` §6, "Rejections":
+//! Frozen criterion, "Rejections":
 //! dry, critical, supercritical and cap cases each reject with the entry's text. The reach
 //! state stays unchanged bit for bit.
 //!

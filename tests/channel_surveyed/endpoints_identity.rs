@@ -1,7 +1,6 @@
 //! Interior identity of a surveyed triangle profile with a triangular reach.
 //!
-//! Frozen criterion, `resource/surveyed-endpoint-attachments-plan.md` §6, "Interior identity,
-//! triangle": the triangle profile against a triangular reach with `first-order-reference`,
+//! Frozen criterion, "Interior identity, triangle": the triangle profile against a triangular reach with `first-order-reference`,
 //! same state, `Wall`/`Exterior` ends. At every interior face of the first interval, the
 //! surveyed flux enclosure and the triangular certified bracket intersect.
 //!

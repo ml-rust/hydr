@@ -1,6 +1,6 @@
 //! Certified surveyed scalar endpoint traces against the frozen 150-digit references.
 //!
-//! Frozen criteria, `resource/surveyed-endpoint-attachments-plan.md` §6:
+//! Frozen criteria:
 //!
 //! - Trace identity, rectangle and triangle: the frozen `channel_reservoir` fixtures and the
 //!   `channel_boundaries` literal rarefaction and shock traces, rerun on the rectangle and
