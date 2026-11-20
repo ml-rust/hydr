@@ -43,8 +43,12 @@ mod pools_orifice_fill;
 mod pools_reach_end;
 #[path = "surface_channels/pools_rest.rs"]
 mod pools_rest;
+#[path = "surface_channels/pools_reach_end_surveyed.rs"]
+mod pools_reach_end_surveyed;
 #[path = "surface_channels/pools_restart.rs"]
 mod pools_restart;
+#[path = "surface_channels/pools_restart_surveyed.rs"]
+mod pools_restart_surveyed;
 #[path = "surface_channels/pools_weir_drain.rs"]
 mod pools_weir_drain;
 #[path = "surface_channels/ports_dam_break.rs"]
@@ -65,12 +69,20 @@ mod ports_order;
 mod ports_rest;
 #[path = "surface_channels/ports_restart.rs"]
 mod ports_restart;
+#[path = "surface_channels/ports_restart_surveyed.rs"]
+mod ports_restart_surveyed;
 #[path = "surface_channels/ports_scenario.rs"]
 mod ports_scenario;
+#[path = "surface_channels/ports_sections.rs"]
+mod ports_sections;
 #[path = "surface_channels/ports_seiche.rs"]
 mod ports_seiche;
 #[path = "surface_channels/ports_step.rs"]
 mod ports_step;
+#[path = "surface_channels/ports_surveyed.rs"]
+mod ports_surveyed;
+#[path = "surface_channels/ports_surveyed_dam_break.rs"]
+mod ports_surveyed_dam_break;
 #[path = "surface_channels/ports_uniform.rs"]
 mod ports_uniform;
 #[path = "surface_channels/reference.rs"]
@@ -93,5 +105,10 @@ mod structures_pump_control;
 mod structures_reversal;
 #[path = "surface_channels/structures_surface_reach.rs"]
 mod structures_surface_reach;
+#[path = "surface_channels/structures_surface_reach_surveyed.rs"]
+mod structures_surface_reach_surveyed;
 #[path = "surface_channels/surveyed.rs"]
 mod surveyed;
+#[allow(dead_code)]
+#[path = "surface_channels/surveyed_references.rs"]
+mod surveyed_references;

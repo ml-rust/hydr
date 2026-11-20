@@ -33,7 +33,7 @@ use hydr::coupling::{
 };
 
 /// Interval of the full-span references, in s.
-const SPAN_S: f64 = 0.125;
+pub(crate) const SPAN_S: f64 = 0.125;
 
 /// Frozen allowance of the references: absolute plus relative.
 const REFERENCE: f64 = 1e-10;
@@ -42,7 +42,7 @@ const REFERENCE: f64 = 1e-10;
 const LAKE: f64 = 1e-11;
 
 /// Side index of a reach end in the reach child's traces and faces.
-fn side(end: ChannelEnd) -> usize {
+pub(crate) fn side(end: ChannelEnd) -> usize {
     match end {
         ChannelEnd::Left => 0,
         ChannelEnd::Right => 1,
@@ -50,14 +50,14 @@ fn side(end: ChannelEnd) -> usize {
 }
 
 /// Outward normal of a reach end.
-fn normal(end: ChannelEnd) -> f64 {
+pub(crate) fn normal(end: ChannelEnd) -> f64 {
     match end {
         ChannelEnd::Left => -1.0,
         ChannelEnd::Right => 1.0,
     }
 }
 
-fn near(actual: f64, expected: f64) {
+pub(crate) fn near(actual: f64, expected: f64) {
     assert!(
         (actual - expected).abs() <= REFERENCE + REFERENCE * expected.abs(),
         "actual={actual:e}, independent reference={expected:e}"
@@ -115,7 +115,7 @@ fn reach_definition(
 }
 
 /// The pool end of `end` into the pool `pool`, with `loss`.
-fn end_of(end: ChannelEnd, loss: f64) -> SurfaceChannelPoolEnd {
+pub(crate) fn end_of(end: ChannelEnd, loss: f64) -> SurfaceChannelPoolEnd {
     SurfaceChannelPoolEnd {
         entrance_loss_coefficient: loss,
         ..pool_end("end", end, "pool")
@@ -185,7 +185,7 @@ fn forcing(
 /// Fails unless the last interval pairs the pool end exactly: the pool-end volume against the
 /// reach face volume `face` of `end`, and the pool's incoming and outgoing volume against its
 /// sign. Checks the interval's mass, pairing, and composite balance too.
-fn check_pairing(batch: &Batch, end: ChannelEnd, face: usize) -> Result<f64> {
+pub(crate) fn check_pairing(batch: &Batch, end: ChannelEnd, face: usize) -> Result<f64> {
     check(batch, &[])?;
     let step = batch.last_step()?.ok_or("an accepted interval")?;
     let transfer = &step.pool_ends[0];

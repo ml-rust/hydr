@@ -21,12 +21,12 @@ const DECISIONS: [f64; 8] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
 /// Time of the checkpoint, in s. The interval before it ends at the decision at 2 s.
 const CHECKPOINT: f64 = 2.0;
 /// Intervals after the checkpoint.
-const AFTER: usize = 6;
+pub(crate) const AFTER: usize = 6;
 
 /// A pond fed by a pipe and by the reach's right end, draining onto the surface through a
 /// manual spill weir and an actuated outlet gate. A prescribed sluice joins the surface to the
 /// reach. A controlled pump lifts a sump onto the surface through a free outlet.
-fn case() -> Result<Case> {
+pub(crate) fn case() -> Result<Case> {
     let mut case = Case::tanks(0.0, 0.5);
     case.ponds = vec![
         (pond("pond", 0.0, 8.0, 2.0)?, 0.45 * 8.0),
@@ -111,7 +111,7 @@ fn pools() -> PoolForcing {
 }
 
 /// `batch` advanced to `CHECKPOINT`, each request at most `DT` and none past it.
-fn to_checkpoint(mut batch: Batch) -> Result<Batch> {
+pub(crate) fn to_checkpoint(mut batch: Batch) -> Result<Batch> {
     while batch.time() < CHECKPOINT {
         batch = step(&batch, (CHECKPOINT - batch.time()).min(DT), &pools())?;
     }
@@ -119,7 +119,7 @@ fn to_checkpoint(mut batch: Batch) -> Result<Batch> {
 }
 
 /// `batch` after `count` more intervals.
-fn run(mut batch: Batch, count: usize) -> Result<Batch> {
+pub(crate) fn run(mut batch: Batch, count: usize) -> Result<Batch> {
     for _ in 0..count {
         batch = step(&batch, DT, &pools())?;
     }
