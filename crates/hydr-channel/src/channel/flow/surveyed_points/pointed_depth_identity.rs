@@ -1,4 +1,7 @@
-use crate::channel::flow::surveyed::error::{Arithmetic, HydraulicResult};
+use crate::channel::flow::surveyed::{
+    error::{Arithmetic, HydraulicResult},
+    lane_split::Lanes,
+};
 use numr::{
     dtype::DType,
     ops::{
@@ -31,7 +34,6 @@ where
 {
     let c = a.client();
     let zero = Tensor::zeros(area.high().shape(), a.dtype(), c.device())?;
-    let one = Tensor::ones(area.high().shape(), a.dtype(), c.device())?;
     let candidate = c.midpoint(depth.lower(), depth.upper())?;
     let singleton_slope = c.mul(
         &c.eq(slope.lower(), slope.upper())?,
@@ -55,37 +57,40 @@ where
         )?,
     )?;
 
-    let candidate_point = a.expansion_point(&c.where_cond(&active, &candidate, &zero)?)?;
-    let slope_point = a.expansion_point(&c.where_cond(&active, slope.lower(), &one)?)?;
-    let proof_area = a.expansion_bounds(
-        &c.where_cond(&active, area.high(), &zero)?,
-        &c.where_cond(&active, area.low(), &zero)?,
-        &c.where_cond(&active, area.abs_error(), &zero)?,
-    )?;
-    let half = a.expansion_point(&c.mul_scalar(&one, 0.5)?)?;
-    let half_depth = a.expansion_mul(&candidate_point, &half)?;
-    // The proved band bounds give m*h <= end width and m*h²/2 <= end area.
-    // Halving before each product leaves headroom without changing the identity.
-    let half_width = a.expansion_mul(&slope_point, &half_depth)?;
-    let quarter_product = a.expansion_mul(&half_width, &half_depth)?;
-    let half_area = a.expansion_mul(&proof_area, &half)?;
-    let residual = a.expansion_sub(&quarter_product, &half_area)?;
-    let mut exact = c.mul(
-        &active,
-        &c.mul(
-            &c.eq(residual.high(), &zero)?,
-            &c.eq(residual.low(), &zero)?,
-        )?,
-    )?;
-    for value in [
-        &half_depth,
-        &half_width,
-        &quarter_product,
-        &half_area,
-        &residual,
-    ] {
-        exact = c.mul(&exact, &c.eq(value.abs_error(), &zero)?)?;
-    }
+    // The identity proof runs on active lanes only. Every other lane keeps its fallback.
+    let exact = match Lanes::of(c, &active)? {
+        None => active,
+        Some(lanes) => {
+            let candidate_point = a.expansion_point(&lanes.tensor(c, &candidate)?)?;
+            let slope_point = a.expansion_point(&lanes.tensor(c, slope.lower())?)?;
+            let proof_area = lanes.expansion(a, area)?;
+            let shape = candidate_point.high().shape();
+            let lane_zero = Tensor::zeros(shape, a.dtype(), c.device())?;
+            let lane_half = Tensor::full_scalar(shape, a.dtype(), 0.5, c.device())?;
+            let half = a.expansion_point(&lane_half)?;
+            let half_depth = a.expansion_mul(&candidate_point, &half)?;
+            // The proved band bounds give m*h <= end width and m*h²/2 <= end area.
+            // Halving before each product leaves headroom without changing the identity.
+            let half_width = a.expansion_mul(&slope_point, &half_depth)?;
+            let quarter_product = a.expansion_mul(&half_width, &half_depth)?;
+            let half_area = a.expansion_mul(&proof_area, &half)?;
+            let residual = a.expansion_sub(&quarter_product, &half_area)?;
+            let mut exact = c.mul(
+                &c.eq(residual.high(), &lane_zero)?,
+                &c.eq(residual.low(), &lane_zero)?,
+            )?;
+            for value in [
+                &half_depth,
+                &half_width,
+                &quarter_product,
+                &half_area,
+                &residual,
+            ] {
+                exact = c.mul(&exact, &c.eq(value.abs_error(), &lane_zero)?)?;
+            }
+            lanes.place(c, &zero, &exact)?
+        }
+    };
 
     let fallback = a.expansion_from_interval(depth)?;
     Ok(a.expansion_bounds(

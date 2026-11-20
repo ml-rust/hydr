@@ -12,6 +12,7 @@ pub(crate) mod equation_ops;
 pub(crate) mod error;
 pub(crate) mod integration;
 pub(crate) mod lane_quadrature;
+pub(crate) mod lane_split;
 pub(crate) mod output;
 pub(crate) mod potential_difference;
 pub(crate) mod potential_difference_derivatives;

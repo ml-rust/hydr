@@ -1,8 +1,9 @@
 use super::wave_curve_types::{CurveValue, ShockDomain, ShockOffset};
 use crate::channel::flow::surveyed::{
     PrismaticRiemannRejection,
-    equation_ops::{choose_expansion, reject_mask},
+    equation_ops::reject_mask,
     error::{Arithmetic, HydraulicResult},
+    lane_split::split_expansion,
 };
 use crate::channel::section::PressureEndpoint;
 use numr::{
@@ -97,17 +98,25 @@ where
         PrismaticRiemannRejection::QuadratureUnresolved,
         "shock curve lacks a proved normal contraction or positive normal finite offset quotient. Refine its complete certificates",
     )?;
-    let safe_offset = masked(a, &divide_offset, &offset, &one, &zero)?;
-    let safe_target = masked(a, &divide_offset, target, &one, &zero)?;
-    let safe_gap = masked(a, &divide_offset, &pressure.delta_area, &zero, &zero)?;
-    let quotient = a.expansion_div_positive(&safe_offset, &safe_target)?;
-    let gap_first = a.expansion_mul(&safe_gap, &quotient)?;
-    let ratio_gap = masked(a, &multiply_contraction, &pressure.delta_area, &zero, &zero)?;
-    let ratio_target = masked(a, &multiply_contraction, target, &one, &zero)?;
-    let safe_contraction = a.expansion_div_positive(&ratio_gap, &ratio_target)?;
-    let safe_offset = masked(a, &multiply_contraction, &offset, &one, &zero)?;
-    let ratio_first = a.expansion_mul(&safe_contraction, &safe_offset)?;
-    let retained = choose_expansion(a, &divide_offset, &gap_first, &ratio_first)?;
+    // The proof above leaves every lane in exactly one of the two orders.
+    let retained = split_expansion(
+        a,
+        &divide_offset,
+        |a, lanes| {
+            let offset = lanes.expansion(a, &offset)?;
+            let target = lanes.expansion(a, target)?;
+            let gap = lanes.expansion(a, &pressure.delta_area)?;
+            let quotient = a.expansion_div_positive(&offset, &target)?;
+            Ok(a.expansion_mul(&gap, &quotient)?)
+        },
+        |a, lanes| {
+            let gap = lanes.expansion(a, &pressure.delta_area)?;
+            let target = lanes.expansion(a, target)?;
+            let contraction = a.expansion_div_positive(&gap, &target)?;
+            let offset = lanes.expansion(a, &offset)?;
+            Ok(a.expansion_mul(&contraction, &offset)?)
+        },
+    )?;
     let projected = a.expansion_interval(&retained)?;
     let direct = a.mul(&physical_contraction, &offset_bounds)?;
     let physical = a.bounds(
@@ -256,7 +265,6 @@ where
         + RuntimeClient<R>,
 {
     let c = a.client();
-    let zero = Tensor::zeros(source.high().shape(), a.dtype(), c.device())?;
     let one = Tensor::ones(source.high().shape(), a.dtype(), c.device())?;
     let source_bounds = a.expansion_interval(source)?;
     let target_bounds = a.expansion_interval(target)?;
@@ -264,44 +272,26 @@ where
         &c.lt(source_bounds.upper(), &one)?,
         &c.ge(target_bounds.upper(), &one)?,
     )?;
-    let quotient_first = c.eq(&product_first, &zero)?;
     let source_root = a.expansion_sqrt_nonnegative(source)?;
     let target_root = a.expansion_sqrt_nonnegative(target)?;
     let secant_root = a.sqrt_nonnegative(secant)?;
     let secant_root = a.expansion_from_interval(&secant_root)?;
-    let pk = masked(a, &product_first, &secant_root, &one, &zero)?;
-    let pa = masked(a, &product_first, &target_root, &one, &zero)?;
-    let ps = masked(a, &product_first, &source_root, &one, &zero)?;
-    let product = a.expansion_mul(&pk, &pa)?;
-    let product = a.expansion_div_positive(&product, &ps)?;
-    let qk = masked(a, &quotient_first, &secant_root, &one, &zero)?;
-    let qa = masked(a, &quotient_first, &target_root, &one, &zero)?;
-    let qs = masked(a, &quotient_first, &source_root, &one, &zero)?;
-    let quotient = a.expansion_div_positive(&qa, &qs)?;
-    let quotient = a.expansion_mul(&qk, &quotient)?;
-    Ok(choose_expansion(a, &product_first, &product, &quotient)?)
-}
-
-fn masked<R>(
-    a: &mut Arithmetic<'_, R>,
-    mask: &Tensor<R>,
-    value: &CertifiedExpansion<R>,
-    fallback: &Tensor<R>,
-    zero: &Tensor<R>,
-) -> HydraulicResult<CertifiedExpansion<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: TensorOps<R>
-        + CompareOps<R>
-        + NextRepresentableOps<R>
-        + ScalarOps<R>
-        + TwoSumOps<R>
-        + RuntimeClient<R>,
-{
-    let c = a.client();
-    Ok(a.expansion_bounds(
-        &c.where_cond(mask, value.high(), fallback)?,
-        &c.where_cond(mask, value.low(), zero)?,
-        &c.where_cond(mask, value.abs_error(), zero)?,
-    )?)
+    split_expansion(
+        a,
+        &product_first,
+        |a, lanes| {
+            let k = lanes.expansion(a, &secant_root)?;
+            let ta = lanes.expansion(a, &target_root)?;
+            let s = lanes.expansion(a, &source_root)?;
+            let product = a.expansion_mul(&k, &ta)?;
+            Ok(a.expansion_div_positive(&product, &s)?)
+        },
+        |a, lanes| {
+            let k = lanes.expansion(a, &secant_root)?;
+            let ta = lanes.expansion(a, &target_root)?;
+            let s = lanes.expansion(a, &source_root)?;
+            let quotient = a.expansion_div_positive(&ta, &s)?;
+            Ok(a.expansion_mul(&k, &quotient)?)
+        },
+    )
 }
