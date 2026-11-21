@@ -116,6 +116,10 @@ static CULVERT_OUTLET: ComponentCapabilities = ComponentCapabilities {
             "A row whose march comparisons are not certified, whose critical depth lies below the search floor, or whose start sits too close to a normal-depth pole reports Unresolved with NaN bounds.",
         ),
         limit(
+            "conveyance-peak-hull",
+            "Near a circle's conveyance peak capacity S - Sf nearly vanishes at the peak depth. Where it falls within rounding of zero inside a profile, the march holds no distance past that point. A profile that has not covered the barrel before it holds the hull from the last certified depth to the crown with full flow beyond, or to the far bound of the normal depth.",
+        ),
+        limit(
             "inlet-energy-dip",
             "Where (1 + ke) Fr^2 > 1 at the inlet depth, y + (1 + ke) V^2/(2g) falls as that depth rises, so HW_o can fall as the tailwater drowns a steep inlet.",
         ),

@@ -16,8 +16,8 @@ mod scan;
 mod steep;
 
 use super::March;
+use super::coordinates::depth;
 use super::depth::depth_at;
-use super::integrand::depth;
 use super::levels::Accuracy;
 use super::partition::{LANES, build};
 use super::trig::fill;

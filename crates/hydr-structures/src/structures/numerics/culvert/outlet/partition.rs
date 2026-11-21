@@ -5,23 +5,30 @@
 //! lane is longer than its distance to the nearer end, or than `1/16`. Lanes near an end stay
 //! short where `G` vanishes at a critical start and where it grows near a normal-depth pole.
 //!
-//! An asymptotic profile ends at the bound of a normal depth that the profile never reaches. Its
-//! nodes keep `2^-36 |v_limit|` from that bound, its last lane is empty and its last node stands
-//! for an infinite distance.
+//! An asymptotic profile ends at the near bound of the normal-depth enclosure, the pole it
+//! approaches. Its nodes keep `2^-36 |v_limit|` from that bound and its last lane is empty. Its
+//! last node stands for the pole: the distance there is infinite once the profile reaches the
+//! far bound of the enclosure, so every finite distance lies short of that far bound.
 //!
 //! Every lane is surveyed with the fewest panels. [`levels`](super::levels) then picks the
 //! panels each lane runs. A lane that starts past the distance scale keeps its survey.
+//!
+//! A lane whose integrand is not certified is unknown. Near a nearly double root of `S - Sf`,
+//! at the circle conveyance peak, the margin can fall below the rounding level. An unknown lane
+//! adds zero to the lower distance bounds. Every later node takes the distance scale as its
+//! upper bound, so no target up to that scale counts as reached there.
 
 use super::integrand::ProfileParams;
 use super::levels::{Accuracy, level_for};
-use super::quadrature::{PANELS, refine, simpson};
+use super::quadrature::{Enclosure, PANELS, refine, simpson};
 use super::trig::fill;
 use crate::structures::StructureError;
 use crate::structures::numerics::culvert::BarrelClient;
 use crate::structures::tensor::culvert::Bounds;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps, ShapeOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, CumulativeOps, IndexingOps, ScalarOps, ShapeOps,
+    UnaryOps,
 };
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -75,6 +82,8 @@ pub(crate) struct ProfileSpec<R: Runtime<DType = DType>> {
     pub(crate) start_error: Bounds<R>,
     /// Represented limit `v_l`.
     pub(crate) limit: Tensor<R>,
+    /// Far bound of the pole enclosure on asymptotic rows, `limit` elsewhere.
+    pub(crate) pole_far: Tensor<R>,
     /// Distance scale in metres that sets the quadrature budget: the barrel length to cover.
     pub(crate) scale: Tensor<R>,
 }
@@ -90,6 +99,11 @@ pub(crate) struct Profile<R: Runtime<DType = DType>> {
     pub(crate) remainder: Tensor<R>,
     /// Lane remainder budget per row `[m]`.
     pub(crate) budget: Tensor<R>,
+    /// 1 on lanes whose distance enclosure holds, 0 on unknown lanes `[m, LANES]`.
+    pub(crate) known: Tensor<R>,
+    /// 1 on nodes whose distance enclosure holds: no unknown lane lies before them
+    /// `[m, LANES + 1]`.
+    pub(crate) held: Tensor<R>,
 }
 
 /// 1 where an asymptotic limit lies ahead of the start along `sign`, with room for the guard.
@@ -205,33 +219,52 @@ where
     let start = c.stack(&starts, 1)?;
     let beyond = c.gt(&start.reshape(&[m * lanes])?, &scale)?;
     level = c.mul(&level, &c.sub(&fill(&level, 1.0)?, &beyond)?)?;
-    let [refined_lower, refined_upper] =
-        refine(c, &params, &left, &right, &level, 1, survey.bounds.clone())?;
-    // Both enclosures hold each lane integral, so their intersection does too.
-    let lower = c.maximum(&refined_lower, &survey.bounds[0])?;
-    let upper = c.minimum(&refined_upper, &survey.bounds[1])?;
+    let base = Enclosure {
+        bounds: survey.bounds.clone(),
+        known: survey.known.clone(),
+    };
+    let refined = refine(c, &params, [&left, &right], &level, 1, base)?;
+    let [refined_lower, refined_upper] = &refined.bounds;
+    // Both enclosures hold each lane integral the survey holds, so their intersection does too.
+    let lower = c.where_cond(
+        &survey.known,
+        &c.maximum(refined_lower, &survey.bounds[0])?,
+        refined_lower,
+    )?;
+    let upper = c.where_cond(
+        &survey.known,
+        &c.minimum(refined_upper, &survey.bounds[1])?,
+        refined_upper,
+    )?;
     let lower = lower.reshape(&[m, lanes])?;
     let upper = upper.reshape(&[m, lanes])?;
     let levels = level.reshape(&[m, lanes])?;
     let remainder = survey.remainder.reshape(&[m, lanes])?;
+    let known = refined.known.reshape(&[m, lanes])?;
 
-    let reach = with_interval_arithmetic(c, DType::F64, "culvert outlet profile distances", |a| {
-        let mut total = a.bounds(&spec.start_error[0], &spec.start_error[1])?;
-        let mut lows = vec![total.lower().clone()];
-        let mut highs = vec![total.upper().clone()];
-        for k in 0..lanes {
-            let piece = a.bounds(
-                &lower.narrow(1, k, 1)?.contiguous()?.reshape(&[m])?,
-                &upper.narrow(1, k, 1)?.contiguous()?.reshape(&[m])?,
-            )?;
-            total = a.add(&total, &piece)?;
-            lows.push(total.lower().clone());
-            highs.push(total.upper().clone());
-        }
-        let lows: Vec<&Tensor<R>> = lows.iter().collect();
-        let highs: Vec<&Tensor<R>> = highs.iter().collect();
-        Ok([a.client().stack(&lows, 1)?, a.client().stack(&highs, 1)?])
-    })?;
+    let [reach_low, reach_high] =
+        with_interval_arithmetic(c, DType::F64, "culvert outlet profile distances", |a| {
+            let mut total = a.bounds(&spec.start_error[0], &spec.start_error[1])?;
+            let mut lows = vec![total.lower().clone()];
+            let mut highs = vec![total.upper().clone()];
+            for k in 0..lanes {
+                let piece = a.bounds(
+                    &lower.narrow(1, k, 1)?.contiguous()?.reshape(&[m])?,
+                    &upper.narrow(1, k, 1)?.contiguous()?.reshape(&[m])?,
+                )?;
+                total = a.add(&total, &piece)?;
+                lows.push(total.lower().clone());
+                highs.push(total.upper().clone());
+            }
+            let lows: Vec<&Tensor<R>> = lows.iter().collect();
+            let highs: Vec<&Tensor<R>> = highs.iter().collect();
+            Ok([a.client().stack(&lows, 1)?, a.client().stack(&highs, 1)?])
+        })?;
+    // Nodes past an unknown lane take the distance scale as their upper bound.
+    let first = Tensor::<R>::ones(&[m, 1], DType::F64, &device)?;
+    let held = c.cat(&[&first, &c.cumprod(&known, 1)?], 1)?;
+    let capped = c.maximum(&reach_low, &wide(&spec.scale.reshape(&[m, 1])?)?)?;
+    let reach = [reach_low, c.where_cond(&held, &reach_high, &capped)?];
     Ok(Profile {
         spec,
         nodes,
@@ -239,6 +272,8 @@ where
         levels,
         remainder,
         budget,
+        known,
+        held,
     })
 }
 

@@ -59,7 +59,8 @@
 //! unknown.
 
 use super::March;
-use super::integrand::{ProfileParams, area, coordinate, shape, slopes};
+use super::coordinates::{area, coordinate};
+use super::integrand::{ProfileParams, shape, slopes};
 use super::jet::{self, Term};
 use super::trig::{fill, negate};
 use crate::structures::numerics::culvert::constants::CONVEYANCE_PEAK;

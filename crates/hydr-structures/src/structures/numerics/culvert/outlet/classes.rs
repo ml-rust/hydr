@@ -14,12 +14,18 @@
 //! takes the free-surface perimeter. Its falling profile from the crown is empty, so it leaves
 //! critical depth at the inlet.
 //!
+//! A rising row whose normal depth lies near the circle conveyance peak may pass the peak or
+//! stop below it, so its profile heads for the crown. Lanes past a root on the way stay
+//! unknown. An asymptotic profile records the far bound of its normal-depth enclosure.
+//!
 //! Every comparison is certified. A row whose comparison is not, or whose critical depth lies
 //! below the search floor, is unresolved.
 
-use super::integrand::{ProfileParams, coordinate, integrand, shape, slopes};
+use super::coordinates::coordinate;
+use super::integrand::{ProfileParams, integrand, shape, slopes};
 use super::jet::{self, exp_interval};
 use super::partition::{ProfileSpec, guarded};
+use super::screen::with_peak;
 use super::trig::fill;
 use crate::structures::numerics::culvert::constants::PI;
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, BarrelDepths, choose};
@@ -161,6 +167,7 @@ where
         &is(&normal.status, codes::NORMAL_BELOW_FLOOR)?,
     )?;
     let n_floor = is(&normal.status, codes::NORMAL_BELOW_FLOOR)?;
+    let n_near = is(&normal.status, codes::NORMAL_NEAR_CAPACITY)?;
     let n_none = or(
         &is(&normal.status, codes::NORMAL_ABOVE_CAPACITY)?,
         &is(&normal.status, codes::NORMAL_NON_POSITIVE_SLOPE)?,
@@ -275,6 +282,8 @@ where
         slope: outlet.slope.clone(),
         numerator: one.clone(),
         denominator: one.clone(),
+        peak: [zero.clone(), zero.clone()],
+        peak_excess: zero.clone(),
     };
     let section = shape(a, &barrel.circular, &outlet.beta, &v0, 1)?;
     let at_start = slopes(a, &base, &section)?;
@@ -300,7 +309,9 @@ where
     // Limits.
     let asym_up = and(&and(&up, &n_solved)?, &c.gt(&yn[0], h0.upper())?)?;
     let below_start = and(&n_root, &c.lt(&yn[1], h0.lower())?)?;
-    let crown_up = and(&up, &or(&n_none, &below_start)?)?;
+    // A rising row near capacity may pass the peak or stop below it, so it heads for the crown.
+    // A root on its way leaves the lanes past it unknown.
+    let crown_up = and(&up, &or(&or(&n_none, &below_start)?, &n_near)?)?;
     let start_depth = c.where_cond(&falling, rise, tailwater)?;
     let mild = and(
         &and(&n_root, &c.gt(&yn[0], &yc[1])?)?,
@@ -338,6 +349,9 @@ where
     let limit = c.where_cond(&active_raw, &limit, &represented)?;
     let sign = c.where_cond(&up, one, &fill(rise, -1.0)?)?;
     let asymptotic = or(&asym_up, &asym_down)?;
+    // The pole lies somewhere in the normal-depth enclosure, at most its far bound away.
+    let pole_far = c.where_cond(&up, v_yn.upper(), v_yn.lower())?;
+    let pole_far = c.where_cond(&asymptotic, &pole_far, &limit)?;
     let room = or(
         &not(&asymptotic)?,
         &guarded(c, &sign, &represented, &limit)?,
@@ -353,16 +367,17 @@ where
         denominator: c.mul(&sign, &fill(rise, -1.0)?)?,
         ..base
     };
+    let params = with_peak(a, params)?;
     let start_interval = a.bounds(&start[0], &start[1])?;
     let start_point = a.point(&start[0])?;
     let start_width = a.sub(&start_interval, &start_point)?;
-    let at_start = integrand(a, &params, &start_interval, 1)?;
+    let at_start = integrand(a, &params, &start_interval, 1, None)?;
     let start_value = jet::coefficient(a, &at_start.value, 0, rise)?;
     let start_error = sliver(a, start_width.upper(), &start_value)?;
     let end_interval = a.bounds(&end[0], &end[1])?;
     let end_point = a.point(&end[0])?;
     let end_width = a.sub(&end_interval, &end_point)?;
-    let at_end = integrand(a, &params, &end_interval, 1)?;
+    let at_end = integrand(a, &params, &end_interval, 1, None)?;
     let end_value = jet::coefficient(a, &at_end.value, 0, rise)?;
     let end_error = sliver(a, end_width.upper(), &end_value)?;
     let end_ok = or(&not(&finite)?, &at_end.valid)?;
@@ -377,6 +392,7 @@ where
         start_far: c.where_cond(&active, &far, &harmless[0])?,
         start_error: pick(c, &active, &start_error, &[zero.clone(), zero.clone()])?,
         limit: c.where_cond(&active, &limit, &harmless[0])?,
+        pole_far: c.where_cond(&active, &pole_far, &harmless[0])?,
         scale: c.where_cond(&active, &target[1], one)?,
     };
     Ok(Classes {

@@ -1,8 +1,8 @@
 //! Momentum gap `M(y2) - M(y_S2(x(y2)))` at S1 coordinates, and the S1 distance it needs.
 
 use super::super::March;
+use super::super::coordinates::depth;
 use super::super::depth::depth_at;
-use super::super::integrand::depth;
 use super::super::levels::Accuracy;
 use super::super::partition::Profile;
 use super::super::quadrature::integrate;
@@ -10,7 +10,7 @@ use super::super::trig::fill;
 use super::scan::Bracket;
 use super::steep::{Steep, momentum, pair};
 use crate::structures::StructureError;
-use crate::structures::numerics::culvert::BarrelClient;
+use crate::structures::numerics::culvert::{BarrelClient, choose};
 use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext, TensorOutletContext};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, ConditionalOps, IndexingOps};
@@ -37,16 +37,21 @@ where
     let left = c.minimum(point, &high)?;
     let right = c.maximum(point, &high)?;
     let params = profile.spec.params.select(c, owner)?;
-    let [piece_low, piece_high] = integrate(c, &params, &left, &right, &take(&b.level)?)?;
+    let piece = integrate(c, &params, &left, &right, &take(&b.level)?)?;
+    let [piece_low, piece_high] = &piece.bounds;
     let base = [take(&b.reach[0])?, take(&b.reach[1])?];
+    let far = take(&b.far_reach)?;
     Ok(with_interval_arithmetic(
         c,
         DType::F64,
         "culvert outlet jump distance",
         |a| {
-            let base = a.bounds(&base[0], &base[1])?;
-            let piece = a.bounds(&piece_low, &piece_high)?;
-            let total = a.add(&base, &piece)?;
+            let start = a.bounds(&base[0], &base[1])?;
+            let part = a.bounds(piece_low, piece_high)?;
+            let total = a.add(&start, &part)?;
+            // An unknown piece leaves the distance between the bracket nodes, where it rises.
+            let between = a.bounds(&base[0], &c.maximum(&base[0], &far)?)?;
+            let total = choose(a, &piece.known, &total, &between)?;
             Ok(pair(&total))
         },
     )?)

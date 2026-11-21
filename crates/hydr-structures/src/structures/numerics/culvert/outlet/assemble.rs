@@ -12,8 +12,8 @@
 //! `HW_o = h_in + (1 + ke) Q^2 / (2 g A^2)`. Unresolved rows hold NaN.
 
 use super::classes::Classes;
+use super::coordinates::{area, coordinate, depth};
 use super::depth::DepthEnclosure;
-use super::integrand::{area, coordinate, depth};
 use super::partition::{LANES, Profile};
 use super::trig::fill;
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose};

@@ -4,8 +4,10 @@
 //! node certified below `T` and the first node certified above it. Solvr certified bisection
 //! then encloses the root of `U(v) - T` between them, in the oriented coordinate `w = sign v`,
 //! with the slope floor from [`floor`]. Each residual integrates `G` from the nearer bracket
-//! node of a one-lane bracket. Where no floor holds, as next to a critical start, or where the
-//! upper node is the pole, the bracket itself is the enclosure.
+//! node of a one-lane bracket. Where no floor holds, as next to a critical start, where the
+//! bracket holds an unknown lane, or where the upper node is the pole, the bracket itself is the
+//! enclosure. At the pole it reaches the far bound of the normal-depth enclosure. A residual
+//! piece whose integrand is not certified takes the distances at both bracket nodes.
 
 use super::integrand::floor;
 use super::levels::{level_for, span_level};
@@ -125,14 +127,23 @@ where
     let level = span_level(c, &take(&profile.levels)?, &low_index, &high_index)?;
 
     let low = gather_column(c, &nodes, &low_index)?;
-    let high = gather_column(c, &nodes, &high_index)?;
+    let at_pole = c.mul(&asymptotic, &c.eq(&high_index, &lanes)?)?;
+    // Every finite distance lies short of the far bound of the pole enclosure.
+    let high = c.where_cond(
+        &at_pole,
+        &take(&profile.spec.pole_far)?,
+        &gather_column(c, &nodes, &high_index)?,
+    )?;
     let reach = [
         gather_column(c, &reach_low, &low_index)?,
         gather_column(c, &reach_high, &low_index)?,
     ];
     let unbracketed = c.eq(&below_count, &zero)?;
     let start = c.where_cond(&unbracketed, &far, &low)?;
-    let at_pole = c.mul(&asymptotic, &c.eq(&high_index, &lanes)?)?;
+    // A bracket over an unknown lane has no distance to bisect on.
+    let known = take(&profile.known)?;
+    let unknown = c.sub(&fill(&known, 1.0)?, &known)?;
+    let blind = span_level(c, &unknown, &low_index, &high_index)?;
     let floor_rows = c.minimum(&low, &high)?;
     let ceiling_rows = c.maximum(&low, &high)?;
     let params = profile.spec.params.select(c, rows)?;
@@ -143,7 +154,7 @@ where
     let valid = c.mul(&c.mul(wanted, &found)?, &ordered)?;
     let solvable = c.mul(
         &c.mul(&usable, &c.sub(&one, &at_pole)?)?,
-        &c.sub(&one, &unbracketed)?,
+        &c.mul(&c.sub(&one, &unbracketed)?, &c.sub(&one, &blind)?)?,
     )?;
     let bisect = c.mul(&valid, &solvable)?;
     // A bracket taken as the enclosure needs its upper node certified above the target.
@@ -309,7 +320,8 @@ where
     let piece_level = level_for(c, &predicted, &take(&b.budget)?)?;
     let level = c.where_cond(&single, &piece_level, &take(&b.level)?)?;
     let lane = params.select(c, owner)?;
-    let [piece_low, piece_high] = integrate(c, &lane, &left, &right, &level)?;
+    let piece = integrate(c, &lane, &left, &right, &level)?;
+    let [piece_low, piece_high] = &piece.bounds;
     let from = [take(&b.reach[0])?, take(&b.reach[1])?];
     let back = [take(&b.upper_reach[0])?, take(&b.upper_reach[1])?];
     let goal = [take(&target[0])?, take(&target[1])?];
@@ -318,12 +330,15 @@ where
         DType::F64,
         "culvert outlet depth residual",
         |a| {
-            let piece = a.bounds(&piece_low, &piece_high)?;
+            let part = a.bounds(piece_low, piece_high)?;
             let start = a.bounds(&from[0], &from[1])?;
-            let ahead = a.add(&start, &piece)?;
+            let ahead = a.add(&start, &part)?;
             let end = a.bounds(&back[0], &back[1])?;
-            let behind = a.sub(&end, &piece)?;
+            let behind = a.sub(&end, &part)?;
             let total = choose(a, &upward, &behind, &ahead)?;
+            // An unknown piece leaves the distance between its bracket nodes, where it rises.
+            let between = a.bounds(&from[0], &c.maximum(&from[0], &back[1])?)?;
+            let total = choose(a, &piece.known, &total, &between)?;
             let goal = a.bounds(&goal[0], &goal[1])?;
             let value = a.sub(&total, &goal)?;
             Ok([value.lower().clone(), value.upper().clone()])

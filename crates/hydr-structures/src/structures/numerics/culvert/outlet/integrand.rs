@@ -14,12 +14,12 @@
 //! denominator positive along a profile, so `G > 0` is the distance gained per unit of `v`.
 
 use super::jet::{self, Jet};
-use super::trig::{fill, negate, sin_cos};
+use super::trig::{fill, negate};
 use super::trig_ends::{sin_cos_ends, sin_cos_near};
-use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose};
+use crate::structures::numerics::culvert::{Arithmetic, BarrelClient};
 use crate::structures::tensor::culvert::Bounds;
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, UnaryOps};
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps, UnaryOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval};
@@ -44,6 +44,10 @@ pub(crate) struct ProfileParams<R: Runtime<DType = DType>> {
     pub(crate) numerator: Tensor<R>,
     /// `mu`: +1 where `S > Sf` along the profile, -1 where `Sf > S`.
     pub(crate) denominator: Tensor<R>,
+    /// Coordinate enclosure of the circle conveyance peak `s_K`.
+    pub(crate) peak: Bounds<R>,
+    /// Lower bound of `Sf(s_K) - S` on circle rows with `mu = -1`, `f64::MAX` elsewhere.
+    pub(crate) peak_excess: Tensor<R>,
 }
 
 impl<R: Runtime<DType = DType>> ProfileParams<R> {
@@ -65,6 +69,8 @@ impl<R: Runtime<DType = DType>> ProfileParams<R> {
             slope: take(&self.slope)?,
             numerator: take(&self.numerator)?,
             denominator: take(&self.denominator)?,
+            peak: pair(&self.peak)?,
+            peak_excess: take(&self.peak_excess)?,
         })
     }
 
@@ -83,6 +89,8 @@ impl<R: Runtime<DType = DType>> ProfileParams<R> {
             slope: take(&self.slope)?,
             numerator: take(&self.numerator)?,
             denominator: take(&self.denominator)?,
+            peak: pair(&self.peak)?,
+            peak_excess: take(&self.peak_excess)?,
         })
     }
 }
@@ -96,7 +104,7 @@ pub(crate) struct ShapeJets<R: Runtime<DType = DType>> {
 }
 
 /// `x / divisor` for an exact positive divisor.
-fn part<R>(
+pub(crate) fn part<R>(
     a: &mut Arithmetic<'_, R>,
     x: &Interval<R>,
     divisor: f64,
@@ -244,17 +252,21 @@ where
 pub(crate) struct Integrand<R: Runtime<DType = DType>> {
     pub(crate) value: Jet<R>,
     pub(crate) valid: Tensor<R>,
+    /// Lower bound of the signed denominator `mu (S - Sf)` over `v`, on rows inside `valid`.
+    pub(crate) denominator: Tensor<R>,
 }
 
 /// Encloses the integrand jet with `n` terms over the coordinate enclosure `v`.
 ///
-/// Rows whose area or signed denominator is not certified positive take harmless operands and
-/// report 0 in `valid`.
+/// `bound`, when given, is a known lower bound of the signed denominator over `v`. It replaces
+/// the interval lower bound where it is higher. Rows whose area or signed denominator is not
+/// certified positive take harmless operands and report 0 in `valid`.
 pub(crate) fn integrand<R>(
     a: &mut Arithmetic<'_, R>,
     params: &ProfileParams<R>,
     v: &Interval<R>,
     n: usize,
+    bound: Option<&Tensor<R>>,
 ) -> ArithmeticResult<Integrand<R>>
 where
     R: Runtime<DType = DType>,
@@ -277,7 +289,19 @@ where
     let excess = jet::sub(a, &slope, &friction)?;
     let signed = jet::scale(a, &excess, &mu)?;
     let base = jet::coefficient(a, &signed, 0, &like)?;
-    let positive = c.gt(base.lower(), &fill(&like, 0.0)?)?;
+    let (signed, lower, floor) = match bound {
+        // A tighter c_0 still encloses the denominator over v, so the jet stays an enclosure.
+        // A jet divides by c_0 four times. A c_0 that is positive only at rounding level would
+        // overflow, so jets need it to clear the rounding level of its upper end.
+        Some(known) => {
+            let lower = c.maximum(base.lower(), known)?;
+            let tight = a.bounds(&lower, &c.maximum(base.upper(), &lower)?)?;
+            let floor = c.mul_scalar(base.upper(), f64::EPSILON)?;
+            (signed.rebased(Rc::new(tight)), lower, floor)
+        }
+        None => (signed, base.lower().clone(), fill(&like, 0.0)?),
+    };
+    let positive = c.gt(&lower, &floor)?;
     let denominator = jet::choose(a, &positive, &signed, &unit)?;
     let ratio = jet::div(a, &numerator, &denominator)?;
     let stepped = jet::mul(a, &section.step, &ratio)?;
@@ -285,6 +309,7 @@ where
     Ok(Integrand {
         value: jet::scale(a, &stepped, &rise)?,
         valid: c.mul(&valid, &positive)?,
+        denominator: lower,
     })
 }
 
@@ -359,134 +384,4 @@ where
     let scaled = a.mul(&rise, &product)?;
     let bound = a.div_positive_interval(&scaled, &largest)?;
     Ok(c.where_cond(&usable, bound.lower(), &zero)?)
-}
-
-/// Coordinate `v` of a depth enclosure `[lower, upper]` in metres, clipped to the barrel.
-pub(crate) fn coordinate<R>(
-    a: &mut Arithmetic<'_, R>,
-    circular: &Tensor<R>,
-    rise: &Tensor<R>,
-    depth: &Interval<R>,
-) -> ArithmeticResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: BarrelClient<R>,
-{
-    let like = rise;
-    let s = a.div_positive(depth, rise)?;
-    let s = clip(a, &s, 0.0, 1.0)?;
-    let one = a.point(&fill(like, 1.0)?)?;
-    let two = a.point(&fill(like, 2.0)?)?;
-    let doubled = a.mul(&two, &s)?;
-    let cosine = a.sub(&one, &doubled)?;
-    // The exact cosine lies in [-1, 1]. Outward rounding may step one F64 past either end.
-    let cosine = clip(a, &cosine, -1.0, 1.0)?;
-    let angle = a.acos(&cosine)?;
-    choose(a, circular, &angle, &s)
-}
-
-/// Intersects `x` with `[low, high]`, collapsing an interval wholly outside to the nearer end.
-fn clip<R>(
-    a: &mut Arithmetic<'_, R>,
-    x: &Interval<R>,
-    low: f64,
-    high: f64,
-) -> ArithmeticResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: BarrelClient<R>,
-{
-    let c = a.client();
-    let like = x.lower();
-    let floor = fill(like, low)?;
-    let ceiling = fill(like, high)?;
-    let lower = c.minimum(&c.maximum(x.lower(), &floor)?, &ceiling)?;
-    let upper = c.maximum(&c.minimum(x.upper(), &ceiling)?, &floor)?;
-    a.bounds(&lower, &upper)
-}
-
-/// Depth in metres of a coordinate enclosure `v`.
-pub(crate) fn depth<R>(
-    a: &mut Arithmetic<'_, R>,
-    circular: &Tensor<R>,
-    rise: &Tensor<R>,
-    v: &Interval<R>,
-) -> ArithmeticResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: BarrelClient<R>,
-{
-    let like = rise;
-    let [_, cosine] = sin_cos(a, v)?;
-    let one = a.point(&fill(like, 1.0)?)?;
-    let gap = a.sub(&one, &cosine)?;
-    let circle = part(a, &gap, 2.0)?;
-    let s = choose(a, circular, &circle, v)?;
-    let s = clip(a, &s, 0.0, 1.0)?;
-    let d = a.point(rise)?;
-    a.mul(&d, &s)
-}
-
-/// Flow area in square metres of a coordinate enclosure `v` below the crown.
-pub(crate) fn area<R>(
-    a: &mut Arithmetic<'_, R>,
-    circular: &Tensor<R>,
-    beta: &Bounds<R>,
-    rise: &Tensor<R>,
-    v: &Interval<R>,
-) -> ArithmeticResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: BarrelClient<R>,
-{
-    let section = shape(a, circular, beta, v, 1)?;
-    let unit = jet::coefficient(a, &section.area, 0, rise)?;
-    let d = a.point(rise)?;
-    let square = a.mul(&d, &d)?;
-    a.mul(&square, &unit)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::structures::StructureError;
-    use numr::runtime::cpu::{CpuDevice, CpuRuntime};
-    use solvr::common::arithmetic::with_interval_arithmetic;
-
-    #[test]
-    fn coordinates_round_trip_and_areas_match_closed_forms() -> Result<(), StructureError> {
-        let device = CpuDevice::new();
-        let client = CpuRuntime::default_client(&device);
-        let tensor =
-            |values: &[f64]| Tensor::<CpuRuntime>::from_slice(values, &[values.len()], &device);
-        let circular = tensor(&[1.0, 0.0])?;
-        let rise = tensor(&[2.0, 1.5])?;
-        let beta = [tensor(&[1.0, 4.0 / 3.0])?, tensor(&[1.0, 4.0 / 3.0])?];
-        let depths = tensor(&[1.0, 0.6])?;
-        let [back, square] = with_interval_arithmetic(&client, DType::F64, "coordinates", |a| {
-            let y = a.point(&depths)?;
-            let v = coordinate(a, &circular, &rise, &y)?;
-            let back = depth(a, &circular, &rise, &v)?;
-            let square = area(a, &circular, &beta, &rise, &v)?;
-            Ok([
-                [
-                    back.lower().try_to_vec::<f64>()?,
-                    back.upper().try_to_vec::<f64>()?,
-                ],
-                [
-                    square.lower().try_to_vec::<f64>()?,
-                    square.upper().try_to_vec::<f64>()?,
-                ],
-            ])
-        })?;
-        // A half-full circle of diameter 2 holds pi/2. The box holds B y = 2 x 0.6.
-        let exact = [(1.0, std::f64::consts::FRAC_PI_2), (0.6, 1.2)];
-        for (row, (y, area)) in exact.into_iter().enumerate() {
-            assert!(back[0][row] <= y && y <= back[1][row], "row={row}");
-            assert!(back[1][row] - back[0][row] < 1e-14, "row={row}");
-            assert!(square[0][row] <= area * (1.0 + 1e-15), "row={row}");
-            assert!(area * (1.0 - 1e-15) <= square[1][row], "row={row}");
-        }
-        Ok(())
-    }
 }

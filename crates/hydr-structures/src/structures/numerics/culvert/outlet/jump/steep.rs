@@ -1,9 +1,11 @@
 //! The supercritical profile S2 of each inlet-critical row, and the momentum function.
 
 use super::super::March;
-use super::super::integrand::{ProfileParams, coordinate, integrand};
+use super::super::coordinates::coordinate;
+use super::super::integrand::{ProfileParams, integrand};
 use super::super::jet;
 use super::super::partition::{ProfileSpec, guarded};
+use super::super::screen::with_peak;
 use super::super::trig::fill;
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, section};
 use crate::structures::tensor::codes;
@@ -68,7 +70,8 @@ where
         denominator: one.clone(),
         ..march.profile.spec.params.clone()
     };
-    let at_start = integrand(a, &params, &v_c, 1)?;
+    let params = with_peak(a, params)?;
+    let at_start = integrand(a, &params, &v_c, 1, None)?;
     let value = jet::coefficient(a, &at_start.value, 0, rise)?;
     let start = a.point(v_c.lower())?;
     let width = a.sub(&v_c, &start)?;
@@ -95,6 +98,7 @@ where
             c.where_cond(&active, &error[1], zero)?,
         ],
         limit: keep(v_n.upper())?,
+        pole_far: keep(v_n.lower())?,
         scale: c.where_cond(&active, &outlet.length, one)?,
     };
     let falling = &classes.falling;

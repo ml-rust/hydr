@@ -53,6 +53,15 @@ impl<R: Runtime<DType = DType>> Jet<R> {
     pub(crate) fn term(&self, k: usize) -> Option<&Term<R>> {
         self.terms.get(k).and_then(Option::as_ref)
     }
+
+    /// The jet with `c_0` replaced by `base`.
+    pub(crate) fn rebased(&self, base: Term<R>) -> Self {
+        let mut terms = self.terms.clone();
+        if let Some(slot) = terms.get_mut(0) {
+            *slot = Some(base);
+        }
+        Self { terms }
+    }
 }
 
 /// Coefficient `c_k` with an exact zero materialized in the shape of `like`.

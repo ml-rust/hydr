@@ -30,3 +30,6 @@ mod layouts;
 
 #[path = "culvert_laws/sweep.rs"]
 mod sweep;
+
+#[path = "culvert_laws/capacity.rs"]
+mod capacity;

@@ -47,7 +47,7 @@ const SOURCES: [(&str, &str); 5] = [
     ),
     (
         OUTLET_SHA256,
-        "e984c39beb374e309b57841a48ebefb316c7748fcc76cb64e6c48f44c33469dc",
+        "a4094a5ada4d420d3e83ffc3226bf904b93832901db916292c9edafb3eab92ba",
     ),
     (
         PUBLISHED_SHA256,
@@ -346,7 +346,7 @@ fn outlet_rows_cover_each_regime() -> TestResult {
         Outlet::CriticalWithFullExit,
     ]
     .map(|regime| count(PROFILE_ROWS, |r| r.regime == regime));
-    if regimes != [2, 15, 6, 2, 1] || FULL_ROWS.len() != 18 {
+    if regimes != [2, 28, 6, 2, 1] || FULL_ROWS.len() != 18 {
         return Err(format!(
             "profile regimes {regimes:?}, {} full rows",
             FULL_ROWS.len()

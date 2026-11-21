@@ -52,7 +52,7 @@ fn profile_rows_lie_inside_their_enclosures_within_the_frozen_tolerance() -> Tes
         .map(lane)
         .collect::<Result<Vec<_>, _>>()?;
     let found = headwater(&lanes)?;
-    if found.len() != PROFILE_ROWS.len() || PROFILE_ROWS.len() != 26 {
+    if found.len() != PROFILE_ROWS.len() || PROFILE_ROWS.len() != 39 {
         return Err(format!("{} rows for {} references", found.len(), PROFILE_ROWS.len()).into());
     }
     let tolerance = PROFILE_RELATIVE_TOLERANCE;

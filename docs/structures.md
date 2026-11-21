@@ -874,6 +874,8 @@ Zero and adverse slopes have no normal depth. Their profiles rise to the crown. 
 
 Solvr certified Simpson integrates the profile in a smooth coordinate: the half angle `phi` of a circle and `y/D` of a box. Order-4 Taylor jets bound the fourth derivative on each panel. The lanes are graded toward both ends of the profile. Solvr certified bisection then finds the depth where the profile covers the barrel.
 
+Near a circle's conveyance peak capacity, `S - Sf` nearly vanishes at the peak depth `0.9381812 D`. `Sf` falls with depth up to that peak and rises past it. So each jet takes its lower bound of `|S - Sf|` from the panel ends and, where the panel may hold the peak, from `Sf` at the peak. A profile node whose margin still lies within rounding of zero ends the certified distances. A profile that has not covered the barrel by then holds a hull, as the limits below state.
+
 ### Read a jump
 
 `jump(discharge_m3_per_s, tailwater_m)` runs the same march. It returns a `CulvertOutletJump`, whose `headwater()` holds the headwater rows. `project()` gives one `CulvertOutletJumpRow` per row:
@@ -899,7 +901,8 @@ The supercritical profile starts at critical depth at the inlet. Along a profile
 
 | Check | Criterion |
 | --- | --- |
-| [Reference rows](../tests/culvert_outlets/corpus.rs) | All 18 independent full-barrel rows lie inside their enclosures within `2^-40` relative. All 26 profile rows, six with critical depth at or near the crown, lie within `1e-9` relative in headwater and inlet head. Jump positions lie within `1e-6 L`, jump and outlet depths within `1e-9` relative. |
+| [Reference rows](../tests/culvert_outlets/corpus.rs) | All 18 independent full-barrel rows lie inside their enclosures within `2^-40` relative. All 39 profile rows lie within `1e-9` relative in headwater and inlet head. Six have critical depth at or near the crown. Thirteen run a circle through its conveyance peak capacity, on both sides of it and at the F64 discharges next to it. Jump positions lie within `1e-6 L`, jump and outlet depths within `1e-9` relative. |
+| [Peak capacity](../tests/culvert_outlets/capacity.rs) | A circle resolves through its conveyance peak capacity at two tailwaters, and at 64 F64 discharges on each side of it. Its headwater never falls, and each enclosure stays within `1e-9` relative. |
 | [Published rows](../tests/culvert_outlets/published.rs) | HDS-5 design-example full-barrel losses lie within their published tolerance |
 | [Sweeps](../tests/culvert_outlets/sweep.rs) | Headwater never falls as discharge rises. It falls with rising tailwater only where `(1 + ke) Fr^2 > 1` at the inlet. It is continuous where the outlet turns full, the tailwater crosses critical depth, a profile reaches the crown, a full outlet falls to the crown, and a drowned steep profile reaches critical depth. |
 | [Crown sweeps](../tests/culvert_outlets/crown.rs) | A steep box resolves through its critical capacity and its headwater never falls. It is continuous at the capacity and where a full outlet head reaches the crown at the inlet. It steps up by `(Sf_full - S) L` where it primes, and every discharge next to that step resolves. |
@@ -919,6 +922,7 @@ A [CUDA check](../tests/runtime_backends/culvert_outlets.rs) compares every refe
 - A box primes where free-surface friction at the crown reaches the slope. Above its critical capacity, `HW_o` steps up there by `(Sf_full - S) L`, because box friction uses the perimeter `B + 2D` below the crown and `2 (B + D)` when full. A circle has no such step.
 - A row with `yc = D` whose crown comparison is not certified holds the hull of both outcomes: the inlet at the crown and the barrel full to the inlet.
 - A row is `Unresolved` when another comparison of the march is not certified, its critical depth lies below `2^-30 D`, or its start lies within `2^-34` of a normal-depth pole.
+- Near a circle's conveyance peak capacity, `S - Sf` can lie within rounding of zero inside a profile. The march holds no distance past that point. A profile that has not covered the barrel before it holds a hull. A rising profile spans from the last certified depth to the crown, with full flow beyond. A profile toward a normal depth spans to the far bound of the normal-depth enclosure.
 - A row with `yc = D` and a full outlet segment has no located jump.
 - A jump is located only when the subcritical profile is free at the outlet and friction falls with depth across the jump.
 - Barrel storage is not represented. Queries hold no state.
@@ -1040,6 +1044,7 @@ A tie takes the larger of both controls. The bound is capped at `2^256` per metr
 | [Round trip and selection](../tests/culvert_laws/round_trip.rs) | `Q(HW(Q))` returns `Q` within `1e-6` on mild, adverse, and level barrels. The regime names the larger control. A drowned crossing of both controls reports a tie. |
 | [Heads](../tests/culvert_laws/heads.rs) | Reversed heads negate the discharge with the B-end inlet. One-end reversal, equal heads, and dry donors give exact zero. Free outfalls agree bit for bit. Zero-discharge headwaters give exact zero. |
 | [Sweeps](../tests/culvert_laws/sweep.rs) | Discharge rises across the inlet bands and stays continuous at both anchors. It stays continuous where the outlet turns full. |
+| [Peak capacity](../tests/culvert_laws/capacity.rs) | On a circle run through its conveyance peak capacity at two tailwaters, `Q(HW(Q))` returns `Q` within `1e-6` under outlet control. Discharge rises with the donor head across that range. |
 | Sensitivity unit tests | The bound holds against a centred difference on inlet and drowned lanes, and over head grids on mild, adverse, zero-slope, steep drowned, and priming barrels. No flowing lane takes the cap. |
 | [Layouts](../tests/culvert_laws/layouts.rs) | Widths 1, 33, and 65 with weirs. Every lane equals its single-lane result bit for bit. |
 

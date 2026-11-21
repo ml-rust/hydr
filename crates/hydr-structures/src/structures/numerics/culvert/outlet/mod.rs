@@ -14,6 +14,7 @@
 
 mod assemble;
 mod classes;
+mod coordinates;
 mod depth;
 mod integrand;
 mod jet;
@@ -21,6 +22,7 @@ pub(crate) mod jump;
 mod levels;
 mod partition;
 mod quadrature;
+mod screen;
 mod slope;
 mod trig;
 mod trig_ends;

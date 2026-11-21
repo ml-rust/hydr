@@ -1,8 +1,9 @@
 //! Jump classification at the outlet, and the S1 node bracket of the momentum zero.
 
 use super::super::March;
+use super::super::coordinates::{area, coordinate, depth};
 use super::super::depth::DepthEnclosure;
-use super::super::integrand::{area, coordinate, depth, floor, shape, slopes};
+use super::super::integrand::{floor, shape, slopes};
 use super::super::jet;
 use super::super::levels::span_level;
 use super::super::partition::LANES;
@@ -32,6 +33,8 @@ pub(super) struct Bracket<R: Runtime<DType = DType>> {
     pub(super) high: Tensor<R>,
     /// S1 distance from the outlet at `high`.
     pub(super) reach: Bounds<R>,
+    /// Upper S1 distance bound at `low`.
+    pub(super) far_reach: Tensor<R>,
     pub(super) slope: Tensor<R>,
     /// Supercritical depth at the outlet.
     pub(super) outlet: Bounds<R>,
@@ -125,7 +128,8 @@ where
             &c.index_select(&steep.momentum_scale[0], 0, &lane_rows)?,
             &c.index_select(&steep.momentum_scale[1], 0, &lane_rows)?,
         )?;
-        let ok = tail(&solved)?;
+        // A node past an unknown S1 lane has no distance, so its S2 target holds nothing.
+        let ok = c.mul(&tail(&solved)?, &profile.held.reshape(&[m * count])?)?;
         let v_node = profile.nodes.reshape(&[m * count])?;
         let node = a.point(&harmless(&v_node, &ok)?)?;
         let y2 = depth(a, &lanes.circular, &lanes.rise, &node)?;
@@ -197,7 +201,10 @@ where
         let bound = a.mul(&gain, &g1)?;
         Ok(c.where_cond(&usable, bound.lower(), zero)?)
     })?;
-    let usable = c.gt(&slope, zero)?;
+    // A bracket over an unknown S1 lane has no distance to bisect on.
+    let unknown = c.sub(&fill(&profile.known, 1.0)?, &profile.known)?;
+    let blind = span_level(c, &unknown, &low_index, &high_index)?;
+    let usable = c.mul(&c.gt(&slope, zero)?, &c.sub(one, &blind)?)?;
     let bisect = c.mul(&bracketed, &usable)?;
     let direct = c.sub(&bracketed, &bisect)?;
     Ok(Bracket {
@@ -208,6 +215,7 @@ where
         low: v_low,
         high: v_high,
         reach,
+        far_reach: column(c, &profile.reach[1], &high_index)?,
         slope: c.where_cond(&usable, &slope, one)?,
         outlet: outlet_depth,
         level: span_level(c, &profile.levels, &low_index, &high_index)?,

@@ -37,3 +37,6 @@ mod layouts;
 
 #[path = "culvert_outlets/admission.rs"]
 mod admission;
+
+#[path = "culvert_outlets/capacity.rs"]
+mod capacity;
