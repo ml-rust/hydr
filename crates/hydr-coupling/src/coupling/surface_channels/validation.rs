@@ -2,12 +2,17 @@
 
 use super::bank_links::check_links;
 use super::bindings::{
-    LinkBindings, STRUCTURE_EXCHANGE_BINDING_PREFIX, binding_ids, coordinated_definition,
+    LinkBindings, STRUCTURE_EXCHANGE_BINDING_PREFIX, binding_ids, channel_cells,
+    coordinated_definition,
 };
 use super::operating::check_manual;
 use super::pool_ends::{CheckedPoolEnd, check_pool_ends};
 use super::pools::{CheckedPools, SurfaceChannelPools, check_attached, check_pools};
 use super::ports::{CheckedPort, check_ports};
+use super::runoff::{
+    CheckedRunoff, RUNOFF_ATTACHMENT_BINDING_PREFIX, append_lateral_bindings,
+    check_caller_pool_inflows, check_runoff,
+};
 use super::structures::{CheckedStructure, check_structures};
 use super::{SurfaceChannelError, SurfaceChannelLink, SurfaceChannelSetup};
 use crate::channel::ChannelReachDefinition;
@@ -56,6 +61,8 @@ pub struct SurfaceChannelDefinition {
     pub(super) pools: Option<CheckedPools>,
     /// Admitted pool ends in ascending identity order.
     pub(super) pool_ends: Vec<CheckedPoolEnd>,
+    /// Admitted runoff with its compiled plan, or `None` without runoff.
+    pub(super) runoff: Option<CheckedRunoff>,
 }
 
 impl SurfaceChannelDefinition {
@@ -86,8 +93,9 @@ impl SurfaceChannelDefinition {
     /// - a crest below the surface bed or the channel bed; a surveyed channel bed is the
     ///   minimum elevation of its section
     /// - gravity or vertical datum differing between the surface and a reach
-    /// - a caller lateral binding using the `surface-exchange:` prefix, or the
-    ///   `structure-exchange:` prefix (`reserved-binding-prefix`)
+    /// - a caller lateral binding using the `surface-exchange:` prefix, the
+    ///   `structure-exchange:` prefix, or the `runoff-attachment:` prefix, or a caller pool
+    ///   inflow binding using the `runoff-attachment:` prefix (`reserved-binding-prefix`)
     /// - `maximum_step_s` above the surface or a reach `max_step`
     /// - `minimum_step_s` below the surface or a reach `min_step`
     /// - `retry_limit` above the surface `max_retries`
@@ -136,6 +144,20 @@ impl SurfaceChannelDefinition {
     /// - an end cell bed below the pool origin (`unobstructed-pool-connection`)
     /// - a reach end with a port or a second pool end (`reach-end-ownership`)
     /// - a nonfinite or negative entrance loss (`pool-end-regime`)
+    ///
+    /// Runoff rejects for:
+    /// - a support plan that fails against the surface domain and open faces (`runoff-plan`)
+    /// - nonzero surface rain on a suppressed cell in any interval (`suppressed-rain`)
+    /// - pool rain support of an unknown pool (`pool-support`)
+    /// - an outlet that names no active modelled outlet, or an active outlet without a
+    ///   destination (`unmapped-runoff-outlet`), or an outlet bound twice
+    ///   (`duplicate-runoff-outlet`)
+    /// - an empty outlet identity or evidence, or a nonfinite invert (`runoff-free-outlet`)
+    /// - an inactive, off-grid, or repeated surface cell, an unknown reach, an out-of-range or
+    ///   repeated reach cell, an unknown pool, an empty target list, or a weight that is
+    ///   nonfinite or not positive (`runoff-destination`)
+    /// - a caller pool inflow binding whose physical support names an active modelled source
+    ///   or one of its atoms (`runoff-duplicate-writer`)
     pub fn new(setup: SurfaceChannelSetup) -> Result<Self, SurfaceChannelError> {
         let pools = SurfaceChannelPools::of(&setup);
         let structures = setup.structures.clone();
@@ -201,6 +223,8 @@ impl SurfaceChannelDefinition {
         if let Some(pools) = &pools {
             check_attached(pools, &structures, &pool_ends)?;
         }
+        let runoff = check_runoff(&setup, &reach_index, pools.as_ref())?;
+        check_caller_pool_inflows(&setup.pool_inflows, runoff.as_ref())?;
         let surface_cells: Vec<usize> = setup
             .links
             .iter()
@@ -259,9 +283,17 @@ impl SurfaceChannelDefinition {
             .reaches
             .iter()
             .zip(&per_reach)
-            .map(|(reach, links)| {
+            .enumerate()
+            .map(|(index, (reach, links))| {
                 let links: Vec<LinkBindings<'_>> = links.values().copied().collect();
-                coordinated_definition(reach, &links, &setup.storage_exclusion_evidence)
+                let mut definition =
+                    coordinated_definition(reach, &links, &setup.storage_exclusion_evidence);
+                if let Some(runoff) = &runoff {
+                    let cells = channel_cells(&reach.definition);
+                    let ids: Vec<&str> = cells.iter().map(|(id, _)| *id).collect();
+                    append_lateral_bindings(runoff, index, &ids, &mut definition);
+                }
+                definition
             })
             .collect();
         let definition = Self {
@@ -273,6 +305,7 @@ impl SurfaceChannelDefinition {
             structures,
             pools,
             pool_ends,
+            runoff,
         };
         if definition.setup.operating.is_none() {
             check_manual(&definition)?;
@@ -372,15 +405,26 @@ fn check_reaches(
                 reach.id, binding.boundary_id
             )));
         }
-        if let Some(binding) = definition.lateral_bindings.iter().find(|binding| {
-            binding
-                .boundary_id
-                .starts_with(STRUCTURE_EXCHANGE_BINDING_PREFIX)
-        }) {
-            return Err(SurfaceChannelError::input(format!(
-                "reserved-binding-prefix: reach={:?} lateral binding {:?} uses the reserved prefix {STRUCTURE_EXCHANGE_BINDING_PREFIX:?}: rename the binding; the coordinator synthesizes structure-exchange bindings from structure links",
-                reach.id, binding.boundary_id
-            )));
+        for (prefix, source) in [
+            (
+                STRUCTURE_EXCHANGE_BINDING_PREFIX,
+                "structure-exchange bindings from structure links",
+            ),
+            (
+                RUNOFF_ATTACHMENT_BINDING_PREFIX,
+                "runoff bindings from runoff outlets",
+            ),
+        ] {
+            if let Some(binding) = definition
+                .lateral_bindings
+                .iter()
+                .find(|binding| binding.boundary_id.starts_with(prefix))
+            {
+                return Err(SurfaceChannelError::input(format!(
+                    "reserved-binding-prefix: reach={:?} lateral binding {:?} uses the reserved prefix {prefix:?}: rename the binding; the coordinator synthesizes {source}",
+                    reach.id, binding.boundary_id
+                )));
+            }
         }
         let config = &setup.config;
         if config.maximum_step_s > definition.config.max_step {

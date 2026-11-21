@@ -150,6 +150,7 @@ fn forcing(setup: &SurfaceChannelSetup, start: f64, end: f64) -> SurfaceChannelF
         }],
         pool_sources: None,
         pool_inflows: vec![inflow_input("feed", rate(0.05))],
+        runoff: Vec::new(),
     }
 }
 

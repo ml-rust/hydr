@@ -300,6 +300,7 @@ impl Tanks {
             structures: Vec::new(),
             pool_ends: Vec::new(),
             operating: None,
+            runoff: None,
             storage_exclusion_evidence: "The reach tank lies outside the surface cell".into(),
             config: SurfaceChannelConfig {
                 head_absolute_m: HEAD_ALLOWANCE,
@@ -331,6 +332,7 @@ impl Tanks {
                 },
             )],
             pools: Vec::new(),
+            runoff: Vec::new(),
         };
         Ok((setup, initial))
     }
@@ -378,6 +380,7 @@ pub fn step(
         }],
         pool_sources: None,
         pool_inflows: Vec::new(),
+        runoff: Vec::new(),
     };
     Ok(batch.trial_to(end, &forcing)?.into_next())
 }

@@ -9,6 +9,7 @@ use hydr::coupling::{
     SurfaceChannelError, SurfaceChannelPortRegime, SurfaceChannelWeirRegime,
     surface_channel_capabilities,
 };
+use hydr::runoff::SubcatchmentError;
 use hydr::structures::StructureRegime;
 
 /// Rejection kind of each public coordinator error variant.
@@ -30,6 +31,14 @@ pub fn variant(error: &SurfaceChannelError) -> (Variant, String) {
         SurfaceChannelError::Surface(source) => (Variant::Surface, source.to_string()),
         SurfaceChannelError::Channel { source, .. } => (Variant::Channel, source.to_string()),
         SurfaceChannelError::Runtime(source) => (Variant::Runtime, source.to_string()),
+        SurfaceChannelError::Runoff(source) => (
+            match source {
+                SubcatchmentError::InvalidInput { .. } => Variant::Input,
+                SubcatchmentError::Numerical { .. } => Variant::Numerical,
+                SubcatchmentError::Runtime { .. } => Variant::Runtime,
+            },
+            source.to_string(),
+        ),
         SurfaceChannelError::Numerical(message) => (Variant::Numerical, message.clone()),
         SurfaceChannelError::RecomputeInterval { .. } => (Variant::Recompute, error.to_string()),
         SurfaceChannelError::Unresolved { reason, .. } => (Variant::Unresolved, reason.clone()),

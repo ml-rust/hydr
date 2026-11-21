@@ -10,6 +10,7 @@ use super::context::Context;
 use super::frames::{Children, Frame, NodePackages, Parts, checked, node_children, rejected};
 use super::identity;
 use super::operating::admit;
+use super::runoff::build_child;
 use super::snapshot::{
     SurfaceChannelSetupData, SurfaceChannelSnapshot, SurfaceChannelSnapshotData,
 };
@@ -117,6 +118,7 @@ where
             last: snapshot.last.as_ref().map(Arc::clone),
             pools: snapshot.pools.clone(),
             operating: snapshot.operating.clone(),
+            runoff: snapshot.runoff.clone(),
         })
     }
 
@@ -156,6 +158,7 @@ where
             reaches,
             pools,
             operating,
+            runoff: build_child(&self.context.client, &self.definition, &self.initial)?,
         };
         let parts = Parts {
             definition: Arc::clone(&self.definition),
@@ -310,6 +313,7 @@ where
             reaches,
             pools,
             operating,
+            runoff: build_child(&client, &definition, initial)?,
         };
         let parts = Parts {
             context,

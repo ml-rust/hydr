@@ -80,7 +80,8 @@ pub(super) fn setup(a: &SurfaceChannelSetupData, b: &SurfaceChannelSetupData) ->
     })?;
     require(same_value(&a.operating, &b.operating), || {
         "setup.operating".into()
-    })
+    })?;
+    require(same_value(&a.runoff, &b.runoff), || "setup.runoff".into())
 }
 
 fn same_config(a: &SurfaceChannelConfig, b: &SurfaceChannelConfig) -> bool {
@@ -137,7 +138,8 @@ pub(super) fn initial(a: &SurfaceChannelInitialState, b: &SurfaceChannelInitialS
             format!("initial.reaches[{index}] ({a_id:?})")
         })?;
     }
-    require(same_value(&a.pools, &b.pools), || "initial.pools".into())
+    require(same_value(&a.pools, &b.pools), || "initial.pools".into())?;
+    require(same_value(&a.runoff, &b.runoff), || "initial.runoff".into())
 }
 
 /// Compares an original surface state with a zero-history accepted surface state.

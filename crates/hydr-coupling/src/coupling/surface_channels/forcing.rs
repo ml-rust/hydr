@@ -4,6 +4,7 @@ use super::SurfaceChannelError;
 use super::bindings::STRUCTURE_EXCHANGE_BINDING_PREFIX;
 use super::context::Context;
 use super::ports::check_endpoint;
+use super::runoff::RUNOFF_ATTACHMENT_BINDING_PREFIX;
 use crate::channel::ChannelEnd;
 use crate::channel::{
     ChannelBoundary, ChannelLateralInput, ChannelTensorBoundary, ChannelTensorFluxPort,
@@ -11,6 +12,7 @@ use crate::channel::{
 };
 use crate::coupling::level_pools::CoupledPoolInflow;
 use crate::forcing::WaterAmount;
+use crate::runoff::SubcatchmentContributionInput;
 use crate::storage::LevelPoolSources;
 use hydr_channel::internal::SURFACE_EXCHANGE_BINDING_PREFIX;
 use numr::dtype::DType;
@@ -53,6 +55,10 @@ pub struct SurfaceChannelForcingInterval {
     ///
     /// An integrated volume fixes the interval to the requested span.
     pub pool_inflows: Vec<CoupledPoolInflow>,
+    /// One rate record per active modelled source over exactly `[start_s, end_s]`, in any
+    /// order. Empty without runoff.
+    #[doc(hidden)]
+    pub runoff: Vec<SubcatchmentContributionInput>,
 }
 
 /// One caller withdrawal at a linked slot. The coordinator reserves it before exchange.
@@ -147,6 +153,11 @@ impl<R: Runtime<DType = DType>> BoundForcing<R> {
                 if boundary_id.starts_with(STRUCTURE_EXCHANGE_BINDING_PREFIX) {
                     return Err(SurfaceChannelError::input(format!(
                         "reserved-binding-prefix: reach={id:?} lateral input {boundary_id:?} uses the reserved prefix {STRUCTURE_EXCHANGE_BINDING_PREFIX:?}: omit structure-exchange inputs; the coordinator supplies them"
+                    )));
+                }
+                if boundary_id.starts_with(RUNOFF_ATTACHMENT_BINDING_PREFIX) {
+                    return Err(SurfaceChannelError::input(format!(
+                        "reserved-binding-prefix: reach={id:?} lateral input {boundary_id:?} uses the reserved prefix {RUNOFF_ATTACHMENT_BINDING_PREFIX:?}: omit runoff inputs; the coordinator supplies them"
                     )));
                 }
                 requires_exact_span |= !amount.is_rate();

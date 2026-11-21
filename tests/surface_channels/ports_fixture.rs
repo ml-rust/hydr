@@ -391,6 +391,7 @@ impl Scenario {
             structures: Vec::new(),
             pool_ends: Vec::new(),
             operating: None,
+            runoff: None,
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: config(),
         };
@@ -406,6 +407,7 @@ impl Scenario {
                 (BETA.into(), reach_state(&self.beta, [REACH_WIDTH, LENGTH])),
             ],
             pools: Vec::new(),
+            runoff: Vec::new(),
         };
         Ok((setup, initial))
     }
@@ -438,6 +440,7 @@ pub fn forcing(setup: &SurfaceChannelSetup, start: f64, end: f64) -> SurfaceChan
             .collect(),
         pool_sources: None,
         pool_inflows: Vec::new(),
+        runoff: Vec::new(),
     }
 }
 

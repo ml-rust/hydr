@@ -11,6 +11,7 @@ use super::outcome::LinkOutcome;
 use super::pool_ends::PoolEndInterval;
 use super::pools::PoolChild;
 use super::retry::{recompute, shortening};
+use super::runoff::{admit_forcing, stepping_not_attached};
 use super::start::Start;
 use super::state::{PreviousFrame, StoredStep};
 use super::{SurfaceChannelError, SurfaceChannelForcingInterval, SurfaceChannelStepDiagnostics};
@@ -136,6 +137,9 @@ where
             .pool_start(forcing, self.definition.pools.as_ref())?;
         if let Some(pool_start) = &pool_start {
             bound.requires_exact_span |= pool_start.inflows.has_interval_volumes();
+        }
+        if admit_forcing(&self.definition, forcing)?.is_some() {
+            return Err(stepping_not_attached());
         }
         let intervals = self.surface.coupling_forcing().intervals();
         let surface_end = intervals
@@ -480,6 +484,7 @@ where
             last: Some(Arc::new(step)),
             pools,
             operating,
+            runoff: self.runoff.clone(),
         })
     }
 }

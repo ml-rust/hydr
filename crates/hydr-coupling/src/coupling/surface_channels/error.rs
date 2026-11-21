@@ -1,4 +1,5 @@
 use crate::channel::ChannelError;
+use crate::runoff::SubcatchmentError;
 use crate::solver::EngineError;
 use std::fmt;
 
@@ -16,6 +17,8 @@ pub enum SurfaceChannelError {
         /// Original typed channel rejection.
         source: ChannelError,
     },
+    /// The coordinator-owned runoff child rejects its definitions, state, or a candidate.
+    Runoff(SubcatchmentError),
     /// The caller-selected runtime returns an error.
     Runtime(numr::error::Error),
     /// Iteration, pairing, or physical accounting cannot resolve the interval.
@@ -50,8 +53,9 @@ impl SurfaceChannelError {
     /// A shorter common interval from the accepted state can resolve this rejection.
     ///
     /// Retryable: numerical rejections, interval recomputation, surface land-source, retryable
-    /// soil, and boundary-trace rejections, and channel numerical, unresolved, and recompute
-    /// rejections. Input, runtime, and every other child rejection are final.
+    /// soil, and boundary-trace rejections, channel numerical, unresolved, and recompute
+    /// rejections, and runoff numerical rejections. Input, runtime, and every other child
+    /// rejection are final.
     pub fn is_retryable(&self) -> bool {
         match self {
             Self::Numerical(_) | Self::RecomputeInterval { .. } => true,
@@ -70,6 +74,7 @@ impl SurfaceChannelError {
                     | ChannelError::Unresolved { .. }
                     | ChannelError::RecomputeInterval { .. }
             ),
+            Self::Runoff(error) => matches!(error, SubcatchmentError::Numerical { .. }),
             Self::Input(_) | Self::Runtime(_) | Self::Unresolved { .. } => false,
         }
     }
@@ -83,6 +88,7 @@ impl fmt::Display for SurfaceChannelError {
             Self::Channel { reach_id, source } => {
                 write!(f, "surface-channel reach={reach_id:?}: {source}")
             }
+            Self::Runoff(error) => write!(f, "surface-channel runoff: {error}"),
             Self::Runtime(error) => write!(f, "surface-channel runtime: {error}"),
             Self::Numerical(message) => write!(f, "surface-channel numerical: {message}"),
             Self::RecomputeInterval {
@@ -111,6 +117,7 @@ impl std::error::Error for SurfaceChannelError {
         match self {
             Self::Surface(error) => Some(error),
             Self::Channel { source, .. } => Some(source),
+            Self::Runoff(error) => Some(error),
             Self::Runtime(error) => Some(error),
             _ => None,
         }

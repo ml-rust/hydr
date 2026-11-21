@@ -90,6 +90,7 @@ fn pool_end_forcing(start_s: f64, end_s: f64) -> SurfaceChannelForcingInterval {
         }],
         pool_sources: None,
         pool_inflows: Vec::new(),
+        runoff: Vec::new(),
     }
 }
 

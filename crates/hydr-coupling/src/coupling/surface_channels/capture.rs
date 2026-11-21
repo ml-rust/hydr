@@ -4,6 +4,7 @@ use super::SurfaceChannelError;
 use super::batch::SurfaceChannelBatch;
 use super::context::Context;
 use super::pools::{PoolChild, pool_error};
+use super::runoff::check_schedule;
 use super::snapshot::{
     SURFACE_CHANNEL_CONTRACT_VERSION, SURFACE_CHANNEL_SNAPSHOT_SCHEMA, SurfaceChannelCounterData,
     SurfaceChannelIntervalSnapshotData, SurfaceChannelPreviousData, SurfaceChannelSetupData,
@@ -58,6 +59,7 @@ where
             last: self.last.as_ref().map(Arc::clone),
             pools: self.pools.clone(),
             operating: self.operating.clone(),
+            runoff: self.runoff.clone(),
         }
     }
 
@@ -78,11 +80,14 @@ where
     /// This batch stays unchanged.
     ///
     /// # Errors
+    /// Returns [`SurfaceChannelError::Input`] for nonzero rain on a cell whose support a selected
+    /// runoff source owns (`suppressed-rain`).
     /// Returns [`SurfaceChannelError::Surface`] for every surface continuation rejection.
     pub fn continue_surface_forcing(
         &self,
         forcing: ForcingSchedule,
     ) -> Result<Self, SurfaceChannelError> {
+        check_schedule(&self.definition, &forcing)?;
         let mut surface = self.surface.coupling_clone();
         surface.continue_with_forcing(forcing)?;
         let last = match &self.last {
@@ -106,6 +111,7 @@ where
             last,
             pools: self.pools.clone(),
             operating: self.operating.clone(),
+            runoff: self.runoff.clone(),
         })
     }
 }

@@ -175,6 +175,7 @@ pub fn parts() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
         structures: Vec::new(),
         pool_ends: vec![end],
         operating: None,
+        runoff: None,
         storage_exclusion_evidence: "The reach tank lies outside the surface cell".into(),
         config: SurfaceChannelConfig {
             head_absolute_m: 1e-12,
@@ -208,6 +209,7 @@ pub fn parts() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
         pools: vec![LevelPoolState {
             volume_m3: 0.45 * POND_AREA,
         }],
+        runoff: Vec::new(),
     };
     Ok((setup, initial))
 }
@@ -247,5 +249,6 @@ pub fn forcing(
         }],
         pool_sources: None,
         pool_inflows: Vec::new(),
+        runoff: Vec::new(),
     }
 }

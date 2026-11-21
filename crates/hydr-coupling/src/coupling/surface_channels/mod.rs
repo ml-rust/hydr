@@ -73,6 +73,7 @@ mod reserve;
 mod response;
 mod restoration;
 mod retry;
+mod runoff;
 mod slot_plan;
 mod snapshot;
 mod stages;
@@ -107,6 +108,11 @@ pub use output::{
     SurfaceChannelWaterBalance, SurfaceChannelWeirRegime,
 };
 pub use pool_ends::SurfaceChannelPoolEnd;
+#[doc(hidden)]
+pub use runoff::{
+    SurfaceChannelFreeOutlet, SurfaceChannelRunoff, SurfaceChannelRunoffDestination,
+    SurfaceChannelRunoffOutlet, SurfaceChannelRunoffShare,
+};
 pub use snapshot::{
     SURFACE_CHANNEL_CONTRACT_VERSION, SURFACE_CHANNEL_SNAPSHOT_SCHEMA, SurfaceChannelCounterData,
     SurfaceChannelIntervalSnapshotData, SurfaceChannelPortCounterData, SurfaceChannelPreviousData,

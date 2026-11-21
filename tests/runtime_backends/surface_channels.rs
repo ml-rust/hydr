@@ -100,6 +100,7 @@ fn forcing(setup: &SurfaceChannelSetup, start: f64, end: f64) -> SurfaceChannelF
             .collect(),
         pool_sources: None,
         pool_inflows: Vec::new(),
+        runoff: Vec::new(),
     }
 }
 

@@ -287,6 +287,7 @@ pub fn advance(batch: &Batch, dt: f64, pools: &PoolForcing) -> Result<Batch, Sur
         }],
         pool_sources: None,
         pool_inflows: Vec::new(),
+        runoff: Vec::new(),
     });
     Ok(batch.trial_to(end, &forcing)?.into_next())
 }

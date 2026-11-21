@@ -188,6 +188,7 @@ impl Spec {
                 structures: Vec::new(),
                 pool_ends: Vec::new(),
                 operating: None,
+                runoff: None,
                 storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
                 config: self.config.clone(),
             },
@@ -200,6 +201,7 @@ impl Spec {
                 },
                 reaches: states,
                 pools: Vec::new(),
+                runoff: Vec::new(),
             },
         ))
     }
@@ -336,6 +338,7 @@ pub fn forcing(
         reaches,
         pool_sources: None,
         pool_inflows: Vec::new(),
+        runoff: Vec::new(),
     }
 }
 

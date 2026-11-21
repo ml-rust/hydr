@@ -427,6 +427,7 @@ mod tests {
             }],
             pool_sources: None,
             pool_inflows: Vec::new(),
+            runoff: Vec::new(),
         }
     }
 

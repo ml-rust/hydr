@@ -9,14 +9,15 @@ use super::{
     SurfaceChannelInitialState, SurfaceChannelLink, SurfaceChannelLinkLedger,
     SurfaceChannelOperating, SurfaceChannelOperatingData, SurfaceChannelPoolEnd,
     SurfaceChannelPoolEndLedger, SurfaceChannelPort, SurfaceChannelPortLedger, SurfaceChannelReach,
-    SurfaceChannelSetup, SurfaceChannelStepDiagnostics, SurfaceChannelStructure,
-    SurfaceChannelStructureLedger,
+    SurfaceChannelRunoff, SurfaceChannelSetup, SurfaceChannelStepDiagnostics,
+    SurfaceChannelStructure, SurfaceChannelStructureLedger,
 };
 use crate::channel::{ChannelSnapshot, ChannelSnapshotData};
 use crate::coupling::checkpoint;
 use crate::coupling::level_pools::{
     CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolSupport,
 };
+use crate::runoff::SubcatchmentBatch;
 use crate::solver::{Snapshot, SnapshotData, SolverSetup};
 use crate::storage::{
     LevelPoolConfig, LevelPoolElement, LevelPoolSnapshotData, LevelPoolSourcePolicy,
@@ -27,7 +28,7 @@ use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Schema identity of the surface/channel snapshot package.
-pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-7";
+pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-8";
 /// Numerical contract identity of the surface/channel snapshot package.
 pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-9";
 
@@ -87,6 +88,9 @@ pub struct SurfaceChannelSetupData {
     pub pool_ends: Vec<SurfaceChannelPoolEnd>,
     /// Operating children as declared, or `None` without them.
     pub operating: Option<SurfaceChannelOperating>,
+    /// Native runoff as declared, or `None` without it.
+    #[doc(hidden)]
+    pub runoff: Option<SurfaceChannelRunoff>,
     /// Evidence that surface cells, channel cells, and pools store no water twice.
     pub storage_exclusion_evidence: String,
     /// Explicit tolerances, duration limits, and work limits.
@@ -108,6 +112,7 @@ impl SurfaceChannelSetupData {
             structures: setup.structures.clone(),
             pool_ends: setup.pool_ends.clone(),
             operating: setup.operating.clone(),
+            runoff: setup.runoff.clone(),
             storage_exclusion_evidence: setup.storage_exclusion_evidence.clone(),
             config: setup.config.clone(),
         }
@@ -128,6 +133,7 @@ impl SurfaceChannelSetupData {
             structures: self.structures.clone(),
             pool_ends: self.pool_ends.clone(),
             operating: self.operating.clone(),
+            runoff: self.runoff.clone(),
             storage_exclusion_evidence: self.storage_exclusion_evidence.clone(),
             config: self.config.clone(),
         }
@@ -276,6 +282,8 @@ pub struct SurfaceChannelSnapshot<R: Runtime<DType = DType>> {
     pub(super) pools: Option<PoolChild<R>>,
     /// Accepted operating children, or `None` without them.
     pub(super) operating: Option<OperatingChildren<R>>,
+    /// Accepted runoff child, or `None` without active runoff.
+    pub(super) runoff: Option<SubcatchmentBatch<R>>,
 }
 
 impl<R: Runtime<DType = DType>> SurfaceChannelSnapshot<R> {

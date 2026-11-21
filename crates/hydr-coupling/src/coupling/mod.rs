@@ -63,3 +63,8 @@ pub use surface_channels::{
     SurfaceChannelTrial, SurfaceChannelWaterBalance, SurfaceChannelWeirRegime,
     surface_channel_capabilities,
 };
+#[doc(hidden)]
+pub use surface_channels::{
+    SurfaceChannelFreeOutlet, SurfaceChannelRunoff, SurfaceChannelRunoffDestination,
+    SurfaceChannelRunoffOutlet, SurfaceChannelRunoffShare,
+};

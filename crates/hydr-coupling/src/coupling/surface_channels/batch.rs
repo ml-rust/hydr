@@ -1,11 +1,13 @@
 use super::context::Context;
 use super::operating::{OperatingChildren, admit};
 use super::pools::{PoolChild, PoolParts, inflow_error};
+use super::runoff::build_child;
 use super::state::{LinkCounters, StoredStep};
 use super::{
     SurfaceChannelDefinition, SurfaceChannelError, SurfaceChannelInitialState, SurfaceChannelSetup,
 };
 use crate::channel::{ChannelInitialState, ChannelReach};
+use crate::runoff::SubcatchmentBatch;
 use crate::solver::Solver;
 use crate::storage::LevelPoolBatch;
 use crate::structures::{ControlledGateBatch, ControlledPumpBatch, CulvertClient};
@@ -41,6 +43,8 @@ pub struct SurfaceChannelBatch<R: Runtime<DType = DType>> {
     pub(super) pools: Option<PoolChild<R>>,
     /// Accepted operating children, or `None` when every structure has a manual owner.
     pub(super) operating: Option<OperatingChildren<R>>,
+    /// Accepted runoff child, or `None` without active runoff.
+    pub(super) runoff: Option<SubcatchmentBatch<R>>,
 }
 
 impl<R: Runtime<DType = DType>> std::fmt::Debug for SurfaceChannelBatch<R> {
@@ -113,6 +117,12 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
     pub fn controlled_pumps(&self) -> Option<&ControlledPumpBatch<R>> {
         self.operating.as_ref().and_then(OperatingChildren::pump)
     }
+
+    /// Read-only runoff child, or `None` without active runoff.
+    #[doc(hidden)]
+    pub fn runoff(&self) -> Option<&SubcatchmentBatch<R>> {
+        self.runoff.as_ref()
+    }
 }
 
 impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R>
@@ -157,8 +167,8 @@ where
     ///   child, a structure with zero owners or two, a child off the common time, and a signal
     ///   naming no controller signal, bound twice, bound to no coordinator node, or missing
     ///
-    /// Returns [`SurfaceChannelError::Surface`] or [`SurfaceChannelError::Channel`] when a
-    /// child rejects its definition or state.
+    /// Returns [`SurfaceChannelError::Surface`], [`SurfaceChannelError::Channel`], or
+    /// [`SurfaceChannelError::Runoff`] when a child rejects its definition or state.
     pub fn new(
         client: R::Client,
         setup: SurfaceChannelSetup,
@@ -174,12 +184,14 @@ where
         initial: SurfaceChannelInitialState,
     ) -> Result<Self, SurfaceChannelError> {
         let pools = pool_parts(&client, &definition, &initial)?;
+        let runoff = build_child(&client, &definition, &initial)?;
         let original = Arc::new(initial.clone());
         let SurfaceChannelInitialState {
             time_s,
             surface,
             reaches,
             pools: _,
+            runoff: _,
         } = initial;
         if !time_s.is_finite() {
             return Err(SurfaceChannelError::input(format!(
@@ -238,6 +250,7 @@ where
             last: None,
             pools,
             operating,
+            runoff,
         })
     }
 }

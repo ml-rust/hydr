@@ -31,6 +31,10 @@
 //! Culvert root searches that start at the attempt's latest roots bump the contract to `9`.
 //! Partly full culvert outlets move accepted bits. Neither case holds a culvert, so each maps
 //! its text back to contract `8` and reproduces that digest.
+//!
+//! Runoff fields in the setup, the original state, and the forcing bump the schema to `8`. The
+//! contract stays `9`. Each case maps its text back to the format before runoff and reproduces
+//! the schema `7` digest, so no accepted bit moves.
 
 use crate::fixture::Result;
 use crate::restoration::{network, state};
@@ -143,15 +147,45 @@ fn before_culvert_roots(text: &str) -> String {
     )
 }
 
-/// Fails unless `batch` matches the frozen `expected` digest, its text in the format before warm
+/// The text in the format before runoff attachment.
+///
+/// That format names schema `7`. Its setup holds no runoff declaration, its original state no
+/// runoff states, and its forcing no runoff records. A case without runoff changes no other
+/// field, so this text reproduces the schema `7` digest bit for bit.
+fn before_runoff(text: &str) -> String {
+    text.replace(
+        "hydr-surface-channel-checkpoint-8",
+        "hydr-surface-channel-checkpoint-7",
+    )
+    .replace(
+        ", runoff: None, storage_exclusion_evidence",
+        ", storage_exclusion_evidence",
+    )
+    .replace(
+        ", pools: [], runoff: [] }, surface: ",
+        ", pools: [] }, surface: ",
+    )
+    .replace(", pool_inflows: [], runoff: [] }", ", pool_inflows: [] }")
+}
+
+/// Fails unless `batch` matches the frozen `expected` digest, its text in the format before
+/// runoff matches the `unattached` digest of schema `7`, its text in the format before warm
 /// culvert root searches matches the `cold` digest of contract `8`, and its text in the format
 /// before culverts matches the `uncoupled` digest of schema `6`.
-fn check_current(batch: &Batch, [expected, cold, uncoupled]: [u64; 3]) -> Result {
+fn check_current(batch: &Batch, [expected, unattached, cold, uncoupled]: [u64; 4]) -> Result {
     let text = state(batch)?;
     let actual = digest(&text);
     if actual != expected {
         return Err(format!(
             "state digest={actual:#018x}, frozen={expected:#018x}: an accepted bit changed"
+        )
+        .into());
+    }
+    let text = before_runoff(&text);
+    let detached = digest(&text);
+    if detached != unattached {
+        return Err(format!(
+            "digest before runoff={detached:#018x}, frozen={unattached:#018x}: a field other than the schema identity and runoff fields changed"
         )
         .into());
     }
@@ -177,7 +211,9 @@ fn check_current(batch: &Batch, [expected, cold, uncoupled]: [u64; 3]) -> Result
 /// digest, its text in the format before pools matches the `current` digest of that format, and
 /// its text in the format before ports matches the `earlier` digest of that format.
 fn check_earlier(batch: &Batch, probed: u64, current: u64, earlier: u64) -> Result {
-    let text = before_root_probe(&before_culverts(&before_culvert_roots(&state(batch)?)));
+    let text = before_root_probe(&before_culverts(&before_culvert_roots(&before_runoff(
+        &state(batch)?,
+    ))));
     let unprobed = digest(&text);
     if unprobed != probed {
         return Err(format!(
@@ -220,6 +256,9 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
     //
     // The digest under contract `8` was 0x2df3_81d7_5702_6f8d. Only the contract identity
     // differs.
+    //
+    // The digest under schema `7` was 0xd23e_fe25_5262_7b60. Only the schema identity and the
+    // empty runoff fields differ.
     let mut batch = network().build()?;
     for target in [0.25, 0.5, 0.75, 1.0] {
         batch = step(&batch, target)?;
@@ -232,6 +271,7 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
     check_current(
         &batch,
         [
+            0x0067_7624_eaa1_05ab,
             0xd23e_fe25_5262_7b60,
             0x2df3_81d7_5702_6f8d,
             0x334d_f9db_6dcb_719e,
@@ -258,9 +298,13 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
     //
     // The digest under contract `8` was 0x7dcb_d4ea_d342_f82a. Only the contract identity
     // differs.
+    //
+    // The digest under schema `7` was 0xd6c2_0242_bcfc_f029. Only the schema identity and the
+    // empty runoff fields differ.
     check_current(
         &flood(CertifiedRootProbe::SlackSecant)?,
         [
+            0xbc3d_6695_a90a_4510,
             0xd6c2_0242_bcfc_f029,
             0x7dcb_d4ea_d342_f82a,
             0xe58a_2aad_5be8_651f,

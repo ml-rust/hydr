@@ -13,6 +13,7 @@ use super::snapshot::SurfaceChannelCounterData;
 use super::state::LinkCounters;
 use super::{SurfaceChannelDefinition, SurfaceChannelInitialState, SurfaceChannelOperatingData};
 use crate::channel::{ChannelInitialState, ChannelReach, ChannelSnapshotData};
+use crate::runoff::SubcatchmentBatch;
 use crate::solver::{SnapshotData, Solver};
 use crate::storage::{LevelPoolBatch, LevelPoolSnapshotData};
 use numr::dtype::DType;
@@ -64,6 +65,8 @@ pub(super) struct Frame<R: Runtime<DType = DType>> {
     /// Pool storage without its inflow ledgers, or `None` without pools.
     pub pools: Option<LevelPoolBatch<R>>,
     pub operating: Option<OperatingChildren<R>>,
+    /// Runoff child, or `None` without active runoff.
+    pub runoff: Option<SubcatchmentBatch<R>>,
 }
 
 /// Pool and operating packages of one frame.
@@ -268,6 +271,7 @@ where
             reaches,
             pools,
             operating,
+            runoff,
         } = frame;
         let time = counters.time_s;
         let steps = counters.accepted_steps;
@@ -340,6 +344,7 @@ where
             last: None,
             pools,
             operating,
+            runoff,
         };
         let balance = batch.ledger()?;
         require(

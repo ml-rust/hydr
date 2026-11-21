@@ -350,6 +350,7 @@ impl Case {
             structures: self.structures.clone(),
             pool_ends: self.pool_ends.clone(),
             operating: self.operating.clone(),
+            runoff: None,
             storage_exclusion_evidence: "The reach tank and the ponds lie outside the surface cell"
                 .into(),
             config: SurfaceChannelConfig {
@@ -386,6 +387,7 @@ impl Case {
                 .iter()
                 .map(|&(_, volume_m3)| LevelPoolState { volume_m3 })
                 .collect(),
+            runoff: Vec::new(),
         };
         Ok((setup, initial))
     }
@@ -431,6 +433,7 @@ pub fn forcing(batch: &Batch, end: f64, pools: &PoolForcing) -> SurfaceChannelFo
         }],
         pool_sources: pools.sources.clone(),
         pool_inflows: pools.inflows.clone(),
+        runoff: Vec::new(),
     }
 }
 

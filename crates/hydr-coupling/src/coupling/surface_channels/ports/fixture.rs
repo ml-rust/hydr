@@ -268,6 +268,7 @@ pub fn case(inactive: &[usize]) -> TestResult<(SurfaceChannelSetup, SurfaceChann
             structures: Vec::new(),
             pool_ends: Vec::new(),
             operating: None,
+            runoff: None,
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: SurfaceChannelConfig {
                 head_absolute_m: 1e-12,
@@ -291,6 +292,7 @@ pub fn case(inactive: &[usize]) -> TestResult<(SurfaceChannelSetup, SurfaceChann
                 (BETA.into(), reach_state),
             ],
             pools: Vec::new(),
+            runoff: Vec::new(),
         },
     ))
 }

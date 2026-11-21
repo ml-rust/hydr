@@ -138,6 +138,7 @@ impl Line {
             structures: Vec::new(),
             pool_ends: Vec::new(),
             operating: None,
+            runoff: None,
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: crate::fixture::config(),
         };
@@ -157,6 +158,7 @@ impl Line {
                 },
             )],
             pools: Vec::new(),
+            runoff: Vec::new(),
         };
         Ok(Batch::new(crate::runtime::client(), setup, initial)?)
     }

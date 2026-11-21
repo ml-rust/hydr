@@ -1,8 +1,10 @@
 use super::{
-    SurfaceChannelError, SurfaceChannelOperating, SurfaceChannelPoolEnd, SurfaceChannelStructure,
+    SurfaceChannelError, SurfaceChannelOperating, SurfaceChannelPoolEnd, SurfaceChannelRunoff,
+    SurfaceChannelStructure,
 };
 use crate::channel::{ChannelEnd, ChannelInitialState, ChannelReachDefinition};
 use crate::coupling::level_pools::{CoupledPoolInflowBinding, CoupledPoolSupport};
+use crate::runoff::SubcatchmentState;
 use crate::solver::{BoundaryFace, InitialState, SolverSetup};
 use crate::storage::{LevelPoolConfig, LevelPoolElement, LevelPoolSourcePolicy, LevelPoolState};
 use crate::structures::WeirApplicability;
@@ -212,6 +214,9 @@ pub struct SurfaceChannelSetup {
     /// Operating children of every dynamically owned structure, or `None` when every structure
     /// has a manual owner.
     pub operating: Option<SurfaceChannelOperating>,
+    /// Native runoff owned by the coordinator, or `None` without it.
+    #[doc(hidden)]
+    pub runoff: Option<SurfaceChannelRunoff>,
     /// Evidence that surface cells, channel cells, and pools store no water twice.
     pub storage_exclusion_evidence: String,
     /// Explicit dimensional tolerances, common duration limits, and work limits.
@@ -231,4 +236,8 @@ pub struct SurfaceChannelInitialState {
     pub reaches: Vec<(String, ChannelInitialState)>,
     /// One accepted volume per setup pool, in setup pool order. Empty without pools.
     pub pools: Vec<LevelPoolState>,
+    /// One runoff state per active modelled definition, in definition order. Empty without
+    /// runoff.
+    #[doc(hidden)]
+    pub runoff: Vec<SubcatchmentState>,
 }
