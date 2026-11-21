@@ -89,6 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
             ],
             boundaries: vec![],
+            pool_rain: vec![],
         },
         &domain,
         &boundaries,

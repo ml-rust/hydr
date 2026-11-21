@@ -137,6 +137,7 @@ pub fn primary() -> Result<Fixture> {
                 },
             ],
             boundaries: vec![],
+            pool_rain: vec![],
         },
         interval: SupportIntervalInput {
             start: 0.0,

@@ -24,6 +24,22 @@ pub struct SupportPlanInput {
     pub surface_cells: Vec<SurfaceCellSupport>,
     /// Exactly one identity binding per declared open face.
     pub boundaries: Vec<BoundaryBinding>,
+    /// Rain-receiving support of level pools, at most one entry per pool. Empty without pools.
+    pub pool_rain: Vec<PoolRainSupport>,
+}
+
+/// Rain-receiving support of one level pool and its whole-pool rain ownership.
+///
+/// The plan checks atom ownership only. It never compares atom area with the pool plan area,
+/// which varies with stage.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PoolRainSupport {
+    /// Exact pool identity of the consumer that owns the pool.
+    pub pool_id: String,
+    /// Nonempty disjoint support atoms that receive the pool's local rain.
+    pub atoms: Vec<String>,
+    /// Direct local rain, or suppression by the selected source that owns every atom.
+    pub rain: CellRainAssignment,
 }
 
 /// Application assertion. Hydr checks declared ownership without proving GIS geometry.
@@ -167,6 +183,30 @@ impl SupportPlan {
     /// Read selected definitions in their original numerical order.
     pub fn active_definitions(&self) -> &[SubcatchmentDefinition] {
         &self.inner.definitions
+    }
+    /// Read the selected active modelled contributions in definition order.
+    pub fn active_contributions(&self) -> impl ExactSizeIterator<Item = &Contribution> {
+        self.inner
+            .active_contributions
+            .iter()
+            .map(|index| &self.inner.input.contributions[*index])
+    }
+    /// Read the checked domain the plan's surface targets belong to.
+    pub fn domain(&self) -> &Domain {
+        &self.inner.domain
+    }
+    /// Read the checked open-face set of the plan's surface targets.
+    pub fn boundaries(&self) -> &BoundaryConditions {
+        &self.inner.boundaries
+    }
+    /// Read whether the pool's local rain belongs to a selected source.
+    ///
+    /// Returns `false` for direct pool rain and for a pool without declared rain support.
+    pub fn pool_rain_suppressed(&self, pool_id: &str) -> bool {
+        self.inner.input.pool_rain.iter().any(|support| {
+            support.pool_id == pool_id
+                && matches!(support.rain, CellRainAssignment::Suppressed { .. })
+        })
     }
 }
 

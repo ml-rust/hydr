@@ -40,6 +40,20 @@ Construct `SupportPlan::new(input, domain, boundaries, definitions)` with explic
 | Suppressed rain | Name the selected upstream owner. The complete cell footprint must lie within that owner's support. |
 | Cell overlap | Footprints cannot overlap, even when both cells suppress rainfall. |
 
+### Rain on level pools
+
+A level pool that receives local rain is a rain-receiving support too. Declare it in `SupportPlanInput.pool_rain` with one `PoolRainSupport` per pool. Leave the list empty without pools.
+
+| Field | Required data |
+| --- | --- |
+| `pool_id` | Pool identity, at most one entry per pool |
+| `atoms` | Nonempty known atoms, outside every cell footprint and every other pool |
+| `rain` | `Direct`, or `Suppressed` by a selected source that owns every atom |
+
+Direct pool rain and a selected modelled source cannot share an atom. Each atom has one rain owner.
+
+`pool_rain_suppressed(pool_id)` reports whether a selected source owns the pool's rain. The plan checks atom ownership only. It never compares atom area with the pool's plan area, which changes with stage.
+
 ### Area checks
 
 Modelled footprints independently match their actual definition areas. Every active-cell footprint independently matches the actual uniform grid cell area.
@@ -129,6 +143,19 @@ The numerical batch owns its independently checked config. The support plan bind
 | Present | Require their exact numerical batch. |
 
 Repeated trials against unchanged accepted state remain legitimate. Reusing a packet after advancement rejects its old start time.
+
+### Trial modelled rates over a shorter span
+
+A consumer that shortens its interval uses rate records instead of a fresh packet.
+
+1. Call `admit_rates(start, end, records)`. Each active source supplies one record over exactly `[start, end]`. The same identity, rate, and zero-runon rules as `admit_interval` apply.
+2. Call `trial_rates_to(&rates, batch, end)` with any end in `(rates.start(), rates.end()]`. The batch time must lie in `[rates.start(), end)`.
+
+Admitted values are constant rates, so they hold over every sub-span of the record. Each trial recomputes runoff from the accepted batch state to its own end. It never scales a full-interval volume: the outlet volume is nonlinear in the duration.
+
+### Check a surface schedule
+
+`check_surface_schedule(&schedule)` rejects nonzero rain on a suppressed cell in any interval of a schedule. Its error has kind `Ownership` and names `suppressed-rain`, the cell, the interval, and the owner. Run it on any schedule built outside `surface_schedule`.
 
 ### Boundary consumers
 

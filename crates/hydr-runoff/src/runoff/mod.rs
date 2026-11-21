@@ -7,10 +7,11 @@ mod support;
 mod tensor;
 
 pub use support::{
-    AdmittedInterval, BoundBoundaryInput, BoundaryBinding, CellRainAssignment, Contribution,
-    ContributionKind, PartitionAssertion, RainSuppressionReceipt, SubcatchmentContributionInput,
-    SupportAtom, SupportError, SupportErrorKind, SupportIntervalInput, SupportPlan,
-    SupportPlanInput, SurfaceCellSupport, SurfaceObservationInput, WholeReplacement,
+    AdmittedInterval, AdmittedRates, BoundBoundaryInput, BoundaryBinding, CellRainAssignment,
+    Contribution, ContributionKind, PartitionAssertion, PoolRainSupport, RainSuppressionReceipt,
+    SubcatchmentContributionInput, SupportAtom, SupportError, SupportErrorKind,
+    SupportIntervalInput, SupportPlan, SupportPlanInput, SurfaceCellSupport,
+    SurfaceObservationInput, WholeReplacement,
 };
 
 pub use reservoir::{

@@ -5,7 +5,6 @@ use super::{
     SupportIntervalInput, SupportPlan,
 };
 use crate::contract::{BoundaryForcing, ForcingInterval, ForcingSchedule};
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 impl SupportPlan {
@@ -16,19 +15,7 @@ impl SupportPlan {
     ) -> Result<AdmittedInterval, SupportError> {
         let start = input.start;
         let end = input.end;
-        if !start.is_finite()
-            || !end.is_finite()
-            || start < 0.0
-            || end <= start
-            || !(end - start).is_finite()
-        {
-            return Err(err(
-                SupportErrorKind::Coverage,
-                format!(
-                    "interval=[{start},{end}): require finite nonnegative start and finite positive duration"
-                ),
-            ));
-        }
+        interval(start, end)?;
         span(
             start,
             end,
@@ -54,71 +41,7 @@ impl SupportPlan {
         for request in &input.boundaries {
             span(start, end, request.start, request.end, &request.boundary_id)?;
         }
-        let mut models = BTreeMap::new();
-        for request in input.subcatchments {
-            if let Some(previous) = models.insert(request.contribution_id.clone(), request) {
-                return Err(err(
-                    SupportErrorKind::Coverage,
-                    format!("duplicate model input={:?}", previous.contribution_id),
-                ));
-            }
-        }
-        let mut active_inputs = Vec::with_capacity(self.inner.active_contributions.len());
-        for index in &self.inner.active_contributions {
-            let source = &self.inner.input.contributions[*index];
-            let request = models.remove(&source.id).ok_or_else(|| {
-                err(
-                    SupportErrorKind::Coverage,
-                    format!(
-                        "missing active input={:?}: supply exact interval without fallback",
-                        source.id
-                    ),
-                )
-            })?;
-            if request.input_identity != source.input_identity {
-                return Err(SupportError::identity(format!(
-                    "model={:?},identity={:?},expected={:?}",
-                    source.id, request.input_identity, source.input_identity
-                )));
-            }
-            let forcing = request.input;
-            if forcing
-                .external_runon_volumes_m3
-                .iter()
-                .any(|v| !v.is_finite() || *v < 0.0)
-                || !forcing.rain_rate_m_per_s.is_finite()
-                || forcing.rain_rate_m_per_s < 0.0
-                || !forcing.potential_evaporation_m_per_s.is_finite()
-                || forcing.potential_evaporation_m_per_s < 0.0
-            {
-                return Err(err(
-                    SupportErrorKind::Coverage,
-                    format!(
-                        "model={:?},input={forcing:?}: require finite nonnegative physical inputs",
-                        source.id
-                    ),
-                ));
-            }
-            if forcing.external_runon_volumes_m3.iter().any(|v| *v > 0.0) {
-                return Err(err(
-                    SupportErrorKind::Composition,
-                    format!(
-                        "model={:?}: external runon requires donor provenance and a paired coordinator. Supply zero runon in this ownership unit",
-                        source.id
-                    ),
-                ));
-            }
-            active_inputs.push(forcing);
-        }
-        if !models.is_empty() {
-            return Err(err(
-                SupportErrorKind::Coverage,
-                format!(
-                    "unknown or suppressed model requests={:?}: provide active sources only",
-                    models.keys().collect::<Vec<_>>()
-                ),
-            ));
-        }
+        let active_inputs = self.select_active(input.subcatchments)?;
         let mut values = vec![None; self.inner.input.boundaries.len()];
         for request in input.boundaries {
             let index = *self
@@ -231,7 +154,25 @@ impl SupportPlan {
         })
     }
 }
-fn span(
+/// Rejects an interval without a finite nonnegative start and a finite positive duration.
+pub(super) fn interval(start: f64, end: f64) -> Result<(), SupportError> {
+    if !start.is_finite()
+        || !end.is_finite()
+        || start < 0.0
+        || end <= start
+        || !(end - start).is_finite()
+    {
+        return Err(err(
+            SupportErrorKind::Coverage,
+            format!(
+                "interval=[{start},{end}): require finite nonnegative start and finite positive duration"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn span(
     start: f64,
     end: f64,
     actual_start: f64,
