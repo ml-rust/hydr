@@ -855,8 +855,10 @@ The runtime needs the F64 contracts of `CulvertBarrelBatch`, solvr certified bis
 | `NoFlow` | `Q = 0` | Still level `max(TW - S L, 0)`, which is also the headwater |
 | `Full` | `TW >= D`, and the full-barrel head stays at or above the crown up to the inlet | `max(TW, D) + (Sf_full - S) L` |
 | `PartlyFull` | A free-surface profile occupies part or all of the barrel | Depth where the profile meets the inlet, or crown plus full-barrel rise |
-| `InletCritical` | The subcritical profile reaches critical depth inside the barrel, or none exists | `yc` |
+| `InletCritical` | The subcritical profile reaches critical depth inside the barrel, or none exists | `yc`, at most `D` |
 | `Unresolved` | A certified comparison did not resolve | NaN |
+
+Critical depth never exceeds the crown, as in HDS-5. A box above its critical capacity `sqrt(g) B D^(3/2)` takes `yc = D`.
 
 Full-barrel friction is `Sf_full = n^2 V^2 / R^(4/3)`. This is the HDS-5 loss of equation 3.5 with `Ku = 2g`, so full-barrel head is continuous with the free profile at the crown. HDS-5 prints 29 (US) and 19.63 (SI), which round that constant.
 
@@ -866,6 +868,7 @@ Full-barrel friction is `Sf_full = n^2 V^2 / R^(4/3)`. This is the HDS-5 loss of
 2. It follows the direct-step profile `dx/dy = (1 - Fr^2) / (S - Sf)` upstream. Depth rises upstream toward the normal depth or the crown where `Sf > S`, and falls toward the normal depth or critical depth where `Sf < S`.
 3. A profile that reaches the crown continues as full-barrel flow. A full outlet whose head falls to the crown inside the barrel continues as a falling free profile.
 4. A steep profile that reaches critical depth before the inlet leaves the inlet at critical depth. Then `HW_o = yc + (1 + ke) Vc^2 / (2 g)`.
+5. With `yc = D` and `TW < D`, the profile starts at the crown as free-surface flow. Where free-surface friction at the crown exceeds the slope, the barrel runs full to the inlet. Otherwise the inlet runs at the crown, with `HW_o = D + (1 + ke) V_full^2 / (2 g)`.
 
 Zero and adverse slopes have no normal depth. Their profiles rise to the crown. HDS-5's `ho = max(TW, (dc + D)/2)` approximation is not used.
 
@@ -880,7 +883,7 @@ Solvr certified Simpson integrates the profile in a smooth coordinate: the half 
 | `NotSteep` | The row is not inlet-critical | None |
 | `Supercritical` | Supercritical flow leaves the outlet | Outlet depth |
 | `InBarrel` | A jump sits inside the barrel | Position from the inlet, upstream and downstream depths |
-| `Unresolved` | No certified result, or the outlet segment flows full | None |
+| `Unresolved` | No certified result, the outlet segment flows full, or a crown tie row | None |
 
 The supercritical profile starts at critical depth at the inlet. Along a profile the momentum `M = Q^2 / (g A) + m` changes by `A (S - Sf)` per metre. Where friction falls with depth, the gap between the subcritical and supercritical momentum rises along the barrel. The jump sits at its unique zero.
 
@@ -896,9 +899,10 @@ The supercritical profile starts at critical depth at the inlet. Along a profile
 
 | Check | Criterion |
 | --- | --- |
-| [Reference rows](../tests/culvert_outlets/corpus.rs) | All 18 independent full-barrel rows lie inside their enclosures within `2^-40` relative. All 20 profile rows lie within `1e-9` relative in headwater and inlet head. Jump positions lie within `1e-6 L`, jump and outlet depths within `1e-9` relative. |
+| [Reference rows](../tests/culvert_outlets/corpus.rs) | All 18 independent full-barrel rows lie inside their enclosures within `2^-40` relative. All 26 profile rows, six with critical depth at or near the crown, lie within `1e-9` relative in headwater and inlet head. Jump positions lie within `1e-6 L`, jump and outlet depths within `1e-9` relative. |
 | [Published rows](../tests/culvert_outlets/published.rs) | HDS-5 design-example full-barrel losses lie within their published tolerance |
 | [Sweeps](../tests/culvert_outlets/sweep.rs) | Headwater never falls as discharge rises. It falls with rising tailwater only where `(1 + ke) Fr^2 > 1` at the inlet. It is continuous where the outlet turns full, the tailwater crosses critical depth, a profile reaches the crown, a full outlet falls to the crown, and a drowned steep profile reaches critical depth. |
+| [Crown sweeps](../tests/culvert_outlets/crown.rs) | A steep box resolves through its critical capacity and its headwater never falls. It is continuous at the capacity and where a full outlet head reaches the crown at the inlet. It steps up by `(Sf_full - S) L` where it primes, and every discharge next to that step resolves. |
 | [Layouts](../tests/culvert_outlets/layouts.rs) | Widths 1, 33, and 65, one past each of 32 and 64 lanes. Every lane equals its single-row result bit for bit. |
 | [Admission](../tests/culvert_outlets/admission.rs) | Each rejection names its row, value, and action |
 
@@ -912,8 +916,10 @@ A [CUDA check](../tests/runtime_backends/culvert_outlets.rs) compares every refe
 
 - With `ke > 0`, `y + (1 + ke) V^2 / (2 g)` is smallest above critical depth. So as the tailwater drowns a steep inlet, `HW_o` first falls below the critical-inlet value and then rises. It stays continuous.
 - Next to a critical-depth limit the inlet depth moves with the square root of the profile length. Enclosures there are wider than elsewhere.
-- A critical depth at or above the crown makes the outlet flow full at `max(TW, D)`.
-- A row is `Unresolved` when a comparison of the march is not certified, its critical depth lies below `2^-30 D`, or its start lies within `2^-34` of a normal-depth pole.
+- A box primes where free-surface friction at the crown reaches the slope. Above its critical capacity, `HW_o` steps up there by `(Sf_full - S) L`, because box friction uses the perimeter `B + 2D` below the crown and `2 (B + D)` when full. A circle has no such step.
+- A row with `yc = D` whose crown comparison is not certified holds the hull of both outcomes: the inlet at the crown and the barrel full to the inlet.
+- A row is `Unresolved` when another comparison of the march is not certified, its critical depth lies below `2^-30 D`, or its start lies within `2^-34` of a normal-depth pole.
+- A row with `yc = D` and a full outlet segment has no located jump.
 - A jump is located only when the subcritical profile is free at the outlet and friction falls with depth across the jump.
 - Barrel storage is not represented. Queries hold no state.
 
@@ -1013,7 +1019,7 @@ The partly full outlet value is an estimate, not a proven bound. A tie takes the
 | Inlet headwater that falls across its transition | `Definition` | Supply coefficients whose submerged headwater at `X = 4` exceeds the unsubmerged headwater at `X = 3.5` |
 | Culvert in `StructureBatch::new` | `Definition` | Build with `StructureBatch::with_culverts` |
 | Dry end with its bed above its invert | `UnsupportedRegime` | Supply the bed at or below the invert, or a wet stage |
-| Outlet headwater unresolved near the inlet discharge | `Numerical` | The outlet march leaves a steep barrel unresolved where its critical depth reaches the crown. Lower the heads or supply a mild barrel. |
+| Outlet headwater unresolved near the inlet discharge | `Numerical` | A march comparison is not certified below the crown, at a start friction equal to the slope or a full-barrel head equal to the crown at the inlet. Move the heads off that point. |
 
 ### Check the culvert evidence
 

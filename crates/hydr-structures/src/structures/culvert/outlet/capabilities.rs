@@ -101,7 +101,15 @@ static CULVERT_OUTLET: ComponentCapabilities = ComponentCapabilities {
         ),
         limit(
             "critical-at-crown",
-            "A critical depth at or above the crown makes the outlet flow full at max(TW, D).",
+            "Critical depth is capped at the crown, as HDS-5 caps dc at D. With TW < D the profile starts at the crown as free-surface flow: free-surface friction above the slope runs the barrel full, otherwise the inlet runs at the crown.",
+        ),
+        limit(
+            "box-priming-step",
+            "Box friction uses the perimeter B + 2D below the crown and 2(B + D) when full, so above its critical capacity HW_o steps up by (Sf_full - S) L where free-surface friction at the crown reaches the slope.",
+        ),
+        limit(
+            "crown-tie-hull",
+            "A row with critical depth at the crown whose crown comparison is not certified holds the hull of the crown-critical and full-barrel outcomes, and its jump is Unresolved.",
         ),
         limit(
             "unresolved-rows",

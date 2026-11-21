@@ -6,7 +6,8 @@
 //! | full | `h_out + (Sf_full - S) L` | full |
 //! | profile reaches the crown | `D + (Sf_full - S) (L_s - X)` | full |
 //! | profile ends inside the barrel | depth at `v_in` | `A(v_in)` |
-//! | critical at the inlet | `yc` | `A(yc)` |
+//! | critical at the inlet | `yc`, capped at `D` | `A(yc)` |
+//! | crown tie | hull of capped `yc` and `h_out + (Sf_full - S) L` | hull of `A(yc)` and full |
 //!
 //! `HW_o = h_in + (1 + ke) Q^2 / (2 g A^2)`. Unresolved rows hold NaN.
 
@@ -215,18 +216,34 @@ where
     let headwater = choose(a, open, &open_headwater, &headwater)?;
     let head = choose(a, open, &open_head, &head)?;
 
+    // Tie rows: the hull of critical depth at the crown and of a full barrel to the inlet.
+    let tie = &classes.tie;
+    let tie_head = a.bounds(
+        &c.where_cond(tie, &classes.tie_head[0], &harmless)?,
+        &c.where_cond(tie, &classes.tie_head[1], &harmless)?,
+    )?;
+    let tie_area = a.bounds(
+        critical_area.lower(),
+        &c.maximum(critical_area.upper(), full_area.upper())?,
+    )?;
+    let tie_square = a.mul(&tie_area, &tie_area)?;
+    let tie_kinetic = a.div_positive_interval(&velocity, &tie_square)?;
+    let tie_headwater = a.add(&tie_head, &tie_kinetic)?;
+    let headwater = choose(a, tie, &tie_headwater, &headwater)?;
+    let head = choose(a, tie, &tie_head, &head)?;
+
     let still = a.bounds(&classes.still[0], &classes.still[1])?;
     let headwater = choose(a, &classes.dry, &still, &headwater)?;
     let head = choose(a, &classes.dry, &still, &head)?;
 
     let resolved = c.maximum(
         &c.maximum(&classes.dry, &full)?,
-        &c.maximum(&c.maximum(&free_inlet, &critical)?, open)?,
+        &c.maximum(&c.maximum(&free_inlet, &critical)?, &c.maximum(open, tie)?)?,
     )?;
     let code = |value: f64| fill(rise, value);
     let mut status = code(codes::OUTLET_UNRESOLVED)?;
     let open_critical = c.mul(open, &classes.critical_down)?;
-    let critical = c.maximum(&critical, &open_critical)?;
+    let critical = c.maximum(&c.maximum(&critical, &open_critical)?, tie)?;
     status = c.where_cond(&critical, &code(codes::OUTLET_INLET_CRITICAL)?, &status)?;
     let partly = c.maximum(&c.maximum(&free_inlet, &reach.crown_full)?, &open_crown)?;
     status = c.where_cond(&partly, &code(codes::OUTLET_PARTLY_FULL)?, &status)?;

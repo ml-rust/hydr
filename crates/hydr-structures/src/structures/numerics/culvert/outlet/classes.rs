@@ -3,11 +3,16 @@
 //! | Rows | Class |
 //! | --- | --- |
 //! | `Q = 0` | no flow, level pool at `max(TW - S L, 0)` |
-//! | `TW >= D`, or `yc` at the crown, and `h_out + (Sf_full - S) L >= D` | full to the inlet |
+//! | `TW >= D`, `h_out + (Sf_full - S) L >= D` | full to the inlet |
 //! | `TW >= D`, head falls below the crown inside the barrel | full, then a falling profile from the crown |
 //! | `TW < D`, `Sf(h0) > S` at `h0 = max(TW, yc)` | rising profile toward `yn` or the crown |
 //! | `TW < D`, `Sf(h0) < S`, `TW > yc` | falling profile toward `yn` (mild) or `yc` (steep) |
 //! | `TW < D`, `Sf(h0) < S`, `TW <= yc` | critical depth at the inlet |
+//!
+//! Critical depth is capped at the crown, as HDS-5 caps `dc` at `D`. A box above its critical
+//! capacity `sqrt(g) B D^(3/2)` takes `yc = D`. Its free profile starts at the crown, where `Sf`
+//! takes the free-surface perimeter. Its falling profile from the crown is empty, so it leaves
+//! critical depth at the inlet.
 //!
 //! Every comparison is certified. A row whose comparison is not, or whose critical depth lies
 //! below the search floor, is unresolved.
@@ -41,6 +46,10 @@ pub(crate) struct Classes<R: Runtime<DType = DType>> {
     pub(crate) dry: Tensor<R>,
     pub(crate) full_inlet: Tensor<R>,
     pub(crate) critical_now: Tensor<R>,
+    /// Rows with critical depth at the crown whose crown comparison is not certified.
+    pub(crate) tie: Tensor<R>,
+    /// Inlet head hull of a tie row: capped critical depth to the full-barrel head.
+    pub(crate) tie_head: Bounds<R>,
     /// Rows with a subcritical profile.
     pub(crate) active: Tensor<R>,
     /// Profile rows that reach the crown going upstream.
@@ -157,10 +166,18 @@ where
         &is(&normal.status, codes::NORMAL_NON_POSITIVE_SLOPE)?,
     )?;
     let half = &barrel.half_rise;
-    let yc = [
-        c.where_cond(&crit_solved, &critical.lower, half)?,
-        c.where_cond(&crit_solved, &critical.upper, half)?,
-    ];
+    // Critical depth cannot exceed the crown. A box above its critical capacity has no root, so
+    // its capped critical depth is the crown itself.
+    let crit_known = or(&crit_solved, &crit_crown)?;
+    let box_above = and(
+        &is(&critical.status, codes::CRITICAL_ABOVE_CROWN)?,
+        &barrel.boxed,
+    )?;
+    let capped = |value: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
+        let below = c.where_cond(&box_above, rise, value)?;
+        c.where_cond(&crit_known, &c.minimum(&below, rise)?, half)
+    };
+    let yc = [capped(&critical.lower)?, capped(&critical.upper)?];
     let yn = [
         c.where_cond(&n_root, &normal.lower, half)?,
         c.where_cond(&n_root, &normal.upper, half)?,
@@ -223,15 +240,14 @@ where
 
     // Outlet full.
     let crit_floor = and(&is(&critical.status, codes::CRITICAL_BELOW_FLOOR)?, &wet)?;
-    let submerged = or(&c.ge(tailwater, rise)?, &crit_crown)?;
-    let outlet_full = and(&and(&submerged, &wet)?, &not(&crit_floor)?)?;
+    let outlet_full = and(&and(&c.ge(tailwater, rise)?, &wet)?, &not(&crit_floor)?)?;
     let outlet_head = a.point(&c.maximum(tailwater, rise)?)?;
     let gain = a.mul(&rate, &length)?;
     let head_full = a.add(&outlet_head, &gain)?;
     let full_inlet = and(&outlet_full, &c.ge(head_full.lower(), rise)?)?;
     let falling = and(
         &and(&outlet_full, &c.lt(head_full.upper(), rise)?)?,
-        &and(&crit_solved, &c.lt(&yc[1], rise)?)?,
+        &crit_known,
     )?;
     let negative = super::trig::negate(a, &rate)?;
     let decline = a.bounds(
@@ -244,7 +260,7 @@ where
     let target = pick(c, &falling, &ends(&remaining), &ends(&length))?;
 
     // Free outlet: direction from Sf(h0) against S.
-    let free = and(&and(&crit_solved, &c.lt(tailwater, rise)?)?, &wet)?;
+    let free = and(&and(&crit_known, &c.lt(tailwater, rise)?)?, &wet)?;
     let h0 = a.bounds(
         &c.maximum(tailwater, &yc[0])?,
         &c.maximum(tailwater, &yc[1])?,
@@ -267,6 +283,18 @@ where
     let down = and(&free, &c.lt(start_friction.upper(), &outlet.slope)?)?;
     let critical_now = and(&down, &c.le(tailwater, &yc[1])?)?;
     let down_free = c.sub(&down, &critical_now)?;
+
+    // A capped row whose crown comparison is not certified: the free-surface friction at the
+    // crown against the slope, or the full-barrel head at the inlet against the crown. Its inlet
+    // head lies between the capped critical depth and the full-barrel head.
+    let capped_row = and(&crit_known, &c.ge(&yc[1], rise)?)?;
+    let tie_free = and(&free, &not(&or(&up, &down)?)?)?;
+    let tie_full = and(&outlet_full, &not(&or(&full_inlet, &falling)?)?)?;
+    let tie = and(&capped_row, &or(&tie_free, &tie_full)?)?;
+    let tie_head = [
+        c.minimum(&yc[0], head_full.lower())?,
+        c.maximum(rise, head_full.upper())?,
+    ];
     let descending = or(&down_free, &falling)?;
 
     // Limits.
@@ -354,6 +382,8 @@ where
         dry,
         full_inlet,
         critical_now,
+        tie,
+        tie_head,
         crown_up: and(&crown_up, &active)?,
         critical_down: and(&critical_down, &active)?,
         falling: and(&falling, &active)?,

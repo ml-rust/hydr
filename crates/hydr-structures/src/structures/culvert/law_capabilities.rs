@@ -120,7 +120,7 @@ static CULVERT: ComponentCapabilities = ComponentCapabilities {
         ),
         limit(
             "culvert-unresolved-outlet",
-            "Where the outlet march leaves its headwater unresolved near the inlet discharge, as for a steep barrel whose critical depth reaches the crown, the proposal rejects as Numerical.",
+            "Where the outlet march leaves its headwater unresolved near the inlet discharge, the proposal rejects as Numerical. With critical depth below the crown, a start friction equal to the slope or a full-barrel head equal to the crown at the inlet within rounding has no certified outcome or bounded hull. Critical depth below 2^-30 D and a start within 2^-34 of a normal-depth pole also stay unresolved.",
         ),
         limit(
             "culvert-outlet-sensitivity",

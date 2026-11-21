@@ -26,6 +26,9 @@ mod corpus;
 #[path = "culvert_outlets/sweep.rs"]
 mod sweep;
 
+#[path = "culvert_outlets/crown.rs"]
+mod crown;
+
 #[path = "culvert_outlets/published.rs"]
 mod published;
 

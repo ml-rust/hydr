@@ -18,6 +18,8 @@ pub enum OutletRegime {
     /// A free-surface profile occupies part or all of the barrel.
     PartlyFull,
     /// A steep barrel runs at critical depth at the inlet: `HW_o = yc + (1 + ke) Vc^2 / (2 g)`.
+    /// Critical depth is capped at the crown. A crown tie row holds the hull of this value and
+    /// the full-barrel value.
     InletCritical,
     /// A certified comparison of the march did not resolve. Bounds are NaN.
     Unresolved,
@@ -126,8 +128,8 @@ pub enum JumpStatus {
     Supercritical,
     /// A jump sits inside the barrel.
     InBarrel,
-    /// A certified comparison did not resolve, or the subcritical profile includes a full
-    /// outlet segment.
+    /// A certified comparison did not resolve, the subcritical profile includes a full outlet
+    /// segment, or the row is a crown tie.
     Unresolved,
 }
 

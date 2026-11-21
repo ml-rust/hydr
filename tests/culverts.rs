@@ -47,7 +47,7 @@ const SOURCES: [(&str, &str); 5] = [
     ),
     (
         OUTLET_SHA256,
-        "d8935b642c6eeeb25ab97330ff1ba3c889841d32aed72d90aace7f231405f540",
+        "e984c39beb374e309b57841a48ebefb316c7748fcc76cb64e6c48f44c33469dc",
     ),
     (
         PUBLISHED_SHA256,
@@ -316,6 +316,18 @@ fn outlet_row(row: &OutletRow) -> TestResult {
                 return Err(format!("{what}: no outlet depth"));
             }
         }
+        Outlet::CriticalWithFullExit => {
+            let rise = f64::from_bits(row.inputs.rise);
+            let crown = [rise.to_bits(); 2];
+            if tailwater < rise
+                || row.inlet_head != Some(crown)
+                || row.critical_depth != Some(crown)
+            {
+                return Err(format!(
+                    "{what}: critical row with a full outlet off the crown"
+                ));
+            }
+        }
         Outlet::PartlyFull => {}
     }
     Ok(())
@@ -331,9 +343,10 @@ fn outlet_rows_cover_each_regime() -> TestResult {
         Outlet::PartlyFull,
         Outlet::Supercritical,
         Outlet::Jump,
+        Outlet::CriticalWithFullExit,
     ]
     .map(|regime| count(PROFILE_ROWS, |r| r.regime == regime));
-    if regimes != [2, 14, 2, 2] || FULL_ROWS.len() != 18 {
+    if regimes != [2, 15, 6, 2, 1] || FULL_ROWS.len() != 18 {
         return Err(format!(
             "profile regimes {regimes:?}, {} full rows",
             FULL_ROWS.len()

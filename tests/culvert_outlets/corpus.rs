@@ -12,7 +12,9 @@ fn regime(row: &OutletRow) -> OutletRegime {
     match row.regime {
         Outlet::Full => OutletRegime::Full,
         Outlet::PartlyFull => OutletRegime::PartlyFull,
-        Outlet::Supercritical | Outlet::Jump => OutletRegime::InletCritical,
+        Outlet::Supercritical | Outlet::Jump | Outlet::CriticalWithFullExit => {
+            OutletRegime::InletCritical
+        }
     }
 }
 
@@ -50,7 +52,7 @@ fn profile_rows_lie_inside_their_enclosures_within_the_frozen_tolerance() -> Tes
         .map(lane)
         .collect::<Result<Vec<_>, _>>()?;
     let found = headwater(&lanes)?;
-    if found.len() != PROFILE_ROWS.len() || PROFILE_ROWS.len() != 20 {
+    if found.len() != PROFILE_ROWS.len() || PROFILE_ROWS.len() != 26 {
         return Err(format!("{} rows for {} references", found.len(), PROFILE_ROWS.len()).into());
     }
     let tolerance = PROFILE_RELATIVE_TOLERANCE;
@@ -130,6 +132,12 @@ fn jump_rows_lie_inside_their_enclosures_within_the_frozen_tolerance() -> TestRe
                     tolerance,
                     &format!("{what} outlet depth"),
                 )?;
+            }
+            // A jump into a full outlet segment is not located.
+            (Outlet::CriticalWithFullExit, _, _) => {
+                if jump.status != JumpStatus::Unresolved {
+                    return Err(format!("{what}: jump status {:?}", jump.status).into());
+                }
             }
             (Outlet::Full | Outlet::PartlyFull, _, _) => {
                 if jump.status != JumpStatus::NotSteep {

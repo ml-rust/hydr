@@ -30,13 +30,13 @@ fn base(name: &str, circular: bool) -> Outcome<(Lane, f64)> {
 }
 
 /// `POINTS` evenly spaced values over `[low, high]`.
-fn spread(low: f64, high: f64) -> Vec<f64> {
+pub(super) fn spread(low: f64, high: f64) -> Vec<f64> {
     (0..POINTS)
         .map(|i| low + (high - low) * i as f64 / (POINTS - 1) as f64)
         .collect()
 }
 
-fn resolved(rows: &[CulvertOutletHeadwaterRow], what: &str) -> TestResult {
+pub(super) fn resolved(rows: &[CulvertOutletHeadwaterRow], what: &str) -> TestResult {
     for (index, row) in rows.iter().enumerate() {
         if row.regime == OutletRegime::Unresolved {
             return Err(format!("{what}: point {index} is unresolved").into());
@@ -47,7 +47,7 @@ fn resolved(rows: &[CulvertOutletHeadwaterRow], what: &str) -> TestResult {
 
 /// No headwater falls certifiably as the swept input rises, except where `allowed` admits the
 /// pair.
-fn rising(
+pub(super) fn rising(
     rows: &[CulvertOutletHeadwaterRow],
     allowed: impl Fn(&CulvertOutletHeadwaterRow, &CulvertOutletHeadwaterRow) -> bool,
     what: &str,
@@ -140,7 +140,7 @@ fn headwater_never_falls_as_tailwater_or_discharge_rises() -> TestResult {
 
 /// Brackets the input where `side` flips between `low` and `high` and returns the headwaters at
 /// the two ends of the final bracket.
-fn transition(
+pub(super) fn transition(
     make: impl Fn(f64) -> Lane,
     mut low: f64,
     mut high: f64,
@@ -181,7 +181,11 @@ fn transition(
 
 /// Both headwater enclosures lie within `width` of each other and each is at most `width`
 /// wide. The two inputs lie `(POINTS + 1)^-ROUNDS` of the search span apart.
-fn continuous(pair: [CulvertOutletHeadwaterRow; 2], width: f64, what: &str) -> TestResult {
+pub(super) fn continuous(
+    pair: [CulvertOutletHeadwaterRow; 2],
+    width: f64,
+    what: &str,
+) -> TestResult {
     let [before, after] = pair;
     let (low, high) = (before.headwater_m, after.headwater_m);
     let gap = (high.0 - low.1).max(low.0 - high.1);
@@ -203,7 +207,7 @@ fn continuous(pair: [CulvertOutletHeadwaterRow; 2], width: f64, what: &str) -> T
 const CRITICAL_WIDTH: f64 = 1e-5;
 
 /// Width and gap allowed at every other transition, relative to the rise.
-const WIDTH: f64 = 1e-8;
+pub(super) const WIDTH: f64 = 1e-8;
 
 #[test]
 fn headwater_is_continuous_where_the_outlet_turns_full_and_at_critical_depth() -> TestResult {

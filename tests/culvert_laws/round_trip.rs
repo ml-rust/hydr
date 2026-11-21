@@ -198,3 +198,45 @@ fn controls_tie_where_the_two_headwaters_cross() -> TestResult {
     assert!(found[2].0 < q);
     Ok(())
 }
+
+/// A 2 m by 1.5 m box at slope 0.02 above its critical capacity, free and drowned outlets.
+#[test]
+fn steep_box_above_its_critical_capacity_inverts_its_headwater() -> TestResult {
+    let mut culvert = Culvert::both(
+        CulvertBarrel::rectangular_box(2.0, 1.5)?,
+        [0.8, 0.0],
+        CulvertInlet::hds5(9)?,
+        0.5,
+    );
+    culvert.length_m = 40.0;
+    // The B end would fall more than half the rise, so the culvert runs A to B only.
+    culvert.end_b = None;
+    let mut q = Vec::new();
+    let mut tw = Vec::new();
+    for flow in [12.0, 15.0, 18.0, 21.0, 24.0] {
+        for tail in [0.0, 1.0, 1.8] {
+            q.push(flow);
+            tw.push(tail);
+        }
+    }
+    let lanes = vec![culvert; q.len()];
+    let hw = control_headwater(&lanes, &q, &tw)?;
+    if let Some(row) = hw
+        .iter()
+        .find(|row| !row.iter().all(|value| value.is_finite()))
+    {
+        return Err(format!("control headwater {row:?} is not finite").into());
+    }
+    let total: Vec<f64> = hw.iter().map(|h| h[0]).collect();
+    let found = invert(&lanes, &total, &tw)?;
+    for (index, ((discharge, regime, bounds), expected)) in found.iter().zip(&q).enumerate() {
+        if !close(*discharge, *expected, ROUND_TRIP_TOLERANCE) {
+            return Err(format!(
+                "lane {index}: Q={discharge:e}, expected {expected:e}, {regime:?}, bounds {bounds:?}, hw {:?}",
+                hw.get(index)
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
