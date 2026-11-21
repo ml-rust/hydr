@@ -18,10 +18,21 @@ mod controlled_gates;
 mod controlled_pumps;
 #[path = "coupled_level_pools/fixture.rs"]
 mod coupled_pool_fixture;
+#[allow(dead_code)]
+#[path = "culvert_barrels/critical_rows.rs"]
+mod critical_rows;
 #[path = "cross_sections/profiles.rs"]
 mod cross_section_profiles;
 #[path = "runtime_backends/cross_sections.rs"]
 mod cross_sections;
+#[path = "runtime_backends/culvert_barrels.rs"]
+mod culvert_barrels;
+#[allow(dead_code)]
+#[path = "culvert_barrels/lanes.rs"]
+mod culvert_lanes;
+#[allow(dead_code)]
+#[path = "culvert_barrels/dense_rows.rs"]
+mod dense_rows;
 #[path = "runtime_backends/device_checks.rs"]
 mod device_checks;
 #[path = "runtime_backends/gate_actuators.rs"]
@@ -34,8 +45,14 @@ mod inflows;
 mod interval_volumes;
 #[path = "runtime_backends/level_pool.rs"]
 mod level_pool;
+#[allow(dead_code)]
+#[path = "culvert_barrels/normal_rows.rs"]
+mod normal_rows;
 #[path = "runtime_backends/operating_controls.rs"]
 mod operating_controls;
+#[allow(dead_code)]
+#[path = "culvert_barrels/reference_rows.rs"]
+mod reference_rows;
 #[path = "runtime_backends/reservoir.rs"]
 mod reservoir;
 #[path = "runtime_backends/runoff_pools.rs"]

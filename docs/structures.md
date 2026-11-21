@@ -11,6 +11,7 @@ Use `hydr::structures::StructureBatch` to calculate flow through declared openin
 | Accepted transfers between evolving pools | [Coupled level pools](coupled-level-pools.md) |
 | Accepted transfers between pools, surface cells, and channel cells | [Surface/channel coupling](surface-channels.md#join-nodes-through-structures) |
 | Commands or moving openings | [Operating controls](operating-controls.md), [actuators](gate-actuators.md), or [operating sources](operating-sources.md) |
+| Culvert barrel geometry, critical depth, or normal depth | [`CulvertBarrelBatch`](#culvert-barrel-geometry) |
 
 A standalone structure proposal advances no storage. It checks neither donor availability nor acceptance of a paired transfer.
 
@@ -600,6 +601,144 @@ Run the original-bit opening and error-receipt observer:
 ```sh
 cargo run --example gate_trajectories_reference
 ```
+
+## Culvert barrel geometry
+
+`hydr::structures::CulvertBarrelBatch` encloses the geometry of closed circular and box barrels. It also encloses each barrel's critical depth and Manning normal depth. It computes no culvert discharge.
+
+Read capabilities with `culvert_barrel_capabilities()`. It returns a `ComponentCapabilities` declaration: arithmetic, runtimes, unsupported uses, and limits.
+
+### Declare barrels
+
+| Constructor | Shape |
+| --- | --- |
+| `CulvertBarrel::circular(diameter_m)` | Circle. Span and rise both equal the diameter. |
+| `CulvertBarrel::rectangular_box(span_m, rise_m)` | Box of span `B` and rise `D` |
+
+Each constructor returns `StructureInputErrorKind::Definition` for these inputs:
+
+- A nonfinite or nonpositive span, rise, or diameter.
+- A rise below `2^-992`, where `D 2^-30` is no longer a normal F64.
+- Dimensions whose `B D`, `2 (B + D)` or `B D^2`, times 64, overflow F64.
+
+The message names the field, its value, and the corrective action.
+
+`CulvertBarrelBatch::<R>::new(client, barrels)` uploads one row per barrel. Circle and box rows mix in one batch. It rejects an empty list. It also rejects a runtime without these F64 contracts:
+
+- IEEE basic arithmetic with nearest-even rounding and gradual underflow.
+- Fused multiply-add.
+- Correctly rounded elementary functions.
+- Square roots rounded to nearest.
+
+### Run a query
+
+Every query input is an F64 `[m]` tensor on the batch device, one value per barrel. Each value is in SI units.
+
+| Method | Inputs | Result |
+| --- | --- | --- |
+| `geometry` | `depth_m` | Geometry at each depth |
+| `geometry_over` | `lower_m`, `upper_m` | Geometry over every depth in each range |
+| `full_geometry` | None | Geometry at the crown `y = D` |
+| `critical_depth` | `discharge_m3_per_s` and a host `gravity_m_per_s2` | Depth where `Q^2 T = g A^3` |
+| `normal_depth` | `discharge_m3_per_s`, `manning_n`, `slope` | Depth where `Q = (1/n) A R^(2/3) sqrt(S)` |
+
+`discharge_m3_per_s` is the discharge magnitude per barrel. `slope` is positive downstream.
+
+Each result holds lower and upper tensors. The exact value at each represented input lies inside its pair. `project()` copies the rows to the host.
+
+### Read geometry
+
+A geometry row holds `(lower, upper)` pairs of these quantities:
+
+| Field | Quantity |
+| --- | --- |
+| `area_m2` | Flow area `A` |
+| `top_width_m` | Free-surface width `T`. Zero in the full state. |
+| `wetted_perimeter_m` | Wetted perimeter `P` |
+| `hydraulic_radius_m` | `A / P` |
+| `hydrostatic_moment_m3` | Integral of `(y - eta) T(eta)` from the invert to `y`. In the full state it is `A_full (y - D/2)`. |
+
+Each row also carries a `BarrelState`:
+
+| State | Depth | Meaning |
+| --- | --- | --- |
+| `Dry` | `y = 0` | Every quantity is an exact zero. A box keeps `T = P = B`. |
+| `Free` | `0 < y < D` | Free surface below the crown |
+| `Full` | `y >= D` | Full-barrel constants. Depth above the crown is pressure head. |
+
+`geometry_over` admits only `0 <= lower_m <= upper_m < D`. A range that reaches the crown rejects. Split it at the crown and use `full_geometry` above it. The hydraulic-radius bound divides the area range by the perimeter range, so it widens with the range.
+
+### Read critical depth
+
+The search domain is `[D 2^-30, top]`. `top` is `D (1 - 2^-53)` for a circle and `D` for a box. A circle has one critical depth below the crown for every `Q > 0`. A box has one only for `Q <= sqrt(g) B D^(3/2)`.
+
+| `CriticalDepthStatus` | Enclosure |
+| --- | --- |
+| `Dry` | Zero discharge. Exactly `[0, 0]`. |
+| `Solved` | Certified root inside the domain |
+| `BelowFloor` | The root lies at or below `D 2^-30`. The enclosure starts at 0. |
+| `AtCrown` | The residual at the domain top contains zero. The enclosure ends at `D`. A box root lies in it only when `Q` stays within the box limit. |
+| `AboveCrown` | A circle root lies in `[D (1 - 2^-53), D]`. A box has no free-surface critical depth and no enclosure. |
+
+### Read normal depth
+
+The normal depth is the root on the rising limb of the conveyance `K = A^(5/3) / P^(2/3)`. The search domain is `[D 2^-30, top]`, with `top = 0.93818 D` for a circle and `D` for a box.
+
+Circle conveyance peaks at `0.9381812 D`, above the full-barrel conveyance, then falls to the crown. Box conveyance rises to its open-section limit at the crown. That limit exceeds the full-barrel conveyance.
+
+| `NormalDepthStatus` | Enclosure |
+| --- | --- |
+| `Dry` | Zero discharge on a positive slope. Exactly `[0, 0]`. |
+| `Solved` | Certified root inside the domain |
+| `BelowFloor` | The root lies at or below `D 2^-30`. The enclosure starts at 0. |
+| `NearCapacity` | The target lies near the top of the rising limb. A rising-limb root, when one exists, lies in the enclosure. |
+| `AboveCapacity` | The target exceeds the peak circle conveyance or the box crown limit. No enclosure. |
+| `NonPositiveSlope` | Zero or adverse slope, whatever the discharge. No enclosure. |
+
+A row without an enclosure projects `depth_m: None`. Its tensors hold NaN.
+
+### Handle query rejection
+
+A query rejects the whole call and names the first offending row:
+
+| Input | Kind |
+| --- | --- |
+| Negative depth, discharge, or range end | `OperatingPoint` |
+| Nonfinite depth, discharge, range end, Manning n, or slope | `NonfiniteInput` |
+| Nonpositive Manning n | `OperatingPoint` |
+| Nonfinite or nonpositive gravity | `OperatingPoint`, with no row |
+| Reversed range or a range reaching the crown | `OperatingPoint` |
+| A tensor of another shape, dtype, or device | `OperatingPoint`, with no row |
+
+### Check the barrel evidence
+
+Independent 100-digit references are frozen before any kernel runs.
+
+| Check | Criterion |
+| --- | --- |
+| [Reference rows](../tests/culvert_barrels/geometry.rs) | Three circles and three boxes at frozen depth fractions from dry to `1.5 D`. Every reference lies inside its enclosure, within a frozen width per quantity. |
+| [Dense sweep](../tests/culvert_barrels/geometry.rs) | Sorted depths per shape contain every reference. No certified reversal of `A`, `P` or `M`. |
+| [Crown](../tests/culvert_barrels/crown.rs) and [ranges](../tests/culvert_barrels/ranges.rs) | Rows at and above the crown carry the full-state constants bit for bit. The free row one F64 step below the crown stays within its continuity gap. Range bounds contain every point bound they span. |
+| [Critical depth](../tests/culvert_barrels/critical.rs) and [normal depth](../tests/culvert_barrels/normal.rs) | Statuses match the reference class of the exact root. Every promised enclosure contains it. No depth shows a certified reversal as discharge rises. Normal depth also rises with roughness and as slope falls. |
+| [Layouts](../tests/culvert_barrels/layouts.rs) | Widths 1, 31, 32, 33, 64, and 65 mix circle and box rows. Every lane of every query equals its single-row result bit for bit. |
+| [Admission](../tests/culvert_barrels/admission.rs) | Each rejection names its row, value, and action |
+
+```sh
+cargo test --test culvert_barrels
+```
+
+| Runtime | Behavior |
+| --- | --- |
+| CPU | Reference |
+| CUDA | [Every query](../tests/runtime_backends/culvert_barrels.rs) over the reference rows and each layout width matches CPU bit for bit. Point geometry also matches over the dense sweep. |
+| WGPU | Construction rejects for lack of F64, without CPU fallback |
+
+### Know the barrel limits
+
+- Queries hold no state and advance no storage. No snapshot exists.
+- Full-barrel pressure flow and full-barrel friction stay with the caller.
+- Only circular and box barrels. No elliptical, arch, or pipe-arch sections.
+- No inlet control, outlet control, barrel profile, or culvert discharge.
 
 ## Read head sensitivity
 

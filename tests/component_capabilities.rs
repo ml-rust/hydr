@@ -113,6 +113,9 @@ mod surface_channel_ports;
 #[path = "component_capabilities/surface_channel_pools.rs"]
 mod surface_channel_pools;
 
+#[path = "component_capabilities/culvert_barrels.rs"]
+mod culvert_barrels;
+
 #[path = "component_capabilities/declarations.rs"]
 mod declarations;
 
@@ -418,6 +421,8 @@ const CORRECTLY_ROUNDED_CALLERS: &[ComponentId] = &[
     ComponentId::OperatingControl,
     ComponentId::GateActuator,
     ComponentId::ControlledPump,
+    // Interval `acos` for circle angles and interval `log` in the critical and normal residuals.
+    ComponentId::CulvertBarrel,
     // Bank weir, host stall forecast `log`, and nested components.
     ComponentId::SurfaceChannels,
     // Nested callers only.

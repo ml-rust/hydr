@@ -16,6 +16,10 @@ mod critical_rows;
 #[path = "culvert_barrels/normal_rows.rs"]
 mod normal_rows;
 
+#[allow(dead_code)]
+#[path = "culvert_barrels/lanes.rs"]
+mod lanes;
+
 #[path = "culvert_barrels/support.rs"]
 mod support;
 
@@ -36,3 +40,6 @@ mod critical;
 
 #[path = "culvert_barrels/normal.rs"]
 mod normal;
+
+#[path = "culvert_barrels/layouts.rs"]
+mod layouts;

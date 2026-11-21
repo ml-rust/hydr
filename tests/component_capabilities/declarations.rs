@@ -80,6 +80,11 @@ pub fn declarations() -> Vec<Declared> {
             snapshot_schema: Some(hydr::structures::CONTROLLED_PUMP_SNAPSHOT_SCHEMA),
         },
         Declared {
+            capabilities: hydr::structures::culvert_barrel_capabilities(),
+            contract: None,
+            snapshot_schema: None,
+        },
+        Declared {
             capabilities: hydr::coupling::surface_channel_capabilities(),
             contract: Some(hydr::coupling::SURFACE_CHANNEL_CONTRACT_VERSION),
             snapshot_schema: Some(hydr::coupling::SURFACE_CHANNEL_SNAPSHOT_SCHEMA),

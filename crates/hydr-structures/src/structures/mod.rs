@@ -43,7 +43,7 @@ pub use batch::StructureBatch;
 pub use culvert::{
     BarrelDepthStatus, BarrelState, CriticalDepthStatus, CulvertBarrel, CulvertBarrelBatch,
     CulvertBarrelDepth, CulvertBarrelDepthRow, CulvertBarrelGeometry, CulvertBarrelGeometryRow,
-    CulvertBarrelShape, NormalDepthStatus,
+    CulvertBarrelShape, NormalDepthStatus, culvert_barrel_capabilities,
 };
 pub use definition::{DirectionPolicy, FlowDirection, StructureElement, StructureLaw};
 pub use error::{StructureError, StructureInputErrorKind};

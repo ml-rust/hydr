@@ -115,6 +115,7 @@ A test in `tests/component_capabilities` backs every claim. A named test under t
 | Gate actuator | `hydr::structures::gate_actuator_capabilities` | [Gate actuators](gate-actuators.md) |
 | Controlled gate | `hydr::structures::controlled_gate_capabilities` | [Controlled gates](controlled-gates.md) |
 | Controlled pump | `hydr::structures::controlled_pump_capabilities` | [Controlled pumps](controlled-pumps.md) |
+| Culvert barrel | `hydr::structures::culvert_barrel_capabilities` | [Culvert barrel geometry](structures.md#culvert-barrel-geometry) |
 | Coupled level pool | `hydr::coupling::coupled_level_pool_capabilities` | [Coupled level pools](coupled-level-pools.md) |
 | Channel pool | `hydr::coupling::channel_pool_capabilities` | [Channel-to-pool connections](channel-pools.md) |
 | Runoff pool | `hydr::coupling::runoff_pool_capabilities` | [Runoff-to-pool connections](runoff-pools.md) |
@@ -138,7 +139,7 @@ Components store arrays as Numr `Tensor<R>`. Allocation uses `client.device()`, 
 | Basic arithmetic | Construction checks the declared contract and runs probes on the selected client. |
 | Rounding | Callers preserve nearest-even rounding and gradual underflow. |
 | Gate actuators | These additionally require `FusedMulAddContract::Ieee754Fused`. Basic F64 support alone is insufficient. |
-| Elementary functions | Components that declare `correctly-rounded-elementary` evaluate F64 `exp`, `log`, `log1p`, `pow` and `acos` through numr `CorrectlyRoundedOps`. Construction rejects a runtime without `FloatArithmeticContract::Ieee754Basic` and `FusedMulAddContract::Ieee754Fused` for F64. These components are the surface solver, all three channel reaches, soil, reservoir, subcatchment, coupled level pools, channel pools, runoff pools and surface/channel. Operating controls, gate actuators, controlled gates and controlled pumps also declare it, because each needs a `StructureBatch`, whose construction evaluates these functions. |
+| Elementary functions | Components that declare `correctly-rounded-elementary` evaluate F64 `exp`, `log`, `log1p`, `pow` and `acos` through numr `CorrectlyRoundedOps`. Construction rejects a runtime without `FloatArithmeticContract::Ieee754Basic` and `FusedMulAddContract::Ieee754Fused` for F64. These components are the surface solver, all three channel reaches, soil, reservoir, subcatchment, coupled level pools, channel pools, runoff pools, surface/channel and culvert barrels. Operating controls, gate actuators, controlled gates and controlled pumps also declare it, because each needs a `StructureBatch`, whose construction evaluates these functions. |
 | Unsupported precision or contract | Hydr returns an error without CPU fallback, host recomputation, or F32 substitution. |
 | Context compatibility | Cross-context operations and trusted restore check `Device::is_same`. Restore retains the destination client. |
 

@@ -718,6 +718,20 @@ These rejections run as in-crate tests with frozen criteria: pool capacity, a dr
 
 These cases establish no measured-event accuracy and no culvert accuracy. An orifice does not satisfy culvert inlet or outlet control.
 
+## Culvert barrel checks
+
+[Culvert barrel cases](../tests/culvert_barrels.rs) compare circular and box barrel enclosures against independent 100-digit references. The references are frozen before any kernel runs. Read the [barrel guide](structures.md#culvert-barrel-geometry) for inputs, statuses, and limits.
+
+| Check | Required result |
+| --- | --- |
+| Geometry | Every reference area, top width, perimeter, hydraulic radius, and moment lies inside its enclosure, within a frozen width |
+| Crown and ranges | Full rows carry the full-state constants bit for bit. Range bounds contain every point bound they span. |
+| Critical and normal depth | Statuses match the reference class of the exact root. Every promised enclosure contains it. |
+| Monotonicity | No certified reversal of geometry with depth, or of critical and normal depth with discharge |
+| Layouts | Every lane at widths 1, 31, 32, 33, 64, and 65 equals its single-row result bit for bit |
+
+These checks establish geometry and depth enclosures only. They establish no culvert discharge, inlet or outlet control, or measured-event accuracy.
+
 ## Runtime support
 
 Every capability declaration claims the same status on each runtime. A named test backs each claim.
@@ -734,6 +748,7 @@ The CUDA tests of these components also run the same case on CPU and compare com
 | --- | --- |
 | Operating controls, controlled gates, controlled pumps | Every field matches bit for bit |
 | Structure laws | Free and submerged weir, orifice, and free, mixed and submerged gate outputs match bit for bit over a dense head grid of more than 700 lanes |
+| Culvert barrels | Point, range, full-state, critical, and normal outputs match bit for bit over the reference rows and each layout width. Point geometry also matches over the dense sweep. |
 | Level pools, reservoirs, subcatchments | Per-element states match bit for bit. Batch totals and residual diagnostics agree within `volume_absolute + volume_relative * scale`. |
 | Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart through one bank link. A second case drains a reach through a port and a bank link together, refills it, and drains it again, with restart. Its cell states also match bit for bit. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. A third case runs pools with an orifice, a pump, an actuated gate, and a pool end across relay decisions and a gate arrival. After every accepted interval the text of every child state, package, and ledger is equal between CPU and CUDA, signed zero included. |
 | Surveyed endpoints | Four cases run on both clients: a standalone `Stage` and `FluxPort`, a port on a surveyed rectangle with a bank link, a pool end on three bands, and a channel/pool connection on three bands. Each restarts bit for bit. Cell volumes and momenta equal the CPU run bit for bit every interval. CPU and CUDA ledgers differ by at most the sum of their reported bounds. |

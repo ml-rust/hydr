@@ -1,6 +1,6 @@
 //! Barrel batches, depth tensors and containment checks shared by the culvert barrel tests.
 
-use super::reference_rows::{Barrel, State};
+use super::reference_rows::State;
 use super::runtime::{Runtime, client};
 use hydr::structures::{
     BarrelState, CulvertBarrel, CulvertBarrelBatch, CulvertBarrelGeometryRow, StructureError,
@@ -13,14 +13,7 @@ pub type TestResult = Result<(), Box<dyn std::error::Error>>;
 /// Quantity names in fixture order.
 pub const QUANTITIES: [&str; 5] = ["area", "top_width", "perimeter", "radius", "moment"];
 
-pub fn barrel(entry: &Barrel) -> Result<CulvertBarrel, StructureError> {
-    let rise = f64::from_bits(entry.rise);
-    if entry.circular {
-        CulvertBarrel::circular(rise)
-    } else {
-        CulvertBarrel::rectangular_box(f64::from_bits(entry.span), rise)
-    }
-}
+pub use super::lanes::barrel;
 
 pub fn batch(barrels: Vec<CulvertBarrel>) -> Result<CulvertBarrelBatch<Runtime>, StructureError> {
     CulvertBarrelBatch::new(client(), barrels)

@@ -8,12 +8,14 @@
 
 mod barrel;
 mod batch;
+mod capabilities;
 mod depth;
 mod input;
 mod output;
 
 pub use barrel::{CulvertBarrel, CulvertBarrelShape};
 pub use batch::CulvertBarrelBatch;
+pub use capabilities::culvert_barrel_capabilities;
 pub use depth::{
     BarrelDepthStatus, CriticalDepthStatus, CulvertBarrelDepth, CulvertBarrelDepthRow,
     NormalDepthStatus,
