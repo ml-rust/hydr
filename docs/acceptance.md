@@ -732,6 +732,21 @@ These cases establish no measured-event accuracy and no culvert accuracy. An ori
 
 These checks establish geometry and depth enclosures only. They establish no culvert discharge, inlet or outlet control, or measured-event accuracy.
 
+## Culvert law checks
+
+[Culvert law cases](../tests/culvert_laws.rs) invert independent 100-digit inlet and outlet corpus rows and the kernel's own control headwaters. Tolerances are frozen before any kernel runs. Read the [culvert guide](structures.md#culvert-structure-law) for inputs, regimes, and limits.
+
+| Check | Required result |
+| --- | --- |
+| Reference rows | Each row's reference headwater returns its reference discharge within `1e-6` relative, under the control the row exercises |
+| Round trip | `Q(HW(Q))` returns `Q` within `1e-6` relative on mild, adverse, and level barrels |
+| Control selection | Inlet-governed, outlet-governed, and tied lanes report their control |
+| Direction and zero flow | Reversal, one-end blocking, equal heads, dry donors, free outfalls, and zero-discharge headwaters give their declared results |
+| Transitions | Discharge stays continuous at both inlet anchors and where the outlet turns full |
+| Layouts | Every lane at widths 1, 33, and 65 among weirs equals its single-lane result bit for bit |
+
+These checks establish no measured-event accuracy, and no culvert support in any coordinator.
+
 ## Runtime support
 
 Every capability declaration claims the same status on each runtime. A named test backs each claim.
@@ -749,6 +764,7 @@ The CUDA tests of these components also run the same case on CPU and compare com
 | Operating controls, controlled gates, controlled pumps | Every field matches bit for bit |
 | Structure laws | Free and submerged weir, orifice, and free, mixed and submerged gate outputs match bit for bit over a dense head grid of more than 700 lanes |
 | Culvert barrels | Point, range, full-state, critical, and normal outputs match bit for bit over the reference rows and each layout width. Point geometry also matches over the dense sweep. |
+| Culvert laws | Regime, status, direction, discharge, and operands match bit for bit over the mixed lanes and each layout width |
 | Level pools, reservoirs, subcatchments | Per-element states match bit for bit. Batch totals and residual diagnostics agree within `volume_absolute + volume_relative * scale`. |
 | Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart through one bank link. A second case drains a reach through a port and a bank link together, refills it, and drains it again, with restart. Its cell states also match bit for bit. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. A third case runs pools with an orifice, a pump, an actuated gate, and a pool end across relay decisions and a gate arrival. After every accepted interval the text of every child state, package, and ledger is equal between CPU and CUDA, signed zero included. |
 | Surveyed endpoints | Four cases run on both clients: a standalone `Stage` and `FluxPort`, a port on a surveyed rectangle with a bank link, a pool end on three bands, and a channel/pool connection on three bands. Each restarts bit for bit. Cell volumes and momenta equal the CPU run bit for bit every interval. CPU and CUDA ledgers differ by at most the sum of their reported bounds. |
@@ -770,7 +786,7 @@ Each WGPU test also requires `WgpuRuntime::computes_float_dtype(DType::F64)` to 
 | Wet/dry | Partial dry lakes, dry fronts, positive films, shorelines, masks, crest invariants, and selected threshold sensitivity | Steep/shallow/coarse-grid dynamic accuracy and application-specific threshold envelope |
 | Resolution | Separate spatial, temporal, and combined refinement on selected cases | Application-specific mesh and time error budgets |
 | Independent engine | Nine matched wet-bed/dry-bed Clawpack runs, with decreasing depth/discharge differences and matched threshold fronts | Analytical front accuracy, independent terrain/transverse-flow comparisons, and broader hydraulic regimes |
-| Extensions | Land sources, coupled pools, free runoff outlets, finite channel/pool connections, surface/channel bank weirs, and surface/channel pools, structures, pool ends, and sampled controls have separate checks | General channel profiles, wider networks, culvert inlet and outlet control, continuous control feedback, and application-specific blockage scenarios require separate acceptance |
+| Extensions | Land sources, coupled pools, free runoff outlets, finite channel/pool connections, surface/channel bank weirs, and surface/channel pools, structures, pool ends, and sampled controls have separate checks | General channel profiles, wider networks, culverts in coordinators, continuous control feedback, and application-specific blockage scenarios require separate acceptance |
 | Field accuracy | No measured-event assessment executes | Independent observations and withheld-event assessment |
 
 ### Numerical limits retained by the checks

@@ -14,7 +14,9 @@ use super::power::power;
 use crate::structures::numerics::culvert::constants::{
     INLET_KU, MITERED_SLOPE_FACTOR, SLOPE_FACTOR, SUBMERGED_LIMIT, UNSUBMERGED_LIMIT,
 };
-use crate::structures::numerics::culvert::{BarrelClient, BarrelDepths, choose, critical};
+use crate::structures::numerics::culvert::{
+    BarrelClient, BarrelDepths, RowNames, choose, critical,
+};
 use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext, TensorInletContext};
 use crate::structures::{CulvertBarrel, CulvertInletForm, CulvertInletRow, StructureError};
 use numr::dtype::DType;
@@ -114,7 +116,7 @@ where
     // Critical depth at both ends of the limit-discharge enclosure, on form-1 rows only.
     let at = |end: &Tensor<R>| -> Result<BarrelDepths<R>, StructureError> {
         let flow = client.where_cond(&form_one, end, &barrel.zero)?;
-        critical::solve(barrels, barrel, unit, &flow, &gravity)
+        critical::solve(RowNames::new(barrels), barrel, unit, &flow, &gravity)
     };
     let below = at(&unsubmerged_discharge[0])?;
     let above = at(&unsubmerged_discharge[1])?;

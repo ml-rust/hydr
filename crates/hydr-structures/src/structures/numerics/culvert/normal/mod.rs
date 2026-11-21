@@ -16,11 +16,11 @@
 mod ends;
 mod residual;
 
-use super::BarrelClient;
 use super::constants::{CRITICAL_FLOOR, RISING_LIMB_TOP};
 use super::roots::{self, BarrelDepths};
+use super::{BarrelClient, RowNames};
 use crate::structures::tensor::culvert::TensorBarrelContext;
-use crate::structures::{CulvertBarrel, CulvertBarrelShape, StructureError};
+use crate::structures::{CulvertBarrelShape, StructureError};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -32,9 +32,9 @@ use solvr::optimize::CertifiedBisectionAlgorithms;
 /// `discharge`, `roughness` (Manning `n`) and `slope` are `[m]` tensors. The caller checks that
 /// every discharge is finite and nonnegative, every roughness finite and positive and every
 /// slope finite. `unit` is [`TensorBarrelContext::unit_circles`] of `barrel`.
-/// `barrels` is the host list of `barrel`, read only to name a row in an error.
+/// `names` names the rows of `barrel` in an error.
 pub(crate) fn solve<R>(
-    barrels: &[CulvertBarrel],
+    names: RowNames<'_, R>,
     barrel: &TensorBarrelContext<R>,
     unit: &TensorBarrelContext<R>,
     discharge: &Tensor<R>,
@@ -56,13 +56,13 @@ where
         &barrel.normal_slope,
         "culvert normal residual",
         residual::residual,
-        |row| describe(barrels, [discharge, roughness, slope], row),
+        |row| describe(names, [discharge, roughness, slope], row),
     )
 }
 
 /// Names a bracketed row the solver left open. Reads the row inputs to the host.
 fn describe<R>(
-    barrels: &[CulvertBarrel],
+    names: RowNames<'_, R>,
     inputs: [&Tensor<R>; 3],
     row: usize,
 ) -> Result<String, StructureError>
@@ -76,7 +76,7 @@ where
         }
     }
     let [discharge, roughness, slope] = values;
-    let Some(entry) = barrels.get(row) else {
+    let Some(entry) = names.barrel(row)? else {
         return Err(StructureError::numerical(format!(
             "normal depth row={row}: the solver named a row past the barrel list. Report this runtime"
         )));

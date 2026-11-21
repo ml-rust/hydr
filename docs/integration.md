@@ -116,6 +116,9 @@ A test in `tests/component_capabilities` backs every claim. A named test under t
 | Controlled gate | `hydr::structures::controlled_gate_capabilities` | [Controlled gates](controlled-gates.md) |
 | Controlled pump | `hydr::structures::controlled_pump_capabilities` | [Controlled pumps](controlled-pumps.md) |
 | Culvert barrel | `hydr::structures::culvert_barrel_capabilities` | [Culvert barrel geometry](structures.md#culvert-barrel-geometry) |
+| Culvert inlet | `hydr::structures::culvert_inlet_capabilities` | [Culvert inlet control](structures.md#culvert-inlet-control) |
+| Culvert outlet | `hydr::structures::culvert_outlet_capabilities` | [Culvert outlet control](structures.md#culvert-outlet-control) |
+| Culvert | `hydr::structures::culvert_capabilities` | [Culvert structure law](structures.md#culvert-structure-law) |
 | Coupled level pool | `hydr::coupling::coupled_level_pool_capabilities` | [Coupled level pools](coupled-level-pools.md) |
 | Channel pool | `hydr::coupling::channel_pool_capabilities` | [Channel-to-pool connections](channel-pools.md) |
 | Runoff pool | `hydr::coupling::runoff_pool_capabilities` | [Runoff-to-pool connections](runoff-pools.md) |

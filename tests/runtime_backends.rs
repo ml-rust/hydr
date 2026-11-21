@@ -36,6 +36,11 @@ mod culvert_inlets;
 #[path = "culvert_barrels/lanes.rs"]
 mod culvert_lanes;
 #[allow(dead_code)]
+#[path = "culvert_laws/lanes.rs"]
+mod culvert_law_lanes;
+#[path = "runtime_backends/culvert_laws.rs"]
+mod culvert_laws;
+#[allow(dead_code)]
 #[path = "culvert_outlets/lanes.rs"]
 mod culvert_outlet_lanes;
 #[path = "runtime_backends/culvert_outlets.rs"]
@@ -79,6 +84,9 @@ mod runtime;
 mod structure_laws;
 #[path = "runtime_backends/subcatchment.rs"]
 mod subcatchment;
+#[allow(dead_code)]
+#[path = "culvert_laws/support.rs"]
+mod support;
 #[path = "runtime_backends/surface_channel_pools.rs"]
 mod surface_channel_pools;
 #[path = "runtime_backends/surface_channels.rs"]

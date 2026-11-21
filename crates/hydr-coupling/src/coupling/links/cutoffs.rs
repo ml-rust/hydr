@@ -5,11 +5,16 @@ use crate::structures::{DirectionPolicy, StructureElement, StructureLaw};
 /// Stage at or below which each endpoint of `element` stops giving water, `[A, B]`.
 ///
 /// Each cutoff starts at the attachment bed. A weir raises both to its crest, a gate to its sill,
-/// and an orifice to its crown. A pump raises only its source side to its minimum suction stage.
+/// an orifice to its crown, and a culvert each to the invert at that end. A pump raises only its source side to its minimum suction stage.
 /// The source is B for `BtoAOnly` and A otherwise.
 pub(crate) fn endpoint_cutoffs(element: &StructureElement, beds: [f64; 2]) -> [f64; 2] {
     let mut cuts = beds;
     match &element.law {
+        StructureLaw::Culvert(p) => {
+            let alignment = p.alignment();
+            cuts[0] = cuts[0].max(alignment.invert_a_m);
+            cuts[1] = cuts[1].max(alignment.invert_b_m);
+        }
         StructureLaw::SuppressedRectangularWeir(p) => {
             cuts[0] = cuts[0].max(p.crest_m());
             cuts[1] = cuts[1].max(p.crest_m());

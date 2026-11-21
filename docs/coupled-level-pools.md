@@ -40,7 +40,7 @@ Choose the matching operation from [structure laws](structures.md):
 - Explicit isolated-stop or running operation for pumps.
 - Fixed opening for gates.
 
-Hydr supplies no implicit pump operation. The configured client selects the runtime used by the batch.
+Hydr supplies no implicit pump operation. The configured client selects the runtime used by the batch. A culvert law rejects: these pools hold none.
 
 ## Supply local rain and losses
 

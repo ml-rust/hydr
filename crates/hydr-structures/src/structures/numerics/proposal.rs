@@ -1,4 +1,4 @@
-//! Shared complete-law point evaluation in passive, pump, then gate order.
+//! Shared complete-law point evaluation in passive, pump, gate, then culvert order.
 use numr::{dtype::DType, runtime::Runtime};
 
 use crate::structures::StructureError;
@@ -27,5 +27,9 @@ where
 {
     let passive = super::evaluate(context, input)?;
     let result = super::pump::evaluate(context, input, passive)?;
-    super::gate::evaluate(context, input, result)
+    let result = super::gate::evaluate(context, input, result)?;
+    match &context.culvert {
+        Some(culvert) => culvert.evaluate(context, input, result),
+        None => Ok(result),
+    }
 }

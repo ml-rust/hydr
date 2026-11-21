@@ -38,15 +38,17 @@ pub use actuator::{
     GateActuatorTargetChangeReceipt, GateActuatorTimeExpansion, GateActuatorTrial,
     GateTargetUpdate, gate_actuator_capabilities,
 };
-pub use applicability::{OrificeApplicability, WeirApplicability};
+pub use applicability::{CulvertApplicability, OrificeApplicability, WeirApplicability};
 pub use batch::StructureBatch;
+pub(crate) use culvert::CulvertSide;
 pub use culvert::{
-    BarrelDepthStatus, BarrelState, CriticalDepthStatus, CulvertBarrel, CulvertBarrelBatch,
-    CulvertBarrelDepth, CulvertBarrelDepthRow, CulvertBarrelGeometry, CulvertBarrelGeometryRow,
-    CulvertBarrelShape, CulvertInlet, CulvertInletBatch, CulvertInletForm, CulvertInletHeadwater,
-    CulvertInletHeadwaterRow, CulvertInletRow, CulvertOutletBatch, CulvertOutletHeadwater,
-    CulvertOutletHeadwaterRow, CulvertOutletJump, CulvertOutletJumpRow, CulvertOutletRow,
-    InletRegime, JumpStatus, NormalDepthStatus, OutletRegime, culvert_barrel_capabilities,
+    BarrelDepthStatus, BarrelState, CriticalDepthStatus, CulvertAlignment, CulvertBarrel,
+    CulvertBarrelBatch, CulvertBarrelDepth, CulvertBarrelDepthRow, CulvertBarrelGeometry,
+    CulvertBarrelGeometryRow, CulvertBarrelShape, CulvertEnd, CulvertEnds, CulvertInlet,
+    CulvertInletBatch, CulvertInletForm, CulvertInletHeadwater, CulvertInletHeadwaterRow,
+    CulvertInletRow, CulvertOutletBatch, CulvertOutletHeadwater, CulvertOutletHeadwaterRow,
+    CulvertOutletJump, CulvertOutletJumpRow, CulvertOutletRow, CulvertParameters, InletRegime,
+    JumpStatus, NormalDepthStatus, OutletRegime, culvert_barrel_capabilities, culvert_capabilities,
     culvert_inlet_capabilities, culvert_outlet_capabilities,
 };
 pub use definition::{DirectionPolicy, FlowDirection, StructureElement, StructureLaw};
@@ -60,6 +62,7 @@ pub use gate::{
 };
 pub use heads::{EndpointHead, HeadConvention, HeadSupport, StructureHeads};
 pub use held::HeldHeadProposal;
+pub use numerics::culvert::{BarrelClient, CulvertClient};
 pub use operation::{StructureOperatingPoint, StructureOperation};
 pub use output::{
     HeldHeadInterval, HeldHeadVolumeOutput, StructureHydraulicOperands, StructureLawKind,

@@ -41,6 +41,21 @@ impl<R: Runtime<DType = DType>> CouplingStructures<R> {
         Ok(Self { batch, tensors })
     }
 
+    /// Checked laws that may include culverts, under `operations`.
+    #[doc(hidden)]
+    pub fn with_culverts(
+        client: R::Client,
+        elements: Vec<StructureElement>,
+        operations: Vec<StructureOperation>,
+    ) -> Result<Self, StructureError>
+    where
+        R::Client: super::CulvertClient<R>,
+    {
+        let batch = StructureBatch::<R>::with_culverts(client, elements)?;
+        let tensors = TensorStaticOperations::<R>::new(&batch.context, &operations)?;
+        Ok(Self { batch, tensors })
+    }
+
     /// The same checked laws under `operations`, one per element in element order.
     ///
     /// The elements stay checked once. Only the operation tensors change.

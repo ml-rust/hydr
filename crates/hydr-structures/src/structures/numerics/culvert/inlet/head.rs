@@ -71,7 +71,7 @@ where
 /// Encloses `h(s) / D` at the depth fractions `s` (`[m]`, `0 <= s < 1`).
 ///
 /// Rows with `s = 0` hold a harmless value. The caller replaces it by zero.
-fn unit_head<R>(
+pub(crate) fn unit_head<R>(
     a: &mut Arithmetic<'_, R>,
     barrel: &TensorBarrelContext<R>,
     unit: &TensorBarrelContext<R>,

@@ -6,7 +6,7 @@ use super::{
     NormalDepthStatus,
 };
 use crate::structures::StructureError;
-use crate::structures::numerics::culvert::{critical, normal, section};
+use crate::structures::numerics::culvert::{RowNames, critical, normal, section};
 use crate::structures::tensor::culvert::TensorBarrelContext;
 use numr::dtype::DType;
 use numr::ops::{
@@ -183,7 +183,7 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
         check_discharges(context, "discharge_m3_per_s", discharge_m3_per_s)?;
         let gravity = context.constant(gravity_m_per_s2)?;
         let depths = critical::solve(
-            &self.barrels,
+            RowNames::new(&self.barrels),
             context,
             &self.unit,
             discharge_m3_per_s,
@@ -228,7 +228,7 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             ],
         )?;
         let depths = normal::solve(
-            &self.barrels,
+            RowNames::new(&self.barrels),
             context,
             &self.unit,
             discharge_m3_per_s,

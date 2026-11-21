@@ -20,6 +20,24 @@ impl OrificeApplicability {
     }
 }
 
+/// Applicability evidence for an HDS-5 culvert.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CulvertApplicability {
+    /// Source of the inlet coefficients, entrance losses and Manning `n`.
+    pub coefficient_provenance: String,
+    /// Evidence that the barrel is clean and unobstructed, and that its stored water is negligible.
+    pub barrel_condition_assertion: String,
+}
+impl CulvertApplicability {
+    pub(crate) fn check(&self) -> Result<(), super::StructureError> {
+        super::definition::text(&self.coefficient_provenance, "coefficient_provenance")?;
+        super::definition::text(
+            &self.barrel_condition_assertion,
+            "barrel_condition_assertion",
+        )
+    }
+}
+
 /// Applicability evidence for a suppressed sharp-crested rectangular weir only.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WeirApplicability {

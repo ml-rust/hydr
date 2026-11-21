@@ -63,7 +63,7 @@ static CULVERT_OUTLET: ComponentCapabilities = ComponentCapabilities {
     sources: &[],
     options: &[],
     nested: &[],
-    attachable_to: &[],
+    attachable_to: &[ComponentId::Culvert],
     unsupported: &[
         unsupported(
             "invalid-outlet-row",
@@ -83,7 +83,7 @@ static CULVERT_OUTLET: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "culvert-discharge",
             UnsupportedReason::NotAttached,
-            "Outlet headwater only; no inlet control, discharge from head, flow direction or structure law.",
+            "Outlet headwater only; no inlet control, discharge from head or flow direction. The culvert structure law gives those.",
         ),
     ],
     limits: &[

@@ -240,6 +240,13 @@ fn check_law(
     let element = &structure.element;
     let id = element.id.as_str();
     let (control, symmetric, law_gravity) = match &element.law {
+        StructureLaw::Culvert(_) => {
+            return Err(rejected(
+                "culvert-inlet-outlet-control",
+                id,
+                "is a culvert: this coordinator holds no culvert law; evaluate the culvert with StructureBatch::with_culverts".into(),
+            ));
+        }
         StructureLaw::SuppressedRectangularWeir(p) => (
             Some(("crest", p.crest_m())),
             p.applicability().symmetric_reversal,
@@ -323,7 +330,9 @@ fn operation(
         }
     };
     let admitted = match law {
-        StructureLaw::SuppressedRectangularWeir(_) | StructureLaw::SubmergedOrifice(_) => {
+        StructureLaw::Culvert(_)
+        | StructureLaw::SuppressedRectangularWeir(_)
+        | StructureLaw::SubmergedOrifice(_) => {
             matches!(point, StructureOperatingPoint::Passive)
         }
         StructureLaw::HydrostaticRectangularGate(_) => {

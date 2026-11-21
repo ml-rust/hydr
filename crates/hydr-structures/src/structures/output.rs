@@ -5,6 +5,8 @@ use super::{DirectionPolicy, FlowDirection, StructureHeads};
 /// Concrete evaluated constitutive model identity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StructureLawKind {
+    /// HDS-5 culvert under inlet or outlet control.
+    Culvert,
     /// Hydrostatic pressure-strip integral across a thin rectangular aperture.
     HydrostaticRectangularGate,
     /// Fixed-orientation bounded pump reference curve.
@@ -41,6 +43,16 @@ pub enum StructureRegime {
     BelowCrest,
     /// Eligible wet stages are exactly equal above the controlling elevation.
     EqualHeads,
+    /// Culvert discharge certainly follows the inlet-control headwater.
+    CulvertInletControl,
+    /// Culvert discharge certainly follows the outlet-control headwater.
+    CulvertOutletControl,
+    /// Both control discharges overlap within their enclosures, so either can govern.
+    CulvertControlTie,
+    /// No wet donor stands above its culvert invert.
+    CulvertBelowInvert,
+    /// The heads drive flow into an end without a declared culvert inlet.
+    CulvertUndeclaredEnd,
 }
 /// Proposal status, without donor availability or transfer acceptance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,6 +73,15 @@ pub enum StructureStatus {
 /// Original evaluated law operands, including running pump shutoff. Isolated branches expose no fabricated heads.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StructureHydraulicOperands {
+    /// Culvert control heads and the certified per-barrel discharge.
+    Culvert {
+        /// Donor stage above the inlet invert, in metres.
+        headwater_m: f64,
+        /// Receiver stage above the outlet invert, in metres. Zero for a free outfall.
+        tailwater_m: f64,
+        /// `(lower, upper)` enclosure of the discharge of one barrel, in m³/s.
+        barrel_discharge_m3_per_s: (f64, f64),
+    },
     /// Evaluated hydrostatic-aperture geometry and independent arithmetic witnesses.
     HydrostaticRectangularGate(super::GateHydraulicOperands),
     /// Evaluated running/shutoff pump query and full normalization evidence.

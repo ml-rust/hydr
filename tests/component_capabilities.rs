@@ -122,6 +122,9 @@ mod culvert_inlets;
 #[path = "component_capabilities/culvert_outlets.rs"]
 mod culvert_outlets;
 
+#[path = "component_capabilities/culverts.rs"]
+mod culverts;
+
 #[path = "component_capabilities/declarations.rs"]
 mod declarations;
 
@@ -433,6 +436,8 @@ const CORRECTLY_ROUNDED_CALLERS: &[ComponentId] = &[
     ComponentId::CulvertInlet,
     // Interval `acos`, `log` and `exp` in the profile integrand and the barrel depth solves.
     ComponentId::CulvertOutlet,
+    // Inlet and outlet curves of each direction, and the form-1 critical-depth solve.
+    ComponentId::Culvert,
     // Bank weir, host stall forecast `log`, and nested components.
     ComponentId::SurfaceChannels,
     // Nested callers only.

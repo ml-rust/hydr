@@ -32,6 +32,7 @@ pub fn structure_kind(
     use StructureOperatingPoint::{GateOpening, Passive, PumpRunning, PumpStoppedIsolated};
     const MISMATCH: &str = "mismatched-structure-operation";
     match law {
+        StructureLaw::Culvert(_) => Err("culvert-law"),
         StructureLaw::HydrostaticRectangularGate(_) => match operating_point {
             GateOpening { .. } => Ok(BoundaryKind::GateFixedOpening),
             Passive | PumpStoppedIsolated | PumpRunning { .. } => Err(MISMATCH),
@@ -55,6 +56,7 @@ pub fn structure_kind(
 /// Message fragment of the operation rejection for `law`.
 pub fn operation_fragment(law: &StructureLaw) -> &'static str {
     match law {
+        StructureLaw::Culvert(_) => "a culvert law needs certified roots and quadrature",
         StructureLaw::HydrostaticRectangularGate(_) => {
             "gate requires an explicit identity-bound opening operation"
         }

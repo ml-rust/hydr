@@ -2,6 +2,7 @@
 
 use super::Bounds;
 use numr::dtype::DType;
+use numr::ops::IndexingOps;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
@@ -34,4 +35,31 @@ pub(crate) struct TensorInletContext<R: Runtime<DType = DType>> {
     pub(crate) low: Bounds<R>,
     /// Submerged headwater at exactly `X = 4`, in metres.
     pub(crate) high: Bounds<R>,
+}
+
+impl<R: Runtime<DType = DType>> TensorInletContext<R> {
+    /// Gathers the rows at the I64 indices `rows`, in their order. Indices may repeat.
+    pub(crate) fn select(&self, c: &R::Client, rows: &Tensor<R>) -> numr::error::Result<Self>
+    where
+        R::Client: IndexingOps<R>,
+    {
+        let take = |value: &Tensor<R>| c.index_select(value, 0, rows);
+        let pair = |[lower, upper]: &Bounds<R>| -> numr::error::Result<Bounds<R>> {
+            Ok([take(lower)?, take(upper)?])
+        };
+        Ok(Self {
+            form_one: take(&self.form_one)?,
+            k: take(&self.k)?,
+            m: take(&self.m)?,
+            c: take(&self.c)?,
+            y: take(&self.y)?,
+            gravity: take(&self.gravity)?,
+            slope_term: pair(&self.slope_term)?,
+            scale: pair(&self.scale)?,
+            unsubmerged_discharge: pair(&self.unsubmerged_discharge)?,
+            submerged_discharge: pair(&self.submerged_discharge)?,
+            low: pair(&self.low)?,
+            high: pair(&self.high)?,
+        })
+    }
 }

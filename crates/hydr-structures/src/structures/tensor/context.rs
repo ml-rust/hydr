@@ -20,6 +20,7 @@ use numr::tensor::Tensor;
 use std::collections::BTreeSet;
 
 pub(crate) struct TensorStructureContext<R: Runtime<DType = DType>> {
+    pub culvert: Option<Box<dyn super::culvert::CulvertLaw<R>>>,
     pub gate: Option<super::gate::TensorGateContext<R>>,
     pub pump: Option<super::pump::TensorPumpContext<R>>,
     pub elements: Vec<StructureElement>,
@@ -39,9 +40,41 @@ pub(crate) struct TensorStructureContext<R: Runtime<DType = DType>> {
     pub log_two: Tensor<R>,
 }
 impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
+    /// Checks every law except the culvert, which rejects.
     pub(crate) fn new(
         client: R::Client,
         elements: Vec<StructureElement>,
+    ) -> Result<Self, StructureError>
+    where
+        R::Client: numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::CorrectlyRoundedOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>,
+    {
+        Self::build(client, elements, false)
+    }
+
+    /// Checks every law and uploads the culvert rows.
+    pub(crate) fn with_culverts(
+        client: R::Client,
+        elements: Vec<StructureElement>,
+    ) -> Result<Self, StructureError>
+    where
+        R::Client: crate::structures::CulvertClient<R>,
+    {
+        let mut context = Self::build(client, elements, true)?;
+        context.culvert = super::culvert::TensorCulvertLaw::new(&context)?
+            .map(|law| Box::new(law) as Box<dyn super::culvert::CulvertLaw<R>>);
+        Ok(context)
+    }
+
+    fn build(
+        client: R::Client,
+        elements: Vec<StructureElement>,
+        culverts: bool,
     ) -> Result<Self, StructureError>
     where
         R::Client: numr::ops::BinaryOps<R>
@@ -106,6 +139,26 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
                 .at(index));
             }
             let symmetric = match &e.law {
+                StructureLaw::Culvert(parameters) => {
+                    if !culverts {
+                        return Err(StructureError::input(
+                            StructureInputErrorKind::Definition,
+                            "a culvert law needs certified roots and quadrature on the runtime. Build the batch with StructureBatch::with_culverts",
+                        )
+                        .at(index));
+                    }
+                    orifice.push(0.0);
+                    weir.push(0.0);
+                    crown.push(0.0);
+                    crest.push(0.0);
+                    cd.push(1.0);
+                    area.push(1.0);
+                    cw.push(1.0);
+                    length.push(1.0);
+                    gravity.push(1.0);
+                    culvert_ends(parameters, e.direction).map_err(|error| error.at(index))?;
+                    true
+                }
                 StructureLaw::HydrostaticRectangularGate(parameters) => {
                     orifice.push(0.0);
                     weir.push(0.0);
@@ -205,6 +258,7 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
             &client.cr_log(&tensor(&length)?)?,
         )?;
         let context = Self {
+            culvert: None,
             gate: super::gate::TensorGateContext::new(&elements, &client, &device)?,
             pump: super::pump::TensorPumpContext::new(&elements, &device)?,
             zero: tensor(&vec![0.0; n])?,
@@ -340,6 +394,29 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
         self.finite(value, quantity)?;
         self.reject(&self.client.le(value, &self.zero)?, quantity)
     }
+}
+
+/// Checks that a culvert declares an end for each admitted direction and no other.
+fn culvert_ends(
+    parameters: &crate::structures::CulvertParameters,
+    direction: DirectionPolicy,
+) -> Result<(), StructureError> {
+    let ends = parameters.ends();
+    let (a, b) = (ends.a.is_some(), ends.b.is_some());
+    let expected = match direction {
+        DirectionPolicy::Bidirectional => (true, true),
+        DirectionPolicy::AtoBOnly => (true, false),
+        DirectionPolicy::BtoAOnly => (false, true),
+    };
+    if (a, b) != expected {
+        return Err(StructureError::input(
+            StructureInputErrorKind::Definition,
+            format!(
+                "direction={direction:?},end_a={a},end_b={b}: declare the culvert end of each admitted direction and no other. Bidirectional needs both ends, AtoBOnly the A end, BtoAOnly the B end"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 impl<R: Runtime<DType = DType>> std::fmt::Debug for TensorStructureContext<R> {

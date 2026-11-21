@@ -48,6 +48,18 @@ pub(super) fn outputs<R: Runtime<DType = DType>>(
         .as_ref()
         .map(|result| super::gate::GateOperandProjection::new(result, n))
         .transpose()?;
+    let culvert = r
+        .culvert
+        .as_ref()
+        .map(|result| -> Result<[Vec<f64>; 4], StructureError> {
+            Ok([
+                read(&result.headwater, n)?,
+                read(&result.tailwater, n)?,
+                read(&result.lower, n)?,
+                read(&result.upper, n)?,
+            ])
+        })
+        .transpose()?;
     (0..n)
         .map(|element| {
             let definition = &data.context.elements[element];
@@ -90,6 +102,22 @@ pub(super) fn outputs<R: Runtime<DType = DType>>(
                             operands.at(element, operations[element].operating_point)?,
                         )
                     }
+                    StructureRegime::CulvertInletControl
+                    | StructureRegime::CulvertOutletControl
+                    | StructureRegime::CulvertControlTie => {
+                        let [headwater, tailwater, lower, upper] =
+                            culvert.as_ref().ok_or_else(|| {
+                                StructureError::numerical(
+                                    "evaluated culvert output lacks its control operands",
+                                )
+                                .at(element)
+                            })?;
+                        StructureHydraulicOperands::Culvert {
+                            headwater_m: headwater[element],
+                            tailwater_m: tailwater[element],
+                            barrel_discharge_m3_per_s: (lower[element], upper[element]),
+                        }
+                    }
                     StructureRegime::SubmergedOrifice => {
                         StructureHydraulicOperands::SubmergedOrifice {
                             head_gap_m: gap[element],
@@ -125,6 +153,7 @@ pub(super) fn outputs<R: Runtime<DType = DType>>(
                 element,
                 input: data.heads[element].clone(),
                 law: match &definition.law {
+                    StructureLaw::Culvert(_) => StructureLawKind::Culvert,
                     StructureLaw::HydrostaticRectangularGate(_) => {
                         StructureLawKind::HydrostaticRectangularGate
                     }
@@ -169,6 +198,16 @@ fn regime(value: f64) -> Result<StructureRegime, StructureError> {
         Ok(StructureRegime::BelowCrest)
     } else if value == codes::EQUAL_HEADS {
         Ok(StructureRegime::EqualHeads)
+    } else if value == codes::CULVERT_INLET_CONTROL {
+        Ok(StructureRegime::CulvertInletControl)
+    } else if value == codes::CULVERT_OUTLET_CONTROL {
+        Ok(StructureRegime::CulvertOutletControl)
+    } else if value == codes::CULVERT_CONTROL_TIE {
+        Ok(StructureRegime::CulvertControlTie)
+    } else if value == codes::CULVERT_BELOW_INVERT {
+        Ok(StructureRegime::CulvertBelowInvert)
+    } else if value == codes::CULVERT_UNDECLARED_END {
+        Ok(StructureRegime::CulvertUndeclaredEnd)
     } else {
         Err(StructureError::numerical(
             "invalid internal physical-regime code",

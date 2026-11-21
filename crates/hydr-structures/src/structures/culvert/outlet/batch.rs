@@ -2,6 +2,7 @@
 
 use super::{CulvertOutletHeadwater, CulvertOutletJump, CulvertOutletRow};
 use crate::structures::culvert::input::{check_depths, check_discharges};
+use crate::structures::numerics::culvert::RowNames;
 use crate::structures::numerics::culvert::outlet::{self, jump};
 use crate::structures::tensor::culvert::{TensorBarrelContext, TensorOutletContext};
 use crate::structures::{CulvertBarrel, StructureError};
@@ -118,7 +119,7 @@ impl<R: Runtime<DType = DType>> CulvertOutletBatch<R> {
     {
         self.check(discharge_m3_per_s, tailwater_m)?;
         let march = outlet::march(
-            &self.barrels,
+            RowNames::new(&self.barrels),
             &self.barrel,
             &self.unit,
             &self.outlet,
@@ -150,7 +151,7 @@ impl<R: Runtime<DType = DType>> CulvertOutletBatch<R> {
     {
         self.check(discharge_m3_per_s, tailwater_m)?;
         let march = outlet::march(
-            &self.barrels,
+            RowNames::new(&self.barrels),
             &self.barrel,
             &self.unit,
             &self.outlet,

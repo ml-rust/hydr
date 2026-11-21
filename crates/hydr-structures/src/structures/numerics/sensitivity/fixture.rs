@@ -68,6 +68,28 @@ pub(crate) fn structures(
     law: impl Fn(usize) -> (StructureLaw, DirectionPolicy, StructureOperatingPoint),
     count: usize,
 ) -> TestResult<CouplingStructures<CpuRuntime>> {
+    let (client, elements, operations) = parts(law, count);
+    Ok(CouplingStructures::new(client, elements, operations)?)
+}
+
+/// [`structures`] through the constructor that admits culverts.
+pub(crate) fn culvert_structures(
+    law: impl Fn(usize) -> (StructureLaw, DirectionPolicy, StructureOperatingPoint),
+    count: usize,
+) -> TestResult<CouplingStructures<CpuRuntime>> {
+    let (client, elements, operations) = parts(law, count);
+    Ok(CouplingStructures::with_culverts(
+        client, elements, operations,
+    )?)
+}
+
+/// Client, elements and operations of [`structures`].
+type Parts = (CpuClient, Vec<StructureElement>, Vec<StructureOperation>);
+
+fn parts(
+    law: impl Fn(usize) -> (StructureLaw, DirectionPolicy, StructureOperatingPoint),
+    count: usize,
+) -> Parts {
     let client =
         CpuClient::new(CpuDevice::new()).with_parallelism(ParallelismConfig::new(Some(1), None));
     let (mut elements, mut operations) = (Vec::new(), Vec::new());
@@ -86,7 +108,7 @@ pub(crate) fn structures(
             operating_point,
         });
     }
-    Ok(CouplingStructures::new(client, elements, operations)?)
+    (client, elements, operations)
 }
 
 /// Law values of every lane at the stages it was evaluated at.

@@ -99,6 +99,12 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
             COUPLED_DOC,
         ),
         unsupported(
+            "culvert-law",
+            UnsupportedReason::RejectedByAdmission,
+            "A culvert law rejects. These pools hold no culvert law.",
+            COUPLED_DOC,
+        ),
+        unsupported(
             "external-withdrawals",
             UnsupportedReason::OutsideModel,
             "No external withdrawals or runoff feedback from receiving-pool levels.",

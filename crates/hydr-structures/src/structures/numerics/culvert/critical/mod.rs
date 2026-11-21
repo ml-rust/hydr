@@ -7,13 +7,13 @@
 //! outward.
 
 mod ends;
-mod residual;
+pub(crate) mod residual;
 
-use super::BarrelClient;
 use super::constants::{CIRCLE_CRITICAL_TOP, CRITICAL_FLOOR};
 use super::roots::{self, BarrelDepths};
+use super::{BarrelClient, RowNames};
 use crate::structures::tensor::culvert::TensorBarrelContext;
-use crate::structures::{CulvertBarrel, CulvertBarrelShape, StructureError};
+use crate::structures::{CulvertBarrelShape, StructureError};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -24,9 +24,9 @@ use solvr::optimize::CertifiedBisectionAlgorithms;
 ///
 /// Both are `[m]` tensors. The caller checks that every discharge is finite and nonnegative and
 /// every gravity finite and positive. `unit` is [`TensorBarrelContext::unit_circles`] of `barrel`.
-/// `barrels` is the host list of `barrel`, read only to name a row in an error.
+/// `names` names the rows of `barrel` in an error.
 pub(crate) fn solve<R>(
-    barrels: &[CulvertBarrel],
+    names: RowNames<'_, R>,
     barrel: &TensorBarrelContext<R>,
     unit: &TensorBarrelContext<R>,
     discharge: &Tensor<R>,
@@ -47,13 +47,13 @@ where
         &barrel.critical_slope,
         "culvert critical residual",
         residual::residual,
-        |row| describe(barrels, discharge, row),
+        |row| describe(names, discharge, row),
     )
 }
 
 /// Names a bracketed row the solver left open. Reads the discharges to the host.
 fn describe<R>(
-    barrels: &[CulvertBarrel],
+    names: RowNames<'_, R>,
     discharge: &Tensor<R>,
     row: usize,
 ) -> Result<String, StructureError>
@@ -61,7 +61,7 @@ where
     R: Runtime<DType = DType>,
 {
     let discharge = discharge.try_to_vec::<f64>()?;
-    let (Some(entry), Some(flow)) = (barrels.get(row), discharge.get(row)) else {
+    let (Some(entry), Some(flow)) = (names.barrel(row)?, discharge.get(row)) else {
         return Err(StructureError::numerical(format!(
             "critical depth row={row}: the solver named a row past the barrel list. Report this runtime"
         )));

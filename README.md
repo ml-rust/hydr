@@ -22,7 +22,8 @@ The library is unpublished. Its components support the following calculations:
 | Coupled storage pools | Accepted structure transfers, local rain and losses, and prescribed external rates or integrated volumes | [Coupled level pools](docs/coupled-level-pools.md) |
 | Runoff into pools | Native runoff generation and pool storage accepted over one common interval | [Runoff-to-pool connections](docs/runoff-pools.md) |
 | Structure laws | Flow proposals for openings, weirs, pumps, and gates | [Structures](docs/structures.md) |
-| Culvert barrel geometry | Certified bounds on circular and box barrel geometry, critical depth, and Manning normal depth. No culvert discharge. | [Culvert barrel geometry](docs/structures.md#culvert-barrel-geometry) |
+| Culvert barrel geometry | Certified bounds on circular and box barrel geometry, critical depth, and Manning normal depth | [Culvert barrel geometry](docs/structures.md#culvert-barrel-geometry) |
+| Culverts | HDS-5 inlet and outlet control of circular and box culverts, and culvert discharge from the heads at both ends | [Culvert structure law](docs/structures.md#culvert-structure-law) |
 | Operating controls | Sampled commands and explicitly assumed ideal pump or gate responses | [Controls](docs/operating-controls.md), [actuators](docs/gate-actuators.md), [controlled gates](docs/controlled-gates.md), and [controlled pumps](docs/controlled-pumps.md) |
 
 Connected level pools support accepted water transfers, local sources, prescribed external inflows, and static manual operations. Runoff-to-pool coordination requires free outlets without downstream feedback. Rectangular, triangular, and surveyed reaches attach to the surface solver through the surface/channel coordinator. A rectangular reach end, or a surveyed rectangle end, also attaches through a reach-end port. Level pools, structures, and sampled controls attach to the surface solver and the reaches through the same coordinator.

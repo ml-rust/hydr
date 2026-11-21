@@ -20,7 +20,7 @@ pub struct CulvertInletRow {
 impl CulvertInletRow {
     /// Rejects a nonfinite slope, a nonfinite or nonpositive gravity, and a coded inlet on a
     /// barrel of another shape.
-    pub(super) fn check(&self) -> Result<(), StructureError> {
+    pub(crate) fn check(&self) -> Result<(), StructureError> {
         let inlet = self.inlet.describe();
         if !self.slope.is_finite() {
             return Err(StructureError::definition(format!(

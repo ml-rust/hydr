@@ -8,6 +8,10 @@ use super::{
 /// Explicitly admitted physical closures with separate applicability declarations.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StructureLaw {
+    /// HDS-5 culvert: discharge inverts the larger of the inlet and outlet control headwaters.
+    ///
+    /// Build a batch that holds it with [`StructureBatch::with_culverts`](super::StructureBatch::with_culverts).
+    Culvert(super::CulvertParameters),
     /// Thin hydrostatic rectangular aperture with an explicit instantaneous opening.
     HydrostaticRectangularGate(super::GateParameters),
     /// Explicit oriented reference pump curve with declared speed/applicability policy.

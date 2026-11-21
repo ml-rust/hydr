@@ -136,14 +136,17 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
 }
 
 #[test]
-fn culvert_inlet_declares_no_attachments_and_its_arithmetic() {
+fn culvert_inlet_attaches_only_to_the_culvert_law_and_declares_its_arithmetic() {
     let capabilities = culvert_inlet_capabilities();
     assert!(capabilities.endpoints.is_empty());
     assert!(capabilities.regimes.is_empty());
     assert!(capabilities.sources.is_empty());
     assert!(capabilities.options.is_empty());
     assert!(capabilities.nested.is_empty());
-    assert!(capabilities.attachable_to.is_empty());
+    assert_eq!(
+        capabilities.attachable_to,
+        [hydr::capability::ComponentId::Culvert]
+    );
     assert_eq!(
         capabilities.arithmetic,
         [

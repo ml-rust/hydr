@@ -44,6 +44,7 @@ where
     let head_sensitivity =
         super::sensitivity::passive(context, &class.orifice, &upstream_head, &head_gap)?;
     Ok(TensorStructureResult {
+        culvert: None,
         gate: None,
         pump: None,
         discharge,

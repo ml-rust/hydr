@@ -2,6 +2,7 @@
 
 use super::Bounds;
 use numr::dtype::DType;
+use numr::ops::IndexingOps;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
@@ -19,4 +20,23 @@ pub(crate) struct TensorOutletContext<R: Runtime<DType = DType>> {
     pub(crate) gravity: Tensor<R>,
     /// `B / D`, the span over the rise.
     pub(crate) beta: Bounds<R>,
+}
+
+impl<R: Runtime<DType = DType>> TensorOutletContext<R> {
+    /// Gathers the rows at the I64 indices `rows`, in their order. Indices may repeat.
+    pub(crate) fn select(&self, c: &R::Client, rows: &Tensor<R>) -> numr::error::Result<Self>
+    where
+        R::Client: IndexingOps<R>,
+    {
+        let take = |value: &Tensor<R>| c.index_select(value, 0, rows);
+        let [lower, upper] = &self.beta;
+        Ok(Self {
+            length: take(&self.length)?,
+            manning: take(&self.manning)?,
+            entrance: take(&self.entrance)?,
+            slope: take(&self.slope)?,
+            gravity: take(&self.gravity)?,
+            beta: [take(lower)?, take(upper)?],
+        })
+    }
 }

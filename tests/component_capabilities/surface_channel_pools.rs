@@ -146,7 +146,7 @@ fn kind_moves(endpoint: EndpointId, kind: BoundaryKind) -> Result<bool> {
     Ok(match kind {
         BoundaryKind::PumpStoppedIsolated => {
             moved.signed_volume_m3.to_bits() == 0.0f64.to_bits()
-                && structure_regime(moved.regime, moved.law_volume_m3) == Regime::PumpIsolated
+                && structure_regime(moved.regime, moved.law_volume_m3) == Some(Regime::PumpIsolated)
         }
         _ => moved.signed_volume_m3 > 0.0,
     })
@@ -215,7 +215,7 @@ fn regime_holds(kind: BoundaryKind, regime: Regime) -> Result<bool> {
     let mut case = kind_case(kind, surface(), stage)?;
     edit(&mut case)?;
     let moved = transfer(&once(&case)?, "s")?;
-    let held = structure_regime(moved.regime, moved.law_volume_m3) == regime;
+    let held = structure_regime(moved.regime, moved.law_volume_m3) == Some(regime);
     assert!(held, "{regime:?}: {moved:?}");
     Ok(held)
 }

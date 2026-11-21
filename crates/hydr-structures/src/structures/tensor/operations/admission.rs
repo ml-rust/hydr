@@ -51,7 +51,9 @@ pub(super) fn check<R: Runtime<DType = DType>>(
             opening_m == 0.0
         }
         (
-            StructureLaw::SubmergedOrifice(_) | StructureLaw::SuppressedRectangularWeir(_),
+            StructureLaw::Culvert(_)
+            | StructureLaw::SubmergedOrifice(_)
+            | StructureLaw::SuppressedRectangularWeir(_),
             StructureOperatingPoint::Passive,
         ) => false,
         (StructureLaw::Pump(_), _) => {

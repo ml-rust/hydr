@@ -1,6 +1,6 @@
 //! Exact original physical bits for complete structure-definition compatibility.
 
-use super::{PumpSpeedPolicy, StructureElement, StructureLaw};
+use super::{CulvertEnd, CulvertParameters, PumpSpeedPolicy, StructureElement, StructureLaw};
 
 #[doc(hidden)]
 #[inline]
@@ -68,6 +68,7 @@ fn same_law(a: &StructureLaw, b: &StructureLaw) -> bool {
                     ],
                 )
         }
+        (StructureLaw::Culvert(a), StructureLaw::Culvert(b)) => same_culvert(a, b),
         (StructureLaw::Pump(a), StructureLaw::Pump(b)) => {
             a.applicability() == b.applicability()
                 && a.minimum_suction_stage_m().to_bits() == b.minimum_suction_stage_m().to_bits()
@@ -99,6 +100,39 @@ fn same_law(a: &StructureLaw, b: &StructureLaw) -> bool {
         _ => false,
     }
 }
+fn same_culvert(a: &CulvertParameters, b: &CulvertParameters) -> bool {
+    let values = |p: &CulvertParameters| {
+        let barrel = p.barrel();
+        let alignment = p.alignment();
+        [
+            barrel.span_m(),
+            barrel.rise_m(),
+            alignment.length_m,
+            alignment.invert_a_m,
+            alignment.invert_b_m,
+            p.manning_n(),
+            p.gravity_m_per_s2(),
+        ]
+    };
+    let same_end = |a: Option<CulvertEnd>, b: Option<CulvertEnd>| match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => {
+            let (ia, ib) = (a.inlet(), b.inlet());
+            ia.code() == ib.code()
+                && ia.form() == ib.form()
+                && ia.mitered() == ib.mitered()
+                && bits(&ia.coefficients(), &ib.coefficients())
+                && bits(&[a.entrance_loss()], &[b.entrance_loss()])
+        }
+        _ => false,
+    };
+    a.applicability() == b.applicability()
+        && a.barrel().shape() == b.barrel().shape()
+        && a.barrel_count() == b.barrel_count()
+        && bits(&values(a), &values(b))
+        && same_end(a.ends().a, b.ends().a)
+        && same_end(a.ends().b, b.ends().b)
+}
 #[doc(hidden)]
 #[inline]
 pub fn bits(a: &[f64], b: &[f64]) -> bool {
@@ -121,6 +155,64 @@ mod tests {
             evidence: evidence.into(),
         })?);
         Ok(element)
+    }
+
+    fn culvert(ke: f64, count: u32, code_b: Option<u8>) -> TestResult<StructureElement> {
+        use crate::structures::{
+            CulvertAlignment, CulvertApplicability, CulvertBarrel, CulvertEnd, CulvertEnds,
+            CulvertInlet, CulvertParameters, DirectionPolicy,
+        };
+        let end_b = match code_b {
+            Some(code) => Some(CulvertEnd::new(CulvertInlet::hds5(code)?, 0.5)?),
+            None => None,
+        };
+        Ok(StructureElement {
+            id: "c".into(),
+            endpoint_a: "a".into(),
+            endpoint_b: "b".into(),
+            datum: "datum".into(),
+            direction: DirectionPolicy::Bidirectional,
+            law: StructureLaw::Culvert(CulvertParameters::new(
+                CulvertBarrel::circular(1.0)?,
+                CulvertAlignment {
+                    length_m: 20.0,
+                    invert_a_m: 0.1,
+                    invert_b_m: 0.0,
+                },
+                0.013,
+                count,
+                CulvertEnds {
+                    a: Some(CulvertEnd::new(CulvertInlet::hds5(1)?, ke)?),
+                    b: end_b,
+                },
+                9.81,
+                CulvertApplicability {
+                    coefficient_provenance: "HDS-5".into(),
+                    barrel_condition_assertion: "Clean".into(),
+                },
+            )?),
+        })
+    }
+
+    #[test]
+    fn entrance_loss_bits_count_and_ends_distinguish_culverts() -> TestResult {
+        let base = culvert(0.5, 1, Some(3))?;
+        assert!(same_elements(
+            std::slice::from_ref(&base),
+            &[culvert(0.5, 1, Some(3))?]
+        ));
+        for other in [
+            culvert(0.5_f64.next_up(), 1, Some(3))?,
+            culvert(0.5, 2, Some(3))?,
+            culvert(0.5, 1, Some(2))?,
+            culvert(0.5, 1, None)?,
+        ] {
+            assert!(!same_elements(
+                std::slice::from_ref(&base),
+                std::slice::from_ref(&other)
+            ));
+        }
+        Ok(())
     }
 
     #[test]

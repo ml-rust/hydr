@@ -14,6 +14,7 @@ Use `hydr::structures::StructureBatch` to calculate flow through declared openin
 | Culvert barrel geometry, critical depth, or normal depth | [`CulvertBarrelBatch`](#culvert-barrel-geometry) |
 | Culvert inlet-control headwater | [`CulvertInletBatch`](#culvert-inlet-control) |
 | Culvert outlet-control headwater or a jump in the barrel | [`CulvertOutletBatch`](#culvert-outlet-control) |
+| Culvert discharge from the heads at both ends | [`StructureLaw::Culvert`](#culvert-structure-law) |
 
 A standalone structure proposal advances no storage. It checks neither donor availability nor acceptance of a paired transfer.
 
@@ -40,6 +41,7 @@ The [example](../examples/structures.rs) supplies every coefficient and applicab
 | [SuppressedRectangularWeir](#orifices-and-rectangular-weirs) | Suppressed sharp-crested rectangular free/submerged overflow with the adopted Villemonte correction |
 | [Pump](#pumps) | Supplied bounded reference curve with fixed orientation, declared speed policy, and explicit operation |
 | [HydrostaticRectangularGate](#hydrostatic-rectangular-gates) | Thin rectangular aperture between hydrostatic quiescent pools, with an explicit held opening |
+| [Culvert](#culvert-structure-law) | Circular or box HDS-5 culvert under inlet or outlet control. Build the batch with `StructureBatch::with_culverts`. |
 
 
 ### 2. Bind identities and heads
@@ -915,6 +917,128 @@ A [CUDA check](../tests/runtime_backends/culvert_outlets.rs) compares every refe
 - A jump is located only when the subcritical profile is free at the outlet and friction falls with depth across the jump.
 - Barrel storage is not represented. Queries hold no state.
 
+## Culvert structure law
+
+`StructureLaw::Culvert(CulvertParameters)` gives the discharge of identical parallel circular or box barrels from the heads at both ends. The headwater is `HW(Q) = max(HW_i(Q), HW_o(Q, TW))` of [inlet control](#culvert-inlet-control) and [outlet control](#culvert-outlet-control). The discharge inverts that curve at the supplied heads.
+
+Read capabilities with `culvert_capabilities()`.
+
+### Declare a culvert
+
+`CulvertParameters::new(barrel, alignment, manning_n, barrel_count, ends, gravity_m_per_s2, applicability)`:
+
+| Argument | Meaning |
+| --- | --- |
+| `barrel` | A `CulvertBarrel`, shared by every barrel |
+| `alignment` | `CulvertAlignment { length_m, invert_a_m, invert_b_m }`, inverts on the structure datum |
+| `manning_n` | Manning `n` in s/m^(1/3) |
+| `barrel_count` | Number of identical barrels, at least one. The discharge is the count times the discharge of one barrel. |
+| `ends` | `CulvertEnds { a, b }`: one `CulvertEnd` per admitted flow direction |
+| `gravity_m_per_s2` | Gravity |
+| `applicability` | `CulvertApplicability` with coefficient provenance and a barrel-condition assertion |
+
+`CulvertEnd::new(inlet, entrance_loss)` holds the [`CulvertInlet`](#declare-an-inlet) that flow enters and its entrance loss `ke`. The A end serves A-to-B flow with slope `(z_a - z_b) / L`. The B end serves B-to-A flow with the opposite slope. `forward_rows()` and `reverse_rows()` return the inlet and outlet query rows of each direction.
+
+| Direction policy | Ends |
+| --- | --- |
+| `Bidirectional` | Both ends |
+| `AtoBOnly` | The A end only |
+| `BtoAOnly` | The B end only |
+
+Each direction keeps its adverse fall within `D/2`, the outlet-control range. So a two-way culvert keeps its inverts within half the rise of each other.
+
+A roadway over the culvert is a separate weir on the same endpoints.
+
+### Build a batch
+
+`StructureBatch::<R>::with_culverts(client, elements)` admits every law, culverts included. The client must implement `CulvertClient`: barrel geometry, solvr certified bisection, and solvr certified Simpson integration. `StructureBatch::new` rejects a culvert and names `with_culverts`.
+
+Construction uploads two oriented rows per culvert and admits each inlet and outlet row. An inlet whose headwater does not certifiably rise across its transition rejects, naming the element.
+
+A culvert takes the `Passive` operation. `propose` and `propose_with_operations` evaluate it with the other laws.
+
+### Read the discharge and regime
+
+The donor is the side that is wet, stands above its invert, and stands higher or faces a dry receiver. The headwater is the donor stage above the inlet invert. The tailwater is the receiver stage above the outlet invert, or zero for a free outfall.
+
+| `StructureRegime` | Status | Meaning |
+| --- | --- | --- |
+| `CulvertInletControl` | `Active` | `Q_i` lies certainly below `Q_o`. With a headwater at or below `HW_i(0) = D Ks S`, the discharge is exact zero and the status `PhysicalZero`. |
+| `CulvertOutletControl` | `Active` | `Q_o` lies certainly below `Q_i`. With the still level `max(TW - S L, 0)` certainly above the headwater, the discharge is exact zero and the status `PhysicalZero`. |
+| `CulvertControlTie` | `Active` | The two discharge enclosures overlap, so either control can govern |
+| `EqualHeads` | `PhysicalZero` | Equal wet stages with either side above its invert. Also a lane whose still level is not certified below the headwater. |
+| `CulvertBelowInvert` | `PhysicalZero` | No wet donor stands above its invert |
+| `CulvertUndeclaredEnd` | `FlapBlocked` | The heads drive flow into an end without a declared inlet. The proposed direction stays. |
+
+Active outputs carry `StructureHydraulicOperands::Culvert` with the headwater, the tailwater, and the enclosure of the per-barrel discharge. The signed discharge is the barrel count times the enclosure midpoint.
+
+A receiver that is dry, or wet below its outlet invert, is a free outfall. Each returns the same discharge bits. A known dry end whose bed lies above its invert rejects as `UnsupportedRegime`.
+
+### Understand the inversion
+
+Both control headwaters rise with `Q`. So `HW(Q) <= H` holds exactly when `Q <= Q_i(H)` and `Q <= Q_o(H, TW)`, and the discharge is `min(Q_i, Q_o)`. The inversion runs in `Q` at fixed tailwater. `HW_o` can fall as the tailwater rises, which the inversion never needs.
+
+| Control | Inversion |
+| --- | --- |
+| Inlet, form 2 unsubmerged | `X = (HW / (D K))^(1/M)` |
+| Inlet, form 1 unsubmerged | One certified bisection in the critical-depth fraction `s = dc / D`. The residual rises at least `D` per unit `s`, so it needs no critical-depth solve inside another solve. |
+| Inlet, transition | Linear in `X` between the anchors at `X = 3.5` and `4` |
+| Inlet, submerged | `X = sqrt((HW / D - Y - Ks S) / c)` |
+| Outlet, drowned full barrel | `Q_o = A sqrt(2 g dH / k)` with `k = 1 + ke + 2 g n^2 L / R^(4/3)`, where `TW >= D` and the pressure head stays at or above the crown to the inlet. `dH` is the stage difference, so the result keeps its precision as the heads approach each other. |
+| Outlet, other | One outlet march at the upper end of `Q_i`. A headwater below the donor head there means the inlet governs. Otherwise one certified bisection over the outlet march on `[0, 2 Q_i]`. |
+
+A headwater next to an inlet anchor takes the hull of both band inverses. No positive slope floor is proven for the partly full outlet profile. The outlet bisection widens tiny residual bounds so that the solver's slope correction cannot move a bracket end. Its enclosure rests on certified residual signs.
+
+### Read culvert sensitivity
+
+The hidden `head_sensitivity` output of a culvert lane is `1 / E`, with `E = Q dHW/dQ` of the governing control:
+
+| Control | `E` |
+| --- | --- |
+| Inlet, form 2 unsubmerged | `M HW` |
+| Inlet, form 1 unsubmerged | At least `M D K X^M`, at the lower end of the discharge enclosure |
+| Inlet, transition | `2 (HW_4 - HW_3.5) X` |
+| Inlet, submerged | `2 D c X^2` |
+| Outlet, drowned full barrel | The bound is `1 / (2 dH)` |
+| Outlet, other | Twice the centred secants of the march over `Q (1 ± 2^-7)` and `TW ± 2^-7 D`: `2 max(1, |dHW/dTW|) / E` |
+
+The partly full outlet value is an estimate, not a proven bound. A tie takes the larger of both controls. The bound is capped at `2^256` per metre.
+
+### Handle culvert rejection
+
+| Rejection | Kind | Fix |
+| --- | --- | --- |
+| Nonfinite invert, zero barrel count, no end, negative `ke`, an inlet code for another barrel shape, or an adverse fall above `D/2` | `Definition` | Correct the named field |
+| Ends that do not match the direction policy | `Definition` | Declare one end per admitted direction |
+| Inlet headwater that falls across its transition | `Definition` | Supply coefficients whose submerged headwater at `X = 4` exceeds the unsubmerged headwater at `X = 3.5` |
+| Culvert in `StructureBatch::new` | `Definition` | Build with `StructureBatch::with_culverts` |
+| Dry end with its bed above its invert | `UnsupportedRegime` | Supply the bed at or below the invert, or a wet stage |
+| Outlet headwater unresolved near the inlet discharge | `Numerical` | The outlet march leaves a steep barrel unresolved where its critical depth reaches the crown. Lower the heads or supply a mild barrel. |
+
+### Check the culvert evidence
+
+| Check | Criterion |
+| --- | --- |
+| [Reference rows](../tests/culvert_laws/corpus.rs) | Sampled independent inlet rows where the inlet governs, all 18 full-barrel rows, and eight profile rows return their reference discharge within `1e-6` relative from their reference headwater |
+| [Round trip and selection](../tests/culvert_laws/round_trip.rs) | `Q(HW(Q))` returns `Q` within `1e-6` on mild, adverse, and level barrels. The regime names the larger control. A drowned crossing of both controls reports a tie. |
+| [Heads](../tests/culvert_laws/heads.rs) | Reversed heads negate the discharge with the B-end inlet. One-end reversal, equal heads, and dry donors give exact zero. Free outfalls agree bit for bit. Zero-discharge headwaters give exact zero. |
+| [Sweeps](../tests/culvert_laws/sweep.rs) | Discharge rises across the inlet bands and stays continuous at both anchors. It stays continuous where the outlet turns full. |
+| Sensitivity unit tests | The bound holds against a centred difference on inlet, drowned, and partly full lanes |
+| [Layouts](../tests/culvert_laws/layouts.rs) | Widths 1, 33, and 65 with weirs. Every lane equals its single-lane result bit for bit. |
+
+```sh
+cargo test --test culvert_laws
+```
+
+A [CUDA check](../tests/runtime_backends/culvert_laws.rs) compares every layout with CPU bit for bit. WGPU rejects for lack of F64, without CPU fallback.
+
+### Know the culvert limits
+
+- The law holds no water. Barrel storage is not represented, and proposals keep no state.
+- No coordinator holds a culvert law. The surface/channel coordinator and coupled level pools reject it.
+- Every flowing lane runs one outlet march. A lane the inlet does not certainly govern adds one outlet march per bisection round.
+- No blockage, sediment, or debris is represented.
+
 ## Read head sensitivity
 
 The tensor proposal holds one hidden output per element: `head_sensitivity`. It bounds `|dQ/dH| / |Q|`, in 1/m, for a move of either endpoint head. It is zero where the element carries no discharge. It is no part of the supported public API. The [surface/channel coordinator](surface-channels.md#resolution-term) reads it to size its convergence allowances.
@@ -925,6 +1049,7 @@ The tensor proposal holds one hidden output per element: `head_sensitivity`. It 
 | Submerged orifice | `0.5 / gap` |
 | Gate | `1.5 / h_u + 0.5 / gap`. `h_u` is the donor head above the sill. `gap` is the donor-receiver difference where the receiver stands above the sill, else zero. |
 | Pump | `\|dQ_ref/dh\| / (N Q)` on the active curve segment, with `N` the speed ratio. Zero at shutoff and while isolated. |
+| Culvert | `1 / E` with `E = Q dHW/dQ` of the governing control, or `1 / (2 dH)` for a drowned full barrel. Other outlet-controlled lanes take twice a secant estimate. See [culvert sensitivity](#read-culvert-sensitivity). |
 
 Scope of the output:
 

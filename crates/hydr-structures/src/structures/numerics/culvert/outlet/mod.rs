@@ -21,9 +21,9 @@ mod partition;
 mod quadrature;
 mod trig;
 
-use super::{BarrelClient, BarrelDepths, critical, normal};
+use super::{BarrelClient, BarrelDepths, RowNames, critical, normal};
 use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext, TensorOutletContext};
-use crate::structures::{CulvertBarrel, CulvertOutletRow, StructureError};
+use crate::structures::{CulvertOutletRow, StructureError};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -79,10 +79,10 @@ where
 
 /// Runs the outlet march for every row at the discharges and tailwaters given.
 ///
-/// The caller checks that every discharge and tailwater is finite and nonnegative. `barrels`
+/// The caller checks that every discharge and tailwater is finite and nonnegative. `names`
 /// names rows in errors.
 pub(crate) fn march<R>(
-    barrels: &[CulvertBarrel],
+    names: RowNames<'_, R>,
     barrel: &TensorBarrelContext<R>,
     unit: &TensorBarrelContext<R>,
     outlet: &TensorOutletContext<R>,
@@ -94,9 +94,9 @@ where
     R::Client: BarrelClient<R> + CertifiedBisectionAlgorithms<R> + CertifiedSimpsonAlgorithms<R>,
 {
     let c = &barrel.client;
-    let critical = critical::solve(barrels, barrel, unit, discharge, &outlet.gravity)?;
+    let critical = critical::solve(names, barrel, unit, discharge, &outlet.gravity)?;
     let normal = normal::solve(
-        barrels,
+        names,
         barrel,
         unit,
         discharge,

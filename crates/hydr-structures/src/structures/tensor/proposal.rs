@@ -6,6 +6,7 @@ use numr::tensor::Tensor;
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct TensorStructureResult<R: Runtime<DType = DType>> {
+    pub(crate) culvert: Option<super::culvert::TensorCulvertResult<R>>,
     pub(crate) gate: Option<super::gate::TensorGateResult<R>>,
     pub(crate) pump: Option<super::pump::TensorPumpResult<R>>,
     pub discharge: Tensor<R>,

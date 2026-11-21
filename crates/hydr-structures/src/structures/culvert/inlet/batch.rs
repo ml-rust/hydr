@@ -2,6 +2,7 @@
 
 use super::{CulvertInletHeadwater, CulvertInletRow};
 use crate::structures::culvert::input::check_discharges;
+use crate::structures::numerics::culvert::RowNames;
 use crate::structures::numerics::culvert::inlet::{anchors, evaluate};
 use crate::structures::tensor::culvert::{TensorBarrelContext, TensorInletContext};
 use crate::structures::{CulvertBarrel, StructureError};
@@ -104,7 +105,7 @@ impl<R: Runtime<DType = DType>> CulvertInletBatch<R> {
         let barrel = &*self.barrel;
         check_discharges(barrel, "discharge_m3_per_s", discharge_m3_per_s)?;
         let headwater = evaluate(
-            &self.barrels,
+            RowNames::new(&self.barrels),
             barrel,
             &self.unit,
             &self.inlet,

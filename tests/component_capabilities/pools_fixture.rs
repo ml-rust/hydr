@@ -17,9 +17,10 @@ use hydr::storage::{
     LevelPoolBatch, LevelPoolError, LevelPoolInput, LevelPoolSourcePolicy, level_pool_capabilities,
 };
 use hydr::structures::{
-    DirectionPolicy, GateApplicability, GateParameters, PumpApplicability, PumpCurve,
-    PumpCurveKnot, PumpParameters, PumpSpeedPolicy, StructureElement, StructureError, StructureLaw,
-    StructureOperatingPoint, StructureOperation, SuppressedRectangularWeirParameters,
+    CulvertAlignment, CulvertApplicability, CulvertBarrel, CulvertEnd, CulvertEnds, CulvertInlet,
+    CulvertParameters, DirectionPolicy, GateApplicability, GateParameters, PumpApplicability,
+    PumpCurve, PumpCurveKnot, PumpParameters, PumpSpeedPolicy, StructureElement, StructureError,
+    StructureLaw, StructureOperatingPoint, StructureOperation, SuppressedRectangularWeirParameters,
     WeirApplicability,
 };
 
@@ -109,7 +110,7 @@ pub fn policy() -> LevelPoolSourcePolicy {
 }
 
 /// One sample of each public structure law. A new law fails to compile in `laws_of`.
-pub fn laws() -> Result<[StructureLaw; 4], Box<dyn std::error::Error>> {
+pub fn laws() -> Result<[StructureLaw; 5], Box<dyn std::error::Error>> {
     let (orifice, _) = orifice_case([4.0, 2.0])?;
     let orifice = orifice
         .structures
@@ -171,7 +172,27 @@ pub fn laws() -> Result<[StructureLaw; 4], Box<dyn std::error::Error>> {
             symmetric_reversal: true,
         },
     )?);
-    Ok([gate, pump, orifice, weir])
+    let end = CulvertEnd::new(CulvertInlet::hds5(1)?, 0.5)?;
+    let culvert = StructureLaw::Culvert(CulvertParameters::new(
+        CulvertBarrel::circular(1.0)?,
+        CulvertAlignment {
+            length_m: 20.0,
+            invert_a_m: 0.0,
+            invert_b_m: 0.0,
+        },
+        0.013,
+        1,
+        CulvertEnds {
+            a: Some(end),
+            b: Some(end),
+        },
+        9.81,
+        CulvertApplicability {
+            coefficient_provenance: "HDS-5 Table A.1 code 1".into(),
+            barrel_condition_assertion: "Clean synthetic barrel".into(),
+        },
+    )?);
+    Ok([gate, pump, orifice, weir, culvert])
 }
 
 /// One sample of each public operating point.

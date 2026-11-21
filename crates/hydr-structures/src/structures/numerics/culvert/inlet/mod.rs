@@ -16,12 +16,12 @@
 
 pub(crate) mod anchors;
 pub(crate) mod bands;
-mod head;
+pub(crate) mod head;
 mod power;
 
-use super::{BarrelClient, critical};
+use super::{BarrelClient, RowNames, critical};
+use crate::structures::StructureError;
 use crate::structures::tensor::culvert::{TensorBarrelContext, TensorInletContext};
-use crate::structures::{CulvertBarrel, StructureError};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, ConditionalOps};
 use numr::runtime::Runtime;
@@ -38,10 +38,10 @@ pub(crate) struct InletHeadwater<R: Runtime<DType = DType>> {
 
 /// Encloses the inlet-control headwater of every row at the discharges `discharge` (`[m]`).
 ///
-/// The caller checks that every discharge is finite and nonnegative. `barrels` is the host list
-/// of `barrel`, read only to name a row in an error.
+/// The caller checks that every discharge is finite and nonnegative. `names` names the rows of
+/// `barrel` in an error.
 pub(crate) fn evaluate<R>(
-    barrels: &[CulvertBarrel],
+    names: RowNames<'_, R>,
     barrel: &TensorBarrelContext<R>,
     unit: &TensorBarrelContext<R>,
     inlet: &TensorInletContext<R>,
@@ -55,7 +55,7 @@ where
     let bands = bands::classify(inlet, barrel, discharge)?;
     let needs = c.mul(&inlet.form_one, &bands.unsubmerged)?;
     let flow = c.where_cond(&needs, discharge, &barrel.zero)?;
-    let critical = critical::solve(barrels, barrel, unit, &flow, &inlet.gravity)?;
+    let critical = critical::solve(names, barrel, unit, &flow, &inlet.gravity)?;
     let operands = bands::Operands {
         barrel,
         unit,

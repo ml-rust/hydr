@@ -42,6 +42,8 @@ pub enum ComponentId {
     CulvertInlet,
     /// Outlet-control headwater and hydraulic jump of circular and box culverts.
     CulvertOutlet,
+    /// HDS-5 culvert structure law: discharge from the heads at both ends.
+    Culvert,
 }
 
 impl ComponentId {
@@ -67,6 +69,7 @@ impl ComponentId {
             Self::CulvertBarrel => "culvert-barrel",
             Self::CulvertInlet => "culvert-inlet",
             Self::CulvertOutlet => "culvert-outlet",
+            Self::Culvert => "culvert",
         }
     }
 }
@@ -98,6 +101,7 @@ mod tests {
             ComponentId::CulvertBarrel,
             ComponentId::CulvertInlet,
             ComponentId::CulvertOutlet,
+            ComponentId::Culvert,
         ];
         assert_ids(&all.map(|c| c.id()));
     }

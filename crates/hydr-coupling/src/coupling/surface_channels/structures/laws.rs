@@ -44,6 +44,8 @@ pub(in super::super) enum LawKind {
     Orifice,
     /// Pump on its curve, or isolated.
     Pump(PumpLimits),
+    /// HDS-5 culvert. A receiver at or below its invert is a free outfall.
+    Culvert,
 }
 
 /// Law class and endpoint cutoffs of one link.
@@ -70,6 +72,7 @@ impl LinkLaw {
     ) -> Self {
         let cut = endpoint_cutoffs(element, beds);
         let kind = match &element.law {
+            StructureLaw::Culvert(_) => LawKind::Culvert,
             StructureLaw::SuppressedRectangularWeir(_) => LawKind::Weir,
             StructureLaw::HydrostaticRectangularGate(_) => LawKind::Gate,
             StructureLaw::SubmergedOrifice(_) => LawKind::Orifice,
@@ -123,7 +126,7 @@ impl LinkLaw {
 
     /// The law keeps free flow while the receiver stays at or below its cutoff.
     pub fn has_below(&self) -> bool {
-        matches!(self.kind, LawKind::Weir | LawKind::Gate)
+        matches!(self.kind, LawKind::Weir | LawKind::Gate | LawKind::Culvert)
     }
 
     /// Pump limits, or `None` for a passive law.
@@ -139,7 +142,7 @@ impl LinkLaw {
     /// `heads` are pre-exchange end stages `[A, B]`. `area(side, stage)` is the plan area of a side
     /// at `stage`. `shares` split each side among its links. `available` holds each side's donor
     /// water. Every bound stays inside the law's admitted head range in the plan-area model:
-    /// - Weir and gate: the receiver stays at or below its cutoff, or below the donor.
+    /// - Weir, gate and culvert: the receiver stays at or below its cutoff, or below the donor.
     /// - Orifice: the receiver stays below the donor, and the donor above the crown.
     /// - Pump: its donor stays at or above the suction stop, and the lift below the curve's
     ///   zero-flow head. The other direction keeps nothing.
@@ -162,7 +165,7 @@ impl LinkLaw {
             // A link stopped at its cap bounds keeps nothing. See `Context::stopped`.
             let at_level = self.within(h_d - floor, h_d, floor);
             let kept = match &self.kind {
-                LawKind::Weir | LawKind::Gate => {
+                LawKind::Weir | LawKind::Gate | LawKind::Culvert => {
                     if at_level && self.within(z_r - h_r, z_r, h_r) {
                         return 0.0;
                     }

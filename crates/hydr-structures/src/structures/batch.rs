@@ -12,6 +12,8 @@ pub struct StructureBatch<R: Runtime<DType = DType>> {
 }
 impl<R: Runtime<DType = DType>> StructureBatch<R> {
     /// Check explicit law geometry, applicability, identities, and ideal direction policies.
+    ///
+    /// Rejects a culvert law. Build a batch that holds one with [`StructureBatch::with_culverts`].
     pub fn new(client: R::Client, elements: Vec<StructureElement>) -> Result<Self, StructureError>
     where
         R::Client: numr::ops::BinaryOps<R>
@@ -24,6 +26,24 @@ impl<R: Runtime<DType = DType>> StructureBatch<R> {
     {
         Ok(Self {
             context: Arc::new(TensorStructureContext::new(client, elements)?),
+        })
+    }
+    /// Check every law, including culverts, and upload the culvert rows.
+    ///
+    /// A culvert needs certified roots and quadrature on the runtime, which
+    /// [`CulvertClient`](super::CulvertClient) names. [`StructureBatch::new`] rejects culverts.
+    /// Each culvert declares an end for each admitted direction and no other. Rejects an inlet
+    /// whose headwater does not certifiably rise across its transition, naming the element.
+    /// Rejects a runtime without the culvert barrel's F64 contracts.
+    pub fn with_culverts(
+        client: R::Client,
+        elements: Vec<StructureElement>,
+    ) -> Result<Self, StructureError>
+    where
+        R::Client: super::CulvertClient<R>,
+    {
+        Ok(Self {
+            context: Arc::new(TensorStructureContext::with_culverts(client, elements)?),
         })
     }
     /// Immutable concrete definitions in original numerical order.

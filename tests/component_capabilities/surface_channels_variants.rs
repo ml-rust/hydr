@@ -85,9 +85,10 @@ pub const PORT_REGIMES: [SurfaceChannelPortRegime; 6] = [
 /// Declared regime of each public structure regime, with the law volume of the interval.
 ///
 /// A running pump at zero law volume sits at shutoff. A gate below its sill and a weir below
-/// its crest carry no water and claim no flow regime.
-pub fn structure_regime(regime: StructureRegime, law_volume_m3: f64) -> Regime {
-    match regime {
+/// its crest carry no water and claim no flow regime. Culvert regimes claim none, because the
+/// coordinator rejects culvert laws at admission.
+pub fn structure_regime(regime: StructureRegime, law_volume_m3: f64) -> Option<Regime> {
+    Some(match regime {
         StructureRegime::SubmergedOrifice => Regime::SubmergedOrificeFlow,
         StructureRegime::FreeWeirOverflow => Regime::FreeWeirFlow,
         StructureRegime::SubmergedWeirOverflow | StructureRegime::EqualHeads => {
@@ -101,11 +102,16 @@ pub fn structure_regime(regime: StructureRegime, law_volume_m3: f64) -> Regime {
         StructureRegime::PumpCurve if law_volume_m3 == 0.0 => Regime::PumpShutoff,
         StructureRegime::PumpCurve => Regime::PumpCurve,
         StructureRegime::PumpIsolated => Regime::PumpIsolated,
-    }
+        StructureRegime::CulvertInletControl
+        | StructureRegime::CulvertOutletControl
+        | StructureRegime::CulvertControlTie
+        | StructureRegime::CulvertBelowInvert
+        | StructureRegime::CulvertUndeclaredEnd => return None,
+    })
 }
 
 /// Every public structure regime.
-pub const STRUCTURE_REGIMES: [StructureRegime; 12] = [
+pub const STRUCTURE_REGIMES: [StructureRegime; 17] = [
     StructureRegime::GateClosed,
     StructureRegime::GateBelowSill,
     StructureRegime::FreeGateAperture,
@@ -118,6 +124,11 @@ pub const STRUCTURE_REGIMES: [StructureRegime; 12] = [
     StructureRegime::SubmergedWeirOverflow,
     StructureRegime::BelowCrest,
     StructureRegime::EqualHeads,
+    StructureRegime::CulvertInletControl,
+    StructureRegime::CulvertOutletControl,
+    StructureRegime::CulvertControlTie,
+    StructureRegime::CulvertBelowInvert,
+    StructureRegime::CulvertUndeclaredEnd,
 ];
 
 /// Nested reach of a linked geometry.
@@ -170,7 +181,7 @@ fn surface_channel_public_variants_are_classified() -> Result<(), String> {
             RegimeScope::Boundary(_) => STRUCTURE_REGIMES.iter().any(|r| {
                 [0.0, 1.0]
                     .iter()
-                    .any(|v| structure_regime(*r, *v) == claim.regime)
+                    .any(|v| structure_regime(*r, *v) == Some(claim.regime))
             }),
             _ => false,
         };

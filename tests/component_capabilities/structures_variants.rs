@@ -51,7 +51,9 @@ fn law_device(law: &StructureLaw) -> Option<Device> {
     match law {
         StructureLaw::HydrostaticRectangularGate(_) => Some(Device::Gate),
         StructureLaw::Pump(_) => Some(Device::Pump),
-        StructureLaw::SubmergedOrifice(_) | StructureLaw::SuppressedRectangularWeir(_) => None,
+        StructureLaw::Culvert(_)
+        | StructureLaw::SubmergedOrifice(_)
+        | StructureLaw::SuppressedRectangularWeir(_) => None,
     }
 }
 
