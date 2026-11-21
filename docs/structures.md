@@ -12,6 +12,7 @@ Use `hydr::structures::StructureBatch` to calculate flow through declared openin
 | Accepted transfers between pools, surface cells, and channel cells | [Surface/channel coupling](surface-channels.md#join-nodes-through-structures) |
 | Commands or moving openings | [Operating controls](operating-controls.md), [actuators](gate-actuators.md), or [operating sources](operating-sources.md) |
 | Culvert barrel geometry, critical depth, or normal depth | [`CulvertBarrelBatch`](#culvert-barrel-geometry) |
+| Culvert inlet-control headwater | [`CulvertInletBatch`](#culvert-inlet-control) |
 
 A standalone structure proposal advances no storage. It checks neither donor availability nor acceptance of a paired transfer.
 
@@ -738,7 +739,86 @@ cargo test --test culvert_barrels
 - Queries hold no state and advance no storage. No snapshot exists.
 - Full-barrel pressure flow and full-barrel friction stay with the caller.
 - Only circular and box barrels. No elliptical, arch, or pipe-arch sections.
-- No inlet control, outlet control, barrel profile, or culvert discharge.
+- No outlet control, barrel profile, or culvert discharge. [`CulvertInletBatch`](#culvert-inlet-control) gives inlet-control headwater.
+
+## Culvert inlet control
+
+`hydr::structures::CulvertInletBatch` encloses the inlet-control headwater `HW_i(Q)` of circular and box culverts. It follows FHWA HDS-5 (2012) Appendix A. It computes no outlet control and no discharge from a head.
+
+Read capabilities with `culvert_inlet_capabilities()`.
+
+### Declare an inlet
+
+| Constructor | Inlet |
+| --- | --- |
+| `CulvertInlet::hds5(code)` | HDS-5 Table A.1 code, numbered as in SWMM `culvert.c`. Codes 1 to 8 are circular, 9 to 26 concrete box. Code 5 is mitered. |
+| `CulvertInlet::explicit(form, [k, m, c, y], mitered)` | Explicit coefficients for any barrel shape |
+
+`CulvertInletForm::One` and `Two` select the unsubmerged equation. `K`, `M` and `c` must be finite and positive, and `Y` finite. Any other input returns `StructureInputErrorKind::Definition` with the value and the action.
+
+### Build a batch
+
+`CulvertInletBatch::<R>::new(client, rows)` takes one `CulvertInletRow` per culvert:
+
+| Field | Meaning |
+| --- | --- |
+| `barrel` | A `CulvertBarrel` |
+| `inlet` | A `CulvertInlet`. A coded inlet must match the barrel shape. |
+| `slope` | Signed barrel slope `S` in m/m, positive when the barrel falls away from the inlet |
+| `gravity_m_per_s2` | Gravity, for the form-1 critical head |
+
+The runtime needs the same F64 contracts as `CulvertBarrelBatch`.
+
+### Read the headwater
+
+`headwater(discharge_m3_per_s)` takes an F64 `[m]` tensor of per-barrel discharges. It returns lower and upper headwater in metres above the inlet invert. The exact headwater lies inside each pair. `project()` copies the rows to the host.
+
+With `X = Ku Q / (A D^0.5)` and `Ku = 0.3048^(-1/2)`, `X` equals its value in foot units. HDS-5's US coefficients and limits then apply to SI inputs unchanged.
+
+| `InletRegime` | Band | Headwater |
+| --- | --- | --- |
+| `Unsubmerged` | `X <= 3.5` | Form 1: `Hc + D (K X^M + Ks S)`, with `Hc = dc + A(dc) / (2 T(dc))`. Form 2: `D K X^M`. |
+| `Transition` | `3.5 < X < 4` | Linear in `X` from the unsubmerged headwater at `X = 3.5` to the submerged headwater at `X = 4` |
+| `Submerged` | `X >= 4` | `D (c X^2 + Y + Ks S)` |
+| `UnsubmergedLimit`, `SubmergedLimit` | `X` may lie on either side of 3.5 or 4 | Encloses the values of both bands |
+
+`Ks` is `-0.5`, or `+0.7` for a mitered inlet. HDS-5 draws a hand curve across the transition. Hydr defines it as linear, so the headwater is continuous at both limits.
+
+### Handle admission
+
+The batch admits a row only when its headwater strictly rises with discharge. Each band rises because `K`, `M` and `c` are positive. Construction certifies that the submerged headwater at `X = 4` exceeds the unsubmerged headwater at `X = 3.5`. That check reads the slope and gravity. For example, code 12 rejects at a slope of 0.3.
+
+| Rejection | Kind | Fix |
+| --- | --- | --- |
+| Empty row list, nonfinite slope, nonpositive gravity, or a code for another barrel shape | `Definition` | Correct the named row |
+| Headwater falls across the transition | `Definition` | Supply other coefficients or a smaller slope |
+| Form-1 critical depth at `X = 3.5` reaches the crown | `Definition` | Raise the gravity or use a form-2 inlet |
+| Negative or nonfinite discharge, or a tensor of another shape, dtype, or device | `OperatingPoint` or `NonfiniteInput` | Correct the named row |
+
+Each message names the row, the code or coefficients, the slope, and the gravity.
+
+### Check the inlet evidence
+
+| Check | Criterion |
+| --- | --- |
+| [Reference rows](../tests/culvert_inlets/corpus.rs) | Every 100-digit inlet row of codes 1 to 26 at three slopes lies inside its enclosure, within `1e-12` relative. The limit anchors lie within `1e-12` of the rows beside each limit. |
+| [SWMM rows](../tests/culvert_inlets/swmm.rs) | SWMM 5.2.4 rows converted to SI agree within their fixed tolerance. Its unsubmerged form-1 rows return the flow of a stale evaluation and miss by more. |
+| [Published rows](../tests/culvert_inlets/published.rs) | HDS-5 design-example headwaters lie within their published tolerance. |
+| [Sweeps](../tests/culvert_inlets/sweep.rs) | Headwater strictly rises over each band. Enclosures within 16 F64 steps of each limit stay within `1e-12` of each other. |
+| [Layouts](../tests/culvert_inlets/layouts.rs) | Widths 1, 31, 32, 33, 64, and 65. Every lane equals its single-row result bit for bit. |
+| [Admission](../tests/culvert_inlets/admission.rs) | Each rejection names its row, value, and action |
+
+```sh
+cargo test --test culvert_inlets
+```
+
+A [CUDA check](../tests/runtime_backends/culvert_inlets.rs) compares every reference row and layout width with CPU bit for bit. WGPU rejects for lack of F64, without CPU fallback.
+
+### Know the inlet limits
+
+- At zero discharge, a form-1 row returns `D Ks S`, the value of its equation, not zero.
+- The slope term takes the signed slope as given. HDS-5 drops slope adjustments when the exit invert lies more than `D/2` above the entrance. Keep adverse slopes within that range.
+- HDS-5 codes 27 to 57 reject: corrugated metal boxes, ellipses, arches, pipe arches, and tapered inlets. Use explicit coefficients for a box or circle.
 
 ## Read head sensitivity
 

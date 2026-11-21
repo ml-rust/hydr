@@ -7,6 +7,7 @@
 mod certificate_rows;
 pub(crate) mod constants;
 pub(crate) mod critical;
+pub(crate) mod inlet;
 pub(crate) mod normal;
 mod roots;
 pub(crate) mod section;

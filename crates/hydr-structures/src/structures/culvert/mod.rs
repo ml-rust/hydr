@@ -5,11 +5,14 @@
 //! free for `0 < y < D` and full for `y >= D`. It also encloses the critical depth of each
 //! barrel for a given discharge, and the Manning normal depth for a given discharge, roughness
 //! and slope.
+//!
+//! [`CulvertInletBatch`] encloses the HDS-5 inlet-control headwater of a barrel and inlet.
 
 mod barrel;
 mod batch;
 mod capabilities;
 mod depth;
+mod inlet;
 mod input;
 mod output;
 
@@ -19,5 +22,9 @@ pub use capabilities::culvert_barrel_capabilities;
 pub use depth::{
     BarrelDepthStatus, CriticalDepthStatus, CulvertBarrelDepth, CulvertBarrelDepthRow,
     NormalDepthStatus,
+};
+pub use inlet::{
+    CulvertInlet, CulvertInletBatch, CulvertInletForm, CulvertInletHeadwater,
+    CulvertInletHeadwaterRow, CulvertInletRow, InletRegime, culvert_inlet_capabilities,
 };
 pub use output::{BarrelState, CulvertBarrelGeometry, CulvertBarrelGeometryRow};

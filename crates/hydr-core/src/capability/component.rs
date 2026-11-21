@@ -38,6 +38,8 @@ pub enum ComponentId {
     SurfaceChannels,
     /// Closed-conduit culvert barrel geometry for circular and box barrels.
     CulvertBarrel,
+    /// HDS-5 inlet-control headwater of circular and box culverts.
+    CulvertInlet,
 }
 
 impl ComponentId {
@@ -61,6 +63,7 @@ impl ComponentId {
             Self::ControlledPump => "controlled-pump",
             Self::SurfaceChannels => "surface-channels",
             Self::CulvertBarrel => "culvert-barrel",
+            Self::CulvertInlet => "culvert-inlet",
         }
     }
 }
@@ -90,6 +93,7 @@ mod tests {
             ComponentId::ControlledPump,
             ComponentId::SurfaceChannels,
             ComponentId::CulvertBarrel,
+            ComponentId::CulvertInlet,
         ];
         assert_ids(&all.map(|c| c.id()));
     }

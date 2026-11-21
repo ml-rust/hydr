@@ -116,6 +116,9 @@ mod surface_channel_pools;
 #[path = "component_capabilities/culvert_barrels.rs"]
 mod culvert_barrels;
 
+#[path = "component_capabilities/culvert_inlets.rs"]
+mod culvert_inlets;
+
 #[path = "component_capabilities/declarations.rs"]
 mod declarations;
 
@@ -423,6 +426,8 @@ const CORRECTLY_ROUNDED_CALLERS: &[ComponentId] = &[
     ComponentId::ControlledPump,
     // Interval `acos` for circle angles and interval `log` in the critical and normal residuals.
     ComponentId::CulvertBarrel,
+    // Interval `log` and `exp` for the inlet powers, and the barrel's critical depth.
+    ComponentId::CulvertInlet,
     // Bank weir, host stall forecast `log`, and nested components.
     ComponentId::SurfaceChannels,
     // Nested callers only.

@@ -28,6 +28,11 @@ mod cross_sections;
 #[path = "runtime_backends/culvert_barrels.rs"]
 mod culvert_barrels;
 #[allow(dead_code)]
+#[path = "culvert_inlets/lanes.rs"]
+mod culvert_inlet_lanes;
+#[path = "runtime_backends/culvert_inlets.rs"]
+mod culvert_inlets;
+#[allow(dead_code)]
 #[path = "culvert_barrels/lanes.rs"]
 mod culvert_lanes;
 #[allow(dead_code)]
@@ -39,6 +44,9 @@ mod device_checks;
 mod gate_actuators;
 #[path = "coupled_pool_inflows/inflow_fixture.rs"]
 mod inflow_fixture;
+#[allow(dead_code)]
+#[path = "culverts/inlet_rows.rs"]
+mod inlet_rows;
 #[path = "runtime_backends/inflows.rs"]
 mod inflows;
 #[path = "runtime_backends/interval_volumes.rs"]

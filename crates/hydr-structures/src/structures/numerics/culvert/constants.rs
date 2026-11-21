@@ -98,10 +98,39 @@ pub(crate) const CONVEYANCE_PEAK: [u64; 2] = [0x3fee05949d2433b9, 0x3fee05949d24
 /// Bounds of `ln k_max`, the peak conveyance `A^(5/3) / P^(2/3)` of a unit circle.
 pub(crate) const LOG_PEAK_CONVEYANCE: [u64; 2] = [0xbff17c0a73c51e10, 0xbff17c0a73c51e0d];
 
+/// F64 below and above the inlet conversion `Ku = 0.3048^(-1/2)`, which turns `Q / (A D^0.5)`
+/// in SI units into its value in foot units.
+pub(crate) const INLET_KU: [u64; 2] = [0x3ffcfb1f07d87233, 0x3ffcfb1f07d87234];
+
+/// Upper end `X = 3.5` of the unsubmerged inlet band.
+pub(crate) const UNSUBMERGED_LIMIT: f64 = 3.5;
+
+/// Lower end `X = 4` of the submerged inlet band.
+pub(crate) const SUBMERGED_LIMIT: f64 = 4.0;
+
+/// Inlet slope factor `Ks` of a conventional inlet.
+pub(crate) const SLOPE_FACTOR: f64 = -0.5;
+
+/// Inlet slope factor `Ks` of an inlet mitered to the slope.
+pub(crate) const MITERED_SLOPE_FACTOR: f64 = 0.7;
+
 #[cfg(test)]
 mod tests {
     use super::super::certificate_rows::{CERTIFICATE_SHA256, ROWS};
     use super::*;
+
+    #[test]
+    fn inlet_ku_bounds_bracket_the_exact_conversion() {
+        // Ku^2 = 1250 / 381. With Ku = n 2^-52, Ku^2 < 1250/381 exactly when 381 n^2 < 1250 2^104.
+        let target = 1250u128 << 104;
+        let [lower, upper] = INLET_KU.map(|bits| {
+            assert_eq!(bits >> 52, 0x3ff, "Ku lies in [1, 2)");
+            u128::from((bits & ((1 << 52) - 1)) | (1 << 52))
+        });
+        assert!(381 * lower * lower < target);
+        assert!(381 * upper * upper > target);
+        assert_eq!(upper, lower + 1);
+    }
 
     fn row(name: &str) -> Option<[u64; 2]> {
         ROWS.iter()
