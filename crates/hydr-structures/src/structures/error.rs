@@ -148,6 +148,22 @@ impl From<solvr::optimize::OptimizeError> for StructureError {
     }
 }
 
+impl From<solvr::integrate::IntegrateError> for StructureError {
+    fn from(error: solvr::integrate::IntegrateError) -> Self {
+        use solvr::integrate::IntegrateError;
+        match error {
+            IntegrateError::NumrError(context) => Self::Runtime {
+                element: None,
+                context,
+            },
+            other => Self::Numerical {
+                element: None,
+                context: other.to_string(),
+            },
+        }
+    }
+}
+
 impl From<solvr::interpolate::InterpolateError> for StructureError {
     fn from(error: solvr::interpolate::InterpolateError) -> Self {
         Self::Runtime {

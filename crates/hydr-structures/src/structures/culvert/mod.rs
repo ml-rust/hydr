@@ -7,6 +7,9 @@
 //! and slope.
 //!
 //! [`CulvertInletBatch`] encloses the HDS-5 inlet-control headwater of a barrel and inlet.
+//!
+//! [`CulvertOutletBatch`] encloses the outlet-control headwater of a barrel, its length,
+//! roughness and entrance loss, and the position of a hydraulic jump in a steep barrel.
 
 mod barrel;
 mod batch;
@@ -14,6 +17,7 @@ mod capabilities;
 mod depth;
 mod inlet;
 mod input;
+mod outlet;
 mod output;
 
 pub use barrel::{CulvertBarrel, CulvertBarrelShape};
@@ -26,5 +30,9 @@ pub use depth::{
 pub use inlet::{
     CulvertInlet, CulvertInletBatch, CulvertInletForm, CulvertInletHeadwater,
     CulvertInletHeadwaterRow, CulvertInletRow, InletRegime, culvert_inlet_capabilities,
+};
+pub use outlet::{
+    CulvertOutletBatch, CulvertOutletHeadwater, CulvertOutletHeadwaterRow, CulvertOutletJump,
+    CulvertOutletJumpRow, CulvertOutletRow, JumpStatus, OutletRegime, culvert_outlet_capabilities,
 };
 pub use output::{BarrelState, CulvertBarrelGeometry, CulvertBarrelGeometryRow};

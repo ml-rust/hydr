@@ -9,6 +9,7 @@ pub(crate) mod constants;
 pub(crate) mod critical;
 pub(crate) mod inlet;
 pub(crate) mod normal;
+pub(crate) mod outlet;
 mod roots;
 pub(crate) mod section;
 

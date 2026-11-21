@@ -40,6 +40,8 @@ pub enum ComponentId {
     CulvertBarrel,
     /// HDS-5 inlet-control headwater of circular and box culverts.
     CulvertInlet,
+    /// Outlet-control headwater and hydraulic jump of circular and box culverts.
+    CulvertOutlet,
 }
 
 impl ComponentId {
@@ -64,6 +66,7 @@ impl ComponentId {
             Self::SurfaceChannels => "surface-channels",
             Self::CulvertBarrel => "culvert-barrel",
             Self::CulvertInlet => "culvert-inlet",
+            Self::CulvertOutlet => "culvert-outlet",
         }
     }
 }
@@ -94,6 +97,7 @@ mod tests {
             ComponentId::SurfaceChannels,
             ComponentId::CulvertBarrel,
             ComponentId::CulvertInlet,
+            ComponentId::CulvertOutlet,
         ];
         assert_ids(&all.map(|c| c.id()));
     }
