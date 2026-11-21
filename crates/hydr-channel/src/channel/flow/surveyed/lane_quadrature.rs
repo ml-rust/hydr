@@ -1,5 +1,7 @@
 use super::error::{Arithmetic, HydraulicResult, checked};
 use super::integration::{complete_integration, retain_cause};
+use super::lane_callbacks::Closures;
+pub(crate) use super::lane_callbacks::SimpsonCallbacks;
 use super::work::{QueryWork, WorkLedger};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps};
@@ -10,7 +12,7 @@ use solvr::integrate::{
     CertifiedSimpsonAlgorithms, CertifiedSimpsonOptions, CertifiedSimpsonResult,
     CertifiedSimpsonValues,
 };
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 pub(crate) fn numerical_contributions<R, F, D>(
     c: &R::Client,
@@ -18,8 +20,8 @@ pub(crate) fn numerical_contributions<R, F, D>(
     right: &Tensor<R>,
     options: CertifiedSimpsonOptions,
     work: &WorkLedger,
-    mut value_callback: F,
-    mut fourth_callback: D,
+    value_callback: F,
+    fourth_callback: D,
 ) -> HydraulicResult<CertifiedSimpsonResult<R>>
 where
     R: Runtime<DType = DType>,
@@ -33,7 +35,34 @@ where
     F: FnMut(&mut Arithmetic<'_, R>, &Tensor<R>, &Interval<R>) -> HydraulicResult<Interval<R>>,
     D: FnMut(&mut Arithmetic<'_, R>, &Tensor<R>, &Interval<R>) -> HydraulicResult<Tensor<R>>,
 {
+    let mut callbacks = Closures {
+        value: value_callback,
+        fourth: fourth_callback,
+    };
+    simpson_contributions(c, left, right, options, work, &mut callbacks)
+}
+
+pub(crate) fn simpson_contributions<R, S>(
+    c: &R::Client,
+    left: &Tensor<R>,
+    right: &Tensor<R>,
+    options: CertifiedSimpsonOptions,
+    work: &WorkLedger,
+    callbacks: &mut S,
+) -> HydraulicResult<CertifiedSimpsonResult<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: TensorOps<R>
+        + CompareOps<R>
+        + NextRepresentableOps<R>
+        + ScalarOps<R>
+        + TwoSumOps<R>
+        + RuntimeClient<R>
+        + CertifiedSimpsonAlgorithms<R>,
+    S: SimpsonCallbacks<R>,
+{
     let cause = Cell::new(None);
+    let callbacks = RefCell::new(callbacks);
     let result = c.certified_simpson(
         left,
         right,
@@ -43,10 +72,10 @@ where
                 .charge(QueryWork::SimpsonValue, query.owner.numel())
                 .and_then(|()| {
                     checked(c, "surveyed Simpson values", |a| {
+                        let mut callbacks = callbacks.borrow_mut();
                         let x = a.bounds(&query.lower, &query.upper)?;
-                        let value = value_callback(a, &query.owner, &x)?;
-                        let point = a.point(&query.point)?;
-                        let nominal_bounds = value_callback(a, &query.owner, &point)?;
+                        let value = callbacks.values(a, &query.owner, &x)?;
+                        let nominal_bounds = callbacks.nominal(a, &query.owner, &query.point)?;
                         let half_width = c.mul_scalar(
                             &c.sub(nominal_bounds.upper(), nominal_bounds.lower())?,
                             0.5,
@@ -69,7 +98,7 @@ where
                 .and_then(|()| {
                     checked(c, "surveyed Simpson fourth derivatives", |a| {
                         let x = a.bounds(&panel.lower, &panel.upper)?;
-                        fourth_callback(a, &panel.owner, &x)
+                        callbacks.borrow_mut().fourth(a, &panel.owner, &x)
                     })
                 });
             result.map_err(|error| retain_cause(&cause, error))

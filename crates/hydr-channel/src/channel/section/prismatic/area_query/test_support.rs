@@ -14,9 +14,8 @@ use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{CertifiedExpansion, Interval, with_interval_arithmetic};
 
-pub(in crate::channel::section::prismatic) type Result<T = ()> =
-    std::result::Result<T, Box<dyn std::error::Error>>;
-pub(in crate::channel::section::prismatic) trait Client<R: Runtime<DType = DType>>:
+pub(crate) type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
+pub(crate) trait Client<R: Runtime<DType = DType>>:
     TensorOps<R>
     + CompareOps<R>
     + NextRepresentableOps<R>
@@ -41,9 +40,7 @@ where
 {
 }
 
-pub(in crate::channel::section::prismatic) fn hydraulic<T>(
-    result: HydraulicResult<T>,
-) -> Result<T> {
+pub(crate) fn hydraulic<T>(result: HydraulicResult<T>) -> Result<T> {
     result.map_err(|error| std::io::Error::other(format!("{error:?}")).into())
 }
 

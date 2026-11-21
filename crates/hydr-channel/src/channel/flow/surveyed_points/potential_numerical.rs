@@ -1,13 +1,14 @@
+use super::potential_nodes::NodeCallbacks;
 use super::potential_range::{
     PotentialContext, PotentialValue, from_interval, scatter, zero_value,
 };
-use super::{analytic_endpoint, potential_analytic, potential_callbacks};
+use super::{analytic_endpoint, potential_analytic};
 use crate::channel::{
     flow::surveyed::{
         derivatives::WetDepthPotential,
-        equation_ops::{scalar, scale},
+        equation_ops::scale,
         error::{HydraulicError, HydraulicResult, checked},
-        lane_quadrature::numerical_contributions,
+        lane_quadrature::{numerical_contributions, simpson_contributions},
     },
     section::ConditionalBandSegments,
 };
@@ -233,35 +234,32 @@ where
     let left = Tensor::zeros(&[rows.numel()], DType::F64, c.device())?;
     let right = Tensor::ones(&[rows.numel()], DType::F64, c.device())?;
     let gravity = context.evaluation.config.gravity_m_per_s2;
-    let result = numerical_contributions(
-        c,
-        &left,
-        &right,
-        CertifiedSimpsonOptions {
-            panels: context.evaluation.panels,
-            max_points: context.evaluation.config.max_native_query_points,
-        },
-        context.evaluation.work,
-        |a, owner, parameter| {
-            if let Some(depth) = &depth {
+    let options = CertifiedSimpsonOptions {
+        panels: context.evaluation.panels,
+        max_points: context.evaluation.config.max_native_query_points,
+    };
+    let work = context.evaluation.work;
+    let result = if let Some(depth) = &depth {
+        numerical_contributions(
+            c,
+            &left,
+            &right,
+            options,
+            work,
+            |a, owner, parameter| {
                 WetDepthPotential::from_geometry(a, depth, owner, parameter, gravity)?.value(a)
-            } else {
-                let gravity = scalar(a, gravity)?;
-                potential_callbacks::integrand(a, &selected, owner, parameter, &gravity)
-            }
-        },
-        |a, owner, parameter| {
-            if let Some(depth) = &depth {
+            },
+            |a, owner, parameter| {
                 let derivative =
                     WetDepthPotential::from_geometry(a, depth, owner, parameter, gravity)?
                         .fourth_derivative(a)?;
                 Ok(c.maximum(&c.abs(derivative.lower())?, &c.abs(derivative.upper())?)?)
-            } else {
-                let gravity = scalar(a, gravity)?;
-                potential_callbacks::fourth_bound(a, &selected, owner, parameter, &gravity)
-            }
-        },
-    )?;
+            },
+        )?
+    } else {
+        let mut callbacks = NodeCallbacks::new(&selected, gravity);
+        simpson_contributions(c, &left, &right, options, work, &mut callbacks)?
+    };
     checked(c, "point numerical potential certificate", |a| {
         let physical = a.bounds(result.lower(), result.upper())?;
         let raw_bounds = a.bounds(physical.lower(), physical.upper())?;

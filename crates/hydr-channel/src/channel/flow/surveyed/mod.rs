@@ -11,6 +11,7 @@ pub(crate) mod derivatives;
 pub(crate) mod equation_ops;
 pub(crate) mod error;
 pub(crate) mod integration;
+mod lane_callbacks;
 pub(crate) mod lane_quadrature;
 pub(crate) mod lane_split;
 pub(crate) mod output;

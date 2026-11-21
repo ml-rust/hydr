@@ -32,6 +32,8 @@ pub use recovery_config::CrossSectionRecoveryConfig;
 pub use recovery_query::{CrossSectionRecoveredProperties, CrossSectionRecovery};
 
 pub(crate) use prismatic::PressureEndpoint;
+#[cfg(test)]
+pub(crate) use prismatic::node_fixture;
 pub(crate) use prismatic::{Constitutive, GatheredBands, HydraulicGeometry};
 
 pub(crate) use prismatic::{

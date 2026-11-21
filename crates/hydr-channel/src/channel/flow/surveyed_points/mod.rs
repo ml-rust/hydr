@@ -72,6 +72,7 @@ mod potential_increment;
 #[cfg(test)]
 mod potential_increment_fixtures;
 mod potential_lanes;
+mod potential_nodes;
 mod potential_numerical;
 mod potential_range;
 #[cfg(test)]

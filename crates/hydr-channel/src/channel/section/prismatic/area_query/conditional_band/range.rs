@@ -5,6 +5,7 @@ use numr::{
     dtype::DType,
     ops::{BinaryOps, CompareOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps},
     runtime::{Runtime, RuntimeClient},
+    tensor::Tensor,
 };
 use solvr::common::arithmetic::Interval;
 
@@ -18,6 +19,17 @@ where
         + TwoSumOps<R>
         + RuntimeClient<R>,
 {
+    /// Area and hydraulic depth at represented parameters `s`, evaluated as one `evaluate_range` endpoint.
+    pub(crate) fn point_state(
+        &self,
+        a: &mut Arithmetic<'_, R>,
+        s: &Tensor<R>,
+    ) -> HydraulicResult<[Interval<R>; 2]> {
+        let parameter = a.point(s)?;
+        let state = self.evaluate_point(a, &parameter)?;
+        Ok([state.area, state.hydraulic_depth])
+    }
+
     pub(super) fn evaluate_range(
         &self,
         a: &mut Arithmetic<'_, R>,
