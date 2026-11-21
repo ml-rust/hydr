@@ -1,9 +1,9 @@
 //! Public barrel geometry batch over compact `[m]` tensors.
 
-use super::input::{check_depths, check_range};
-use super::{CulvertBarrel, CulvertBarrelGeometry};
+use super::input::{check_depths, check_discharges, check_gravity, check_range};
+use super::{CriticalDepthStatus, CulvertBarrel, CulvertBarrelDepth, CulvertBarrelGeometry};
 use crate::structures::StructureError;
-use crate::structures::numerics::culvert::section;
+use crate::structures::numerics::culvert::{critical, section};
 use crate::structures::tensor::culvert::TensorBarrelContext;
 use numr::dtype::DType;
 use numr::ops::{
@@ -12,6 +12,7 @@ use numr::ops::{
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::with_interval_arithmetic;
+use solvr::optimize::CertifiedBisectionAlgorithms;
 use std::fmt;
 use std::sync::Arc;
 
@@ -22,13 +23,16 @@ use std::sync::Arc;
 /// The free-surface domain is `[0, D)`. The crown `y = D` and every depth above it are full.
 #[derive(Clone)]
 pub struct CulvertBarrelBatch<R: Runtime<DType = DType>> {
+    barrels: Arc<[CulvertBarrel]>,
     context: Arc<TensorBarrelContext<R>>,
+    /// Unit-diameter circles of the same width, for the critical residual in `s = y/D`.
+    unit: Arc<TensorBarrelContext<R>>,
 }
 
 impl<R: Runtime<DType = DType>> fmt::Debug for CulvertBarrelBatch<R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CulvertBarrelBatch")
-            .field("barrels", &self.context.barrels)
+            .field("barrels", &self.barrels)
             .finish_non_exhaustive()
     }
 }
@@ -37,7 +41,8 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
     /// Uploads the barrels and encloses their full-state constants once.
     ///
     /// Rejects an empty barrel list and a runtime without F64 IEEE basic arithmetic,
-    /// fused multiply-add, or square roots rounded to nearest.
+    /// fused multiply-add, correctly rounded elementary functions, or square roots rounded
+    /// to nearest.
     pub fn new(client: R::Client, barrels: Vec<CulvertBarrel>) -> Result<Self, StructureError>
     where
         R::Client: TensorOps<R>
@@ -48,14 +53,18 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             + CorrectlyRoundedOps<R>
             + RuntimeClient<R>,
     {
+        let context = TensorBarrelContext::new(client, &barrels)?;
+        let unit = context.unit_circles()?;
         Ok(Self {
-            context: Arc::new(TensorBarrelContext::new(client, barrels)?),
+            barrels: barrels.into(),
+            context: Arc::new(context),
+            unit: Arc::new(unit),
         })
     }
 
     /// Barrels in row order.
     pub fn barrels(&self) -> &[CulvertBarrel] {
-        &self.context.barrels
+        &self.barrels
     }
 
     /// Encloses the geometry at one depth per barrel, in metres above the invert.
@@ -108,7 +117,7 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             + RuntimeClient<R>,
     {
         let context = &*self.context;
-        check_range(context, lower_m, upper_m)?;
+        check_range(&self.barrels, context, lower_m, upper_m)?;
         Ok(with_interval_arithmetic(
             &context.client,
             DType::F64,
@@ -143,5 +152,40 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
                 Ok(CulvertBarrelGeometry::from_section(&section))
             },
         )?)
+    }
+
+    /// Encloses the critical depth `Q^2 T = g A^3` of every barrel, in metres above the invert.
+    ///
+    /// `discharge_m3_per_s` is an F64 `[m]` tensor of per-barrel discharge magnitudes on the
+    /// batch device. [`CriticalDepthStatus`] states what each row's enclosure holds.
+    /// Rejects a negative or nonfinite discharge, naming its row, and a nonfinite or
+    /// nonpositive gravity.
+    pub fn critical_depth(
+        &self,
+        discharge_m3_per_s: &Tensor<R>,
+        gravity_m_per_s2: f64,
+    ) -> Result<CulvertBarrelDepth<R, CriticalDepthStatus>, StructureError>
+    where
+        R::Client: TensorOps<R>
+            + CompareOps<R>
+            + NextRepresentableOps<R>
+            + ScalarOps<R>
+            + TwoSumOps<R>
+            + CorrectlyRoundedOps<R>
+            + RuntimeClient<R>
+            + CertifiedBisectionAlgorithms<R>,
+    {
+        let context = &*self.context;
+        check_gravity(gravity_m_per_s2)?;
+        check_discharges(context, "discharge_m3_per_s", discharge_m3_per_s)?;
+        let gravity = context.constant(gravity_m_per_s2)?;
+        let depths = critical::solve(
+            &self.barrels,
+            context,
+            &self.unit,
+            discharge_m3_per_s,
+            &gravity,
+        )?;
+        Ok(CulvertBarrelDepth::from_critical(depths))
     }
 }

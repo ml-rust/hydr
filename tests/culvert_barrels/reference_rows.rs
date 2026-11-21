@@ -9,7 +9,7 @@
 
 /// SHA256 of the frozen `reference.json`.
 pub const REFERENCE_SHA256: &str =
-    "4bf04c54ad8e2765407129e231e653cb8e715d0f73609ce5344388df315ec34f";
+    "8fb069d700a1800d379203dd541268e9ab573cde6731129840be3835843811e5";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {

@@ -41,8 +41,9 @@ pub use actuator::{
 pub use applicability::{OrificeApplicability, WeirApplicability};
 pub use batch::StructureBatch;
 pub use culvert::{
-    BarrelState, CulvertBarrel, CulvertBarrelBatch, CulvertBarrelGeometry,
-    CulvertBarrelGeometryRow, CulvertBarrelShape,
+    BarrelDepthStatus, BarrelState, CriticalDepthStatus, CulvertBarrel, CulvertBarrelBatch,
+    CulvertBarrelDepth, CulvertBarrelDepthRow, CulvertBarrelGeometry, CulvertBarrelGeometryRow,
+    CulvertBarrelShape,
 };
 pub use definition::{DirectionPolicy, FlowDirection, StructureElement, StructureLaw};
 pub use error::{StructureError, StructureInputErrorKind};

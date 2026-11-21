@@ -5,7 +5,7 @@
 
 use crate::structures::numerics::culvert::BarrelClient;
 use crate::structures::tensor::culvert::TensorBarrelContext;
-use crate::structures::{StructureError, StructureInputErrorKind};
+use crate::structures::{CulvertBarrel, StructureError, StructureInputErrorKind};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ReduceOps};
 use numr::runtime::{Device, Runtime};
@@ -45,6 +45,12 @@ where
     Ok(())
 }
 
+/// What a depth value measures, for rejection messages.
+const DEPTH: &str = "depth above the invert in metres";
+
+/// What a discharge value measures, for rejection messages.
+const DISCHARGE: &str = "discharge per barrel in cubic metres per second";
+
 /// Rejects a depth that is negative or nonfinite, naming the first such row.
 pub(super) fn check_depths<R>(
     context: &TensorBarrelContext<R>,
@@ -55,31 +61,70 @@ where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R>,
 {
-    check_tensor(context, name, depth)?;
+    check_nonnegative(context, name, depth, DEPTH)
+}
+
+/// Rejects a discharge that is negative or nonfinite, naming the first such row.
+pub(super) fn check_discharges<R>(
+    context: &TensorBarrelContext<R>,
+    name: &str,
+    discharge: &Tensor<R>,
+) -> Result<(), StructureError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    check_nonnegative(context, name, discharge, DISCHARGE)
+}
+
+/// Rejects a gravity that is nonfinite or not positive.
+pub(super) fn check_gravity(gravity: f64) -> Result<(), StructureError> {
+    if gravity.is_finite() && gravity > 0.0 {
+        return Ok(());
+    }
+    Err(StructureError::input(
+        StructureInputErrorKind::OperatingPoint,
+        format!(
+            "gravity_m_per_s2={gravity:?}: supply a finite positive gravity in metres per second squared"
+        ),
+    ))
+}
+
+fn check_nonnegative<R>(
+    context: &TensorBarrelContext<R>,
+    name: &str,
+    value: &Tensor<R>,
+    what: &str,
+) -> Result<(), StructureError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    check_tensor(context, name, value)?;
     let c = &context.client;
     let infinite = context.constant(f64::INFINITY)?;
-    let good = c.mul(&c.ge(depth, &context.zero)?, &c.lt(depth, &infinite)?)?;
+    let good = c.mul(&c.ge(value, &context.zero)?, &c.lt(value, &infinite)?)?;
     if count_bad(context, &good)? == 0.0 {
         return Ok(());
     }
-    let values = depth.try_to_vec::<f64>()?;
+    let values = value.try_to_vec::<f64>()?;
     for (row, &value) in values.iter().enumerate() {
-        depth_value(name, value).map_err(|error| error.at(row))?;
+        nonnegative_value(name, value, what).map_err(|error| error.at(row))?;
     }
     Err(rows_disagree())
 }
 
-fn depth_value(name: &str, value: f64) -> Result<(), StructureError> {
+fn nonnegative_value(name: &str, value: f64, what: &str) -> Result<(), StructureError> {
     if !value.is_finite() {
         return Err(StructureError::input(
             StructureInputErrorKind::NonfiniteInput,
-            format!("{name}={value:?}: supply a finite depth above the invert in metres"),
+            format!("{name}={value:?}: supply a finite {what}"),
         ));
     }
     if value < 0.0 {
         return Err(StructureError::input(
             StructureInputErrorKind::OperatingPoint,
-            format!("{name}={value:?}: supply a nonnegative depth above the invert in metres"),
+            format!("{name}={value:?}: supply a nonnegative {what}"),
         ));
     }
     Ok(())
@@ -87,6 +132,7 @@ fn depth_value(name: &str, value: f64) -> Result<(), StructureError> {
 
 /// Rejects a depth range that is not `0 <= lower <= upper < D`, naming the first such row.
 pub(super) fn check_range<R>(
+    barrels: &[CulvertBarrel],
     context: &TensorBarrelContext<R>,
     lower: &Tensor<R>,
     upper: &Tensor<R>,
@@ -106,14 +152,9 @@ where
     }
     let lows = lower.try_to_vec::<f64>()?;
     let highs = upper.try_to_vec::<f64>()?;
-    for (row, (barrel, (&low, &high))) in context
-        .barrels
-        .iter()
-        .zip(lows.iter().zip(&highs))
-        .enumerate()
-    {
+    for (row, (barrel, (&low, &high))) in barrels.iter().zip(lows.iter().zip(&highs)).enumerate() {
         for (name, value) in [("lower_m", low), ("upper_m", high)] {
-            depth_value(name, value).map_err(|error| error.at(row))?;
+            nonnegative_value(name, value, DEPTH).map_err(|error| error.at(row))?;
         }
         if low > high {
             return Err(StructureError::input(

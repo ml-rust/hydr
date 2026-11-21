@@ -10,6 +10,9 @@ mod reference_rows;
 #[path = "culvert_barrels/dense_rows.rs"]
 mod dense_rows;
 
+#[path = "culvert_barrels/critical_rows.rs"]
+mod critical_rows;
+
 #[path = "culvert_barrels/support.rs"]
 mod support;
 
@@ -24,3 +27,6 @@ mod ranges;
 
 #[path = "culvert_barrels/admission.rs"]
 mod admission;
+
+#[path = "culvert_barrels/critical.rs"]
+mod critical;

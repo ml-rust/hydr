@@ -24,7 +24,7 @@ pub struct CulvertBarrel {
 const OVERFLOW_MARGIN: f64 = 64.0;
 
 /// `2^-30`. The depth `D 2^-30` must stay a normal F64.
-const FLOOR_FRACTION: f64 = 1.0 / 1_073_741_824.0;
+const FLOOR_FRACTION: f64 = crate::structures::numerics::culvert::constants::CRITICAL_FLOOR;
 
 impl CulvertBarrel {
     /// Admits a circular barrel of diameter `diameter_m`.

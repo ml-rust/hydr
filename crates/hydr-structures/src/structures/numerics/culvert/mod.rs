@@ -6,6 +6,7 @@
 #[cfg(test)]
 mod certificate_rows;
 pub(crate) mod constants;
+pub(crate) mod critical;
 pub(crate) mod section;
 
 use numr::dtype::DType;

@@ -205,7 +205,7 @@ mod tests {
         let device = CpuDevice::new();
         let client = CpuRuntime::default_client(&device);
         let barrels = vec![CulvertBarrel::circular(rise)?; depths.len()];
-        let barrel = TensorBarrelContext::<CpuRuntime>::new(client.clone(), barrels)?;
+        let barrel = TensorBarrelContext::<CpuRuntime>::new(client.clone(), &barrels)?;
         let depth = Tensor::<CpuRuntime>::from_slice(depths, &[depths.len()], &device)?;
         let pair = with_interval_arithmetic(&client, DType::F64, "seam", |a| {
             let shallow = shallow::evaluate(a, &barrel, &depth)?;
