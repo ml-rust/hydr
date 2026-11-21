@@ -18,3 +18,6 @@ pub(crate) const GATE_BELOW_SILL: f64 = 9.0;
 pub(crate) const FREE_GATE: f64 = 10.0;
 pub(crate) const MIXED_GATE: f64 = 11.0;
 pub(crate) const SUBMERGED_GATE: f64 = 12.0;
+pub(crate) const BARREL_DRY: f64 = 0.0;
+pub(crate) const BARREL_FREE: f64 = 1.0;
+pub(crate) const BARREL_FULL: f64 = 2.0;

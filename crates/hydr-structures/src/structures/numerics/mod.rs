@@ -2,6 +2,7 @@
 
 mod admission;
 mod bounds;
+pub(crate) mod culvert;
 mod direction;
 mod evaluation;
 pub(crate) mod gate;

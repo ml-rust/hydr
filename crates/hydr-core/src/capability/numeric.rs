@@ -29,10 +29,13 @@ pub enum ArithmeticRequirement {
     RoundToNearestSqrt,
     /// Fused multiply-add with one rounding.
     FusedMulAdd,
-    /// F64 `exp`, `log`, `log1p` and `pow` through numr `CorrectlyRoundedOps`.
+    /// F64 `exp`, `log`, `log1p`, `pow` and `acos` through numr `CorrectlyRoundedOps`.
     /// `exp`, `log` and `log1p` are correctly rounded to nearest.
     /// `pow` is correctly rounded modulo the unknown hardest cases.
-    /// All four are deterministic on every runtime that meets the contracts.
+    /// `acos` is correctly rounded on `|x| >= 2^-4`, proven by an exhaustive upstream search.
+    /// Below `2^-4` no proof covers it, and numr's MPFR checks find no misrounded input.
+    /// Interval `acos` pads one ulp outward, which stays valid for any faithful result.
+    /// All five are deterministic on every runtime that meets the contracts.
     /// Needs IEEE basic arithmetic and fused multiply-add.
     /// Evidence: numr `tests/correctly_rounded.rs` checks every function against MPFR, and
     /// `tests/backend_parity/correctly_rounded.rs` checks CUDA against CPU bit for bit.

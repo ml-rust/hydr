@@ -36,6 +36,8 @@ pub enum ComponentId {
     ControlledPump,
     /// 2D surface coupled to channel reaches through lateral bank weirs.
     SurfaceChannels,
+    /// Closed-conduit culvert barrel geometry for circular and box barrels.
+    CulvertBarrel,
 }
 
 impl ComponentId {
@@ -58,6 +60,7 @@ impl ComponentId {
             Self::ControlledGate => "controlled-gate",
             Self::ControlledPump => "controlled-pump",
             Self::SurfaceChannels => "surface-channels",
+            Self::CulvertBarrel => "culvert-barrel",
         }
     }
 }
@@ -86,6 +89,7 @@ mod tests {
             ComponentId::ControlledGate,
             ComponentId::ControlledPump,
             ComponentId::SurfaceChannels,
+            ComponentId::CulvertBarrel,
         ];
         assert_ids(&all.map(|c| c.id()));
     }

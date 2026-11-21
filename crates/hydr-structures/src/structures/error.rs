@@ -119,6 +119,35 @@ impl From<numr::error::Error> for StructureError {
     }
 }
 
+impl From<solvr::common::arithmetic::ArithmeticError> for StructureError {
+    fn from(error: solvr::common::arithmetic::ArithmeticError) -> Self {
+        use solvr::common::arithmetic::ArithmeticError;
+        match error {
+            ArithmeticError::Numr(error) => error.into(),
+            other => Self::Numerical {
+                element: None,
+                context: other.to_string(),
+            },
+        }
+    }
+}
+
+impl From<solvr::optimize::OptimizeError> for StructureError {
+    fn from(error: solvr::optimize::OptimizeError) -> Self {
+        use solvr::optimize::OptimizeError;
+        match error {
+            OptimizeError::NumrError(context) => Self::Runtime {
+                element: None,
+                context,
+            },
+            other => Self::Numerical {
+                element: None,
+                context: other.to_string(),
+            },
+        }
+    }
+}
+
 impl From<solvr::interpolate::InterpolateError> for StructureError {
     fn from(error: solvr::interpolate::InterpolateError) -> Self {
         Self::Runtime {
