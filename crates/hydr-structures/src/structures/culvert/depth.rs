@@ -1,7 +1,7 @@
 //! Certified barrel depth tensors, their typed statuses and their explicit host projection.
 
 use crate::structures::StructureError;
-use crate::structures::numerics::culvert::critical::CriticalDepths;
+use crate::structures::numerics::culvert::BarrelDepths;
 use crate::structures::tensor::codes;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
@@ -56,6 +56,49 @@ impl sealed::Sealed for CriticalDepthStatus {
 
 impl BarrelDepthStatus for CriticalDepthStatus {}
 
+/// Outcome of a Manning normal-depth query, `Q = (1/n) A R^(2/3) sqrt(S)`, for one barrel.
+///
+/// The normal depth is the root on the rising limb of the conveyance `K = A^(5/3) / P^(2/3)`.
+/// The search domain is `[D 2^-30, top]`, with `top = 0.93818 D` for a circle and `D` for a box.
+/// Circle conveyance peaks at `s_K D`, `s_K = 0.9381812`, above the full-barrel conveyance,
+/// and falls from there to the crown. Box conveyance rises up to its open-section limit at the
+/// crown, which exceeds the full-barrel conveyance. Full-barrel flow is the caller's branch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NormalDepthStatus {
+    /// Zero discharge on a positive slope. The depth is exactly `[0, 0]`.
+    Dry,
+    /// Certified root inside the search domain.
+    Solved,
+    /// The root lies at or below the floor `D 2^-30`. The enclosure starts at 0.
+    BelowFloor,
+    /// The target lies near the top of the rising limb. A rising-limb root, when one exists,
+    /// lies in the enclosure. The enclosure ends at `s_K D` rounded up for a circle and at `D`
+    /// for a box.
+    NearCapacity,
+    /// The target exceeds the peak circle conveyance or the box crown limit. No free-surface
+    /// uniform flow exists and the row has no enclosure.
+    AboveCapacity,
+    /// The slope is zero or adverse. No normal depth exists and the row has no enclosure.
+    NonPositiveSlope,
+}
+
+impl sealed::Sealed for NormalDepthStatus {
+    fn from_code(code: f64) -> Option<Self> {
+        [
+            (codes::NORMAL_DRY, Self::Dry),
+            (codes::NORMAL_SOLVED, Self::Solved),
+            (codes::NORMAL_BELOW_FLOOR, Self::BelowFloor),
+            (codes::NORMAL_NEAR_CAPACITY, Self::NearCapacity),
+            (codes::NORMAL_ABOVE_CAPACITY, Self::AboveCapacity),
+            (codes::NORMAL_NON_POSITIVE_SLOPE, Self::NonPositiveSlope),
+        ]
+        .into_iter()
+        .find_map(|(value, status)| (value == code).then_some(status))
+    }
+}
+
+impl BarrelDepthStatus for NormalDepthStatus {}
+
 /// Certified depth per barrel row, as status codes and lower and upper F64 `[m]` tensors.
 ///
 /// Every exact root that the status places in an enclosure lies inside its `[lower, upper]`
@@ -76,8 +119,9 @@ pub struct CulvertBarrelDepthRow<S: BarrelDepthStatus> {
     pub depth_m: Option<(f64, f64)>,
 }
 
-impl<R: Runtime<DType = DType>> CulvertBarrelDepth<R, CriticalDepthStatus> {
-    pub(crate) fn from_critical(depths: CriticalDepths<R>) -> Self {
+impl<R: Runtime<DType = DType>, S: BarrelDepthStatus> CulvertBarrelDepth<R, S> {
+    /// Wraps solver output whose codes decode as `S`.
+    pub(crate) fn from_depths(depths: BarrelDepths<R>) -> Self {
         Self {
             status: depths.status,
             lower: depths.lower,
@@ -85,9 +129,7 @@ impl<R: Runtime<DType = DType>> CulvertBarrelDepth<R, CriticalDepthStatus> {
             marker: PhantomData,
         }
     }
-}
 
-impl<R: Runtime<DType = DType>, S: BarrelDepthStatus> CulvertBarrelDepth<R, S> {
     /// Lower and upper depth in metres. Rows without an enclosure hold NaN.
     pub fn depth_m(&self) -> (&Tensor<R>, &Tensor<R>) {
         (&self.lower, &self.upper)

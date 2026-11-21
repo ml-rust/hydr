@@ -18,32 +18,19 @@
 
 use super::residual::{residual, target};
 use crate::structures::numerics::culvert::constants::CRITICAL_FLOOR;
+use crate::structures::numerics::culvert::roots::{self, Ends, Signs};
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient};
 use crate::structures::tensor::codes;
-use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext};
+use crate::structures::tensor::culvert::TensorBarrelContext;
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, UnaryOps};
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::ArithmeticResult;
 
-/// Per-row classification and the enclosures that need no solver call.
-pub(super) struct Ends<R: Runtime<DType = DType>> {
-    /// Endpoints of the row target, re-entered by the solver callback.
-    pub(super) target: Bounds<R>,
-    /// Critical status code per row. Bracketed rows hold `CRITICAL_SOLVED`.
-    pub(super) status: Tensor<R>,
-    /// 1 on bracketed rows, 0 elsewhere.
-    pub(super) solved: Tensor<R>,
-    /// 1 on rows with a depth enclosure, 0 on box rows above the crown.
-    pub(super) enclosed: Tensor<R>,
-    /// Enclosure in `s` of every row the solver does not serve. Bracketed rows hold the domain.
-    pub(super) fraction: Bounds<R>,
-    /// Solver upper end: `top` on bracketed rows, the floor elsewhere, so other rows stop at once.
-    pub(super) solver_top: Tensor<R>,
-}
-
 /// Classifies every row from the residual at both domain ends.
+///
+/// Every row has an enclosure except box rows above the crown.
 pub(super) fn classify<R>(
     a: &mut Arithmetic<'_, R>,
     barrel: &TensorBarrelContext<R>,
@@ -66,28 +53,19 @@ where
     let zero = &barrel.zero;
 
     let wet = c.gt(discharge, zero)?;
-    let below = c.mul(&wet, &c.gt(bottom.lower(), zero)?)?;
-    let rising = c.mul(&wet, &c.le(bottom.upper(), zero)?)?;
-    let straddle = c.sub(&c.sub(&wet, &below)?, &rising)?;
-    let above = c.mul(&rising, &c.lt(crown.upper(), zero)?)?;
-    let solved = c.mul(&rising, &c.ge(crown.lower(), zero)?)?;
-    let at_crown = c.sub(&c.sub(&rising, &above)?, &solved)?;
-
-    // f rises by at least kappa per unit s: a root past the floor lies within -f(floor)/kappa of it.
-    let deficit = a.point(&c.neg(bottom.lower())?)?;
-    let reach = a.div_positive(&deficit, slope)?;
-    let floor_point = a.point(&floor)?;
-    let past = a.add(&floor_point, &reach)?;
-    // A root below the top lies within f(top)/kappa of it.
-    let excess = a.point(crown.upper())?;
-    let drop = a.div_positive(&excess, slope)?;
-    let top_point = a.point(top)?;
-    let start = a.sub(&top_point, &drop)?;
-    let start = c.maximum(start.lower(), &floor)?;
+    let Signs {
+        below,
+        straddle,
+        solved,
+        near_top: at_crown,
+        above,
+        past,
+        start,
+    } = roots::classify(a, barrel, &wet, [&bottom, &crown], top, slope)?;
 
     let mut lower = zero.clone();
     let mut upper = c.where_cond(&below, &floor, zero)?;
-    upper = c.where_cond(&straddle, past.upper(), &upper)?;
+    upper = c.where_cond(&straddle, &past, &upper)?;
     lower = c.where_cond(&at_crown, &start, &lower)?;
     upper = c.where_cond(&at_crown, one, &upper)?;
     lower = c.where_cond(&above, top, &lower)?;

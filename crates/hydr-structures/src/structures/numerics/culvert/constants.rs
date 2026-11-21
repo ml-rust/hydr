@@ -67,7 +67,7 @@ pub(crate) const MOMENT: [[u64; 2]; SERIES_TERMS + 1] = [
     [0xbf06b19465194652, 0xbf06b19465194651],
 ];
 
-/// Lower end `2^-30` of the critical-depth domain in `s = y/D`.
+/// Lower end `2^-30` of the critical-depth and normal-depth domains in `s = y/D`.
 pub(crate) const CRITICAL_FLOOR: f64 = 1.0 / 1_073_741_824.0;
 
 /// Upper end `1 - 2^-53` of the circle critical-depth domain in `s = y/D`.
@@ -80,6 +80,23 @@ pub(crate) const CIRCLE_CRITICAL_SLOPE: f64 = 5.4;
 
 /// Lower bound `3` of `d r_c / ds = 3/s` for a box on `(0, 1]`.
 pub(crate) const BOX_CRITICAL_SLOPE: f64 = 3.0;
+
+/// Top `s_N = 0.93818` of the circle normal-depth domain in `s = y/D`, below the conveyance peak.
+/// The box domain ends at the crown, `s = 1`.
+pub(crate) const RISING_LIMB_TOP: f64 = 0.93818;
+
+/// Lower bound `5.42e-5` of `d r_n / ds = 5T/A - 4/(TP)` for a unit circle on `[2^-30, s_N]`.
+pub(crate) const CIRCLE_NORMAL_SLOPE: f64 = 5.42e-5;
+
+/// Lower bound `3` of `d r_n / ds = 5/s - 4D/(B + 2Ds)` for a box on `(0, 1]`.
+pub(crate) const BOX_NORMAL_SLOPE: f64 = 3.0;
+
+/// Adjacent F64 below and above the unit-circle conveyance peak `s_K`.
+/// Conveyance rises up to the lower bound and falls from the upper bound to the crown.
+pub(crate) const CONVEYANCE_PEAK: [u64; 2] = [0x3fee05949d2433b9, 0x3fee05949d2433ba];
+
+/// Bounds of `ln k_max`, the peak conveyance `A^(5/3) / P^(2/3)` of a unit circle.
+pub(crate) const LOG_PEAK_CONVEYANCE: [u64; 2] = [0xbff17c0a73c51e10, 0xbff17c0a73c51e0d];
 
 #[cfg(test)]
 mod tests {
@@ -96,12 +113,17 @@ mod tests {
     fn constants_equal_certificate_rows_bit_for_bit() {
         assert_eq!(
             CERTIFICATE_SHA256,
-            "3b0a36b8007fbce11b1ca2da0f3481167901dc5488a1a7d618a2de03885dc3f3"
+            "db5eff303d3afcf03abe0b81cfcc34ee20dd72e042b5282aadcfafac029a2b15"
         );
         assert_eq!(Some(PI), row("pi"));
         let single = |value: f64| Some([value.to_bits(); 2]);
         assert_eq!(single(CIRCLE_CRITICAL_SLOPE), row("critical_slope"));
         assert_eq!(single(BOX_CRITICAL_SLOPE), row("box_critical_slope"));
+        assert_eq!(single(RISING_LIMB_TOP), row("rising_limb_top"));
+        assert_eq!(single(CIRCLE_NORMAL_SLOPE), row("normal_slope"));
+        assert_eq!(single(BOX_NORMAL_SLOPE), row("box_normal_slope"));
+        assert_eq!(Some(CONVEYANCE_PEAK), row("conveyance_peak"));
+        assert_eq!(Some(LOG_PEAK_CONVEYANCE), row("log_peak_conveyance"));
         assert_eq!(
             Some([CRITICAL_FLOOR.to_bits(), CIRCLE_CRITICAL_TOP.to_bits()]),
             row("critical_domain")
@@ -116,8 +138,12 @@ mod tests {
     #[test]
     fn bounds_are_ordered_and_pi_is_the_rounded_constant() {
         assert_eq!(f64::from_bits(PI[0]), std::f64::consts::PI);
-        for pair in ASIN.iter().chain(&AREA).chain(&MOMENT).chain([&PI]) {
+        let pairs = [&PI, &CONVEYANCE_PEAK, &LOG_PEAK_CONVEYANCE];
+        for pair in ASIN.iter().chain(&AREA).chain(&MOMENT).chain(pairs) {
             assert!(f64::from_bits(pair[0]) <= f64::from_bits(pair[1]));
         }
+        let [peak_lower, peak_upper] = CONVEYANCE_PEAK.map(f64::from_bits);
+        assert_eq!(peak_lower.next_up(), peak_upper);
+        assert!(RISING_LIMB_TOP < peak_lower);
     }
 }

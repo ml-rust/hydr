@@ -11,7 +11,7 @@ use hydr::structures::{BarrelState, CulvertBarrel, CulvertBarrelShape};
 fn reference_fixture_is_the_frozen_file() {
     assert_eq!(
         REFERENCE_SHA256,
-        "8fb069d700a1800d379203dd541268e9ab573cde6731129840be3835843811e5"
+        "d801b746aa08360e4bc9fc49e25711c8f31e13fffbc26b48926894937fd4f6d1"
     );
     assert_eq!(ROWS.len(), BARRELS.len() * 17);
 }

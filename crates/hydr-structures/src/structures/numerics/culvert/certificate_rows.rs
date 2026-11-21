@@ -5,7 +5,7 @@
 
 /// SHA256 of the frozen `certificate.json`.
 pub(super) const CERTIFICATE_SHA256: &str =
-    "3b0a36b8007fbce11b1ca2da0f3481167901dc5488a1a7d618a2de03885dc3f3";
+    "db5eff303d3afcf03abe0b81cfcc34ee20dd72e042b5282aadcfafac029a2b15";
 
 pub(super) const ROWS: &[(&str, u64, u64)] = &[
     ("pi", 0x400921fb54442d18, 0x400921fb54442d19),
@@ -58,6 +58,7 @@ pub(super) const ROWS: &[(&str, u64, u64)] = &[
     ("box_critical_slope", 0x4008000000000000, 0x4008000000000000),
     ("rising_limb_top", 0x3fee059210385c68, 0x3fee059210385c68),
     ("normal_slope", 0x3f0c6a99d1cdbd8e, 0x3f0c6a99d1cdbd8e),
+    ("box_normal_slope", 0x4008000000000000, 0x4008000000000000),
     ("critical_domain", 0x3e10000000000000, 0x3fefffffffffffff),
     ("conveyance_peak", 0x3fee05949d2433b9, 0x3fee05949d2433ba),
     (

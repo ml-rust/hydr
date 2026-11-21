@@ -1,9 +1,12 @@
 //! Public barrel geometry batch over compact `[m]` tensors.
 
-use super::input::{check_depths, check_discharges, check_gravity, check_range};
-use super::{CriticalDepthStatus, CulvertBarrel, CulvertBarrelDepth, CulvertBarrelGeometry};
+use super::input::{check_depths, check_discharges, check_gravity, check_manning, check_range};
+use super::{
+    CriticalDepthStatus, CulvertBarrel, CulvertBarrelDepth, CulvertBarrelGeometry,
+    NormalDepthStatus,
+};
 use crate::structures::StructureError;
-use crate::structures::numerics::culvert::{critical, section};
+use crate::structures::numerics::culvert::{critical, normal, section};
 use crate::structures::tensor::culvert::TensorBarrelContext;
 use numr::dtype::DType;
 use numr::ops::{
@@ -25,7 +28,7 @@ use std::sync::Arc;
 pub struct CulvertBarrelBatch<R: Runtime<DType = DType>> {
     barrels: Arc<[CulvertBarrel]>,
     context: Arc<TensorBarrelContext<R>>,
-    /// Unit-diameter circles of the same width, for the critical residual in `s = y/D`.
+    /// Unit-diameter circles of the same width, for the depth residuals in `s = y/D`.
     unit: Arc<TensorBarrelContext<R>>,
 }
 
@@ -186,6 +189,52 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             discharge_m3_per_s,
             &gravity,
         )?;
-        Ok(CulvertBarrelDepth::from_critical(depths))
+        Ok(CulvertBarrelDepth::from_depths(depths))
+    }
+
+    /// Encloses the Manning normal depth `Q = (1/n) A R^(2/3) sqrt(S)` of every barrel, in metres
+    /// above the invert.
+    ///
+    /// `discharge_m3_per_s` holds per-barrel discharge magnitudes, `manning_n` the roughness in
+    /// `s/m^(1/3)` and `slope` the barrel slope, positive downstream. All are F64 `[m]` tensors on
+    /// the batch device. The normal depth is the root on the rising limb of the conveyance.
+    /// [`NormalDepthStatus`] states what each row's enclosure holds. A zero or adverse slope
+    /// reports `NonPositiveSlope` whatever the discharge.
+    /// Rejects a negative or nonfinite discharge, a nonpositive or nonfinite `n` and a nonfinite
+    /// slope, naming the row.
+    pub fn normal_depth(
+        &self,
+        discharge_m3_per_s: &Tensor<R>,
+        manning_n: &Tensor<R>,
+        slope: &Tensor<R>,
+    ) -> Result<CulvertBarrelDepth<R, NormalDepthStatus>, StructureError>
+    where
+        R::Client: TensorOps<R>
+            + CompareOps<R>
+            + NextRepresentableOps<R>
+            + ScalarOps<R>
+            + TwoSumOps<R>
+            + CorrectlyRoundedOps<R>
+            + RuntimeClient<R>
+            + CertifiedBisectionAlgorithms<R>,
+    {
+        let context = &*self.context;
+        check_manning(
+            context,
+            [
+                ("discharge_m3_per_s", discharge_m3_per_s),
+                ("manning_n", manning_n),
+                ("slope", slope),
+            ],
+        )?;
+        let depths = normal::solve(
+            &self.barrels,
+            context,
+            &self.unit,
+            discharge_m3_per_s,
+            manning_n,
+            slope,
+        )?;
+        Ok(CulvertBarrelDepth::from_depths(depths))
     }
 }

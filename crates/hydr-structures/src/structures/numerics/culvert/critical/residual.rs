@@ -7,7 +7,7 @@
 //! Both rise in `s`. The bracketed term is the row target, fixed per query.
 //! Unit geometry keeps the area of a tiny rise away from underflow.
 
-use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, section};
+use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose, section};
 use crate::structures::tensor::culvert::TensorBarrelContext;
 use numr::dtype::DType;
 use numr::ops::{CompareOps, ConditionalOps};
@@ -49,7 +49,7 @@ where
     let twice_b = a.mul(&two, &ln_b)?;
     let thrice_d = a.mul(&three, &ln_d)?;
     let rectangle = a.add(&twice_b, &thrice_d)?;
-    let scale = select(a, &barrel.circular, &circle, &rectangle)?;
+    let scale = choose(a, &barrel.circular, &circle, &rectangle)?;
     a.sub(&flow, &scale)
 }
 
@@ -86,25 +86,8 @@ where
     let ln_s = a.log_positive(&s)?;
     let rectangle = a.mul(&three, &ln_s)?;
 
-    let shape = select(a, &barrel.circular, &circle, &rectangle)?;
+    let shape = choose(a, &barrel.circular, &circle, &rectangle)?;
     a.sub(&shape, target)
-}
-
-/// Takes `on` where `mask` is 1 and `off` where it is 0.
-fn select<R>(
-    a: &mut Arithmetic<'_, R>,
-    mask: &Tensor<R>,
-    on: &Interval<R>,
-    off: &Interval<R>,
-) -> ArithmeticResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: BarrelClient<R>,
-{
-    let c = a.client();
-    let lower = c.where_cond(mask, on.lower(), off.lower())?;
-    let upper = c.where_cond(mask, on.upper(), off.upper())?;
-    a.bounds(&lower, &upper)
 }
 
 #[cfg(test)]

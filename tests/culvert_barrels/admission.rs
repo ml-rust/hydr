@@ -115,6 +115,61 @@ fn critical_queries_reject_bad_discharges_and_gravity() -> TestResult {
 }
 
 #[test]
+fn normal_queries_reject_bad_discharge_roughness_and_slope() -> TestResult {
+    let barrels = batch(vec![
+        CulvertBarrel::circular(1.0)?,
+        CulvertBarrel::rectangular_box(2.0, 1.0)?,
+    ])?;
+    let good = [0.5, 0.5];
+    let rough = [0.013, 0.013];
+    let tilt = [0.01, -0.01];
+    let cases = [
+        (
+            [&[0.5, -0.5][..], &rough, &tilt],
+            Some(1),
+            StructureInputErrorKind::OperatingPoint,
+            "discharge_m3_per_s=-0.5: supply a nonnegative discharge per barrel",
+        ),
+        (
+            [&good, &[0.013, 0.0][..], &tilt],
+            Some(1),
+            StructureInputErrorKind::OperatingPoint,
+            "manning_n=0.0: supply a positive Manning n in s/m^(1/3)",
+        ),
+        (
+            [&good, &[f64::NAN, -1.0][..], &tilt],
+            Some(0),
+            StructureInputErrorKind::NonfiniteInput,
+            "manning_n=NaN: supply a finite Manning n",
+        ),
+        (
+            [&good, &rough, &[0.01, f64::NEG_INFINITY][..]],
+            Some(1),
+            StructureInputErrorKind::NonfiniteInput,
+            "slope=-inf: supply a finite barrel slope in metres per metre",
+        ),
+        (
+            [&good, &rough, &[0.01][..]],
+            None,
+            StructureInputErrorKind::OperatingPoint,
+            "slope shape=[1],barrels=2: supply one value per barrel in a [2] tensor",
+        ),
+    ];
+    for ([discharges, roughness, slopes], row, kind, message) in cases {
+        let found = rejection(barrels.normal_depth(
+            &tensor(discharges)?,
+            &tensor(roughness)?,
+            &tensor(slopes)?,
+        ));
+        assert!(
+            matches!(&found, Some((element, k, context)) if *element == row && *k == kind && context.contains(message)),
+            "{message}: {found:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn empty_batches_reject_with_action() {
     let found = rejection(CulvertBarrelBatch::<Runtime>::new(client(), Vec::new()));
     assert!(matches!(

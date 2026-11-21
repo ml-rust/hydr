@@ -46,6 +46,10 @@ pub(crate) struct TensorBarrelContext<R: Runtime<DType = DType>> {
     pub(crate) critical_top: Tensor<R>,
     /// Lower bound of `d r_c / ds` on the critical domain: `5.4` circle, `3` box.
     pub(crate) critical_slope: Tensor<R>,
+    /// Upper end of the normal-depth domain in `s = y/D`: `s_N = 0.93818` circle, `1` box.
+    pub(crate) normal_top: Tensor<R>,
+    /// Lower bound of `d r_n / ds` on the normal domain: `5.42e-5` circle, `3` box.
+    pub(crate) normal_slope: Tensor<R>,
     pub(crate) full_area: Bounds<R>,
     pub(crate) full_perimeter: Bounds<R>,
     pub(crate) full_radius: Bounds<R>,
@@ -80,7 +84,7 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
 
     /// A context of unit-diameter circles with this context's width and client.
     ///
-    /// The critical residual reads circle geometry in `s = y/D` from it, so tiny rises never
+    /// The critical and normal residuals read circle geometry in `s = y/D` from it, so tiny rises never
     /// underflow the area.
     pub(crate) fn unit_circles(&self) -> Result<Self, StructureError>
     where
@@ -122,6 +126,8 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             },
             critical_top: take(&self.critical_top)?,
             critical_slope: take(&self.critical_slope)?,
+            normal_top: take(&self.normal_top)?,
+            normal_slope: take(&self.normal_slope)?,
             full_area: pair(&self.full_area)?,
             full_perimeter: pair(&self.full_perimeter)?,
             full_radius: pair(&self.full_radius)?,
@@ -159,6 +165,20 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
                 constants::CIRCLE_CRITICAL_SLOPE
             } else {
                 constants::BOX_CRITICAL_SLOPE
+            }
+        })?;
+        let normal_top = column(&|b| {
+            if circle(b) {
+                constants::RISING_LIMB_TOP
+            } else {
+                1.0
+            }
+        })?;
+        let normal_slope = column(&|b| {
+            if circle(b) {
+                constants::CIRCLE_NORMAL_SLOPE
+            } else {
+                constants::BOX_NORMAL_SLOPE
             }
         })?;
         let bounds = |table: &[[u64; 2]]| -> numr::error::Result<Vec<Bounds<R>>> {
@@ -208,6 +228,8 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             series,
             critical_top,
             critical_slope,
+            normal_top,
+            normal_slope,
             full_area,
             full_perimeter,
             full_radius,
@@ -264,6 +286,11 @@ mod tests {
         assert_eq!(picked.width(), 3);
         assert_eq!(picked.rise.try_to_vec::<f64>()?, [1.0, 0.3, 1.0]);
         assert_eq!(picked.critical_slope.try_to_vec::<f64>()?, [3.0, 5.4, 3.0]);
+        assert_eq!(picked.normal_top.try_to_vec::<f64>()?, [1.0, 0.93818, 1.0]);
+        assert_eq!(
+            picked.normal_slope.try_to_vec::<f64>()?,
+            [3.0, 5.42e-5, 3.0]
+        );
         assert_eq!(picked.full_perimeter[1].try_to_vec::<f64>()?[2], 6.0);
         assert_eq!(picked.series.moment[3][0].shape(), [3]);
         // Box area B D = 2 and perimeter 2 (B + D) = 6 are exact singletons.

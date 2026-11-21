@@ -77,6 +77,69 @@ where
     check_nonnegative(context, name, discharge, DISCHARGE)
 }
 
+/// Rejects a negative or nonfinite discharge, a nonpositive or nonfinite Manning `n` and a
+/// nonfinite slope, naming the first offending row. One mask covers all three inputs.
+pub(super) fn check_manning<R>(
+    context: &TensorBarrelContext<R>,
+    [discharge, roughness, slope]: [(&str, &Tensor<R>); 3],
+) -> Result<(), StructureError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    for (name, value) in [discharge, roughness, slope] {
+        check_tensor(context, name, value)?;
+    }
+    let c = &context.client;
+    let zero = &context.zero;
+    let infinite = context.constant(f64::INFINITY)?;
+    let falling = context.constant(f64::NEG_INFINITY)?;
+    let flow = c.mul(&c.ge(discharge.1, zero)?, &c.lt(discharge.1, &infinite)?)?;
+    let rough = c.mul(&c.gt(roughness.1, zero)?, &c.lt(roughness.1, &infinite)?)?;
+    let tilt = c.mul(&c.gt(slope.1, &falling)?, &c.lt(slope.1, &infinite)?)?;
+    let good = c.mul(&c.mul(&flow, &rough)?, &tilt)?;
+    if count_bad(context, &good)? == 0.0 {
+        return Ok(());
+    }
+    let flows = discharge.1.try_to_vec::<f64>()?;
+    let roughs = roughness.1.try_to_vec::<f64>()?;
+    let tilts = slope.1.try_to_vec::<f64>()?;
+    let rows = flows.iter().zip(roughs.iter().zip(&tilts));
+    for (row, (&flow, (&rough, &tilt))) in rows.enumerate() {
+        let checked = nonnegative_value(discharge.0, flow, DISCHARGE)
+            .and_then(|()| roughness_value(roughness.0, rough))
+            .and_then(|()| slope_value(slope.0, tilt));
+        checked.map_err(|error| error.at(row))?;
+    }
+    Err(rows_disagree())
+}
+
+fn roughness_value(name: &str, value: f64) -> Result<(), StructureError> {
+    if !value.is_finite() {
+        return Err(StructureError::input(
+            StructureInputErrorKind::NonfiniteInput,
+            format!("{name}={value:?}: supply a finite Manning n in s/m^(1/3)"),
+        ));
+    }
+    if value <= 0.0 {
+        return Err(StructureError::input(
+            StructureInputErrorKind::OperatingPoint,
+            format!("{name}={value:?}: supply a positive Manning n in s/m^(1/3)"),
+        ));
+    }
+    Ok(())
+}
+
+fn slope_value(name: &str, value: f64) -> Result<(), StructureError> {
+    if value.is_finite() {
+        return Ok(());
+    }
+    Err(StructureError::input(
+        StructureInputErrorKind::NonfiniteInput,
+        format!("{name}={value:?}: supply a finite barrel slope in metres per metre"),
+    ))
+}
+
 /// Rejects a gravity that is nonfinite or not positive.
 pub(super) fn check_gravity(gravity: f64) -> Result<(), StructureError> {
     if gravity.is_finite() && gravity > 0.0 {

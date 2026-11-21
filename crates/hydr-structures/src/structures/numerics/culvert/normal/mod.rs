@@ -1,0 +1,95 @@
+//! Certified Manning normal depth `Q = (1/n) A R^(2/3) sqrt(S)` for circle and box barrels.
+//!
+//! Hydr writes the log residual in `s = y/D` and solvr's certified bisection finds its root on
+//! `[2^-30, top]`: `top = s_N = 0.93818` for a circle and `1` for a box. The slope floors are
+//! `5.42e-5` for a circle and `3` for a box, in units of `1/D`. End classification runs first,
+//! so only bracketed rows iterate. Depth enclosures are `D` times the enclosure in `s`,
+//! rounded outward.
+//!
+//! - Circle conveyance rises to a peak at `s_K`, just above `s_N`, and falls to the crown.
+//!   The normal depth is the root on the rising limb. A target above the peak has no
+//!   free-surface uniform flow.
+//! - Box conveyance rises up to the crown, where its open-section limit `K(D^-)` exceeds the
+//!   full-barrel conveyance. The domain ends at that limit. A target above it has no
+//!   free-surface uniform flow. Full-barrel friction above the crown is the caller's branch.
+
+mod ends;
+mod residual;
+
+use super::BarrelClient;
+use super::constants::{CRITICAL_FLOOR, RISING_LIMB_TOP};
+use super::roots::{self, BarrelDepths};
+use crate::structures::tensor::culvert::TensorBarrelContext;
+use crate::structures::{CulvertBarrel, CulvertBarrelShape, StructureError};
+use numr::dtype::DType;
+use numr::runtime::Runtime;
+use numr::tensor::Tensor;
+use solvr::common::arithmetic::with_interval_arithmetic;
+use solvr::optimize::CertifiedBisectionAlgorithms;
+
+/// Encloses the rising-limb normal depth of every row.
+///
+/// `discharge`, `roughness` (Manning `n`) and `slope` are `[m]` tensors. The caller checks that
+/// every discharge is finite and nonnegative, every roughness finite and positive and every
+/// slope finite. `unit` is [`TensorBarrelContext::unit_circles`] of `barrel`.
+/// `barrels` is the host list of `barrel`, read only to name a row in an error.
+pub(crate) fn solve<R>(
+    barrels: &[CulvertBarrel],
+    barrel: &TensorBarrelContext<R>,
+    unit: &TensorBarrelContext<R>,
+    discharge: &Tensor<R>,
+    roughness: &Tensor<R>,
+    slope: &Tensor<R>,
+) -> Result<BarrelDepths<R>, StructureError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R> + CertifiedBisectionAlgorithms<R>,
+{
+    let c = &barrel.client;
+    let ends = with_interval_arithmetic(c, DType::F64, "culvert normal depth ends", |a| {
+        ends::classify(a, barrel, unit, discharge, roughness, slope)
+    })?;
+    roots::solve(
+        barrel,
+        unit,
+        ends,
+        &barrel.normal_slope,
+        "culvert normal residual",
+        residual::residual,
+        |row| describe(barrels, [discharge, roughness, slope], row),
+    )
+}
+
+/// Names a bracketed row the solver left open. Reads the row inputs to the host.
+fn describe<R>(
+    barrels: &[CulvertBarrel],
+    inputs: [&Tensor<R>; 3],
+    row: usize,
+) -> Result<String, StructureError>
+where
+    R: Runtime<DType = DType>,
+{
+    let mut values = [f64::NAN; 3];
+    for (value, input) in values.iter_mut().zip(inputs) {
+        if let Some(read) = input.try_to_vec::<f64>()?.get(row) {
+            *value = *read;
+        }
+    }
+    let [discharge, roughness, slope] = values;
+    let Some(entry) = barrels.get(row) else {
+        return Err(StructureError::numerical(format!(
+            "normal depth row={row}: the solver named a row past the barrel list. Report this runtime"
+        )));
+    };
+    let rise = entry.rise_m();
+    let top = match entry.shape() {
+        CulvertBarrelShape::Circular => rise * RISING_LIMB_TOP,
+        _ => rise,
+    };
+    Ok(format!(
+        "normal depth shape={:?},rise_m={rise:?},span_m={:?},discharge_m3_per_s={discharge:?},manning_n={roughness:?},slope={slope:?},bracket_m=[{:?}, {top:?}]",
+        entry.shape(),
+        entry.span_m(),
+        rise * CRITICAL_FLOOR,
+    ))
+}
