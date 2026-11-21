@@ -9,7 +9,8 @@
 //! critical depth takes critical depth at the inlet: `HW_o = yc + (1 + ke) Vc^2 / (2 g)`.
 //!
 //! Each query runs the critical and normal depth solves, one classification call, one profile
-//! integral, one depth solve and one assembly call.
+//! integral, one depth solve and one assembly call. An [`Accuracy`] sets the quadrature
+//! budget of the profile and the widths that stop the depth solves.
 
 mod assemble;
 mod classes;
@@ -17,9 +18,13 @@ mod depth;
 mod integrand;
 mod jet;
 pub(crate) mod jump;
+mod levels;
 mod partition;
 mod quadrature;
 mod trig;
+mod trig_ends;
+
+pub(crate) use levels::Accuracy;
 
 use super::{BarrelClient, BarrelDepths, RowNames, critical, normal};
 use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext, TensorOutletContext};
@@ -88,20 +93,21 @@ pub(crate) fn march<R>(
     outlet: &TensorOutletContext<R>,
     discharge: &Tensor<R>,
     tailwater: &Tensor<R>,
+    accuracy: Accuracy,
 ) -> Result<March<R>, StructureError>
 where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R> + CertifiedBisectionAlgorithms<R> + CertifiedSimpsonAlgorithms<R>,
 {
     let c = &barrel.client;
-    let critical = critical::solve(names, barrel, unit, discharge, &outlet.gravity)?;
-    let normal = normal::solve(
+    let rtol = accuracy.root_tolerance();
+    let critical = critical::solve_to(names, barrel, unit, discharge, &outlet.gravity, rtol)?;
+    let normal = normal::solve_to(
         names,
         barrel,
         unit,
-        discharge,
-        &outlet.manning,
-        &outlet.slope,
+        [discharge, &outlet.manning, &outlet.slope],
+        rtol,
     )?;
     let operands = classes::Operands {
         barrel,
@@ -114,7 +120,7 @@ where
     let classes = with_interval_arithmetic(c, DType::F64, "culvert outlet classes", |a| {
         classes::classify(a, &operands)
     })?;
-    let profile = partition::build(c, classes.spec.clone())?;
+    let profile = partition::build(c, classes.spec.clone(), accuracy)?;
     let reach = with_interval_arithmetic(c, DType::F64, "culvert outlet reach", |a| {
         assemble::reach(a, barrel, &classes, &profile)
     })?;
@@ -122,7 +128,14 @@ where
         .map(|row| i64::try_from(row).unwrap_or(i64::MAX))
         .collect();
     let rows = Tensor::<R>::from_slice(&rows, &[barrel.width()], &barrel.device)?;
-    let inlet = depth::depth_at(c, &profile, &rows, &classes.target, &reach.solve)?;
+    let inlet = depth::depth_at(
+        c,
+        &profile,
+        &rows,
+        &classes.target,
+        &reach.solve,
+        accuracy.depth_tolerance(),
+    )?;
     let parts = assemble::Parts {
         barrel,
         outlet,

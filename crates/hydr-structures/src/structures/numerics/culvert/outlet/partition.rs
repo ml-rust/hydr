@@ -8,14 +8,21 @@
 //! An asymptotic profile ends at the bound of a normal depth that the profile never reaches. Its
 //! nodes keep `2^-36 |v_limit|` from that bound, its last lane is empty and its last node stands
 //! for an infinite distance.
+//!
+//! Every lane is surveyed with the fewest panels. [`levels`](super::levels) then picks the
+//! panels each lane runs. A lane that starts past the distance scale keeps its survey.
 
 use super::integrand::ProfileParams;
-use super::quadrature::integrate;
+use super::levels::{Accuracy, level_for};
+use super::quadrature::{PANELS, refine, simpson};
+use super::trig::fill;
 use crate::structures::StructureError;
 use crate::structures::numerics::culvert::BarrelClient;
 use crate::structures::tensor::culvert::Bounds;
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps, ShapeOps, UnaryOps};
+use numr::ops::{
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps, ShapeOps, UnaryOps,
+};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::with_interval_arithmetic;
@@ -68,6 +75,8 @@ pub(crate) struct ProfileSpec<R: Runtime<DType = DType>> {
     pub(crate) start_error: Bounds<R>,
     /// Represented limit `v_l`.
     pub(crate) limit: Tensor<R>,
+    /// Distance scale in metres that sets the quadrature budget: the barrel length to cover.
+    pub(crate) scale: Tensor<R>,
 }
 
 /// A built profile: nodes `[m, LANES + 1]` and the distance enclosure at each node.
@@ -75,6 +84,12 @@ pub(crate) struct Profile<R: Runtime<DType = DType>> {
     pub(crate) spec: ProfileSpec<R>,
     pub(crate) nodes: Tensor<R>,
     pub(crate) reach: Bounds<R>,
+    /// Quadrature level of each lane `[m, LANES]`.
+    pub(crate) levels: Tensor<R>,
+    /// Survey remainder bound of each lane `[m, LANES]`.
+    pub(crate) remainder: Tensor<R>,
+    /// Lane remainder budget per row `[m]`.
+    pub(crate) budget: Tensor<R>,
 }
 
 /// 1 where an asymptotic limit lies ahead of the start along `sign`, with room for the guard.
@@ -93,8 +108,12 @@ where
     c.gt(&span, &guard)
 }
 
-/// Places the nodes, integrates every lane and accumulates the node distances.
-pub(crate) fn build<R>(c: &R::Client, spec: ProfileSpec<R>) -> Result<Profile<R>, StructureError>
+/// Places the nodes, integrates every lane to `accuracy` and accumulates the node distances.
+pub(crate) fn build<R>(
+    c: &R::Client,
+    spec: ProfileSpec<R>,
+    accuracy: Accuracy,
+) -> Result<Profile<R>, StructureError>
 where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R> + CertifiedSimpsonAlgorithms<R>,
@@ -166,9 +185,35 @@ where
         .collect();
     let owner = Tensor::<R>::from_slice(&owner, &[m * lanes], &device)?;
     let params = spec.params.select(c, &owner)?;
-    let [lower, upper] = integrate(c, &params, &left, &right)?;
+    // Every lane runs the fewest panels first. Its remainder bound then sets its level.
+    let survey = simpson(c, &params, &left, &right, PANELS[0])?;
+    let budget = c.mul_scalar(&spec.scale, accuracy.budget())?;
+    let scale = c.index_select(&spec.scale, 0, &owner)?;
+    let mut level = level_for(c, &survey.remainder, &c.index_select(&budget, 0, &owner)?)?;
+    // A lane that starts past the distance scale only shows that its nodes lie past every
+    // target, which its survey already does. Float sums suffice: they pick levels, not bounds.
+    // They run lane by lane, so every backend adds in the same order.
+    let lows = survey.bounds[0].reshape(&[m, lanes])?;
+    let mut reached = spec.start_error[0].clone();
+    let mut starts = Vec::with_capacity(lanes);
+    for k in 0..lanes {
+        starts.push(reached.clone());
+        let piece = lows.narrow(1, k, 1)?.contiguous()?.reshape(&[m])?;
+        reached = c.add(&reached, &piece)?;
+    }
+    let starts: Vec<&Tensor<R>> = starts.iter().collect();
+    let start = c.stack(&starts, 1)?;
+    let beyond = c.gt(&start.reshape(&[m * lanes])?, &scale)?;
+    level = c.mul(&level, &c.sub(&fill(&level, 1.0)?, &beyond)?)?;
+    let [refined_lower, refined_upper] =
+        refine(c, &params, &left, &right, &level, 1, survey.bounds.clone())?;
+    // Both enclosures hold each lane integral, so their intersection does too.
+    let lower = c.maximum(&refined_lower, &survey.bounds[0])?;
+    let upper = c.minimum(&refined_upper, &survey.bounds[1])?;
     let lower = lower.reshape(&[m, lanes])?;
     let upper = upper.reshape(&[m, lanes])?;
+    let levels = level.reshape(&[m, lanes])?;
+    let remainder = survey.remainder.reshape(&[m, lanes])?;
 
     let reach = with_interval_arithmetic(c, DType::F64, "culvert outlet profile distances", |a| {
         let mut total = a.bounds(&spec.start_error[0], &spec.start_error[1])?;
@@ -187,7 +232,14 @@ where
         let highs: Vec<&Tensor<R>> = highs.iter().collect();
         Ok([a.client().stack(&lows, 1)?, a.client().stack(&highs, 1)?])
     })?;
-    Ok(Profile { spec, nodes, reach })
+    Ok(Profile {
+        spec,
+        nodes,
+        reach,
+        levels,
+        remainder,
+        budget,
+    })
 }
 
 #[cfg(test)]

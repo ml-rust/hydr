@@ -377,6 +377,7 @@ where
         start_far: c.where_cond(&active, &far, &harmless[0])?,
         start_error: pick(c, &active, &start_error, &[zero.clone(), zero.clone()])?,
         limit: c.where_cond(&active, &limit, &harmless[0])?,
+        scale: c.where_cond(&active, &target[1], one)?,
     };
     Ok(Classes {
         dry,

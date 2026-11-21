@@ -3,6 +3,7 @@
 use super::super::March;
 use super::super::depth::depth_at;
 use super::super::integrand::depth;
+use super::super::levels::Accuracy;
 use super::super::partition::Profile;
 use super::super::quadrature::integrate;
 use super::super::trig::fill;
@@ -36,7 +37,7 @@ where
     let left = c.minimum(point, &high)?;
     let right = c.maximum(point, &high)?;
     let params = profile.spec.params.select(c, owner)?;
-    let [piece_low, piece_high] = integrate(c, &params, &left, &right)?;
+    let [piece_low, piece_high] = integrate(c, &params, &left, &right, &take(&b.level)?)?;
     let base = [take(&b.reach[0])?, take(&b.reach[1])?];
     Ok(with_interval_arithmetic(
         c,
@@ -100,7 +101,8 @@ where
     let wanted = take(&b.bisect)?;
     let distance = upstream_distance(c, &solve.march.profile, b, owner, point)?;
     let x = position(c, &take(&solve.outlet.length)?, &distance)?;
-    let found = depth_at(c, solve.s2, owner, &x, &wanted)?;
+    let rtol = Accuracy::Fine.depth_tolerance();
+    let found = depth_at(c, solve.s2, owner, &x, &wanted, rtol)?;
     let rows = solve.barrel.select(owner)?;
     // A wanted lane without a supercritical depth gets inverted bounds, which reject the solve.
     let missing = c.mul(&wanted, &c.sub(&rows.one, &found.solved)?)?;

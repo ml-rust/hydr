@@ -27,8 +27,8 @@ use std::cell::Cell;
 /// Probe rounds allowed per solve. Bisection needs about 64 plus the floor span.
 const MAX_ITERATIONS: usize = 256;
 
-/// Relative width at which a solved enclosure stops contracting.
-const RELATIVE_TOLERANCE: f64 = 1.0 / 1_125_899_906_842_624.0;
+/// Default relative width `2^-50` at which a solved enclosure stops contracting.
+pub(crate) const RELATIVE_TOLERANCE: f64 = 1.0 / 1_125_899_906_842_624.0;
 
 /// Depth status codes per row with lower and upper depths in metres.
 ///
@@ -83,16 +83,24 @@ where
 {
 }
 
+/// How one residual solve stops and names itself.
+pub(super) struct Stopping<'a, R: Runtime<DType = DType>> {
+    /// Row slope floors in `s`.
+    pub(super) slope: &'a Tensor<R>,
+    /// Relative width that stops a row.
+    pub(super) rtol: f64,
+    /// Residual name used in errors.
+    pub(super) stage: &'static str,
+}
+
 /// Encloses the root of every bracketed row and assembles the depths of every row.
 ///
-/// `slope` holds the row slope floors in `s`. `stage` names the residual in errors.
 /// `describe` names a bracketed row the solver left open. It runs only after a rejected call.
 pub(super) fn solve<R>(
     barrel: &TensorBarrelContext<R>,
     unit: &TensorBarrelContext<R>,
     ends: Ends<R>,
-    slope: &Tensor<R>,
-    stage: &'static str,
+    stopping: Stopping<'_, R>,
     residual: impl Residual<R>,
     describe: impl FnOnce(usize) -> Result<String, StructureError>,
 ) -> Result<BarrelDepths<R>, StructureError>
@@ -100,11 +108,12 @@ where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R> + CertifiedBisectionAlgorithms<R>,
 {
+    let Stopping { slope, rtol, stage } = stopping;
     let c = &barrel.client;
     let floor = barrel.constant(CRITICAL_FLOOR)?;
     let options = CertifiedBisectionOptions {
         atol: 0.0,
-        rtol: RELATIVE_TOLERANCE,
+        rtol,
         max_iterations: MAX_ITERATIONS,
         max_points: barrel.width().saturating_mul(2 * (MAX_ITERATIONS + 1)),
         probe: CertifiedRootProbe::SlackSecant,

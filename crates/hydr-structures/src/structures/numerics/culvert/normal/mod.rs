@@ -45,6 +45,27 @@ where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R> + CertifiedBisectionAlgorithms<R>,
 {
+    solve_to(
+        names,
+        barrel,
+        unit,
+        [discharge, roughness, slope],
+        roots::RELATIVE_TOLERANCE,
+    )
+}
+
+/// [`solve`] on `[discharge, roughness, slope]` with the relative enclosure width `rtol` in `s`.
+pub(crate) fn solve_to<R>(
+    names: RowNames<'_, R>,
+    barrel: &TensorBarrelContext<R>,
+    unit: &TensorBarrelContext<R>,
+    [discharge, roughness, slope]: [&Tensor<R>; 3],
+    rtol: f64,
+) -> Result<BarrelDepths<R>, StructureError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R> + CertifiedBisectionAlgorithms<R>,
+{
     let c = &barrel.client;
     let ends = with_interval_arithmetic(c, DType::F64, "culvert normal depth ends", |a| {
         ends::classify(a, barrel, unit, discharge, roughness, slope)
@@ -53,8 +74,11 @@ where
         barrel,
         unit,
         ends,
-        &barrel.normal_slope,
-        "culvert normal residual",
+        roots::Stopping {
+            slope: &barrel.normal_slope,
+            rtol,
+            stage: "culvert normal residual",
+        },
         residual::residual,
         |row| describe(names, [discharge, roughness, slope], row),
     )

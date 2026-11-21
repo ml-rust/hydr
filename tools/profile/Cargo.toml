@@ -20,6 +20,10 @@ path = "src/channel.rs"
 name = "channel-pool-profile"
 path = "src/channel_pool.rs"
 
+[[bin]]
+name = "culvert-profile"
+path = "src/culvert.rs"
+
 [features]
 cuda = ["hydr/cuda", "numr/cuda"]
 

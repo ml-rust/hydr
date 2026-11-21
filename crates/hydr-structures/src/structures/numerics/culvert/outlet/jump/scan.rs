@@ -4,6 +4,7 @@ use super::super::March;
 use super::super::depth::DepthEnclosure;
 use super::super::integrand::{area, coordinate, depth, floor, shape, slopes};
 use super::super::jet;
+use super::super::levels::span_level;
 use super::super::partition::LANES;
 use super::super::trig::fill;
 use super::steep::{Steep, column, momentum, owners, pair};
@@ -34,6 +35,8 @@ pub(super) struct Bracket<R: Runtime<DType = DType>> {
     pub(super) slope: Tensor<R>,
     /// Supercritical depth at the outlet.
     pub(super) outlet: Bounds<R>,
+    /// Highest S1 quadrature level of the lanes inside the bracket.
+    pub(super) level: Tensor<R>,
 }
 
 pub(super) struct ScanInputs<'s, R: Runtime<DType = DType>> {
@@ -207,5 +210,6 @@ where
         reach,
         slope: c.where_cond(&usable, &slope, one)?,
         outlet: outlet_depth,
+        level: span_level(c, &profile.levels, &low_index, &high_index)?,
     })
 }

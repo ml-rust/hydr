@@ -15,6 +15,7 @@
 
 use super::jet::{self, Jet};
 use super::trig::{fill, negate, sin_cos};
+use super::trig_ends::{sin_cos_ends, sin_cos_near};
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose};
 use crate::structures::tensor::culvert::Bounds;
 use numr::dtype::DType;
@@ -132,7 +133,12 @@ where
     };
 
     let phi = Rc::new(take(a, circular, 1.5)?);
-    let [sine, cosine] = sin_cos(a, &phi)?;
+    // Value queries take narrow intervals and derivative jets take wide panels.
+    let [sine, cosine] = if n > 1 {
+        sin_cos_ends(a, &phi)?
+    } else {
+        sin_cos_near(a, &phi)?
+    };
     let (sine, cosine) = (Rc::new(sine), Rc::new(cosine));
     let mut sine_terms = vec![Some(Rc::clone(&sine))];
     let mut cosine_terms = vec![Some(Rc::clone(&cosine))];

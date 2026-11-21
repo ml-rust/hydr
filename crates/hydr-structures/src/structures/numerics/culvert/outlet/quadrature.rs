@@ -1,9 +1,9 @@
 //! Certified Simpson integrals of the direct-step integrand over coordinate lanes.
 //!
 //! Each lane carries its own integrand parameters. Value queries enclose `G` over each node
-//! interval and fourth-derivative queries bound `24 |c_4|` of the order-4 jet over each panel.
-//! Zero-width lanes return exact zeros without callbacks. Lanes run in chunks, so the work of
-//! one call stays bounded.
+//! interval and fourth-derivative queries bound `24 |c_4|` of the order-4 jet over groups of
+//! panels. Zero-width lanes return exact zeros without callbacks. Lanes run in chunks, so the
+//! work of one call stays bounded.
 
 use super::integrand::{ProfileParams, integrand};
 use super::jet;
@@ -12,18 +12,35 @@ use crate::structures::StructureError;
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient};
 use crate::structures::tensor::culvert::Bounds;
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, ConditionalOps, ScalarOps, ShapeOps, UnaryOps};
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps, ShapeOps, UnaryOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval, with_interval_arithmetic};
 use solvr::integrate::{CertifiedSimpsonAlgorithms, CertifiedSimpsonOptions, IntegrateError};
 use std::cell::Cell;
 
-/// Simpson panels per lane, a power of two.
-pub(crate) const PANELS: usize = 64;
+/// Simpson panels per lane at each accuracy level, coarsest first.
+///
+/// Each level has four times the panels of the one before, so its remainder bound is about
+/// `4^4` times smaller.
+pub(crate) const PANELS: [usize; 3] = [4, 16, 64];
+
+/// Ratio of remainder bounds between neighbouring levels.
+pub(crate) const LEVEL_RATIO: f64 = 256.0;
+
+/// Most fourth-derivative jets per lane, a power of two. Lanes with more panels bound groups
+/// of neighbouring panels, each a quarter of the lane: the width of a survey panel. Wider
+/// groups let interval jets near a pole or a shallow depth lose positivity or overflow.
+const BOUND_GROUPS: usize = 4;
 
 /// Most lanes per Simpson call.
 const CHUNK: usize = 2048;
+
+/// Lane integral bounds with the Simpson remainder bound of each lane.
+pub(crate) struct Quadrature<R: Runtime<DType = DType>> {
+    pub(crate) bounds: Bounds<R>,
+    pub(crate) remainder: Tensor<R>,
+}
 
 /// Lower and upper bounds that reject the enclosing call on rows outside `valid`.
 fn admitted<R>(
@@ -43,49 +60,98 @@ where
 
 /// Integral bounds of `G` over `[left, right]` per lane, with lane parameters `params`.
 ///
-/// Every lane needs `left <= right` inside the profile domain, where the integrand is smooth.
+/// `level` (F64) holds each lane's index into [`PANELS`]. Every lane needs `left <= right`
+/// inside the profile domain, where the integrand is smooth.
 pub(crate) fn integrate<R>(
     c: &R::Client,
     params: &ProfileParams<R>,
     left: &Tensor<R>,
     right: &Tensor<R>,
+    level: &Tensor<R>,
 ) -> Result<Bounds<R>, StructureError>
 where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R> + CertifiedSimpsonAlgorithms<R>,
 {
+    let zero = fill(left, 0.0)?;
+    refine(c, params, left, right, level, 0, [zero.clone(), zero])
+}
+
+/// [`integrate`] on the lanes whose level is `first` or above. Other lanes keep `base`.
+pub(crate) fn refine<R>(
+    c: &R::Client,
+    params: &ProfileParams<R>,
+    left: &Tensor<R>,
+    right: &Tensor<R>,
+    level: &Tensor<R>,
+    first: usize,
+    base: Bounds<R>,
+) -> Result<Bounds<R>, StructureError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R> + CertifiedSimpsonAlgorithms<R>,
+{
+    let [mut lower, mut upper] = base;
+    for (index, &panels) in PANELS.iter().enumerate().skip(first) {
+        // Lanes at other levels collapse to zero width, which Simpson skips.
+        let here = c.eq(level, &fill(level, index as f64)?)?;
+        let right = c.where_cond(&here, right, left)?;
+        let found = simpson(c, params, left, &right, panels)?;
+        lower = c.where_cond(&here, &found.bounds[0], &lower)?;
+        upper = c.where_cond(&here, &found.bounds[1], &upper)?;
+    }
+    Ok([lower, upper])
+}
+
+/// Integral bounds and Simpson remainder bounds per lane with `panels` panels in every lane.
+pub(crate) fn simpson<R>(
+    c: &R::Client,
+    params: &ProfileParams<R>,
+    left: &Tensor<R>,
+    right: &Tensor<R>,
+    panels: usize,
+) -> Result<Quadrature<R>, StructureError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R> + CertifiedSimpsonAlgorithms<R>,
+{
     let lanes = left.shape().first().copied().unwrap_or(0);
-    let mut lower = Vec::new();
-    let mut upper = Vec::new();
+    let mut parts = Vec::new();
     let mut start = 0;
     while start < lanes {
         let len = CHUNK.min(lanes - start);
         let chunk = params.narrow(start, len)?;
-        let [low, high] = chunk_integral(
+        parts.push(chunk_integral(
             c,
             &chunk,
             &left.narrow(0, start, len)?,
             &right.narrow(0, start, len)?,
-        )?;
-        lower.push(low);
-        upper.push(high);
+            panels,
+        )?);
         start += len;
     }
-    if lower.len() == 1 {
-        let (Some(low), Some(high)) = (lower.pop(), upper.pop()) else {
-            return Err(StructureError::numerical(
+    if parts.len() == 1 {
+        return parts.pop().ok_or_else(|| {
+            StructureError::numerical(
                 "culvert outlet quadrature lost its only chunk: report this runtime",
-            ));
-        };
-        return Ok([low, high]);
+            )
+        });
     }
-    if lower.is_empty() {
+    if parts.is_empty() {
         let empty = left.clone();
-        return Ok([empty.clone(), empty]);
+        return Ok(Quadrature {
+            bounds: [empty.clone(), empty.clone()],
+            remainder: empty,
+        });
     }
-    let lower: Vec<&Tensor<R>> = lower.iter().collect();
-    let upper: Vec<&Tensor<R>> = upper.iter().collect();
-    Ok([c.cat(&lower, 0)?, c.cat(&upper, 0)?])
+    let join = |pick: fn(&Quadrature<R>) -> &Tensor<R>| -> numr::error::Result<Tensor<R>> {
+        let pieces: Vec<&Tensor<R>> = parts.iter().map(pick).collect();
+        c.cat(&pieces, 0)
+    };
+    Ok(Quadrature {
+        bounds: [join(|q| &q.bounds[0])?, join(|q| &q.bounds[1])?],
+        remainder: join(|q| &q.remainder)?,
+    })
 }
 
 fn chunk_integral<R>(
@@ -93,15 +159,16 @@ fn chunk_integral<R>(
     params: &ProfileParams<R>,
     left: &Tensor<R>,
     right: &Tensor<R>,
-) -> Result<Bounds<R>, StructureError>
+    panels: usize,
+) -> Result<Quadrature<R>, StructureError>
 where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R> + CertifiedSimpsonAlgorithms<R>,
 {
     let lanes = left.numel();
     let options = CertifiedSimpsonOptions {
-        panels: PANELS,
-        max_points: lanes.saturating_mul(3 * PANELS + 1),
+        panels,
+        max_points: lanes.saturating_mul(3 * panels + 1),
     };
     let cause = Cell::new(None);
     let fail = |error: StructureError| {
@@ -121,12 +188,11 @@ where
                     let over = integrand(a, &lane, &v, 1)?;
                     let value = jet::coefficient(a, &over.value, 0, &lane.rise)?;
                     let value = admitted(a, &value, &over.valid)?;
-                    let point = a.point(&query.point)?;
-                    let at = integrand(a, &lane, &point, 1)?;
-                    let nominal = jet::coefficient(a, &at.value, 0, &lane.rise)?;
+                    // The bounds alone enter the enclosure. The nominal value is the clamped
+                    // midpoint of the node enclosure, which holds the query point.
                     let ac = a.client();
-                    let half = ac.mul_scalar(&ac.sub(nominal.upper(), nominal.lower())?, 0.5)?;
-                    let middle = ac.add(nominal.lower(), &half)?;
+                    let half = ac.mul_scalar(&ac.sub(value.upper(), value.lower())?, 0.5)?;
+                    let middle = ac.add(value.lower(), &half)?;
                     let middle = ac.maximum(value.lower(), &ac.minimum(&middle, value.upper())?)?;
                     Ok([middle, value.lower().clone(), value.upper().clone()])
                 });
@@ -145,15 +211,41 @@ where
                 DType::F64,
                 "culvert outlet profile derivatives",
                 |a| {
-                    let lane = params.select(c, &panel.owner)?;
-                    let v = a.bounds(&panel.lower, &panel.upper)?;
+                    // One jet bounds each group of neighbouring panels: a bound over their
+                    // union covers every panel in it.
+                    let groups = panels.min(BOUND_GROUPS);
+                    let per = panels / groups;
+                    let active = panel.owner.numel() / panels;
+                    let shape = [active, groups, per];
+                    let first = |value: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
+                        value
+                            .reshape(&shape)?
+                            .narrow(2, 0, 1)?
+                            .contiguous()?
+                            .reshape(&[active * groups])
+                    };
+                    let owner = first(&panel.owner)?;
+                    let low = first(&panel.lower)?;
+                    let high = panel
+                        .upper
+                        .reshape(&shape)?
+                        .narrow(2, per - 1, 1)?
+                        .contiguous()?
+                        .reshape(&[active * groups])?;
+                    let lane = params.select(c, &owner)?;
+                    let v = a.bounds(&low, &high)?;
                     let over = integrand(a, &lane, &v, 5)?;
                     let fourth = jet::coefficient(a, &over.value, 4, &lane.rise)?;
                     let fourth = admitted(a, &fourth, &over.valid)?;
                     let factor = a.point(&fill(&lane.rise, 24.0)?)?;
                     let scaled = a.mul(&factor, &fourth)?;
                     let ac = a.client();
-                    Ok(ac.maximum(&ac.abs(scaled.lower())?, &ac.abs(scaled.upper())?)?)
+                    let bound = ac.maximum(&ac.abs(scaled.lower())?, &ac.abs(scaled.upper())?)?;
+                    Ok(bound
+                        .reshape(&[active, groups, 1])?
+                        .broadcast_to(&shape)?
+                        .contiguous()?
+                        .reshape(&[active * panels])?)
                 },
             );
             outcome.map_err(|error| fail(error.into()))
@@ -161,7 +253,10 @@ where
     );
     match (result, cause.take()) {
         (_, Some(error)) => Err(error),
-        (Ok(integral), None) => Ok([integral.lower().clone(), integral.upper().clone()]),
+        (Ok(integral), None) => Ok(Quadrature {
+            bounds: [integral.lower().clone(), integral.upper().clone()],
+            remainder: integral.quadrature_error_bound().clone(),
+        }),
         (Err(error), None) => Err(error.into()),
     }
 }
@@ -194,6 +289,7 @@ mod tests {
             &params,
             &tensor(&[0.25, 0.5])?,
             &tensor(&[0.75, 0.5])?,
+            &tensor(&[0.0, 2.0])?,
         )?;
         let lower = lower.try_to_vec::<f64>()?;
         let upper = upper.try_to_vec::<f64>()?;

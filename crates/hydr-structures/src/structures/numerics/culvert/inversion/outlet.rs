@@ -4,8 +4,9 @@
 //!   inlet, `HW_o = TW - S L + k V^2 / (2 g)` with `k = 1 + ke + 2 g n^2 L / R^(4/3)`. Then
 //!   `HW - TW + S L` is the head difference `dH` of the two stages, so `Q_o = A sqrt(2 g dH / k)`
 //!   in closed form. It keeps its relative precision as the heads approach each other.
-//! - Every other lane: one certified bisection of `HW_o(Q) - HW` over `[0, 2 Q_i]`. A lane whose
-//!   outlet headwater at `2 Q_i` stays below `HW` has `Q_o > Q_i`, so the inlet governs.
+//! - Every other lane: one certified root of `HW_o(Q) - HW` over `[0, 2 Q_i]`, from
+//!   [`outlet_root`](super::outlet_root). A lane whose outlet headwater at `Q_i` stays below
+//!   `HW` has `Q_o > Q_i`, so the inlet governs.
 //!
 //! `HW_o` rises with `Q`, but no positive slope floor is proven for the partly full profile.
 //! The solver's floor is `2^-600`, and each residual endpoint of magnitude below `2^-600 U`
@@ -20,26 +21,15 @@
 use super::Selected;
 use super::inlet::{InletDischarge, any};
 use super::lanes::Lanes;
-use crate::structures::numerics::culvert::{RowNames, outlet};
+use super::outlet_root::{self, Refine};
 use crate::structures::tensor::TensorStructureContext;
-use crate::structures::tensor::codes;
 use crate::structures::tensor::culvert::{Bounds, TensorCulvertLaw};
 use crate::structures::{CulvertClient, StructureError};
 use numr::dtype::DType;
-use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, NextRepresentableOps, ScalarOps, UnaryOps,
-};
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::with_interval_arithmetic;
-use solvr::optimize::{CertifiedBisectionAlgorithms, CertifiedRootValues};
-use std::cell::Cell;
-
-/// Upper headwater bound `2^500` m of an unresolved march point, far above any admitted barrel.
-const UNKNOWN: f64 = f64::from_bits(0x5f30_0000_0000_0000);
-
-/// Solver slope floor `2^-600`, exact.
-const SLOPE_FLOOR: f64 = f64::from_bits(0x1a70_0000_0000_0000);
 
 /// Outlet-control discharge per barrel on every lane.
 pub(crate) struct OutletDischarge<R: Runtime<DType = DType>> {
@@ -127,18 +117,33 @@ where
     )?;
     let candidates = c.mul(&c.mul(&open, &c.sub(one, &level)?)?, &c.sub(one, &dead)?)?;
     // One march at the inlet discharge's upper end. `HW_o(Q_i) < HW` there means
-    // `Q_o > Q_i`, so the inlet governs and the bisection skips the lane.
-    let search = if any(c, &candidates)? {
+    // `Q_o > Q_i`, so the inlet governs and the root search skips the lane.
+    // A lane whose residual there is certified positive has its root below `Q_i`, so its search
+    // runs on `[0, Q_i]`. The others search `[0, 2 Q_i]`.
+    let doubled = c.mul_scalar(&inlet.bounds[1], 2.0)?;
+    let (search, ceiling) = if any(c, &candidates)? {
         let probe = c.where_cond(&candidates, &inlet.bounds[1], &barrel.zero)?;
         let lane: Vec<i64> = (0..barrel.width())
             .map(|index| i64::try_from(index).unwrap_or(i64::MAX))
             .collect();
         let owner = Tensor::<R>::from_slice(&lane, &[barrel.width()], &barrel.device)?;
-        let [_, upper] = residual(law, rows, lanes, &barrel.zero, &owner, &probe)?;
+        let [lower, upper] = outlet_root::residual(
+            law,
+            rows,
+            lanes,
+            &barrel.zero,
+            &owner,
+            &probe,
+            Refine::Uncertain,
+        )?;
         let inlet_side = c.lt(&upper, &barrel.zero)?;
-        c.mul(&candidates, &c.sub(one, &inlet_side)?)?
+        let outlet_side = c.gt(&lower, &barrel.zero)?;
+        (
+            c.mul(&candidates, &c.sub(one, &inlet_side)?)?,
+            c.where_cond(&outlet_side, &inlet.bounds[1], &doubled)?,
+        )
     } else {
-        candidates
+        (candidates, doubled)
     };
     let infinity = barrel.constant(f64::INFINITY)?;
     let mut bounds = [
@@ -147,7 +152,7 @@ where
     ];
     let mut solved = full.clone();
     if any(c, &search)? {
-        let found = bisect(law, rows, lanes, inlet, &search)?;
+        let found = outlet_root::solve(law, rows, lanes, &search, &ceiling)?;
         let unresolved = c.mul(
             &search,
             &c.sub(one, &c.maximum(&found.enclosed, &found.absent)?)?,
@@ -177,104 +182,4 @@ where
         level,
         dead,
     })
-}
-
-/// Bisects `HW_o(Q) - HW` on `[0, 2 Q_i]` for the `search` lanes.
-fn bisect<R>(
-    law: &TensorCulvertLaw<R>,
-    rows: &Selected<R>,
-    lanes: &Lanes<R>,
-    inlet: &InletDischarge<R>,
-    search: &Tensor<R>,
-) -> Result<super::Outcome<R>, StructureError>
-where
-    R: Runtime<DType = DType>,
-    R::Client: CulvertClient<R>,
-{
-    let barrel = &rows.barrel;
-    let c = &barrel.client;
-    let zero = &barrel.zero;
-    let upper = c.where_cond(search, &c.mul_scalar(&inlet.bounds[1], 2.0)?, zero)?;
-    let floor = barrel.constant(SLOPE_FLOOR)?;
-    let widening = c.next_up(&c.mul(&upper, &floor)?)?;
-    let cause = Cell::new(None);
-    let solved = c.bisect_certified(
-        |query| match residual(law, rows, lanes, &widening, &query.owner, &query.point) {
-            Ok([lower, upper]) => Ok(CertifiedRootValues { lower, upper }),
-            Err(error) => {
-                let reason = error.to_string();
-                cause.set(Some(error));
-                Err(numr::error::Error::InvalidArgument {
-                    arg: "culvert outlet inversion residual",
-                    reason,
-                })
-            }
-        },
-        zero,
-        &upper,
-        &floor,
-        &super::options(barrel.width()),
-    );
-    let roots = match (solved, cause.take()) {
-        (_, Some(error)) => return Err(error),
-        (Ok(roots), None) => roots,
-        (Err(error), None) => return Err(error.into()),
-    };
-    super::outcome(c, &roots, &[zero.clone(), upper])
-}
-
-/// `HW_o(Q) - HW` at the solver's query points, with tiny endpoints widened.
-fn residual<R>(
-    law: &TensorCulvertLaw<R>,
-    rows: &Selected<R>,
-    lanes: &Lanes<R>,
-    widening: &Tensor<R>,
-    owner: &Tensor<R>,
-    point: &Tensor<R>,
-) -> Result<Bounds<R>, StructureError>
-where
-    R: Runtime<DType = DType>,
-    R::Client: CulvertClient<R>,
-{
-    let c = &rows.barrel.client;
-    let take = |value: &Tensor<R>| c.index_select(value, 0, owner);
-    let picked = rows.select(owner)?;
-    let oriented = take(&lanes.rows)?;
-    let tailwater = take(&lanes.tailwater)?;
-    let headwater = take(&lanes.headwater)?;
-    let tau = take(widening)?;
-    let march = outlet::march(
-        RowNames::mapped(&law.barrels, &oriented),
-        &picked.barrel,
-        &picked.unit,
-        &picked.outlet,
-        point,
-        &tailwater,
-    )?;
-    // An unresolved march point, as at a discharge too small for the critical-depth floor, holds
-    // only `HW_o >= 0`. Its residual `[-HW, UNKNOWN]` lets the solver cut nothing there.
-    let barrel = &picked.barrel;
-    let unresolved = c.eq(
-        &march.headwater.status,
-        &barrel.constant(codes::OUTLET_UNRESOLVED)?,
-    )?;
-    let [low, high] = &march.headwater.headwater;
-    let low = c.where_cond(&unresolved, &barrel.zero, low)?;
-    let high = c.where_cond(&unresolved, &barrel.constant(UNKNOWN)?, high)?;
-    let value =
-        with_interval_arithmetic(c, DType::F64, "culvert outlet inversion residual", |a| {
-            let headwater_interval = a.bounds(&low, &high)?;
-            let target = a.point(&headwater)?;
-            let value = a.sub(&headwater_interval, &target)?;
-            Ok([value.lower().clone(), value.upper().clone()])
-        })?;
-    let [lower, upper] = value;
-    let zero = &picked.barrel.zero;
-    let negative_tau = c.neg(&tau)?;
-    let small_upper = c.mul(&c.gt(&upper, zero)?, &c.lt(&upper, &tau)?)?;
-    let small_lower = c.mul(&c.lt(&lower, zero)?, &c.gt(&lower, &negative_tau)?)?;
-    Ok([
-        c.where_cond(&small_lower, &negative_tau, &lower)?,
-        c.where_cond(&small_upper, &tau, &upper)?,
-    ])
 }

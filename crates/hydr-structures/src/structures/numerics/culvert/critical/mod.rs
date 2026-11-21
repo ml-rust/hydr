@@ -36,6 +36,29 @@ where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R> + CertifiedBisectionAlgorithms<R>,
 {
+    solve_to(
+        names,
+        barrel,
+        unit,
+        discharge,
+        gravity,
+        roots::RELATIVE_TOLERANCE,
+    )
+}
+
+/// [`solve`] with the relative enclosure width `rtol` in `s`.
+pub(crate) fn solve_to<R>(
+    names: RowNames<'_, R>,
+    barrel: &TensorBarrelContext<R>,
+    unit: &TensorBarrelContext<R>,
+    discharge: &Tensor<R>,
+    gravity: &Tensor<R>,
+    rtol: f64,
+) -> Result<BarrelDepths<R>, StructureError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R> + CertifiedBisectionAlgorithms<R>,
+{
     let c = &barrel.client;
     let ends = with_interval_arithmetic(c, DType::F64, "culvert critical depth ends", |a| {
         ends::classify(a, barrel, unit, discharge, gravity)
@@ -44,8 +67,11 @@ where
         barrel,
         unit,
         ends,
-        &barrel.critical_slope,
-        "culvert critical residual",
+        roots::Stopping {
+            slope: &barrel.critical_slope,
+            rtol,
+            stage: "culvert critical residual",
+        },
         residual::residual,
         |row| describe(names, discharge, row),
     )

@@ -13,7 +13,7 @@ use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval};
 
 /// Terms of each series. The cosine series ends at `x^26` and the sine series at `x^27`.
-const TERMS: usize = 14;
+pub(super) const TERMS: usize = 14;
 
 /// Upper bound of `|x|^28 / 28!` for `|x| <= 1.6`.
 const COSINE_REMAINDER: f64 = 2e-24;
@@ -22,7 +22,7 @@ const COSINE_REMAINDER: f64 = 2e-24;
 const SINE_REMAINDER: f64 = 1e-25;
 
 /// Outward bounds of `1 / n!` for `n` in `0..count`.
-fn reciprocal_factorials(count: usize) -> Vec<[f64; 2]> {
+pub(super) fn reciprocal_factorials(count: usize) -> Vec<[f64; 2]> {
     let mut bounds = Vec::with_capacity(count);
     let (mut lower, mut upper) = (1.0_f64, 1.0_f64);
     bounds.push([lower, upper]);

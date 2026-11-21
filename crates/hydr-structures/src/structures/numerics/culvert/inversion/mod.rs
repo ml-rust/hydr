@@ -6,8 +6,9 @@
 //! - [`inlet`] inverts the inlet curve in closed form per band. Form-1 unsubmerged rows solve
 //!   one certified bisection in the critical-depth fraction ([`form_one`]).
 //! - [`outlet`] inverts the outlet curve at fixed tailwater on `[0, 2 Q_i]`. A drowned full
-//!   barrel takes its closed form. Every other row runs one certified bisection over the
-//!   outlet march, and a row whose outlet headwater at `2 Q_i` stays below `H` is inlet-governed.
+//!   barrel takes its closed form. Every other row runs one certified root search over the
+//!   outlet march ([`outlet_root`]), and a row whose outlet headwater at `Q_i` stays below `H`
+//!   is inlet-governed.
 //!
 //! The inversion runs in `Q` at fixed tailwater. `HW_o` is not monotone in tailwater, which
 //! the inversion never needs.
@@ -17,6 +18,7 @@ mod form_one;
 mod inlet;
 mod lanes;
 mod outlet;
+mod outlet_root;
 mod sensitivity;
 
 use crate::structures::numerics::culvert::Arithmetic;
@@ -117,9 +119,14 @@ where
 
 /// Solver options for `width` rows.
 pub(crate) fn options(width: usize) -> CertifiedBisectionOptions {
+    options_with(width, RELATIVE_TOLERANCE)
+}
+
+/// Solver options for `width` rows with relative width `rtol`.
+pub(crate) fn options_with(width: usize, rtol: f64) -> CertifiedBisectionOptions {
     CertifiedBisectionOptions {
         atol: 0.0,
-        rtol: RELATIVE_TOLERANCE,
+        rtol,
         max_iterations: MAX_ITERATIONS,
         max_points: width.saturating_mul(2 * (MAX_ITERATIONS + 1)),
         probe: CertifiedRootProbe::SlackSecant,

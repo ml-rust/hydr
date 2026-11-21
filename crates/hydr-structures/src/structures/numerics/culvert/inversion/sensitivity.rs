@@ -26,7 +26,8 @@ use super::Selected;
 use super::inlet::{InletDischarge, any};
 use super::lanes::Lanes;
 use super::outlet::OutletDischarge;
-use crate::structures::numerics::culvert::{Arithmetic, RowNames, outlet};
+use crate::structures::numerics::culvert::outlet::{self, Accuracy};
+use crate::structures::numerics::culvert::{Arithmetic, RowNames};
 use crate::structures::tensor::culvert::TensorCulvertLaw;
 use crate::structures::{CulvertClient, StructureError};
 use numr::dtype::DType;
@@ -238,6 +239,8 @@ where
         &picked.outlet,
         &discharge,
         &tailwater,
+        // The secants take midpoints over steps far wider than a coarse enclosure.
+        Accuracy::Coarse,
     )?;
     let [low, high] = &march.headwater.headwater;
     let middle = c.mul_scalar(&c.add(low, high)?, 0.5)?;

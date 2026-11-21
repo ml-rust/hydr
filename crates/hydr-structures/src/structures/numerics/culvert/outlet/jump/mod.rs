@@ -18,6 +18,7 @@ mod steep;
 use super::March;
 use super::depth::depth_at;
 use super::integrand::depth;
+use super::levels::Accuracy;
 use super::partition::{LANES, build};
 use super::trig::fill;
 use crate::structures::StructureError;
@@ -73,7 +74,7 @@ where
     let steep = with_interval_arithmetic(c, DType::F64, "culvert outlet jump profile", |a| {
         steep(a, barrel, outlet, march, discharge)
     })?;
-    let s2 = build(c, steep.spec.clone())?;
+    let s2 = build(c, steep.spec.clone(), Accuracy::Fine)?;
 
     // Targets: the outlet, then L - U1 at every S1 node.
     let profile = &march.profile;
@@ -114,7 +115,8 @@ where
         .where_cond(&first, &outlet_rows, &node_rows)?
         .reshape(&[m * per_row])?;
     let rows = owners::<R>(&barrel.device, m, per_row)?;
-    let found = depth_at(c, &s2, &rows, &targets, &wanted)?;
+    let rtol = Accuracy::Fine.depth_tolerance();
+    let found = depth_at(c, &s2, &rows, &targets, &wanted, rtol)?;
     let inputs = ScanInputs {
         barrel,
         outlet,
@@ -195,7 +197,7 @@ where
         c.where_cond(&place_ok, &place[0], &outlet.length)?,
         c.where_cond(&place_ok, &place[1], &outlet.length)?,
     ];
-    let upstream = depth_at(c, &s2, &all, &safe, &place_ok)?;
+    let upstream = depth_at(c, &s2, &all, &safe, &place_ok, rtol)?;
     let depths = with_interval_arithmetic(c, DType::F64, "culvert outlet jump depths", |a| {
         let ok = c.mul(&place_ok, &upstream.solved)?;
         let half = &fill(&barrel.one, 0.5)?;

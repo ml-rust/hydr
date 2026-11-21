@@ -3,7 +3,7 @@
 use super::{CulvertOutletHeadwater, CulvertOutletJump, CulvertOutletRow};
 use crate::structures::culvert::input::{check_depths, check_discharges};
 use crate::structures::numerics::culvert::RowNames;
-use crate::structures::numerics::culvert::outlet::{self, jump};
+use crate::structures::numerics::culvert::outlet::{self, Accuracy, jump};
 use crate::structures::tensor::culvert::{TensorBarrelContext, TensorOutletContext};
 use crate::structures::{CulvertBarrel, StructureError};
 use numr::dtype::DType;
@@ -125,6 +125,7 @@ impl<R: Runtime<DType = DType>> CulvertOutletBatch<R> {
             &self.outlet,
             discharge_m3_per_s,
             tailwater_m,
+            Accuracy::Fine,
         )?;
         Ok(CulvertOutletHeadwater::from_headwater(march.headwater))
     }
@@ -157,6 +158,7 @@ impl<R: Runtime<DType = DType>> CulvertOutletBatch<R> {
             &self.outlet,
             discharge_m3_per_s,
             tailwater_m,
+            Accuracy::Fine,
         )?;
         let found = jump::jump(
             &self.barrel,

@@ -95,6 +95,7 @@ where
             c.where_cond(&active, &error[1], zero)?,
         ],
         limit: keep(v_n.upper())?,
+        scale: c.where_cond(&active, &outlet.length, one)?,
     };
     let falling = &classes.falling;
     let free = c.sub(one, falling)?;
