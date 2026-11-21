@@ -115,6 +115,7 @@ fn parts(
 pub(crate) struct Sample {
     pub discharge: Vec<f64>,
     pub sensitivity: Vec<f64>,
+    pub regime: Vec<f64>,
     pub stages: Vec<[f64; 2]>,
 }
 
@@ -156,6 +157,7 @@ pub(crate) fn evaluate(
     Ok(Sample {
         discharge: law.discharge.try_to_vec()?,
         sensitivity: law.head_sensitivity.try_to_vec()?,
+        regime: law.regime.try_to_vec()?,
         stages,
     })
 }

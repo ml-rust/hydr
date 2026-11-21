@@ -1006,9 +1006,20 @@ The hidden `head_sensitivity` output of a culvert lane is `1 / E`, with `E = Q d
 | Inlet, transition | `2 (HW_4 - HW_3.5) X` |
 | Inlet, submerged | `2 D c X^2` |
 | Outlet, drowned full barrel | The bound is `1 / (2 dH)` |
-| Outlet, other | Twice the centred secants of the march over `Q (1 ± 2^-7)` and `TW ± 2^-7 D`: `2 max(1, |dHW/dTW|) / E` |
+| Outlet, other | `max(1, |dHW/dTW|) / E` from one coarse march at the reported discharge and tailwater |
 
-The partly full outlet value is an estimate, not a proven bound. A tie takes the larger of both controls. The bound is capped at `2^256` per metre.
+The other outlet lanes take certified closed forms at the march's class and depths:
+
+| Outlet class | `E` at least | `|dHW/dTW|` at most |
+| --- | --- | --- |
+| Critical depth at the inlet | `Q^2 / (g A_c^2)` | `0` |
+| Profile reaches the crown, then full | `(1 + ke) Q^2 / (g A^2)` | `(Sf_full - S) (1 - Fr_s^2) / (Sf_s - S)` |
+| Full to the inlet | `(1 + ke) Q^2 / (g A^2)` | `1` |
+| Profile ends inside the barrel | `Q (d w + ke v / (1 - Fr^2))` at the inlet, `d = 1 - ke Fr^2 / (1 - Fr^2)`, `v = Q / (g A^2)` | `|d| |dEs/dTW|` |
+
+`Es` is the specific energy and `w = dEs/dQ` its gain at the inlet. A rising profile has `w >= v` at the inlet. A falling profile has `w` at least `v` at its deepest point below the circle conveyance peak. `dEs/dTW` is `(1 - Fr_s^2) (Sf - S) / (Sf_s - S)` from an outlet start and `|Sf - S| / (S - Sf_full)` from a crown start. A negative `d` takes an upper bound of `w` in closed form. The proof sits in the `outlet::slope` module.
+
+A tie takes the larger of both controls. The bound is capped at `2^256` per metre. Open, tie and unresolved march rows take the cap, as does a row whose divisors are not certified positive.
 
 ### Handle culvert rejection
 
@@ -1029,7 +1040,7 @@ The partly full outlet value is an estimate, not a proven bound. A tie takes the
 | [Round trip and selection](../tests/culvert_laws/round_trip.rs) | `Q(HW(Q))` returns `Q` within `1e-6` on mild, adverse, and level barrels. The regime names the larger control. A drowned crossing of both controls reports a tie. |
 | [Heads](../tests/culvert_laws/heads.rs) | Reversed heads negate the discharge with the B-end inlet. One-end reversal, equal heads, and dry donors give exact zero. Free outfalls agree bit for bit. Zero-discharge headwaters give exact zero. |
 | [Sweeps](../tests/culvert_laws/sweep.rs) | Discharge rises across the inlet bands and stays continuous at both anchors. It stays continuous where the outlet turns full. |
-| Sensitivity unit tests | The bound holds against a centred difference on inlet, drowned, and partly full lanes |
+| Sensitivity unit tests | The bound holds against a centred difference on inlet and drowned lanes, and over head grids on mild, adverse, zero-slope, steep drowned, and priming barrels. No flowing lane takes the cap. |
 | [Layouts](../tests/culvert_laws/layouts.rs) | Widths 1, 33, and 65 with weirs. Every lane equals its single-lane result bit for bit. |
 
 ```sh
@@ -1042,7 +1053,7 @@ A [CUDA check](../tests/runtime_backends/culvert_laws.rs) compares every layout 
 
 - The law holds no water. Barrel storage is not represented, and proposals keep no state.
 - No coordinator holds a culvert law. The surface/channel coordinator and coupled level pools reject it.
-- Every flowing lane runs one outlet march. A lane the inlet does not certainly govern adds one outlet march per bisection round.
+- Every flowing lane runs one outlet march. A lane the inlet does not certainly govern adds one outlet march per bisection round. An outlet-controlled lane that is not a drowned full barrel adds one coarse march for its head sensitivity.
 - No blockage, sediment, or debris is represented.
 
 ## Read head sensitivity
@@ -1055,7 +1066,7 @@ The tensor proposal holds one hidden output per element: `head_sensitivity`. It 
 | Submerged orifice | `0.5 / gap` |
 | Gate | `1.5 / h_u + 0.5 / gap`. `h_u` is the donor head above the sill. `gap` is the donor-receiver difference where the receiver stands above the sill, else zero. |
 | Pump | `\|dQ_ref/dh\| / (N Q)` on the active curve segment, with `N` the speed ratio. Zero at shutoff and while isolated. |
-| Culvert | `1 / E` with `E = Q dHW/dQ` of the governing control, or `1 / (2 dH)` for a drowned full barrel. Other outlet-controlled lanes take twice a secant estimate. See [culvert sensitivity](#read-culvert-sensitivity). |
+| Culvert | `1 / E` with `E = Q dHW/dQ` of the governing control, or `1 / (2 dH)` for a drowned full barrel. Other outlet-controlled lanes take `max(1, |dHW/dTW|) / E` from certified closed forms. See [culvert sensitivity](#read-culvert-sensitivity). |
 
 Scope of the output:
 

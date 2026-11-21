@@ -123,16 +123,12 @@ static CULVERT: ComponentCapabilities = ComponentCapabilities {
             "Where the outlet march leaves its headwater unresolved near the inlet discharge, the proposal rejects as Numerical. With critical depth below the crown, a start friction equal to the slope or a full-barrel head equal to the crown at the inlet within rounding has no certified outcome or bounded hull. Critical depth below 2^-30 D and a start within 2^-34 of a normal-depth pole also stay unresolved.",
         ),
         limit(
-            "culvert-outlet-sensitivity",
-            "Outlet-controlled lanes that are not a drowned full barrel take twice a secant estimate of the head sensitivity, not a proven bound.",
-        ),
-        limit(
             "culvert-sensitivity-cap",
-            "Head sensitivity is capped at 2^256 per metre.",
+            "Head sensitivity is capped at 2^256 per metre. An outlet lane whose march row is open, a tie or unresolved, or whose divisors are not certified positive, takes the cap.",
         ),
         limit(
             "culvert-outlet-cost",
-            "Every flowing lane runs one outlet march. Each lane the inlet does not certainly govern adds one certified bisection with one outlet march per round.",
+            "Every flowing lane runs one outlet march. Each lane the inlet does not certainly govern adds one certified bisection with one outlet march per round. An outlet-controlled lane that is not a drowned full barrel adds one coarse march for its head sensitivity.",
         ),
     ],
     summary: Summary {

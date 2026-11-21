@@ -21,10 +21,12 @@ pub(crate) mod jump;
 mod levels;
 mod partition;
 mod quadrature;
+mod slope;
 mod trig;
 mod trig_ends;
 
 pub(crate) use levels::Accuracy;
+pub(crate) use slope::{SlopeOperands, head_slopes};
 
 use super::{BarrelClient, BarrelDepths, RowNames, critical, normal};
 use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext, TensorOutletContext};
