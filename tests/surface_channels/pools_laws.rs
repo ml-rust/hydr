@@ -8,17 +8,50 @@ use hydr::coupling::{
 use hydr::solver::SolverConfig;
 use hydr::structures::{
     ControlCommand, ControlDecisionSchedule, ControlInitialState, ControlLatch, ControlStageSignal,
-    GateActuatorAccuracy, GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule,
-    GateApplicability, GateMotionLimits, GateOpeningKnot, GateOpeningTrajectory, GateParameters,
-    GateTrajectoryAccuracy, GateTrajectoryAssignment, OperatingControlDefinition,
-    OrificeApplicability, PumpApplicability, PumpCurve, PumpCurveKnot, PumpFreeOutlet,
-    PumpParameters, PumpResponseDefinition, PumpResponseModel, PumpSpeedPolicy,
+    CulvertAlignment, CulvertApplicability, CulvertBarrel, CulvertEnd, CulvertEnds, CulvertInlet,
+    CulvertParameters, GateActuatorAccuracy, GateActuatorDefinition, GateActuatorInitialState,
+    GateActuatorSchedule, GateApplicability, GateMotionLimits, GateOpeningKnot,
+    GateOpeningTrajectory, GateParameters, GateTrajectoryAccuracy, GateTrajectoryAssignment,
+    OperatingControlDefinition, OrificeApplicability, PumpApplicability, PumpCurve, PumpCurveKnot,
+    PumpFreeOutlet, PumpParameters, PumpResponseDefinition, PumpResponseModel, PumpSpeedPolicy,
     SampledControlTiming, StructureLaw, SubmergedOrificeParameters,
     SuppressedRectangularWeirParameters, WeirApplicability,
 };
 
 fn gravity() -> f64 {
     SolverConfig::default().gravity
+}
+
+/// Circular concrete culvert of `rise` m, `length` m long between `inverts` `[A, B]`.
+///
+/// Each end has a square-edge headwall: HDS-5 code 1 and entrance loss `0.5`. Manning `n` is
+/// `0.013`. `two_way` declares the B end too, else only A-to-B flow has an end.
+pub fn culvert_law(
+    rise: f64,
+    length: f64,
+    inverts: [f64; 2],
+    two_way: bool,
+) -> Result<StructureLaw> {
+    let end = CulvertEnd::new(CulvertInlet::hds5(1)?, 0.5)?;
+    Ok(StructureLaw::Culvert(CulvertParameters::new(
+        CulvertBarrel::circular(rise)?,
+        CulvertAlignment {
+            length_m: length,
+            invert_a_m: inverts[0],
+            invert_b_m: inverts[1],
+        },
+        0.013,
+        1,
+        CulvertEnds {
+            a: Some(end),
+            b: two_way.then_some(end),
+        },
+        gravity(),
+        CulvertApplicability {
+            coefficient_provenance: "HDS-5 Table A.1 code 1".into(),
+            barrel_condition_assertion: "Clean synthetic concrete barrel".into(),
+        },
+    )?))
 }
 
 /// Suppressed weir of `length` m with its crest at `crest`, symmetric under reversal.

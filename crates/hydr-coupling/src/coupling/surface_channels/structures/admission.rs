@@ -1,23 +1,19 @@
-//! Admission of structure links: identities, endpoints, datum, beds, direction, and operation.
+//! Admission of structure links: identities, endpoints, datum, and beds. The law checks of
+//! [`super::law_checks`] cover gravity, control elevations, direction, and operation.
 //!
 //! Each rejection names its capability entry first.
 
+use super::law_checks::{check_law, operation, rejected};
 use super::{
     CheckedNode, CheckedStructure, SurfaceChannelAttachment, SurfaceChannelNode,
-    SurfaceChannelOperationOwner, SurfaceChannelStructure,
+    SurfaceChannelStructure,
 };
 use crate::coupling::links::cutoffs::pool_attachment_admitted;
 use crate::coupling::surface_channels::bindings::{channel_cells, structure_binding_ids};
 use crate::coupling::surface_channels::pools::CheckedPools;
 use crate::coupling::surface_channels::validation::text;
 use crate::coupling::surface_channels::{SurfaceChannelError, SurfaceChannelSetup};
-use crate::structures::{DirectionPolicy, StructureLaw, StructureOperatingPoint};
 use std::collections::{BTreeMap, BTreeSet};
-
-/// Rejects with `entry` for structure `id`.
-fn rejected(entry: &str, id: &str, detail: String) -> SurfaceChannelError {
-    SurfaceChannelError::input(format!("{entry}: structure={id:?} {detail}"))
-}
 
 /// Checks every structure of `structures`. Returns them in ascending identity order.
 ///
@@ -230,141 +226,17 @@ fn check_pair(
     Ok(())
 }
 
-/// Checks the law's gravity, its control elevation against both attachment beds, and its
-/// direction policy.
-fn check_law(
-    structure: &SurfaceChannelStructure,
-    beds: [f64; 2],
-    gravity: f64,
-) -> Result<(), SurfaceChannelError> {
-    let element = &structure.element;
-    let id = element.id.as_str();
-    let (control, symmetric, law_gravity) = match &element.law {
-        StructureLaw::Culvert(_) => {
-            return Err(rejected(
-                "culvert-inlet-outlet-control",
-                id,
-                "is a culvert: this coordinator holds no culvert law; evaluate the culvert with StructureBatch::with_culverts".into(),
-            ));
-        }
-        StructureLaw::SuppressedRectangularWeir(p) => (
-            Some(("crest", p.crest_m())),
-            p.applicability().symmetric_reversal,
-            None,
-        ),
-        StructureLaw::HydrostaticRectangularGate(p) => (
-            Some(("sill", p.sill_m())),
-            p.applicability().symmetric_reversal,
-            Some(p.gravity_m_per_s2()),
-        ),
-        StructureLaw::SubmergedOrifice(p) => (
-            Some(("sill", p.sill_m())),
-            p.applicability().symmetric_reversal,
-            Some(p.gravity_m_per_s2()),
-        ),
-        StructureLaw::Pump(_) => (None, false, None),
-    };
-    if let Some(law_gravity) = law_gravity
-        && law_gravity.to_bits() != gravity.to_bits()
-    {
-        return Err(rejected(
-            "datum-or-gravity-mismatch",
-            id,
-            format!(
-                "gravity={law_gravity}, surface gravity={gravity}: supply bit-identical gravity"
-            ),
-        ));
-    }
-    if let Some((name, elevation)) = control
-        && (elevation < beds[0] || elevation < beds[1])
-    {
-        return Err(rejected(
-            "unobstructed-pool-connection",
-            id,
-            format!(
-                "{name}={elevation} lies below attachment bed A={} or B={}: an unobstructed connection is unsupported; raise the {name} to at least both beds",
-                beds[0], beds[1]
-            ),
-        ));
-    }
-    if element.direction == DirectionPolicy::Bidirectional && !symmetric {
-        return Err(rejected(
-            "non-symmetric-structure",
-            id,
-            if control.is_none() {
-                "is a bidirectional pump: a pump moves water one way; set AtoBOnly or BtoAOnly"
-                    .into()
-            } else {
-                "is bidirectional without symmetric reversal evidence: supply a coefficient that holds under reversed flow or set a one-way direction policy".into()
-            },
-        ));
-    }
-    Ok(())
-}
-
-/// The operation of `structure`, checked against its law kind.
-///
-/// A prescribed or actuated owner drives a gate, and a controlled-pump owner drives a pump. A
-/// dynamic owner returns the closed state its operating child replaces on every attempt.
-fn operation(
-    structure: &SurfaceChannelStructure,
-) -> Result<StructureOperatingPoint, SurfaceChannelError> {
-    let law = &structure.element.law;
-    let point = match (&structure.operation, law) {
-        (SurfaceChannelOperationOwner::Manual(point), _) => point,
-        (
-            SurfaceChannelOperationOwner::Prescribed | SurfaceChannelOperationOwner::Actuated,
-            StructureLaw::HydrostaticRectangularGate(_),
-        ) => return Ok(StructureOperatingPoint::GateOpening { opening_m: 0.0 }),
-        (SurfaceChannelOperationOwner::ControlledPump, StructureLaw::Pump(_)) => {
-            return Ok(StructureOperatingPoint::PumpStoppedIsolated);
-        }
-        (owner, _) => {
-            return Err(rejected(
-                "operation-ownership",
-                &structure.element.id,
-                format!(
-                    "owner={owner:?} does not drive its law: give a prescribed or actuated owner to a gate and a controlled-pump owner to a pump"
-                ),
-            ));
-        }
-    };
-    let admitted = match law {
-        StructureLaw::Culvert(_)
-        | StructureLaw::SuppressedRectangularWeir(_)
-        | StructureLaw::SubmergedOrifice(_) => {
-            matches!(point, StructureOperatingPoint::Passive)
-        }
-        StructureLaw::HydrostaticRectangularGate(_) => {
-            matches!(point, StructureOperatingPoint::GateOpening { .. })
-        }
-        StructureLaw::Pump(_) => matches!(
-            point,
-            StructureOperatingPoint::PumpRunning { .. }
-                | StructureOperatingPoint::PumpStoppedIsolated
-        ),
-    };
-    if !admitted {
-        return Err(rejected(
-            "operation-ownership",
-            &structure.element.id,
-            format!(
-                "operation={point:?} does not drive its law: give a weir or orifice Passive, a gate GateOpening, and a pump PumpRunning or PumpStoppedIsolated"
-            ),
-        ));
-    }
-    Ok(*point)
-}
-
 #[cfg(test)]
 mod tests {
+    use super::super::SurfaceChannelOperationOwner;
     use super::super::scenario::{
-        DT, INFLOW, REACH, Tanks, TestResult, WITHDRAWAL, gate_law, orifice_law, pump_law, step,
-        structure, withdrawal,
+        DT, INFLOW, REACH, Tanks, TestResult, WITHDRAWAL, culvert_law, gate_law, orifice_law,
+        pump_law, step, structure, withdrawal,
     };
     use super::*;
     use crate::channel::ChannelLateralInput;
     use crate::coupling::surface_channels::SurfaceChannelDefinition;
+    use crate::structures::{DirectionPolicy, StructureLaw, StructureOperatingPoint};
 
     fn culvert() -> TestResult<SurfaceChannelStructure> {
         Ok(structure(
@@ -464,6 +336,62 @@ mod tests {
         }
         let message = rejection(vec![culvert()?, culvert()?])?;
         assert!(message.starts_with("duplicate-links"), "{message}");
+        Ok(())
+    }
+
+    /// Frozen criteria, fixed before the first run: a culvert link admits with both inverts at
+    /// or above their beds, and rejects with the named entry for an invert below its bed, a
+    /// two-way culvert without its B end, and a culvert gravity off the surface gravity.
+    #[test]
+    fn culvert_admission_names_each_entry() -> TestResult {
+        let link = |law| {
+            let mut case = culvert()?;
+            case.element.law = law;
+            Ok::<_, Box<dyn std::error::Error>>(case)
+        };
+        let (mut setup, _) = Tanks::at(0.6, 0.6).parts()?;
+        setup.structures = vec![link(culvert_law([0.1, 0.0])?)?];
+        SurfaceChannelDefinition::new(setup)?;
+        let mut cases = vec![(
+            link(culvert_law([-0.1, 0.0])?)?,
+            "unobstructed-pool-connection",
+        )];
+        let crate::structures::StructureLaw::Culvert(parameters) = culvert_law([0.1, 0.0])? else {
+            return Err("a culvert law".into());
+        };
+        let one_end = crate::structures::CulvertParameters::new(
+            parameters.barrel(),
+            parameters.alignment(),
+            parameters.manning_n(),
+            parameters.barrel_count(),
+            crate::structures::CulvertEnds {
+                a: parameters.ends().a,
+                b: None,
+            },
+            parameters.gravity_m_per_s2(),
+            parameters.applicability().clone(),
+        )?;
+        cases.push((
+            link(StructureLaw::Culvert(one_end))?,
+            "non-symmetric-structure",
+        ));
+        let heavy = crate::structures::CulvertParameters::new(
+            parameters.barrel(),
+            parameters.alignment(),
+            parameters.manning_n(),
+            parameters.barrel_count(),
+            parameters.ends(),
+            9.8,
+            parameters.applicability().clone(),
+        )?;
+        cases.push((
+            link(StructureLaw::Culvert(heavy))?,
+            "datum-or-gravity-mismatch",
+        ));
+        for (case, entry) in cases {
+            let message = rejection(vec![case])?;
+            assert!(message.starts_with(entry), "{entry}: {message}");
+        }
         Ok(())
     }
 

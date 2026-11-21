@@ -1,6 +1,7 @@
 //! Static coordinator topology: link laws, donor trees, surface lanes, channel slots, and pools.
 
 mod access;
+mod culverts;
 mod nodes;
 
 pub(super) use access::transfer_error;
@@ -16,7 +17,7 @@ use super::{SurfaceChannelDefinition, SurfaceChannelError};
 use crate::channel::ChannelLateralDirection;
 use crate::numerics::water_transfers::TransferTree;
 use crate::solver::Solver;
-use crate::structures::StructureElement;
+use crate::structures::{CulvertClient, StructureElement};
 use hydr_solver::internal::SurfaceLinks;
 use numr::dtype::DType;
 use numr::ops::{
@@ -29,6 +30,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub(super) use super::ops::Ops;
+pub(super) use culverts::CulvertStops;
 pub(super) use nodes::{LinkedReach, NodeEnd};
 
 /// Immutable coordinator operands built once from a checked definition.
@@ -83,6 +85,8 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub suction_stop: Tensor<R>,
     /// Plan area of each pump donor at its suction stop, `[L]`. Zero at passive links.
     pub suction_area: Tensor<R>,
+    /// Invert stops of the culvert links, or `None` without a culvert.
+    pub culverts: Option<CulvertStops<R>>,
     /// Unit reach tangent of every bank link, `[L]` per axis. Zero at structure links, whose
     /// water enters either side without velocity.
     pub tangent: [Tensor<R>; 2],
@@ -141,7 +145,8 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>
         + TypeConversionOps<R>
-        + UnaryOps<R>,
+        + UnaryOps<R>
+        + CulvertClient<R>,
 {
     /// Builds every static operand from `definition` for `surface` and the pool child `pools`.
     pub fn new(
@@ -359,6 +364,7 @@ where
             law.pump()
                 .map_or(0.0, |p| side_area(link, p.donor, p.stop_m))
         });
+        let culverts = CulvertStops::new(laws, side_area, &device)?;
         let tangent = |axis: usize| -> Vec<f64> { table.iter().map(|l| l.tangent[axis]).collect() };
         let ports = PortTopology::new(definition, surface)?;
         let channel_links: Vec<usize> = table
@@ -430,6 +436,7 @@ where
             pump: floats(&per_law(&|_, law| flag(!law.passive())))?,
             suction_stop: floats(&stop)?,
             suction_area: floats(&stop_area)?,
+            culverts,
             bank: table
                 .iter()
                 .enumerate()

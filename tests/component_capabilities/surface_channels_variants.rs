@@ -85,8 +85,9 @@ pub const PORT_REGIMES: [SurfaceChannelPortRegime; 6] = [
 /// Declared regime of each public structure regime, with the law volume of the interval.
 ///
 /// A running pump at zero law volume sits at shutoff. A gate below its sill and a weir below
-/// its crest carry no water and claim no flow regime. Culvert regimes claim none, because the
-/// coordinator rejects culvert laws at admission.
+/// its crest carry no water and claim no flow regime. A culvert claims inlet or outlet control.
+/// A tie between both controls, a donor below its invert, and a flap-blocked culvert claim
+/// none.
 pub fn structure_regime(regime: StructureRegime, law_volume_m3: f64) -> Option<Regime> {
     Some(match regime {
         StructureRegime::SubmergedOrifice => Regime::SubmergedOrificeFlow,
@@ -102,9 +103,9 @@ pub fn structure_regime(regime: StructureRegime, law_volume_m3: f64) -> Option<R
         StructureRegime::PumpCurve if law_volume_m3 == 0.0 => Regime::PumpShutoff,
         StructureRegime::PumpCurve => Regime::PumpCurve,
         StructureRegime::PumpIsolated => Regime::PumpIsolated,
-        StructureRegime::CulvertInletControl
-        | StructureRegime::CulvertOutletControl
-        | StructureRegime::CulvertControlTie
+        StructureRegime::CulvertInletControl => Regime::CulvertInletControl,
+        StructureRegime::CulvertOutletControl => Regime::CulvertOutletControl,
+        StructureRegime::CulvertControlTie
         | StructureRegime::CulvertBelowInvert
         | StructureRegime::CulvertUndeclaredEnd => return None,
     })

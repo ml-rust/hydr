@@ -26,7 +26,7 @@ struct Sides<R: Runtime<DType = DType>> {
     donor: Tensor<R>,
     /// Pre-exchange end stage of the receiver.
     receiver: Tensor<R>,
-    /// Cutoff stage of the donor: a pump's suction bound.
+    /// Cutoff stage of the donor: a pump's suction bound or a culvert's donor invert.
     donor_cut: Tensor<R>,
     /// Cutoff stage of the receiver: a weir's crest or a gate's sill.
     receiver_cut: Tensor<R>,
@@ -67,13 +67,15 @@ where
     ///
     /// Each cap term ends a stage at a bound. A stage within one head allowance of its bound
     /// already stands there, so the term keeps nothing:
-    /// - Suction: the donor within the allowance above its suction bound `z_s`.
+    /// - Suction: the donor within the allowance above its suction bound `z_s`, or above a
+    ///   culvert's donor invert.
     /// - Level: the donor within the allowance above `B = max(H_r, z_r)`.
     /// - Below: the receiver within the allowance below its cutoff `z_r`.
     ///
     /// A pump stops on its suction term. A weir or gate stops when both its below and level
-    /// terms stop, an orifice when its level term stops. A stopped link otherwise keeps a
-    /// volume set by a stage gap that no shorter interval shrinks. That volume can sit below
+    /// terms stop, an orifice when its level term stops. A culvert stops as a weir, or when its
+    /// donor stands within the allowance above its invert `z_d`. A stopped link otherwise keeps
+    /// a volume set by a stage gap that no shorter interval shrinks. That volume can sit below
     /// the resolution of the receiving storage, which then rejects every retry.
     fn stopped(&self, sides: &Sides<R>) -> Result<Tensor<R>, SurfaceChannelError> {
         let c = &self.client;
@@ -87,7 +89,11 @@ where
         let level = self.within(&c.sub(donor, floor)?, donor, floor)?;
         let below = self.within(&c.sub(receiver_cut, receiver)?, receiver_cut, receiver)?;
         let suction = self.within(&c.sub(donor, donor_cut)?, donor, donor_cut)?;
-        let passive = c.where_cond(&self.has_below, &c.mul(&below, &level)?, &level)?;
+        let mut passive = c.where_cond(&self.has_below, &c.mul(&below, &level)?, &level)?;
+        if let Some(culverts) = &self.culverts {
+            let invert = c.maximum(&passive, &suction)?;
+            passive = c.where_cond(&culverts.mask, &invert, &passive)?;
+        }
         Ok(c.where_cond(&self.pump, &suction, &passive)?)
     }
 
@@ -149,7 +155,13 @@ where
             &c.div(&taken, &receiver_area)?,
         )?;
         let level = c.div(&c.sub(donor, floor)?, &response)?;
-        let passive = c.where_cond(&self.has_below, &c.maximum(&below, &level)?, &level)?;
+        let mut passive = c.where_cond(&self.has_below, &c.maximum(&below, &level)?, &level)?;
+        if let Some(culverts) = &self.culverts {
+            let stop = pick(&culverts.stop[0], &culverts.stop[1])?;
+            let area = pick(&culverts.area[0], &culverts.area[1])?;
+            let invert = c.div(&c.mul(&c.sub(donor, &stop)?, &area)?, &given)?;
+            passive = c.where_cond(&culverts.mask, &c.minimum(&passive, &invert)?, &passive)?;
+        }
         let suction = c.div(
             &c.mul(&c.sub(donor, &self.suction_stop)?, &self.suction_area)?,
             &given,

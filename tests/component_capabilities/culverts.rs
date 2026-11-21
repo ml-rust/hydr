@@ -223,7 +223,10 @@ fn culvert_law_nests_its_queries_and_declares_their_arithmetic() {
     assert!(capabilities.regimes.is_empty());
     assert!(capabilities.sources.is_empty());
     assert!(capabilities.options.is_empty());
-    assert!(capabilities.attachable_to.is_empty());
+    assert_eq!(
+        capabilities.attachable_to,
+        [ComponentId::SurfaceChannels, ComponentId::CoupledLevelPools]
+    );
     assert_eq!(
         capabilities.nested,
         [ComponentId::CulvertInlet, ComponentId::CulvertOutlet]

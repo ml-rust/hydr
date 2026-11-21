@@ -9,10 +9,13 @@
 //! element's direction policy.
 
 mod admission;
+mod law_checks;
 mod laws;
 mod operations;
 #[cfg(test)]
 pub(super) mod scenario;
+#[cfg(test)]
+mod scenario_culverts;
 
 pub(super) use admission::check_structures;
 pub(super) use laws::LinkLaw;

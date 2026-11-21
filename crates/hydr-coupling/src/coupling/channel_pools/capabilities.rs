@@ -113,8 +113,8 @@ static CHANNEL_POOLS: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "pool-structures",
             UnsupportedReason::NotAttached,
-            "Pool structures attach through coupled level pools, not here.",
-            "docs/coupled-level-pools.md",
+            "Structures between a channel cell and a pool, culverts included, attach through the surface/channel coordinator, not here.",
+            "docs/surface-channels.md",
         ),
         unsupported(
             "local-pool-sources",

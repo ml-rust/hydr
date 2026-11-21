@@ -1,15 +1,27 @@
 //! Profiles surface/channel common intervals on fixed coupled cases.
 //!
-//! Usage: `surface-channel-profile <rect|surveyed|flood|pool-end> <intervals> [cpu|cuda]`.
+//! Usage: `surface-channel-profile <case> <intervals> [cpu|cuda]`, with `<case>` one of `rect`,
+//! `surveyed`, `flood`, `pool-end`, `culvert-drowning`, and `culvert-sweep`.
 //!
 //! Prints one row per accepted interval: duration, retries, fixed-point iterations, allocation
 //! calls, and requested bytes. Run it under `perf stat -e instructions:u` with `0` intervals and
 //! with `N` intervals: the difference over `N` is the instruction count per accepted interval.
 //!
 //! `pool-end` is a three-band surveyed reach end on a pond: it fills, then reverses.
+//!
+//! `culvert-drowning` and `culvert-sweep` are the culvert sweeps of the surface/channel tests:
+//! a long mild barrel whose outlet the filling basin drowns, and a short steep barrel that the
+//! basin moves from inlet to outlet control.
 
 mod alloc;
 mod pool_end;
+
+#[allow(dead_code)]
+#[path = "../../../tests/surface_channels/culverts_fixture.rs"]
+mod culverts_fixture;
+#[allow(dead_code, unused_imports)]
+#[path = "../../../tests/surface_channels/pools_fixture.rs"]
+mod pools_fixture;
 
 #[allow(dead_code)]
 #[path = "../../../tests/surface_channels/fixture.rs"]
@@ -190,8 +202,7 @@ macro_rules! profile {
 
 fn main() -> Result {
     let args: Vec<String> = std::env::args().collect();
-    let usage =
-        "usage: surface-channel-profile <rect|surveyed|flood|pool-end> <intervals> [cpu|cuda]";
+    let usage = "usage: surface-channel-profile <rect|surveyed|flood|pool-end|culvert-drowning|culvert-sweep> <intervals> [cpu|cuda]";
     let name = args.get(1).ok_or(usage)?;
     let intervals: usize = args.get(2).ok_or(usage)?.parse()?;
     let device = args.get(3).map_or("cpu", String::as_str);
@@ -215,6 +226,16 @@ fn main() -> Result {
             parts: pool_end::parts,
             forcing: pool_end::forcing,
             span_s: pool_end::SPAN_S,
+        },
+        "culvert-drowning" => Case {
+            parts: || culverts_fixture::drowning_case()?.parts(),
+            forcing: |setup, start, end, _| culverts_fixture::tide(setup, (start, end), 0.0),
+            span_s: 0.5,
+        },
+        "culvert-sweep" => Case {
+            parts: || culverts_fixture::sweep_case()?.parts(),
+            forcing: |setup, start, end, _| culverts_fixture::tide(setup, (start, end), 0.0),
+            span_s: 0.5,
         },
         other => return Err(format!("case={other:?}: {usage}").into()),
     };

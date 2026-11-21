@@ -14,8 +14,8 @@ use hydr::channel::{
 pub mod laws;
 
 pub use laws::{
-    controlled_gate, controlled_pump, gate_law, operating, orifice_law, pump_law, signal,
-    trajectory, weir_law,
+    controlled_gate, controlled_pump, culvert_law, gate_law, operating, orifice_law, pump_law,
+    signal, trajectory, weir_law,
 };
 
 use hydr::coupling::{

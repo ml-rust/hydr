@@ -39,7 +39,7 @@ fn assert_rejected(changed: &CoupledLevelPoolSnapshotData, needles: &[&str]) -> 
 fn coupled_level_pool_package_carries_identity() -> Result {
     assert_eq!(
         COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA,
-        "hydr-coupled-level-pool-checkpoint-1"
+        "hydr-coupled-level-pool-checkpoint-2"
     );
     assert_eq!(
         COUPLED_LEVEL_POOL_CONTRACT_VERSION,
@@ -54,7 +54,11 @@ fn coupled_level_pool_package_carries_identity() -> Result {
 #[test]
 fn coupled_level_pool_import_rejects_foreign_schema() -> Result {
     let package = advanced()?.snapshot_data()?;
-    for found in ["hydr-coupled-level-pool-checkpoint-0", ""] {
+    for found in [
+        "hydr-coupled-level-pool-checkpoint-0",
+        "hydr-coupled-level-pool-checkpoint-1",
+        "",
+    ] {
         let mut changed = package.clone();
         changed.schema = found.into();
         assert_rejected(

@@ -27,7 +27,7 @@ use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Schema identity of the surface/channel snapshot package.
-pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-6";
+pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-7";
 /// Numerical contract identity of the surface/channel snapshot package.
 pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-8";
 

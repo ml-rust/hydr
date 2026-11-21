@@ -15,7 +15,7 @@ Read capabilities with `surface_channel_capabilities()`. It returns a `Component
 | Links | `SurfaceChannelLink` entries | One bank weir between one active surface cell and one channel cell. |
 | Ports | `SurfaceChannelPort` entries | One line of surface faces against one reach end of rectangular section. See [reach-end ports](#couple-a-reach-end-to-the-surface). |
 | Pools | `pools`, `pool_support`, `pool_sources`, `pool_inflows`, `storage` | Level pools with their sources and external inflows. See [level pools](#add-level-pools). |
-| Structures | `SurfaceChannelStructure` entries | One weir, orifice, gate, or pump between two nodes. See [structures](#join-nodes-through-structures). |
+| Structures | `SurfaceChannelStructure` entries | One weir, orifice, gate, pump, or culvert between two nodes. See [structures](#join-nodes-through-structures). |
 | Pool ends | `SurfaceChannelPoolEnd` entries | One reach end against one pool. See [pool ends](#couple-a-reach-end-to-a-pool). |
 | Operating children | `SurfaceChannelOperating` | The children that operate gates and pumps. See [controls](#operate-gates-and-pumps). |
 
@@ -313,9 +313,25 @@ A structure joins two distinct nodes. The pairs are surface cell and channel cel
 | `scenario` | `StructureScenario` with `id` and `evidence`. It names the fixed blockage or condition whose geometry the law parameters hold. |
 | `operation` | `SurfaceChannelOperationOwner` |
 
-The laws are `SuppressedRectangularWeir`, `SubmergedOrifice`, `HydrostaticRectangularGate`, and `Pump`. See [structure laws](structures.md).
+The laws are `SuppressedRectangularWeir`, `SubmergedOrifice`, `HydrostaticRectangularGate`, `Pump`, and `Culvert`. See [structure laws](structures.md).
 
 An attachment bed sits at or above its node bed, or at or above the curve origin of a pool. A weir crest, gate sill, or orifice sill sits at or above both attachment beds. A pump takes a one-way direction. A bidirectional law needs symmetric reversal evidence.
+
+### Attach a culvert
+
+A culvert joins two nodes as any other structure does. Declare its law with [`CulvertParameters`](structures.md#declare-a-culvert) and the `Passive` operation. The coordinator builds the culvert rows once at construction.
+
+| Rule | Requirement |
+| --- | --- |
+| Inverts | The invert at each end sits at or above that end's attachment bed. A dry end then acts as a free outfall at its invert. |
+| Gravity | The culvert gravity equals the surface gravity bit for bit |
+| Direction | `Bidirectional` needs both ends. `AtoBOnly` and `BtoAOnly` need the upstream end. |
+| Roadway | A road over the culvert is a separate weir on the same two nodes |
+| Client | The client implements `CulvertClient`. Every client that runs this coordinator does. |
+
+A culvert between a channel cell and a pool joins a reach to a pool through a barrel, where a pool end joins it through an open reach end.
+
+A donor at or below its invert gives no water. A one-end culvert whose heads drive flow into its undeclared end reports `CulvertUndeclaredEnd` and moves exact zero.
 
 A blockage is a fixed scenario with evidence. The coordinator infers no blockage. Capability limit `blockage-as-scenario` records this.
 
@@ -338,8 +354,8 @@ Each structure has exactly one owner. A dynamic owner binds to a child of [`Surf
 | --- | --- |
 | Element endpoint differs from its node identity, an unknown node, an inactive surface cell, a missing channel cell, an unknown pool, or both endpoints on one node | `structure-endpoint-identity` |
 | Element datum differs from the surface datum, or a gate or orifice gravity differs from the surface gravity | `datum-or-gravity-mismatch` |
-| Attachment bed below its node bed or pool origin, or a crest or sill below either attachment bed | `unobstructed-pool-connection` |
-| Bidirectional pump, or bidirectional law without symmetric reversal evidence | `non-symmetric-structure` |
+| Attachment bed below its node bed or pool origin, a crest or sill below either attachment bed, or a culvert invert below its attachment bed | `unobstructed-pool-connection` |
+| Bidirectional pump, bidirectional law without symmetric reversal evidence, or bidirectional culvert without both ends | `non-symmetric-structure` |
 | Repeated pool, structure, pool-end, or scenario identity | `duplicate-links` |
 | Empty evidence, scenario, or identity text | `missing-link-evidence` |
 | Pool support, source policies, or inflows that differ from the pools, a repeated support, a zero-volume stage off the curve origin, or a pool that joins nothing | `pool-support` |
@@ -357,9 +373,9 @@ Dryness is state, so admission cannot see it. Two rejections follow at the trial
 
 ### Cap each structure law
 
-Equal heads apply to every submerged passive law. These are the Villemonte weir, the submerged orifice, and the mixed and submerged gate apertures. The rule holds when the start heads and the zero-exchange end heads each sit within one head allowance. The link then reports `EqualHeads` and carries no water. A pump never takes this rule, because a pump moves water at equal heads.
+Equal heads apply to every submerged passive law. These are the Villemonte weir, the submerged orifice, the mixed and submerged gate apertures, and a flowing culvert with both sides above their inverts. The rule holds when the start heads and the zero-exchange end heads each sit within one head allowance. The link then reports `EqualHeads` and carries no water. A pump never takes this rule, because a pump moves water at equal heads.
 
-Each link keeps `θ = min(1, max(terms, 0))` of its law volume. `z_r` is the receiver cutoff: a weir crest, a gate sill, or an orifice crown. `z_s` is a pump's suction bound.
+Each link keeps `θ = min(1, max(terms, 0))` of its law volume. `z_r` is the receiver cutoff: a weir crest, a gate sill, an orifice crown, or the culvert invert at the receiver. `z_s` is a pump's suction bound. `z_d` is the culvert invert at the donor.
 
 | Law | Terms | Holds |
 | --- | --- | --- |
@@ -367,14 +383,19 @@ Each link keeps `θ = min(1, max(terms, 0))` of its law volume. `z_r` is the rec
 | Gate | The same terms at the sill | A receiver at or below the sill keeps free flow. The donor never ends below the receiver. |
 | Submerged orifice | `θ_level` only | The donor never ends below the receiver. A stage that crosses the crown rejects and retries. A cap never hides it. |
 | Pump | `θ_suction = (H_d - z_s) A_d / O_d` | The donor ends at or above its suction stop. A pump needs no levelling term, because it lifts water. |
+| Culvert | `min(max(θ_below, θ_level), θ_invert)`, with `θ_invert = (H_d - z_d) A_d / O_d` at the invert stop | A receiver at or below its invert is a free outfall. The donor never ends below the receiver or below its invert stop. |
 
-A term within one head allowance of its bound keeps nothing. A stopped link leaves the shared minimum.
+A term within one head allowance of its bound keeps nothing. A stopped link leaves the shared minimum. A culvert also stops when its donor stands within one head allowance of its invert.
+
+The invert stop sits above the donor invert by half the head allowance, as the suction stop does. A draining culvert stops there, so a pool donor never crosses its raised invert. Capability limit `culvert-invert-cap` records this.
 
 The suction band is `[z_s, z_s + allowance]`. A running pump in the band moves no water. A draining pump stops at its suction stop, inside the band. Capability limit `suction-cap` records this. Without the cap, every shorter attempt crosses the bound and the run ends `Unresolved`.
 
 The cap and response bounds of a pool use its smallest curve segment area over the covered stage range. A dry pool uses its first segment. Capability limit `pool-plan-area-bound` records this. Surface cells keep the cell area. Channel cells keep the width at the lowest covered stage.
 
-The response step holds for every admitted law. A weir, a gate, and an orifice discharge more as the head difference rises. A pump discharges less as its lift rises. A pool end takes the plain update, because the reach sets its volume.
+The response step holds for every admitted law. A weir, a gate, an orifice, and a culvert discharge more as the head difference rises. A pump discharges less as its lift rises. A pool end takes the plain update, because the reach sets its volume.
+
+A culvert law is costly to evaluate, so a culvert link takes no bisection. It takes one linear step from its certified head sensitivity `s` at the proposal heads: `V = V_g + (P - V_g) / (1 + s |P| (r_A + r_B) / 2)`. `P` is the kept proposal and `r` the stage response per cubic metre of each side. The bound `s` lies at or above the true slope, so the step stops between `V_g` and `P`. A culvert lane at the sensitivity cap of `2^256` per metre takes the plain update and adds no resolution term. Capability limit `culvert-sensitivity-step` records this.
 
 The resolution term of each allowance reads each law's relative head sensitivity. [Structure laws](structures.md#read-head-sensitivity) define it.
 
@@ -508,6 +529,7 @@ The factor `(1.5 / h_u + 0.385 / gap)` is the weir's relative head sensitivity. 
 | Submerged orifice | `0.5 / gap` |
 | Gate | `1.5 / h_u + 0.5 / gap`, with `h_u` above the sill |
 | Pump | `\|dQ/dH\| / Q` on the active curve segment at the running speed, zero where `Q` is zero |
+| Culvert | `1 / E` of the governing control. See [culvert sensitivity](structures.md#read-culvert-sensitivity). |
 
 #### Stalled attempts
 
@@ -610,7 +632,7 @@ Construct a `restore` or `import_snapshot` destination with the same setup and o
 
 Pass `data.surface.setup.forcing.clone()` to `resume` for a plain restart.
 
-`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-6`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-8`). Import checks both first. A package of an earlier format, schema `hydr-surface-channel-checkpoint-5` or contract `hydr-surface-channel-numr-cpu-7`, rejects by identity. Those identities predate secant probes in surveyed roots. Capture a new package. Import checks every nested package identity, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
+`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-7`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-8`). Import checks both first. A package of an earlier format rejects by identity: schema `hydr-surface-channel-checkpoint-6` predates culvert structures, and schema `-5` or contract `hydr-surface-channel-numr-cpu-7` predates secant probes in surveyed roots. Capture a new package. Import checks every nested package identity, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
 
 The replay includes decision completion. At a decision end, the recalculation samples the converged stages and completes each operating child, then compares the child packages.
 
@@ -646,13 +668,10 @@ Preserve every package field and floating-point value exactly. Follow the [persi
 | Surface rain, impervious land, Modified Green-Ampt soil, evaporation, and withdrawal | Device-resident forcing |
 | Caller lateral inflow and withdrawal on reaches | Runoff attachment to coordinator pools |
 | Level pools with local rain, bottom loss, evaporation, and external inflow | Pool ports. A pool holds no momentum. |
-| Weirs, submerged orifices, gates, and pumps between surface cells, channel cells, and pools | Partial orifice flow, pump priming, net positive suction head, and motor dynamics |
+| Weirs, submerged orifices, gates, pumps, and HDS-5 circular and box culverts between surface cells, channel cells, and pools | Partial orifice flow, pump priming, net positive suction head, motor dynamics, and culvert barrel storage |
 | Fixed blockage scenarios with evidence | Blockage probability, inferred blockage, and geometry events over time |
 | Pool ends at a quiescent reservoir head on rectangular, triangular, or surveyed reaches | Dry or critical pool ends |
 | Prescribed, actuated, and sampled-pump operation at sampled decisions | Continuous control feedback, minimum dwell, and native SWMM rules |
-| An orifice as a culvert approximation | Culvert inlet and outlet control |
-
-An orifice does not satisfy culvert support. Capability entry `culvert-inlet-outlet-control` records this.
 
 Time integration remains first order. The weir law establishes no energy guarantee for the complete calculation.
 
@@ -665,6 +684,10 @@ Structure and pool limits:
 - `pool-plan-area-bound`: A pool's cap and response bounds use its smallest segment plan area over the covered stage range.
 - `pool-end-reservoir-head`: A pool end takes the pool's temporal midpoint stage as its reservoir head.
 - `blockage-as-scenario`: A blockage is a fixed caller scenario with evidence.
+- `culvert-invert-cap`: A draining culvert donor stops just above its invert. A cap ends its flow, never a rejection.
+- `culvert-sensitivity-step`: A culvert link's response step comes from its certified head sensitivity, without bisection.
+
+Each culvert evaluation runs at least one outlet march. A partly full outlet costs far more than a drowned full barrel, which takes a closed form. Every fixed-point update evaluates each culvert twice: once in the map and once for the response step.
 
 Port limits:
 
@@ -672,6 +695,6 @@ Port limits:
 - `port-bed-step`: Hydrostatic reconstruction keeps a lake at rest across a bed step. It gives no energy guarantee across the step.
 - `port-tangential-closure`: Reach water enters the surface with no tangential velocity. Tangential surface momentum that leaves through a port ends at the junction. Read `junction_reaction_m4_per_s` for it.
 
-Numerical agreement establishes no measured-event accuracy and no culvert accuracy. CUDA runs execute without a GPU accuracy qualification.
+Numerical agreement establishes no measured-event accuracy and no field culvert accuracy. CUDA runs execute without a GPU accuracy qualification.
 
 Read [surface/channel checks](acceptance.md#surfacechannel-checks) for the checked cases and runtime support. Read [reference and refinement](acceptance.md#reference-and-refinement) for the closed-form drain and the split-bank refinement. Read [pools, structures, and controls](acceptance.md#pools-structures-and-controls) for the pool and structure cases.

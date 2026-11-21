@@ -1,8 +1,8 @@
 //! Law class, endpoint cutoffs, and response bounds of every link in the table.
 //!
 //! Each link keeps the cutoffs of [`endpoint_cutoffs`]: a weir's crest, a gate's sill, an
-//! orifice's crown, and a pump donor's suction bound. Bank links are weirs with both cutoffs at
-//! the crest.
+//! orifice's crown, a pump donor's suction bound, and a culvert's invert at each end. Bank links
+//! are weirs with both cutoffs at the crest.
 
 use crate::coupling::links::cutoffs::endpoint_cutoffs;
 use crate::structures::{DirectionPolicy, StructureElement, StructureLaw, StructureOperatingPoint};
@@ -44,8 +44,26 @@ pub(in super::super) enum LawKind {
     Orifice,
     /// Pump on its curve, or isolated.
     Pump(PumpLimits),
-    /// HDS-5 culvert. A receiver at or below its invert is a free outfall.
-    Culvert,
+    /// HDS-5 culvert. A receiver at or below its invert is a free outfall. A donor stops at its
+    /// invert stop.
+    Culvert(CulvertLimits),
+}
+
+/// Culvert operands of the invert cap.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(in super::super) struct CulvertLimits {
+    /// Stage at which the invert cap stops a donor at endpoints `[A, B]`, in metres.
+    ///
+    /// Each lies above that end's invert cutoff as a pump's suction stop lies above its bound.
+    pub stop_m: [f64; 2],
+}
+
+/// Stage above `cutoff` at which a cap stops its donor: half the head allowance at the cutoff
+/// plus `SUCTION_MARGIN_ULPS` ulps. The donor then ends strictly above its cutoff.
+fn stop_above(cutoff: f64, (absolute, relative): (f64, f64)) -> f64 {
+    cutoff
+        + 0.5 * (absolute + relative * cutoff.abs())
+        + SUCTION_MARGIN_ULPS * f64::EPSILON * cutoff.abs()
 }
 
 /// Law class and endpoint cutoffs of one link.
@@ -72,16 +90,15 @@ impl LinkLaw {
     ) -> Self {
         let cut = endpoint_cutoffs(element, beds);
         let kind = match &element.law {
-            StructureLaw::Culvert(_) => LawKind::Culvert,
+            StructureLaw::Culvert(_) => LawKind::Culvert(CulvertLimits {
+                stop_m: cut.map(|cutoff| stop_above(cutoff, (absolute, relative))),
+            }),
             StructureLaw::SuppressedRectangularWeir(_) => LawKind::Weir,
             StructureLaw::HydrostaticRectangularGate(_) => LawKind::Gate,
             StructureLaw::SubmergedOrifice(_) => LawKind::Orifice,
             StructureLaw::Pump(p) => {
                 let donor = usize::from(element.direction == DirectionPolicy::BtoAOnly);
-                let cutoff = cut[donor];
-                let stop_m = cutoff
-                    + 0.5 * (absolute + relative * cutoff.abs())
-                    + SUCTION_MARGIN_ULPS * f64::EPSILON * cutoff.abs();
+                let stop_m = stop_above(cut[donor], (absolute, relative));
                 let knots = p.curve().knots();
                 let zero = knots
                     .iter()
@@ -126,7 +143,18 @@ impl LinkLaw {
 
     /// The law keeps free flow while the receiver stays at or below its cutoff.
     pub fn has_below(&self) -> bool {
-        matches!(self.kind, LawKind::Weir | LawKind::Gate | LawKind::Culvert)
+        matches!(
+            self.kind,
+            LawKind::Weir | LawKind::Gate | LawKind::Culvert(_)
+        )
+    }
+
+    /// Culvert limits, or `None` for another law.
+    pub fn culvert(&self) -> Option<&CulvertLimits> {
+        match &self.kind {
+            LawKind::Culvert(limits) => Some(limits),
+            _ => None,
+        }
     }
 
     /// Pump limits, or `None` for a passive law.
@@ -142,7 +170,8 @@ impl LinkLaw {
     /// `heads` are pre-exchange end stages `[A, B]`. `area(side, stage)` is the plan area of a side
     /// at `stage`. `shares` split each side among its links. `available` holds each side's donor
     /// water. Every bound stays inside the law's admitted head range in the plan-area model:
-    /// - Weir, gate and culvert: the receiver stays at or below its cutoff, or below the donor.
+    /// - Weir and gate: the receiver stays at or below its cutoff, or below the donor.
+    /// - Culvert: as a weir, and the donor stays at or above its invert stop.
     /// - Orifice: the receiver stays below the donor, and the donor above the crown.
     /// - Pump: its donor stays at or above the suction stop, and the lift below the curve's
     ///   zero-flow head. The other direction keeps nothing.
@@ -165,12 +194,26 @@ impl LinkLaw {
             // A link stopped at its cap bounds keeps nothing. See `Context::stopped`.
             let at_level = self.within(h_d - floor, h_d, floor);
             let kept = match &self.kind {
-                LawKind::Weir | LawKind::Gate | LawKind::Culvert => {
+                LawKind::Weir | LawKind::Gate => {
                     if at_level && self.within(z_r - h_r, z_r, h_r) {
                         return 0.0;
                     }
                     ((z_r - h_r) * area(receiver, h_r) / s_r)
                         .max(level)
+                        .max(0.0)
+                }
+                LawKind::Culvert(k) => {
+                    let z_d = self.cut[donor];
+                    if (at_level && self.within(z_r - h_r, z_r, h_r))
+                        || self.within(h_d - z_d, h_d, z_d)
+                    {
+                        return 0.0;
+                    }
+                    let stop = k.stop_m[donor];
+                    let invert = (h_d - stop) * area(donor, stop) / s_d;
+                    ((z_r - h_r) * area(receiver, h_r) / s_r)
+                        .max(level)
+                        .min(invert)
                         .max(0.0)
                 }
                 LawKind::Orifice => {
@@ -200,7 +243,7 @@ impl LinkLaw {
 
 #[cfg(test)]
 mod tests {
-    use super::super::scenario::{gate_law, orifice_law, pump_law, weir_law};
+    use super::super::scenario::{culvert_law, gate_law, orifice_law, pump_law, weir_law};
     use super::*;
     use crate::structures::{DirectionPolicy, StructureElement};
 
@@ -372,6 +415,38 @@ mod tests {
         );
         let [level, _] = orifice.bounds([0.8 + 0.5e-12, 0.8], area, [1.0, 1.0], wide);
         assert_eq!(level, 0.0);
+        Ok(())
+    }
+
+    /// Frozen criteria, fixed before the first run, with head allowance `1e-12` m absolute:
+    /// - A culvert keeps each end's invert as its cutoff, and each stop lies just above it.
+    /// - A deep donor over a low receiver keeps the receiver's room below its invert or the
+    ///   level term, whichever is larger, but never more than its water above its stop.
+    /// - A donor within the allowance of its invert keeps nothing.
+    #[test]
+    fn a_culvert_donor_stays_above_its_invert_stop() -> TestResult {
+        let law = LinkLaw::new(
+            &element(culvert_law([0.4, 0.2])?, DirectionPolicy::Bidirectional),
+            StructureOperatingPoint::Passive,
+            [0.1, 0.0],
+            (1e-12, 0.0),
+        );
+        assert_eq!(law.cut, [0.4, 0.2]);
+        assert!(law.has_below() && law.passive());
+        let Some(culvert) = law.culvert() else {
+            return Err("a culvert law".into());
+        };
+        let stop = culvert.stop_m[0];
+        assert!(stop > 0.4 && stop < 0.4 + 1e-12);
+        let wide = [100.0, 100.0];
+        // Receiver B below its invert: room to the invert or the level term, under the stop.
+        let [forward, _] = law.bounds([0.5, 0.1], area, [1.0, 1.0], wide);
+        let level = (0.5 - 0.2) / (1.0 / 4.0 + 1.0 / 8.0);
+        let room = ((0.2 - 0.1) * 8.0_f64).max(level);
+        assert_eq!(forward, room.min((0.5 - stop) * 4.0));
+        assert_eq!(forward, (0.5 - stop) * 4.0);
+        let [inside, _] = law.bounds([0.4 + 0.5e-12, 0.1], area, [1.0, 1.0], wide);
+        assert_eq!(inside, 0.0);
         Ok(())
     }
 

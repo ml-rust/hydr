@@ -3,6 +3,7 @@
 //! Both cells hold `AREA` of plan area behind impermeable walls, so the two tanks exchange
 //! water only through their structure links and the caller's lateral inputs on the reach cell.
 
+pub use super::scenario_culverts::culvert_law;
 use super::{
     StructureScenario, SurfaceChannelAttachment, SurfaceChannelNode, SurfaceChannelOperationOwner,
     SurfaceChannelStructure,

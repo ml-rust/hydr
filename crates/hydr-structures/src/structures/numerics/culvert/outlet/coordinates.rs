@@ -93,7 +93,30 @@ where
 }
 
 /// Flow area in square metres of a coordinate enclosure `v` below the crown.
+///
+/// The area rises with `v`: `dA/dphi = D^2 sin^2(phi) / 2` for a circle and `B D` for a box.
+/// So the area at each end of `v` bounds it. One evaluation over all of `v` would count `phi`
+/// twice in `phi - sin(phi) cos(phi)`, and at a small angle that enclosure reaches below zero.
 pub(crate) fn area<R>(
+    a: &mut Arithmetic<'_, R>,
+    circular: &Tensor<R>,
+    beta: &Bounds<R>,
+    rise: &Tensor<R>,
+    v: &Interval<R>,
+) -> ArithmeticResult<Interval<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    let low = a.point(v.lower())?;
+    let high = a.point(v.upper())?;
+    let at_low = point_area(a, circular, beta, rise, &low)?;
+    let at_high = point_area(a, circular, beta, rise, &high)?;
+    a.bounds(at_low.lower(), at_high.upper())
+}
+
+/// Flow area in square metres at a coordinate `v`.
+fn point_area<R>(
     a: &mut Arithmetic<'_, R>,
     circular: &Tensor<R>,
     beta: &Bounds<R>,
@@ -117,6 +140,42 @@ mod tests {
     use crate::structures::StructureError;
     use numr::runtime::cpu::{CpuDevice, CpuRuntime};
     use solvr::common::arithmetic::with_interval_arithmetic;
+
+    /// Frozen criteria, fixed before the first run: the area of a circle coordinate enclosure
+    /// `[phi, phi + 4e-3 phi]` at small angles stays positive and holds the exact areas of both
+    /// ends, `D^2 (phi - sin(phi) cos(phi)) / 4`.
+    #[test]
+    fn small_angle_area_enclosures_stay_positive() -> Result<(), StructureError> {
+        let device = CpuDevice::new();
+        let client = CpuRuntime::default_client(&device);
+        let tensor =
+            |values: &[f64]| Tensor::<CpuRuntime>::from_slice(values, &[values.len()], &device);
+        let angles = [2e-2, 6.4e-3, 2e-3, 6.4e-4];
+        let wide: Vec<f64> = angles.iter().map(|phi| phi * (1.0 + 4e-3)).collect();
+        let circular = tensor(&[1.0; 4])?;
+        let rise = tensor(&[0.6; 4])?;
+        let beta = [tensor(&[1.0; 4])?, tensor(&[1.0; 4])?];
+        let (low, high) = (tensor(&angles)?, tensor(&wide)?);
+        let [lower, upper] = with_interval_arithmetic(&client, DType::F64, "small area", |a| {
+            let v = a.bounds(&low, &high)?;
+            let square = area(a, &circular, &beta, &rise, &v)?;
+            Ok([
+                square.lower().try_to_vec::<f64>()?,
+                square.upper().try_to_vec::<f64>()?,
+            ])
+        })?;
+        // The series of `phi - sin(2 phi) / 2` avoids the cancellation of the closed form.
+        let exact = |phi: f64| {
+            let square = phi * phi;
+            0.09 * phi * square * (2.0 / 3.0 - square * (2.0 / 15.0 - square * 4.0 / 315.0))
+        };
+        for (row, (&phi, &end)) in angles.iter().zip(&wide).enumerate() {
+            assert!(lower[row] > 0.0, "row={row}: lower={}", lower[row]);
+            assert!(lower[row] <= exact(phi) * (1.0 + 1e-9), "row={row}");
+            assert!(exact(end) * (1.0 - 1e-9) <= upper[row], "row={row}");
+        }
+        Ok(())
+    }
 
     #[test]
     fn coordinates_round_trip_and_areas_match_closed_forms() -> Result<(), StructureError> {

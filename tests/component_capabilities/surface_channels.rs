@@ -244,6 +244,7 @@ fn surface_channels_nest_and_attach_declared_components() -> Result {
             ComponentId::GateActuator => hydr::structures::gate_actuator_capabilities(),
             ComponentId::ControlledGate => hydr::structures::controlled_gate_capabilities(),
             ComponentId::ControlledPump => hydr::structures::controlled_pump_capabilities(),
+            ComponentId::Culvert => hydr::structures::culvert_capabilities(),
             other => return Err(format!("surface/channel: no case for {other:?}").into()),
         };
         assert!(child.attachable_to.contains(&ComponentId::SurfaceChannels));

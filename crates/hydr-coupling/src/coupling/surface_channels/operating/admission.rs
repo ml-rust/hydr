@@ -12,7 +12,7 @@ use super::{
 use crate::coupling::surface_channels::context::Context;
 use crate::coupling::surface_channels::structures::SurfaceChannelOperationOwner;
 use crate::coupling::surface_channels::{SurfaceChannelDefinition, SurfaceChannelError};
-use crate::structures::{OperatingSourceBinding, StructureBatch, StructureElement};
+use crate::structures::{CulvertClient, OperatingSourceBinding, StructureBatch, StructureElement};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, ReduceOps, ScalarOps,
@@ -90,7 +90,8 @@ where
         + TwoSumOps<R>
         + TypeConversionOps<R>
         + UnaryOps<R>
-        + LinearInterp1dDiagnostics<R>,
+        + LinearInterp1dDiagnostics<R>
+        + CulvertClient<R>,
 {
     if declared.gates.is_none() && declared.pumps.is_none() && declared.trajectories.is_empty() {
         return Err(rejected(
@@ -157,7 +158,7 @@ where
         &declared.signals,
     )?;
     let client = context.client.clone();
-    let structures = StructureBatch::<R>::new(client, expected)
+    let structures = StructureBatch::<R>::with_culverts(client, expected)
         .map_err(|error| rejected(format!("operating structures: {error}")))?;
     let manual: Vec<String> = definition
         .structures

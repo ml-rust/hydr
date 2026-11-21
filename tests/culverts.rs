@@ -25,6 +25,11 @@ mod outlet_rows;
 #[path = "culverts/published_rows.rs"]
 mod published_rows;
 
+// The coordinator cases read every value.
+#[allow(dead_code)]
+#[path = "culverts/drain_rows.rs"]
+mod drain_rows;
+
 use coefficient_rows::{CODES, COEFFICIENT_SHA256, Shape, VALUE_MISMATCHES};
 use inlet_rows::{ANCHORS, BARRELS, INLET_SHA256, RELATIVE_TOLERANCE, ROWS, Regime, SLOPES};
 use outlet_rows::{FULL_ROWS, OUTLET_SHA256, Outlet, OutletRow, PROFILE_ROWS};
@@ -32,7 +37,11 @@ use published_rows::{Basis, PUBLISHED_ROWS, PUBLISHED_SHA256};
 use swmm_rows::{Branch, SWMM_ROWS, SWMM_SHA256, SwmmClass};
 
 /// Source JSON hashes the fixtures were transcribed from.
-const SOURCES: [(&str, &str); 5] = [
+const SOURCES: [(&str, &str); 6] = [
+    (
+        drain_rows::DRAIN_SHA256,
+        "56472c6ca558e41319f6fa867c04e82f70718e4d5747505fde7a9f90688cb968",
+    ),
     (
         COEFFICIENT_SHA256,
         "70581710e64cdb92a67094908c8dd6aa168a9f1fb7db1ef2ccc4ee557c70caf8",

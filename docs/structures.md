@@ -874,6 +874,8 @@ Zero and adverse slopes have no normal depth. Their profiles rise to the crown. 
 
 Solvr certified Simpson integrates the profile in a smooth coordinate: the half angle `phi` of a circle and `y/D` of a box. Order-4 Taylor jets bound the fourth derivative on each panel. The lanes are graded toward both ends of the profile. Solvr certified bisection then finds the depth where the profile covers the barrel.
 
+The flow area of an inlet depth enclosure comes from the area at each end of the enclosure, since the area rises with depth. At a small depth this keeps the area positive, so a tiny discharge still resolves.
+
 Near a circle's conveyance peak capacity, `S - Sf` nearly vanishes at the peak depth `0.9381812 D`. `Sf` falls with depth up to that peak and rises past it. So each jet takes its lower bound of `|S - Sf|` from the panel ends and, where the panel may hold the peak, from `Sf` at the peak. A profile node whose margin still lies within rounding of zero ends the certified distances. A profile that has not covered the barrel by then holds a hull, as the limits below state.
 
 ### Read a jump
@@ -1057,7 +1059,8 @@ A [CUDA check](../tests/runtime_backends/culvert_laws.rs) compares every layout 
 ### Know the culvert limits
 
 - The law holds no water. Barrel storage is not represented, and proposals keep no state.
-- No coordinator holds a culvert law. The surface/channel coordinator and coupled level pools reject it.
+- The [surface/channel coordinator](surface-channels.md#attach-a-culvert) and [coupled level pools](coupled-level-pools.md#attach-a-culvert) hold culverts. Each requires the inverts at or above the attachment beds.
+- A shallow profile whose depth enclosure gives no certified positive area at a small angle takes the sensitivity cap.
 - Every flowing lane runs one outlet march. A lane the inlet does not certainly govern adds one outlet march per bisection round. An outlet-controlled lane that is not a drowned full barrel adds one coarse march for its head sensitivity.
 - No blockage, sediment, or debris is represented.
 

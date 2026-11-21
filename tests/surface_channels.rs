@@ -7,10 +7,26 @@ mod analytic;
 #[allow(dead_code)]
 #[path = "channel_pools/reference.rs"]
 mod channel_pool_reference;
+#[path = "surface_channels/culverts_drain.rs"]
+mod culverts_drain;
+#[allow(dead_code)]
+#[path = "surface_channels/culverts_fixture.rs"]
+mod culverts_fixture;
+#[path = "surface_channels/culverts_invert.rs"]
+mod culverts_invert;
+#[path = "surface_channels/culverts_reversal.rs"]
+mod culverts_reversal;
+#[path = "surface_channels/culverts_roadway.rs"]
+mod culverts_roadway;
+#[path = "surface_channels/culverts_sweep.rs"]
+mod culverts_sweep;
 #[path = "surface_channels/definition.rs"]
 mod definition;
 #[path = "surface_channels/donors.rs"]
 mod donors;
+#[allow(dead_code)]
+#[path = "culverts/drain_rows.rs"]
+mod drain_rows;
 #[path = "surface_channels/fixture.rs"]
 mod fixture;
 #[path = "surface_channels/frozen.rs"]

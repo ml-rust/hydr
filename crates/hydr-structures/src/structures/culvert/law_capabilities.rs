@@ -63,7 +63,7 @@ static CULVERT: ComponentCapabilities = ComponentCapabilities {
     sources: &[],
     options: &[],
     nested: &[ComponentId::CulvertInlet, ComponentId::CulvertOutlet],
-    attachable_to: &[],
+    attachable_to: &[ComponentId::SurfaceChannels, ComponentId::CoupledLevelPools],
     unsupported: &[
         unsupported(
             "invalid-culvert-definition",
@@ -89,11 +89,6 @@ static CULVERT: ComponentCapabilities = ComponentCapabilities {
             "buried-dry-end",
             UnsupportedReason::RejectedByAdmission,
             "A known dry end whose bed lies above its culvert invert rejects.",
-        ),
-        unsupported(
-            "culvert-coordinators",
-            UnsupportedReason::NotAttached,
-            "No coordinator holds a culvert law. The surface/channel coordinator and coupled level pools reject it.",
         ),
         unsupported(
             "culvert-blockage",

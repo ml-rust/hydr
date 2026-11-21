@@ -32,6 +32,7 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
     arithmetic: &[
         ArithmeticRequirement::F64Ieee754Basic,
         ArithmeticRequirement::NearestEvenGradualUnderflow,
+        ArithmeticRequirement::RoundToNearestSqrt,
         ArithmeticRequirement::FusedMulAdd,
         ArithmeticRequirement::CorrectlyRoundedElementary,
     ],
@@ -61,6 +62,7 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
                 BoundaryKind::PumpStoppedIsolated,
                 BoundaryKind::PumpRunning,
                 BoundaryKind::GateFixedOpening,
+                BoundaryKind::Culvert,
             ],
         },
         Endpoint {
@@ -83,7 +85,7 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
     ],
     sources: &[SourceKind::LocalPoolRain, SourceKind::LocalPoolLoss],
     options: &[],
-    nested: &[ComponentId::LevelPool],
+    nested: &[ComponentId::LevelPool, ComponentId::Culvert],
     attachable_to: &[ComponentId::RunoffPools],
     unsupported: &[
         unsupported(
@@ -96,12 +98,6 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
             "mismatched-structure-operation",
             UnsupportedReason::RejectedByAdmission,
             "A gate without an opening, or a passive law without a Passive operation, rejects.",
-            COUPLED_DOC,
-        ),
-        unsupported(
-            "culvert-law",
-            UnsupportedReason::RejectedByAdmission,
-            "A culvert law rejects. These pools hold no culvert law.",
             COUPLED_DOC,
         ),
         unsupported(
@@ -155,7 +151,7 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
         },
         Limit {
             id: "structure-hydraulic-support",
-            summary: "Running pumps need a wet donor and a wet receiver or a free outlet at or above a dry receiver's bed. Submerged orifices need water above the crown at both endpoints.",
+            summary: "Running pumps need a wet donor and a wet receiver or a free outlet at or above a dry receiver's bed. Submerged orifices need water above the crown at both endpoints. A culvert donor at or below its invert gives nothing, and a dry receiver is a free outfall at its invert.",
             doc: COUPLED_DOC,
         },
         Limit {

@@ -5,7 +5,7 @@ use crate::coupling::surface_channels::SurfaceChannelError;
 use crate::coupling::surface_channels::structures::SurfaceChannelNode;
 use crate::structures::{
     ControlDecisionSchedule, ControlInitialState, ControlledGateBatch, ControlledPumpBatch,
-    GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule,
+    CulvertClient, GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule,
     GateTrajectoryAssignment, OperatingControlDefinition, PumpResponseDefinition,
     SampledControlTiming, StructureBatch, StructureElement,
 };
@@ -120,10 +120,11 @@ where
         + ShapeOps<R>
         + TwoSumOps<R>
         + TypeConversionOps<R>
-        + UnaryOps<R>,
+        + UnaryOps<R>
+        + CulvertClient<R>,
 {
     let structures =
-        StructureBatch::<R>::new(client, elements).map_err(child_error("structures"))?;
+        StructureBatch::<R>::with_culverts(client, elements).map_err(child_error("structures"))?;
     let controls = |child: &'static str, declared: &SurfaceChannelControls| {
         structures
             .with_operating_controls(

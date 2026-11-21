@@ -40,6 +40,10 @@ pub enum Regime {
     PumpShutoff,
     /// Stopped pump that isolates its two sides, with no flow.
     PumpIsolated,
+    /// Culvert flow whose inlet-control headwater governs.
+    CulvertInletControl,
+    /// Culvert flow whose outlet-control headwater governs.
+    CulvertOutletControl,
 }
 
 impl Regime {
@@ -63,6 +67,8 @@ impl Regime {
             Self::PumpCurve => "pump-curve",
             Self::PumpShutoff => "pump-shutoff",
             Self::PumpIsolated => "pump-isolated",
+            Self::CulvertInletControl => "culvert-inlet-control",
+            Self::CulvertOutletControl => "culvert-outlet-control",
         }
     }
 }
@@ -122,6 +128,8 @@ mod tests {
             Regime::PumpCurve,
             Regime::PumpShutoff,
             Regime::PumpIsolated,
+            Regime::CulvertInletControl,
+            Regime::CulvertOutletControl,
         ];
         assert_ids(&all.map(|r| r.id()));
     }
@@ -137,6 +145,8 @@ mod tests {
             (Regime::PumpCurve, "pump-curve"),
             (Regime::PumpShutoff, "pump-shutoff"),
             (Regime::PumpIsolated, "pump-isolated"),
+            (Regime::CulvertInletControl, "culvert-inlet-control"),
+            (Regime::CulvertOutletControl, "culvert-outlet-control"),
         ] {
             assert_eq!(regime.id(), id);
         }

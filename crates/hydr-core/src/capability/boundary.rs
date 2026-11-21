@@ -80,6 +80,8 @@ pub enum BoundaryKind {
     PrescribedInflowVolume,
     /// Runoff outlet that receives no feedback from downstream.
     RunoffOutletNoFeedback,
+    /// HDS-5 culvert under inlet or outlet control.
+    Culvert,
 }
 
 impl BoundaryKind {
@@ -105,6 +107,7 @@ impl BoundaryKind {
             Self::PrescribedInflowRate => "prescribed-inflow-rate",
             Self::PrescribedInflowVolume => "prescribed-inflow-volume",
             Self::RunoffOutletNoFeedback => "runoff-outlet-no-feedback",
+            Self::Culvert => "culvert",
         }
     }
 }
@@ -167,6 +170,7 @@ mod tests {
             BoundaryKind::PrescribedInflowRate,
             BoundaryKind::PrescribedInflowVolume,
             BoundaryKind::RunoffOutletNoFeedback,
+            BoundaryKind::Culvert,
         ];
         assert_ids(&all.map(|b| b.id()));
     }

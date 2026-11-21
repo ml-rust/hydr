@@ -316,10 +316,7 @@ fn rejection_cases(
             Variant::Numerical,
             "outgoing volume exceeds initial donor storage without incoming credit",
         )],
-        (
-            Kind::Coupled,
-            "implicit-pump-operation" | "mismatched-structure-operation" | "culvert-law",
-        ) => {
+        (Kind::Coupled, "implicit-pump-operation" | "mismatched-structure-operation") => {
             let mut cases = Vec::new();
             for law in laws()? {
                 for operating_point in operating_points() {

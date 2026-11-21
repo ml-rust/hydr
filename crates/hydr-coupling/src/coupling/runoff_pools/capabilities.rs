@@ -32,6 +32,7 @@ static RUNOFF_POOLS: ComponentCapabilities = ComponentCapabilities {
     arithmetic: &[
         ArithmeticRequirement::F64Ieee754Basic,
         ArithmeticRequirement::NearestEvenGradualUnderflow,
+        ArithmeticRequirement::RoundToNearestSqrt,
         ArithmeticRequirement::FusedMulAdd,
         ArithmeticRequirement::CorrectlyRoundedElementary,
     ],

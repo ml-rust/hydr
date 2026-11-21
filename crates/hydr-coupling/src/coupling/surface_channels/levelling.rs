@@ -235,7 +235,7 @@ where
     /// Plan area model of one link endpoint at pre-exchange link `heads`.
     ///
     /// A pool takes its smallest segment area over every stage the link's bounds cover: both
-    /// heads, both cutoffs, and a pump's suction stop.
+    /// heads, both cutoffs, a pump's suction stop, and a culvert's invert stops.
     fn side_area(&self, end: NodeEnd, heads: [f64; 2], law: &LinkLaw) -> Option<SideArea<'_>> {
         Some(match end {
             NodeEnd::Surface(lane) => SideArea::Fixed(*self.lane_area_m2.get(lane)?),
@@ -248,7 +248,10 @@ where
                     .min(law.cut[0])
                     .min(law.cut[1])
                     .min(stop);
-                let high = heads[0].max(heads[1]).max(law.cut[0]).max(law.cut[1]);
+                let mut high = heads[0].max(heads[1]).max(law.cut[0]).max(law.cut[1]);
+                if let Some(culvert) = law.culvert() {
+                    high = high.max(culvert.stop_m[0]).max(culvert.stop_m[1]);
+                }
                 SideArea::Fixed(plan.smallest(low, high))
             }
         })

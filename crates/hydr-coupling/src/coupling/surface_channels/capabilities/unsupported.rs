@@ -188,12 +188,6 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
         "docs/runoff-pools.md",
     ),
     unsupported(
-        "culvert-inlet-outlet-control",
-        UnsupportedReason::OutsideModel,
-        "No culvert inlet or outlet control; an orifice approximates a culvert and does not satisfy culvert support.",
-        SURFACE_CHANNELS_DOC,
-    ),
-    unsupported(
         "blockage-probability",
         UnsupportedReason::OutsideModel,
         "No blockage probability or inferred blockage; a fixed scenario is caller geometry with evidence.",

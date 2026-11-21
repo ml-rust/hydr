@@ -4,6 +4,7 @@ use super::{
     trial::StoredStep,
 };
 use crate::storage::{LevelPoolBatch, LevelPoolSourcePolicy};
+use crate::structures::CulvertClient;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, IndexingOps,
@@ -54,11 +55,17 @@ where
         + Interp1dAlgorithms<R>,
 {
     /// Construct declared physical pools, static operations, and accepted storage.
+    ///
+    /// A culvert law needs certified roots and quadrature on `client`, which
+    /// [`CulvertClient`] names.
     pub fn new(
         client: R::Client,
         setup: CoupledLevelPoolSetup,
         initial: CoupledLevelPoolInitialState,
-    ) -> Result<Self, CoupledLevelPoolError> {
+    ) -> Result<Self, CoupledLevelPoolError>
+    where
+        R::Client: CulvertClient<R>,
+    {
         let pools = match setup.source_policies.clone() {
             None => LevelPoolBatch::<R>::new(
                 client.clone(),

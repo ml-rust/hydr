@@ -175,7 +175,7 @@ fn a_reversal_flag_replays_from_the_start_frame_counters() -> Result {
 fn earlier_package_identities_reject() -> Result {
     assert_eq!(
         SURFACE_CHANNEL_SNAPSHOT_SCHEMA,
-        "hydr-surface-channel-checkpoint-6"
+        "hydr-surface-channel-checkpoint-7"
     );
     assert_eq!(
         SURFACE_CHANNEL_CONTRACT_VERSION,
@@ -186,6 +186,7 @@ fn earlier_package_identities_reject() -> Result {
         "hydr-surface-channel-checkpoint-3",
         "hydr-surface-channel-checkpoint-4",
         "hydr-surface-channel-checkpoint-5",
+        "hydr-surface-channel-checkpoint-6",
     ] {
         let mut earlier = data.clone();
         earlier.schema = found.into();

@@ -38,6 +38,9 @@ use numr::tensor::Tensor;
 /// Bisection rounds that bound one response step. Each round halves every open bracket.
 const ROUND_LIMIT: usize = 64;
 
+/// Head sensitivity a culvert lane reports without a certified bound, `2^256` per metre.
+const SENSITIVITY_CAP: f64 = f64::from_bits(0x4ff0_0000_0000_0000);
+
 /// Stage response of every link's two sides to exchange, each `[L]`.
 pub(super) struct Response<R: Runtime<DType = DType>> {
     /// Stage change per cubic metre at the surface lane and the channel slot.
@@ -135,8 +138,11 @@ where
         // A factor another link's cap imposes through a shared node scales the law volume, as in
         // the map itself. Without it the step proposes the unscaled volume and never meets it.
         let imposed = &evaluation.exchange.imposed;
-        // Kept weir volume of every link when its own volume moves from `accepted` to `volume`.
-        let weir = |volume: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
+        // Kept law volume of every link, and the law, when its own volume moves from `accepted`
+        // to `volume`. Links whose ends are `wet` carry water.
+        let kept = |volume: &Tensor<R>,
+                    [wet_a, wet_b]: [&Tensor<R>; 2]|
+         -> Result<(Tensor<R>, TensorStructureResult<R>), SurfaceChannelError> {
             let shift = c.sub(volume, &accepted)?;
             let surface = c.sub(&end_a, &c.mul(&shift, &response.shared[0])?)?;
             let channel = c.add(&end_b, &c.mul(&shift, &response.shared[1])?)?;
@@ -146,21 +152,36 @@ where
                     &c.midpoint(&start_a, &surface)?,
                     &c.midpoint(&start_b, &channel)?,
                 ],
-                [&wet_a, &wet_b],
+                [wet_a, wet_b],
                 (&levelling.level, false),
             )?;
             let weir = structures.held_volumes(&law, attempt.dt).map_err(|error| {
                 SurfaceChannelError::Numerical(format!("link volumes: {error}"))
             })?;
             let weir = c.mul(&weir, imposed)?;
-            Ok(c.minimum(&c.maximum(&weir, &backward)?, forward)?)
+            Ok((c.minimum(&c.maximum(&weir, &backward)?, forward)?, law))
+        };
+        let one = self.scalar(1.0)?;
+        // Culvert links take the sensitivity step below. Their ends count as dry in every
+        // bisection round, so no round evaluates a culvert law.
+        let (modelled, round_wet) = match &self.culverts {
+            Some(culverts) => {
+                let open = c.sub(&one, &culverts.mask)?;
+                (
+                    c.mul(&response.modelled, &open)?,
+                    [c.mul(&wet_a, &open)?, c.mul(&wet_b, &open)?],
+                )
+            }
+            None => (response.modelled.clone(), [wet_a.clone(), wet_b.clone()]),
+        };
+        let weir = |volume: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
+            Ok(kept(volume, [&round_wet[0], &round_wet[1]])?.0)
         };
         let residual = |volume: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
             Ok(c.sub(volume, &weir(volume)?)?)
         };
-        let one = self.scalar(1.0)?;
-        let modelled = &response.modelled;
-        let proposal = weir(&accepted)?;
+        let modelled = &modelled;
+        let (proposal, proposed_law) = kept(&accepted, [&wet_a, &wet_b])?;
         let rising = c.le(&accepted, &proposal)?;
         let mut lower = c.where_cond(modelled, &c.minimum(&accepted, &proposal)?, &accepted)?;
         let mut upper = c.where_cond(modelled, &c.maximum(&accepted, &proposal)?, &accepted)?;
@@ -194,7 +215,16 @@ where
             residual_lower = c.where_cond(&up, &value, &residual_lower)?;
         }
         let nearer = c.le(&c.abs(&residual_lower)?, &c.abs(&residual_upper)?)?;
-        let volume = c.where_cond(&nearer, &lower, &upper)?;
+        let mut volume = c.where_cond(&nearer, &lower, &upper)?;
+        if let Some(culverts) = &self.culverts {
+            let stepped = self.sensitivity_step(
+                &accepted,
+                &proposal,
+                &proposed_law.head_sensitivity,
+                response,
+            )?;
+            volume = c.where_cond(&culverts.mask, &stepped, &volume)?;
+        }
         let shift = c.sub(&volume, &accepted)?;
         let moved = c.cat(
             &[
@@ -213,6 +243,36 @@ where
             Some(ends) => c.cat(&[&stages, &volume, ends, &flags], 0)?,
             None => c.cat(&[&stages, &volume, &flags], 0)?,
         })
+    }
+
+    /// Response volume of every link from its law's head sensitivity, `[L]`. Culvert links take
+    /// it in place of the bisection.
+    ///
+    /// The kept volume falls as `V` rises. Its slope is at most `k = s |P| (r_a + r_b) / 2`:
+    /// - `s` bounds `|dQ/dH| / |Q|` at the proposal heads.
+    /// - `P` is the kept proposal at `V_g`, the `accepted` volume.
+    /// - The midpoint head gap falls by `(r_a + r_b) / 2` per cubic metre.
+    ///
+    /// The step `V = V_g + (P - V_g) / (1 + k)` solves the linear model with slope `k`. A bound
+    /// above the true slope shortens the step, so `V` stays between `V_g` and `P`. A link without
+    /// plan area on both sides keeps `V_g`, the plain update.
+    fn sensitivity_step(
+        &self,
+        accepted: &Tensor<R>,
+        proposal: &Tensor<R>,
+        sensitivity: &Tensor<R>,
+        response: &Response<R>,
+    ) -> Result<Tensor<R>, SurfaceChannelError> {
+        let c = &self.client;
+        let gap = c.mul_scalar(&c.add(&response.shared[0], &response.shared[1])?, 0.5)?;
+        let slope = c.mul(&c.mul(sensitivity, &c.abs(proposal)?)?, &gap)?;
+        let step = c.div(&c.sub(proposal, accepted)?, &c.add_scalar(&slope, 1.0)?)?;
+        let stepped = c.add(accepted, &step)?;
+        let stepped = c.minimum(
+            &c.maximum(&stepped, &c.minimum(accepted, proposal)?)?,
+            &c.maximum(accepted, proposal)?,
+        )?;
+        Ok(c.where_cond(&response.modelled, &stepped, accepted)?)
     }
 
     /// Change one rounding of the midpoint heads can cause in each link volume and end stage.
@@ -235,7 +295,13 @@ where
         levelling: &Levelling<R>,
     ) -> Result<[Tensor<R>; 2], SurfaceChannelError> {
         let c = &self.client;
-        let slope = &law.head_sensitivity;
+        let mut slope = law.head_sensitivity.clone();
+        if self.culverts.is_some() {
+            // A culvert lane at the cap holds no known sensitivity, so it adds no allowance.
+            let capped = c.ge(&slope, &self.scalar(SENSITIVITY_CAP)?)?;
+            slope = c.where_cond(&capped, &self.scalar(0.0)?, &slope)?;
+        }
+        let slope = &slope;
         let gather = |index: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
             Ok(c.abs(&c.index_select(midpoint, 0, index)?)?)
         };

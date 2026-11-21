@@ -14,9 +14,7 @@
 //! The CPU run must also cross a decision of each relay and the arrival of the actuated gate,
 //! and the orifice, the pump, the gate and the pool end must each carry water.
 
-#[allow(dead_code, unused_imports)]
-#[path = "../surface_channels/pools_fixture.rs"]
-pub(crate) mod pools_fixture;
+pub(crate) use crate::pools_fixture;
 
 use super::{Result, runtime};
 use hydr::channel::{ChannelBoundary, ChannelEnd, ChannelLateralInput};

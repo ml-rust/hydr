@@ -3,6 +3,7 @@ use super::topology::TransferTree;
 use super::{CoupledLevelPoolError, CoupledLevelPoolSetup};
 use crate::coupling::links::cutoffs::{endpoint_cutoffs, pool_attachment_admitted};
 use crate::coupling::links::pool_heads::PoolAttachments;
+use crate::structures::{CulvertClient, StructureLaw};
 use hydr_structures::internal::CouplingStructures;
 use numr::dtype::DType;
 use numr::ops::{
@@ -45,10 +46,14 @@ where
         + UnaryOps<R>
         + numr::ops::TypeConversionOps<R>,
 {
+    /// Checks `setup` and builds every law, culverts included, once on `client`.
     pub fn new(
         client: R::Client,
         setup: CoupledLevelPoolSetup,
-    ) -> Result<Self, CoupledLevelPoolError> {
+    ) -> Result<Self, CoupledLevelPoolError>
+    where
+        R::Client: CulvertClient<R>,
+    {
         check_config(&setup)?;
         let n = setup.pools.len();
         let e = setup.structures.len();
@@ -151,6 +156,15 @@ where
                     "a structure must connect distinct physical pools",
                 ));
             }
+            if let StructureLaw::Culvert(p) = &element.law {
+                let alignment = p.alignment();
+                if alignment.invert_a_m < beds[0] || alignment.invert_b_m < beds[1] {
+                    return Err(CoupledLevelPoolError::input(format!(
+                        "structure={}: culvert inverts A={} and B={} must lie at or above their attachment beds A={} and B={}; raise each invert to its bed",
+                        element.id, alignment.invert_a_m, alignment.invert_b_m, beds[0], beds[1]
+                    )));
+                }
+            }
             let cuts = endpoint_cutoffs(element, beds);
             a.push(index_value(positions[0])?);
             b.push(index_value(positions[1])?);
@@ -169,7 +183,7 @@ where
             .map(|s| s.id.clone())
             .collect::<Vec<_>>();
         let tree = TransferTree::new(&client, n, &endpoints, &structure_ids)?;
-        let structures = CouplingStructures::new(
+        let structures = CouplingStructures::with_culverts(
             client.clone(),
             setup.structures.clone(),
             setup.operations.clone(),

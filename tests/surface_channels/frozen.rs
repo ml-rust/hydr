@@ -23,6 +23,10 @@
 //! with channel schema `3` and channel contract `4`. The surveyed case moves accepted bits. It
 //! also runs with `Midpoint` probes and maps that text back to the format before root probes,
 //! which reproduces the digest of contract `7`. The rectangular case moves only its identities.
+//!
+//! Culvert structure laws bump the schema to `7`. The contract stays `8`. Each case maps its
+//! text back to the format before culverts and reproduces the schema `6` digest, so no accepted
+//! bit moves.
 
 use crate::fixture::Result;
 use crate::restoration::{network, state};
@@ -112,12 +116,33 @@ fn before_root_probe(text: &str) -> String {
     .replace(", probe: Midpoint", "")
 }
 
-/// Fails unless `batch` matches the frozen `expected` digest.
-fn check_current(batch: &Batch, expected: u64) -> Result {
-    let actual = digest(&state(batch)?);
+/// The text in the format before culvert structure laws.
+///
+/// That format names schema `6` and the same contract `8`. Its structure elements hold no
+/// culvert law. A case without culverts changes no other field, so this text reproduces the
+/// digest of that format bit for bit.
+fn before_culverts(text: &str) -> String {
+    text.replace(
+        "hydr-surface-channel-checkpoint-7",
+        "hydr-surface-channel-checkpoint-6",
+    )
+}
+
+/// Fails unless `batch` matches the frozen `expected` digest, and its text in the format before
+/// culverts matches the `uncoupled` digest of schema `6`.
+fn check_current(batch: &Batch, expected: u64, uncoupled: u64) -> Result {
+    let text = state(batch)?;
+    let actual = digest(&text);
     if actual != expected {
         return Err(format!(
             "state digest={actual:#018x}, frozen={expected:#018x}: an accepted bit changed"
+        )
+        .into());
+    }
+    let before = digest(&before_culverts(&text));
+    if before != uncoupled {
+        return Err(format!(
+            "digest before culverts={before:#018x}, frozen={uncoupled:#018x}: a field other than the schema identity changed"
         )
         .into());
     }
@@ -128,7 +153,7 @@ fn check_current(batch: &Batch, expected: u64) -> Result {
 /// digest, its text in the format before pools matches the `current` digest of that format, and
 /// its text in the format before ports matches the `earlier` digest of that format.
 fn check_earlier(batch: &Batch, probed: u64, current: u64, earlier: u64) -> Result {
-    let text = before_root_probe(&state(batch)?);
+    let text = before_root_probe(&before_culverts(&state(batch)?));
     let unprobed = digest(&text);
     if unprobed != probed {
         return Err(format!(
@@ -166,6 +191,8 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
     // duration.
     //
     // The digest under contract `5` was 0x6ac9_8aad_15d3_f3a7. Only the identities differ.
+    //
+    // The digest under schema `6` was 0x334d_f9db_6dcb_719e. Only the schema identity differs.
     let mut batch = network().build()?;
     for target in [0.25, 0.5, 0.75, 1.0] {
         batch = step(&batch, target)?;
@@ -175,7 +202,7 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
             assert_eq!(link.level_factor, 1.0, "{link:?}");
         }
     }
-    check_current(&batch, 0x334d_f9db_6dcb_719e)?;
+    check_current(&batch, 0x2df3_81d7_5702_6f8d, 0x334d_f9db_6dcb_719e)?;
     // The network holds no surveyed reach, so only the identities move.
     check_earlier(
         &batch,
@@ -192,8 +219,11 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
     // agree with the earlier ones within the head and transfer budgets.
     //
     // The digest under contract `5` was 0x0511_a7a3_d27d_263f. Only the identities differ.
+    //
+    // The digest under schema `6` was 0xe58a_2aad_5be8_651f. Only the schema identity differs.
     check_current(
         &flood(CertifiedRootProbe::SlackSecant)?,
+        0x7dcb_d4ea_d342_f82a,
         0xe58a_2aad_5be8_651f,
     )?;
     // `Midpoint` probes reproduce the accepted bits before secant probes.

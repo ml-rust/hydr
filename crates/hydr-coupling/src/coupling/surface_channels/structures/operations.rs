@@ -3,13 +3,12 @@
 
 use super::LinkLaw;
 use crate::coupling::surface_channels::SurfaceChannelError;
-use crate::structures::{StructureElement, StructureOperatingPoint, StructureOperation};
+use crate::structures::{
+    CulvertClient, StructureElement, StructureOperatingPoint, StructureOperation,
+};
 use hydr_structures::internal::CouplingStructures;
 use numr::dtype::DType;
-use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, IndexingOps, ReduceOps, ScalarOps,
-    TypeConversionOps, UnaryOps,
-};
+use numr::ops::{BinaryOps, ConditionalOps, IndexingOps, ReduceOps, TypeConversionOps, UnaryOps};
 use numr::runtime::Runtime;
 
 /// Link laws, their classes, and their operations, every list in link table order.
@@ -27,6 +26,8 @@ impl<R: Runtime<DType = DType>> LinkOperations<R> {
     ///
     /// `allowance` is the head allowance `(absolute, relative)` of the coordinator.
     ///
+    /// Culvert laws build their certified rows here once.
+    ///
     /// # Errors
     /// Returns [`SurfaceChannelError::Input`] for a law the structures crate rejects.
     pub fn declared(
@@ -37,14 +38,7 @@ impl<R: Runtime<DType = DType>> LinkOperations<R> {
         allowance: (f64, f64),
     ) -> Result<Self, SurfaceChannelError>
     where
-        R::Client: BinaryOps<R>
-            + CompareOps<R>
-            + ConditionalOps<R>
-            + CorrectlyRoundedOps<R>
-            + ReduceOps<R>
-            + ScalarOps<R>
-            + TypeConversionOps<R>
-            + UnaryOps<R>,
+        R::Client: CulvertClient<R>,
     {
         let laws = elements
             .iter()
@@ -64,9 +58,10 @@ impl<R: Runtime<DType = DType>> LinkOperations<R> {
                 })
                 .collect();
             Some(
-                CouplingStructures::new(client.clone(), elements.to_vec(), operations).map_err(
-                    |error| SurfaceChannelError::input(format!("link structures: {error}")),
-                )?,
+                CouplingStructures::with_culverts(client.clone(), elements.to_vec(), operations)
+                    .map_err(|error| {
+                        SurfaceChannelError::input(format!("link structures: {error}"))
+                    })?,
             )
         };
         Ok(Self {

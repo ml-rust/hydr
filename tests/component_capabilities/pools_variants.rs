@@ -32,7 +32,10 @@ pub fn structure_kind(
     use StructureOperatingPoint::{GateOpening, Passive, PumpRunning, PumpStoppedIsolated};
     const MISMATCH: &str = "mismatched-structure-operation";
     match law {
-        StructureLaw::Culvert(_) => Err("culvert-law"),
+        StructureLaw::Culvert(_) => match operating_point {
+            Passive => Ok(BoundaryKind::Culvert),
+            PumpStoppedIsolated | PumpRunning { .. } | GateOpening { .. } => Err(MISMATCH),
+        },
         StructureLaw::HydrostaticRectangularGate(_) => match operating_point {
             GateOpening { .. } => Ok(BoundaryKind::GateFixedOpening),
             Passive | PumpStoppedIsolated | PumpRunning { .. } => Err(MISMATCH),
@@ -56,12 +59,13 @@ pub fn structure_kind(
 /// Message fragment of the operation rejection for `law`.
 pub fn operation_fragment(law: &StructureLaw) -> &'static str {
     match law {
-        StructureLaw::Culvert(_) => "a culvert law needs certified roots and quadrature",
         StructureLaw::HydrostaticRectangularGate(_) => {
             "gate requires an explicit identity-bound opening operation"
         }
         StructureLaw::Pump(_) => "pump requires explicit running or stopped-isolated operation",
-        StructureLaw::SubmergedOrifice(_) | StructureLaw::SuppressedRectangularWeir(_) => {
+        StructureLaw::Culvert(_)
+        | StructureLaw::SubmergedOrifice(_)
+        | StructureLaw::SuppressedRectangularWeir(_) => {
             "passive law requires an explicit Passive operation"
         }
     }

@@ -2,9 +2,9 @@
 //! and admission.
 
 use crate::surface_channel_support::pools_fixture::{
-    Batch, Case, PoolForcing, Result, channel, controlled_gate, controlled_pump, forcing, gate_law,
-    inflow_binding, inflow_input, manual, operating, orifice_law, pond, pool, pool_end, pump_law,
-    signal, step, structure, surface, trajectory, transfer, weir_law,
+    Batch, Case, PoolForcing, Result, channel, controlled_gate, controlled_pump, culvert_law,
+    forcing, gate_law, inflow_binding, inflow_input, manual, operating, orifice_law, pond, pool,
+    pool_end, pump_law, signal, step, structure, surface, trajectory, transfer, weir_law,
 };
 use crate::surface_channels_fixture::{Outcome, construction_outcome, trial_outcome};
 use crate::surface_channels_variants::{Variant, structure_regime};
@@ -91,6 +91,15 @@ fn kind_case(kind: BoundaryKind, node: SurfaceChannelNode, stage: f64) -> Result
             });
             gate(SurfaceChannelOperationOwner::Actuated)?
         }
+        // A short sloped barrel under inlet control into a free outfall.
+        BoundaryKind::Culvert => structure(
+            "s",
+            culvert_law(0.3, 2.0, [0.05, 0.0], true)?,
+            DirectionPolicy::Bidirectional,
+            manual(StructureOperatingPoint::Passive),
+            (pool("pond"), 0.0),
+            (node.clone(), 0.0),
+        ),
         BoundaryKind::PumpRunning => pump(manual(running))?,
         BoundaryKind::PumpStoppedIsolated => {
             pump(manual(StructureOperatingPoint::PumpStoppedIsolated))?
@@ -210,6 +219,12 @@ fn regime_holds(kind: BoundaryKind, regime: Regime) -> Result<bool> {
             c.structures[0].element.law = pump_law(0.1, Some(4.0))?;
             Ok(())
         }),
+        Regime::CulvertInletControl => (0.0, |_| Ok(())),
+        // A long level barrel drowned at both ends runs full under outlet control.
+        Regime::CulvertOutletControl => (0.6, |c| {
+            c.structures[0].element.law = culvert_law(0.3, 50.0, [0.0, 0.0], true)?;
+            Ok(())
+        }),
         other => return Err(format!("no regime case for {other:?}").into()),
     };
     let mut case = kind_case(kind, surface(), stage)?;
@@ -228,6 +243,7 @@ fn covered(scope: RegimeScope) -> Option<BoundaryKind> {
             | BoundaryKind::GateFixedOpening
             | BoundaryKind::PumpRunning
             | BoundaryKind::PumpStoppedIsolated
+            | BoundaryKind::Culvert
             | BoundaryKind::QuiescentReservoir),
         ) => Some(kind),
         _ => None,

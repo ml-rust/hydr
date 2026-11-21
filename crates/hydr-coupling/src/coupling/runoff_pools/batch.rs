@@ -4,6 +4,7 @@ use super::{
 };
 use crate::coupling::{CoupledLevelPoolBatch, CoupledLevelPoolInitialState};
 use crate::runoff::SubcatchmentBatch;
+use crate::structures::CulvertClient;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, IndexingOps,
@@ -56,11 +57,17 @@ where
         + BatchedBisectionAlgorithms<R>,
 {
     /// Construct both native engines from one configured client and one original epoch.
+    ///
+    /// A culvert law between the pools needs certified roots and quadrature on `client`, which
+    /// [`CulvertClient`] names.
     pub fn new(
         client: R::Client,
         setup: RunoffPoolSetup,
         initial: RunoffPoolInitialState,
-    ) -> Result<Self, RunoffPoolError> {
+    ) -> Result<Self, RunoffPoolError>
+    where
+        R::Client: CulvertClient<R>,
+    {
         let runoff = SubcatchmentBatch::<R>::new(
             client.clone(),
             setup.subcatchments.clone(),

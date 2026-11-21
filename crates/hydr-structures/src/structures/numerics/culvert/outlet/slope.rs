@@ -96,6 +96,11 @@ struct Section<R: Runtime<DType = DType>> {
     area: Interval<R>,
     froude: Term<R>,
     friction: Term<R>,
+    /// 1 where the section of the whole enclosure holds a certified positive area.
+    ///
+    /// A wide enclosure at a small angle can reach below zero area. Such a lane takes the
+    /// half-full section instead, and its bounds are unknown.
+    valid: Tensor<R>,
 }
 
 fn section<R>(
@@ -108,14 +113,22 @@ where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R>,
 {
+    let c = a.client();
     let rise = &barrel.rise;
     let v = coordinate(a, &barrel.circular, rise, depth)?;
+    let probe = shape(a, &params.circular, &params.beta, &v, 1)?;
+    let unit = jet::coefficient(a, &probe.area, 0, rise)?;
+    let valid = c.gt(unit.lower(), &barrel.zero)?;
+    let half = a.point(&barrel.half_rise)?;
+    let harmless = coordinate(a, &barrel.circular, rise, &half)?;
+    let v = choose(a, &valid, &v, &harmless)?;
     let jets = shape(a, &params.circular, &params.beta, &v, 1)?;
     let values = slopes(a, params, &jets)?;
     Ok(Section {
         area: area(a, &barrel.circular, &params.beta, rise, &v)?,
         froude: jet::coefficient(a, &values.froude, 0, rise)?,
         friction: jet::coefficient(a, &values.friction, 0, rise)?,
+        valid,
     })
 }
 
@@ -367,6 +380,8 @@ where
         &c.mul(&c.mul(free, &sub_ok)?, &c.mul(&end_ok, &sign_ok)?)?,
         &z_ok,
     )?;
+    let sections = c.mul(&c.mul(&end.valid, &start.valid)?, &low.valid)?;
+    let known = c.mul(&known, &sections)?;
     Ok(Bound { gain, tail, known })
 }
 
@@ -443,6 +458,7 @@ where
     let rate = magnitude(a, &flow.rate)?;
     let product = a.mul(&rate, &start_sub)?;
     let (crown_tail, crown_ok) = quotient(a, &product, &sigma)?;
+    let crown_ok = c.mul(&crown_ok, &start.valid)?;
 
     let pick = |mask: &Tensor<R>, on: &Tensor<R>, off: &Tensor<R>| c.where_cond(mask, on, off);
     let mut gain = pick(&free, free_bound.gain.lower(), zero)?;

@@ -18,6 +18,11 @@ use numr::tensor::Tensor;
 /// moves water at equal heads.
 const SUBMERGED_CODES: [f64; 4] = [1.0, 3.0, 11.0, 12.0];
 
+/// Structures regime codes of flowing culverts: inlet control, outlet control, and a tie.
+///
+/// A culvert counts as submerged when both sides stand above their inverts.
+const CULVERT_CODES: [f64; 3] = [13.0, 14.0, 15.0];
+
 /// Structures regime code of equal heads above the crest.
 const EQUAL_HEADS_CODE: f64 = 5.0;
 
@@ -81,7 +86,8 @@ where
     /// each `[L]`. `start` marks the accepted start stages.
     ///
     /// A side supports flow when it is wet and stands above its attachment bed. A link in a
-    /// submerged-type regime where `level` is one counts as equal heads and carries no water.
+    /// submerged-type regime where `level` is one counts as equal heads and carries no water. A
+    /// flowing culvert with both sides above their inverts is submerged-type.
     pub fn link_weir(
         &self,
         operations: &LinkOperations<R>,
@@ -104,6 +110,14 @@ where
         let mut submerged = c.eq(&law.regime, &self.scalar(SUBMERGED_CODES[0])?)?;
         for code in &SUBMERGED_CODES[1..] {
             submerged = c.maximum(&submerged, &c.eq(&law.regime, &self.scalar(*code)?)?)?;
+        }
+        if self.culverts.is_some() {
+            let mut flowing = c.eq(&law.regime, &self.scalar(CULVERT_CODES[0])?)?;
+            for code in &CULVERT_CODES[1..] {
+                flowing = c.maximum(&flowing, &c.eq(&law.regime, &self.scalar(*code)?)?)?;
+            }
+            let above = c.mul(&c.gt(surface, &self.cut[0])?, &c.gt(channel, &self.cut[1])?)?;
+            submerged = c.maximum(&submerged, &c.mul(&flowing, &above)?)?;
         }
         let level = c.mul(&submerged, level)?;
         law.regime = c.where_cond(&level, &self.scalar(EQUAL_HEADS_CODE)?, &law.regime)?;

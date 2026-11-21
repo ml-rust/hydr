@@ -25,6 +25,7 @@ const STRUCTURE: &[BoundaryKind] = &[
     BoundaryKind::PumpRunning,
     BoundaryKind::PumpStoppedIsolated,
     BoundaryKind::PumpSampledControl,
+    BoundaryKind::Culvert,
 ];
 
 /// Boundary kinds a pool admits: every structure kind and external inflows.
@@ -37,6 +38,7 @@ const POOL: &[BoundaryKind] = &[
     BoundaryKind::PumpRunning,
     BoundaryKind::PumpStoppedIsolated,
     BoundaryKind::PumpSampledControl,
+    BoundaryKind::Culvert,
     BoundaryKind::PrescribedInflowRate,
     BoundaryKind::PrescribedInflowVolume,
 ];
@@ -139,6 +141,8 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         regime(BoundaryKind::PumpRunning, Regime::PumpCurve),
         regime(BoundaryKind::PumpRunning, Regime::PumpShutoff),
         regime(BoundaryKind::PumpStoppedIsolated, Regime::PumpIsolated),
+        regime(BoundaryKind::Culvert, Regime::CulvertInletControl),
+        regime(BoundaryKind::Culvert, Regime::CulvertOutletControl),
         regime(BoundaryKind::QuiescentReservoir, Regime::WetSubcritical),
     ],
     sources: &[
@@ -164,6 +168,7 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         ComponentId::GateActuator,
         ComponentId::ControlledGate,
         ComponentId::ControlledPump,
+        ComponentId::Culvert,
     ],
     attachable_to: &[],
     unsupported: unsupported::UNSUPPORTED,
@@ -224,6 +229,16 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
             doc: SURFACE_CHANNELS_DOC,
         },
         Limit {
+            id: "culvert-invert-cap",
+            summary: "A draining culvert donor stops just above its invert within the interval; a cap, not a rejection, ends its flow.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
+            id: "culvert-sensitivity-step",
+            summary: "A culvert link's response step comes from its certified head sensitivity, without bisection over its law. A lane at the sensitivity cap takes the plain update and adds no resolution allowance.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
             id: "structure-momentum-closure",
             summary: "Structure water enters either side with zero velocity; jets dissipate.",
             doc: SURFACE_CHANNELS_DOC,
@@ -255,8 +270,8 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         },
     ],
     summary: Summary {
-        equations: "2D shallow-water surface, 1D channel reaches, and level pools exchanging water through suppressed rectangular bank weirs with Villemonte submergence, structure links (weirs, submerged orifices, hydrostatic gates, pumps) between surface cells, channel cells, and pools, pool ends at quiescent reservoir heads, and water and normal momentum through reach-end ports under one hydrostatic HLL face flux; an orifice does not satisfy culvert support",
-        method: "fixed-point iteration of end stages, signed link volumes, and pool-end volumes over one common interval, with a plan-area response step per update, midpoint-head law volumes, levelling, crest, and suction caps per link, one shared factor per donor over surface lanes, channel slots, and post-source pool water, an explicit HLL port flux from the accepted-start states per attempt, event-aligned intervals with per-interval operations from prescribed, actuated, and controlled-pump children and decision completion from the converged candidate, and nested child admission",
+        equations: "2D shallow-water surface, 1D channel reaches, and level pools exchanging water through suppressed rectangular bank weirs with Villemonte submergence, structure links (weirs, submerged orifices, hydrostatic gates, pumps, HDS-5 culverts) between surface cells, channel cells, and pools, pool ends at quiescent reservoir heads, and water and normal momentum through reach-end ports under one hydrostatic HLL face flux",
+        method: "fixed-point iteration of end stages, signed link volumes, and pool-end volumes over one common interval, with a plan-area response step per update, midpoint-head law volumes, levelling, crest, suction, and culvert invert caps per link, one shared factor per donor over surface lanes, channel slots, and post-source pool water, an explicit HLL port flux from the accepted-start states per attempt, event-aligned intervals with per-interval operations from prescribed, actuated, and controlled-pump children and decision completion from the converged candidate, and nested child admission",
         assessment: "selected spill, reversal, donor-limit, retry, restart, pool, structure, and control cases; field accuracy remains unestablished",
     },
 };

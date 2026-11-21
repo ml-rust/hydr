@@ -716,7 +716,7 @@ Analytical cases use `head_absolute_m = 1e-13`, `transfer_absolute_m3 = 1e-12`, 
 
 These rejections run as in-crate tests with frozen criteria: pool capacity, a dry signal node, a dry pool end, and the pump rejections.
 
-These cases establish no measured-event accuracy and no culvert accuracy. An orifice does not satisfy culvert inlet or outlet control.
+These cases establish no measured-event accuracy. An orifice does not satisfy culvert inlet or outlet control. [Culvert coordinator checks](#culvert-coordinator-checks) cover culvert links.
 
 ## Culvert barrel checks
 
@@ -745,7 +745,26 @@ These checks establish geometry and depth enclosures only. They establish no cul
 | Transitions | Discharge stays continuous at both inlet anchors and where the outlet turns full |
 | Layouts | Every lane at widths 1, 33, and 65 among weirs equals its single-lane result bit for bit |
 
-These checks establish no measured-event accuracy, and no culvert support in any coordinator.
+These checks establish no measured-event accuracy.
+
+## Culvert coordinator checks
+
+These cases run culverts in the surface/channel coordinator and in coupled level pools. Criteria are frozen before the first run.
+
+| Case | Required result |
+| --- | --- |
+| [Drain](../tests/surface_channels/culverts_drain.rs) | Two ponds drain through a drowned culvert. The upper pond's drop at 8 s matches an independent `mpmath` ODE reference within `1e-6` relative at 32 intervals, with order at least `1.8`. Every interval reports outlet control. |
+| [Coupled drain](../tests/coupled_level_pools/culverts.rs) | The same drain in coupled level pools meets the same criteria |
+| [Tide](../tests/surface_channels/culverts_reversal.rs) | A tide on a reach cell reverses a two-way culvert to a lagoon. A one-end culvert beside it moves exact zero with `CulvertUndeclaredEnd` while flow runs into the lagoon. |
+| [Rising sea](../tests/coupled_level_pools/culverts.rs) | An external inflow raises a sea above a lagoon. The two-way culvert reverses and the one-end culvert moves exact zero. |
+| [Control sweep](../tests/surface_channels/culverts_sweep.rs) | A filling basin moves a short steep culvert from inlet to outlet control, never back. Discharge falls and changes by at most 25 % between intervals. A second basin drowns a partly full outlet past the crown with the same continuity. |
+| [Invert cap and equal heads](../tests/surface_channels/culverts_invert.rs) | A small pond drains to its culvert invert stop and stays there with exact zero. Level ponds rest at `EqualHeads` with exact zero. |
+| [Roadway](../tests/surface_channels/culverts_roadway.rs) | A road weir overtops beside a drowned culvert until the upper pond falls to the crest. Restore, import, and resume match the uninterrupted run bit for bit. |
+| [Coupled roadway](../tests/coupled_level_pools/culverts.rs) | Both structures carry water. Restore and owned-data restore match the uninterrupted run bit for bit. |
+
+Every surface/channel interval passes the mass, pairing, and composite checks. The [drain fixture](../tests/culverts/drain_rows.rs) holds the reference inputs, end stages, tolerances, and the SHA256 of its source.
+
+These cases establish no field culvert accuracy.
 
 ## Runtime support
 
@@ -765,6 +784,7 @@ The CUDA tests of these components also run the same case on CPU and compare com
 | Structure laws | Free and submerged weir, orifice, and free, mixed and submerged gate outputs match bit for bit over a dense head grid of more than 700 lanes |
 | Culvert barrels | Point, range, full-state, critical, and normal outputs match bit for bit over the reference rows and each layout width. Point geometry also matches over the dense sweep. |
 | Culvert laws | Regime, status, direction, discharge, and operands match bit for bit over the mixed lanes and each layout width |
+| Culvert coordinators | The tide, control sweep, drowning outlet, and roadway cases of the surface/channel coordinator, and the rising sea and roadway cases of coupled level pools. After every accepted interval the text of every package, ledger, and child state is equal between CPU and CUDA. |
 | Level pools, reservoirs, subcatchments | Per-element states match bit for bit. Batch totals and residual diagnostics agree within `volume_absolute + volume_relative * scale`. |
 | Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart through one bank link. A second case drains a reach through a port and a bank link together, refills it, and drains it again, with restart. Its cell states also match bit for bit. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. A third case runs pools with an orifice, a pump, an actuated gate, and a pool end across relay decisions and a gate arrival. After every accepted interval the text of every child state, package, and ledger is equal between CPU and CUDA, signed zero included. |
 | Surveyed endpoints | Four cases run on both clients: a standalone `Stage` and `FluxPort`, a port on a surveyed rectangle with a bank link, a pool end on three bands, and a channel/pool connection on three bands. Each restarts bit for bit. Cell volumes and momenta equal the CPU run bit for bit every interval. CPU and CUDA ledgers differ by at most the sum of their reported bounds. |

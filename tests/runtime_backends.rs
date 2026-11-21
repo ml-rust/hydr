@@ -16,6 +16,8 @@ mod control_fixture;
 mod controlled_gates;
 #[path = "runtime_backends/controlled_pumps.rs"]
 mod controlled_pumps;
+#[path = "runtime_backends/coupled_level_pool_culverts.rs"]
+mod coupled_level_pool_culverts;
 #[path = "coupled_level_pools/fixture.rs"]
 mod coupled_pool_fixture;
 #[allow(dead_code)]
@@ -46,6 +48,9 @@ mod culvert_outlet_lanes;
 #[path = "runtime_backends/culvert_outlets.rs"]
 mod culvert_outlets;
 #[allow(dead_code)]
+#[path = "surface_channels/culverts_fixture.rs"]
+mod culverts_fixture;
+#[allow(dead_code)]
 #[path = "culvert_barrels/dense_rows.rs"]
 mod dense_rows;
 #[path = "runtime_backends/device_checks.rs"]
@@ -71,6 +76,9 @@ mod operating_controls;
 #[allow(dead_code)]
 #[path = "culverts/outlet_rows.rs"]
 mod outlet_rows;
+#[allow(dead_code, unused_imports)]
+#[path = "surface_channels/pools_fixture.rs"]
+mod pools_fixture;
 #[allow(dead_code)]
 #[path = "culvert_barrels/reference_rows.rs"]
 mod reference_rows;
@@ -87,6 +95,8 @@ mod subcatchment;
 #[allow(dead_code)]
 #[path = "culvert_laws/support.rs"]
 mod support;
+#[path = "runtime_backends/surface_channel_culverts.rs"]
+mod surface_channel_culverts;
 #[path = "runtime_backends/surface_channel_pools.rs"]
 mod surface_channel_pools;
 #[path = "runtime_backends/surface_channels.rs"]

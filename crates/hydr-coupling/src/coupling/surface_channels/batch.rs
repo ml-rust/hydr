@@ -8,7 +8,7 @@ use super::{
 use crate::channel::{ChannelInitialState, ChannelReach};
 use crate::solver::Solver;
 use crate::storage::LevelPoolBatch;
-use crate::structures::{ControlledGateBatch, ControlledPumpBatch};
+use crate::structures::{ControlledGateBatch, ControlledPumpBatch, CulvertClient};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, HypotOps,
@@ -137,7 +137,8 @@ where
         + BatchedBisectionAlgorithms<R>
         + BatchedNewtonAlgorithms<R>
         + Interp1dAlgorithms<R>
-        + LinearInterp1dDiagnostics<R>,
+        + LinearInterp1dDiagnostics<R>
+        + CulvertClient<R>,
 {
     /// Checks `setup` and `initial`, then builds the surface engine, every reach, the pools, and
     /// the operating children on `client`.

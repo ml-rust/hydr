@@ -6,7 +6,7 @@ This guide covers static manual operations with optional local sources and presc
 
 For generated upstream inflows, use the [runoff-to-pool coordinator](runoff-pools.md). It owns both children and their common interval.
 
-To join pools to the surface or to channel reaches, use the [surface/channel coordinator](surface-channels.md#add-level-pools). It accepts pools, weirs, orifices, gates, pumps, and sampled controls with the surface and every reach over one common interval. This page covers pool-to-pool transfers only.
+To join pools to the surface or to channel reaches, use the [surface/channel coordinator](surface-channels.md#add-level-pools). It accepts pools, weirs, orifices, gates, pumps, culverts, and sampled controls with the surface and every reach over one common interval. This page covers pool-to-pool transfers only.
 
 Read capabilities with `coupled_level_pool_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, structure and inflow endpoints, regimes, sources, nested components, unsupported uses, and limits.
 
@@ -36,11 +36,22 @@ The declared limit must match the storage curve origin. Connection beds must lie
 
 Choose the matching operation from [structure laws](structures.md):
 
-- Passive operation for passive structures.
+- Passive operation for passive structures and culverts.
 - Explicit isolated-stop or running operation for pumps.
 - Fixed opening for gates.
 
-Hydr supplies no implicit pump operation. The configured client selects the runtime used by the batch. A culvert law rejects: these pools hold none.
+Hydr supplies no implicit pump operation. The configured client selects the runtime used by the batch.
+
+### Attach a culvert
+
+A [culvert](structures.md#culvert-structure-law) joins two pools as any other structure does. The client implements `CulvertClient`, which `new` requires. Construction builds the culvert rows once.
+
+- Each invert sits at or above the attachment bed of its end. Construction rejects a lower invert with an input error.
+- A donor at or below its invert gives no water. A dry receiver is a free outfall at its invert.
+- A two-way culvert declares both ends. A one-end culvert moves exact zero when the heads drive flow into its undeclared end.
+- A road over the culvert is a separate weir between the same pools.
+
+These pools take the plain midpoint update, without a levelling cap. Near level heads a drowned culvert behaves as an orifice does here.
 
 ## Supply local rain and losses
 
@@ -200,7 +211,7 @@ Preserve every checkpoint field and floating-point bit when encoding data. Compl
 
 Import recalculates the final interval's forcing. It checks transfers and accepted state before restoration.
 
-Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA` and `COUPLED_LEVEL_POOL_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with an input error. Next it checks the nested `pools` and `start.pools` level-pool packages. A nested error names its path, such as `start.pools`. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-coupled-level-pool-checkpoint-2`) and `COUPLED_LEVEL_POOL_CONTRACT_VERSION` (`hydr-coupled-level-pool-numr-cpu-2`). Schema `hydr-coupled-level-pool-checkpoint-1` predates culvert structures and rejects. `restore_data` compares both before any other check and rejects a foreign value with an input error. Next it checks the nested `pools` and `start.pools` level-pool packages. A nested error names its path, such as `start.pools`. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
 
 ## Unsupported uses and support limits
 
@@ -208,6 +219,7 @@ Every package carries `schema` and `contract` identity fields. `snapshot_data()`
 
 - Running pumps require a wet donor. The receiver must be wet, or the pump must declare a free outlet at or above the dry receiver's bed.
 - Submerged orifices require water above the opening's top elevation at both endpoints.
+- A culvert donor needs water above its invert.
 - Positive water requires a represented positive midpoint depth.
 
 A dry pool receiving the smallest positive floating-point volume cannot represent that midpoint and rejects. Exact volume retention does not bypass this check.
