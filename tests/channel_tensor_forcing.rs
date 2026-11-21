@@ -10,11 +10,12 @@ mod boundary_common;
 mod runtime;
 #[path = "channel_tensor_forcing/snapshot_bits.rs"]
 mod snapshot_bits;
+#[allow(dead_code)]
 #[path = "channel_tensor_forcing/transport.rs"]
 mod transport;
 
 #[test]
 fn native_forcing_preserves_host_packages_and_complete_continuation() -> boundary_common::TestResult
 {
-    transport::execute::<runtime::Runtime>(runtime::client())
+    transport::execute::<runtime::Runtime>(runtime::client(), transport::all_runs())
 }

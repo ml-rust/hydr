@@ -11,18 +11,25 @@
 use crate::analytic::{ritter, stoker};
 use crate::fixture::Result;
 use crate::ports_dam_break::{
-    OFFSET_M, Reference, SIDE_M, SPACINGS, crossing, dry_floodplain, l1, run, sonic,
+    OFFSET_M, Reference, Run, SIDE_M, SPACINGS, crossing, dry_floodplain, l1, run, sonic,
     stoker_crossing,
 };
 use crate::ports_line::Order;
 use crate::ports_seiche::{pairing_through_inflow_and_outflow, reversal_flag, tilted_basin_period};
 
 /// Fails unless the surveyed and rectangular depths differ by no more than the rectangular
-/// run's own L1 error, for a dam at `dam` metres, at every spacing.
-fn within_rectangular_error(label: &str, order: Order, dam: f64, exact: Reference) -> Result {
-    for dx in SPACINGS {
+/// run's own L1 error, for a dam at `dam` metres, at every spacing. `surveyed` holds the
+/// surveyed run of each spacing in [`SPACINGS`] order.
+fn within_rectangular_error(
+    label: &str,
+    order: Order,
+    dam: f64,
+    exact: Reference,
+    surveyed: &[Run],
+) -> Result {
+    assert_eq!(surveyed.len(), SPACINGS.len());
+    for (dx, surveyed) in SPACINGS.into_iter().zip(surveyed) {
         let rectangular = run(order, dx, dam, exact, false)?;
-        let surveyed = run(order, dx, dam, exact, true)?;
         let own = l1(&rectangular.line, &rectangular.coupled, dam, exact);
         let difference: f64 = rectangular
             .coupled
@@ -40,8 +47,8 @@ fn within_rectangular_error(label: &str, order: Order, dam: f64, exact: Referenc
 
 /// The frozen crossing criteria on the surveyed reach, then the rectangular-run difference.
 fn surveyed_crossing(label: &str, order: Order, exact: Reference) -> Result {
-    crossing(label, order, exact, true)?;
-    within_rectangular_error(label, order, SIDE_M - OFFSET_M, exact)
+    let runs = crossing(label, order, exact, true)?;
+    within_rectangular_error(label, order, SIDE_M - OFFSET_M, exact, &runs)
 }
 
 #[test]
@@ -62,45 +69,49 @@ fn surveyed_ritter_from_the_strip_into_a_dry_reach_refines_and_matches_the_recta
 
 #[test]
 fn surveyed_stoker_from_the_reach_crosses_the_port_and_matches_the_rectangular_run() -> Result {
-    stoker_crossing("Surveyed Stoker reach to strip", Order::ReachFirst, true)?;
+    let runs = stoker_crossing("Surveyed Stoker reach to strip", Order::ReachFirst, true)?;
     within_rectangular_error(
         "Surveyed Stoker reach to strip",
         Order::ReachFirst,
         SIDE_M - OFFSET_M,
         stoker,
+        &runs,
     )
 }
 
 #[test]
 fn surveyed_stoker_from_the_strip_crosses_the_port_and_matches_the_rectangular_run() -> Result {
-    stoker_crossing("Surveyed Stoker strip to reach", Order::SurfaceFirst, true)?;
+    let runs = stoker_crossing("Surveyed Stoker strip to reach", Order::SurfaceFirst, true)?;
     within_rectangular_error(
         "Surveyed Stoker strip to reach",
         Order::SurfaceFirst,
         SIDE_M - OFFSET_M,
         stoker,
+        &runs,
     )
 }
 
 #[test]
 fn surveyed_ritter_dam_at_the_reach_end_passes_the_sonic_discharge() -> Result {
-    sonic("Surveyed sonic reach to strip", Order::ReachFirst, true)?;
+    let runs = sonic("Surveyed sonic reach to strip", Order::ReachFirst, true)?;
     within_rectangular_error(
         "Surveyed sonic reach to strip",
         Order::ReachFirst,
         SIDE_M,
         ritter,
+        &runs,
     )
 }
 
 #[test]
 fn surveyed_ritter_dam_at_the_strip_edge_passes_the_sonic_discharge() -> Result {
-    sonic("Surveyed sonic strip to reach", Order::SurfaceFirst, true)?;
+    let runs = sonic("Surveyed sonic strip to reach", Order::SurfaceFirst, true)?;
     within_rectangular_error(
         "Surveyed sonic strip to reach",
         Order::SurfaceFirst,
         SIDE_M,
         ritter,
+        &runs,
     )
 }
 

@@ -225,15 +225,16 @@ mod tests {
         use numr::runtime::cpu::{CpuClient, CpuDevice, CpuRuntime, ParallelismConfig};
         let config = ParallelismConfig::new(Some(2), Some(257));
         let client = CpuClient::new(CpuDevice::new()).with_parallelism(config);
-        controller::run::<CpuRuntime>(&client)
+        controller::run::<CpuRuntime>(&client, None)
     }
 
+    /// The star row stops at a refinement ceiling of 3 rounds on CUDA.
     #[cfg(feature = "cuda")]
     #[test]
     fn actual_cuda_point_flux_controller_stops_at_its_ceilings() -> Result {
         use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
         let client = CudaClient::new(CudaDevice::new(0))?;
-        controller::run::<CudaRuntime>(&client)
+        controller::run::<CudaRuntime>(&client, Some(3))
     }
 
     mod controller {
@@ -250,14 +251,16 @@ mod tests {
         use frozen::Result;
         use numr::{dtype::DType, runtime::Runtime};
 
-        pub(super) fn run<R>(client: &R::Client) -> Result
+        /// Runs every ceiling. `star_ceiling` replaces the frozen refinement ceiling of the
+        /// star row when given. It must stay above the panel-limited star level of 2.
+        pub(super) fn run<R>(client: &R::Client, star_ceiling: Option<usize>) -> Result
         where
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
             ceiling::<R>(client)?;
             exhausted::<R>(client)?;
-            star_terminal::<R>(client)?;
+            star_terminal::<R>(client, star_ceiling)?;
             star_level_limit::<R>(client)?;
             Ok(())
         }
@@ -347,13 +350,16 @@ mod tests {
 
         /// A zero flux budget refines a star row in every round, up to the refinement ceiling.
         /// The row stays over budget, and its sonic continuation never runs.
-        fn star_terminal<R>(client: &R::Client) -> Result
+        fn star_terminal<R>(client: &R::Client, star_ceiling: Option<usize>) -> Result
         where
             R: Runtime<DType = DType>,
             R::Client: support::DepthClient<R>,
         {
             let id = "scalar_rectangle_depth_jump";
             let mut config = config(id)?;
+            if let Some(ceiling) = star_ceiling {
+                config.max_refinements = ceiling;
+            }
             config.water_flux_atol_m3_per_s = 0.;
             config.momentum_flux_atol_m4_per_s2 = 0.;
             config.flux_rtol = 0.;

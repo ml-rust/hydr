@@ -16,7 +16,62 @@ use solvr::optimize::roots::{
     BatchedBisectionAlgorithms, CertifiedBisectionAlgorithms, CertifiedUpperBracketAlgorithms,
 };
 
-pub fn execute<R>(client: R::Client) -> TestResult
+/// Endpoint runs as `(fixture, side, view)` and mixed-policy runs as `(fixture, left, right)`.
+///
+/// Fixture indices point into `FIXTURES`. Policy indices are 0 for a stage, 1 for a discharge,
+/// and 2 for the fixture reservoir.
+pub struct Selection {
+    pub endpoints: Vec<(usize, Side, usize)>,
+    pub mixed: Vec<(usize, usize, usize)>,
+}
+
+impl Selection {
+    /// Every fixture on both sides and in every view, and every policy pair on the first two
+    /// fixtures.
+    pub fn all() -> Self {
+        let mut endpoints = Vec::new();
+        for fixture in 0..FIXTURES.len() {
+            for side in [Side::Left, Side::Right] {
+                for view in 0..3 {
+                    endpoints.push((fixture, side, view));
+                }
+            }
+        }
+        let mut mixed = Vec::new();
+        for fixture in 0..2 {
+            for left in 0..3 {
+                for right in 0..3 {
+                    mixed.push((fixture, left, right));
+                }
+            }
+        }
+        Self { endpoints, mixed }
+    }
+
+    /// One run per branch for a device: outflow, ideal inflow and lossy inflow on both shapes
+    /// and both sides, every view, and the signed-zero loss. Each mixed-policy fixture puts
+    /// every policy once on each side, with a different policy at the other end.
+    pub fn device() -> Self {
+        Self {
+            endpoints: vec![
+                (0, Side::Left, 1),
+                (3, Side::Right, 0),
+                (4, Side::Right, 1),
+                (5, Side::Left, 2),
+            ],
+            mixed: vec![
+                (0, 0, 1),
+                (0, 1, 2),
+                (0, 2, 0),
+                (1, 1, 0),
+                (1, 2, 1),
+                (1, 0, 2),
+            ],
+        }
+    }
+}
+
+pub fn execute<R>(client: R::Client, selection: Selection) -> TestResult
 where
     R: Runtime<DType = DType>,
     R::Client: BinaryOps<R>
@@ -38,98 +93,95 @@ where
         + CertifiedUpperBracketAlgorithms<R>
         + BatchedBisectionAlgorithms<R>,
 {
-    for fixture in FIXTURES {
-        for side in [Side::Left, Side::Right] {
-            for view in 0..3 {
-                let origin = ChannelReach::<R>::new(
-                    client.clone(),
-                    definition(fixture.shape, 3, 128.0, 4.0, 1.0),
-                    initial(fixture.shape, &[128.0; 3], &[1.0; 3], &[0.0; 3]),
-                )?;
-                let before = origin.snapshot_data()?;
-                let dt = 1.0 / 1024.0;
-                let mut held = interval(side, fixture.boundary(), 0.0, dt);
-                if fixture.loss == 0.0 && view == 1 {
-                    let boundary = reservoir(fixture.elevation, -0.0);
-                    if side.index() == 0 {
-                        held.left = boundary;
-                    } else {
-                        held.right = boundary;
-                    }
-                }
-                let tensor = native::<R>(&client, &held, view)?;
-                let host = origin.step(dt, &held)?.next;
-                let current = origin.step_tensor(dt, &tensor)?.next;
-                let saved = current.snapshot_data()?;
-                assert_same(&saved, &host.snapshot_data()?);
-                let receipt = current
-                    .last_step()?
-                    .ok_or("Missing native reservoir receipt")?;
-                let trace = receipt.boundary_traces[side.index()]
-                    .as_ref()
-                    .ok_or("Missing native reservoir trace")?;
-                for (actual, reference) in [
-                    (trace.depth_m, fixture.depth),
-                    (trace.outward_velocity_m_per_s, fixture.velocity),
-                    (trace.outward_discharge_m3_per_s, fixture.discharge),
-                    (trace.momentum_flux_m4_per_s2, fixture.momentum),
-                ] {
-                    assert!(
-                        (actual - reference).abs() <= 1e-12 + 1e-12 * reference.abs(),
-                        "{}: actual={actual:e}, independent reference={reference:e}",
-                        fixture.name
-                    );
-                }
-                let velocity = trace.outward_velocity_m_per_s;
-                let dissipation = trace.outward_discharge_m3_per_s
-                    * (fixture.shape.gravity() * (trace.depth_m - fixture.elevation)
-                        + velocity * velocity / 2.0);
-                assert!(
-                    (dissipation - fixture.dissipation).abs()
-                        <= 1e-10 + 1e-12 * fixture.dissipation.abs(),
-                    "{}: dissipation={dissipation:e}, independent reference={:e}",
-                    fixture.name,
-                    fixture.dissipation
-                );
-                let certificate = trace
-                    .reservoir
-                    .as_ref()
-                    .ok_or("Missing native reservoir certificate")?;
-                assert!(certificate.depth_lower_m <= f64::from_bits(fixture.root_floor_bits));
-                assert!(certificate.depth_upper_m >= f64::from_bits(fixture.root_ceil_bits));
-                let checkpoint = current.snapshot();
-                overwrite_aliases::<R>(&client, &tensor)?;
-                assert_same(&current.snapshot_data()?, &saved);
-                assert_same(&checkpoint.data()?, &saved);
-                let trusted = origin.restore(&checkpoint)?;
-                let cold = origin.import_snapshot(&saved)?;
-                assert_same(&trusted.snapshot_data()?, &saved);
-                assert_same(&cold.snapshot_data()?, &saved);
-                held.start_s = dt;
-                held.end_s = 2.0 * dt;
-                let fresh = native::<R>(&client, &held, (view + 1) % 3)?;
-                let expected = current
-                    .step_tensor(2.0 * dt, &fresh)?
-                    .next
-                    .snapshot_data()?;
-                assert_same(
-                    &host.step(2.0 * dt, &held)?.next.snapshot_data()?,
-                    &expected,
-                );
-                for restarted in [trusted, cold] {
-                    assert_same(
-                        &restarted
-                            .step_tensor(2.0 * dt, &fresh)?
-                            .next
-                            .snapshot_data()?,
-                        &expected,
-                    );
-                }
-                assert_same(&origin.snapshot_data()?, &before);
+    for &(index, side, view) in &selection.endpoints {
+        let fixture = FIXTURES[index];
+        let origin = ChannelReach::<R>::new(
+            client.clone(),
+            definition(fixture.shape, 3, 128.0, 4.0, 1.0),
+            initial(fixture.shape, &[128.0; 3], &[1.0; 3], &[0.0; 3]),
+        )?;
+        let before = origin.snapshot_data()?;
+        let dt = 1.0 / 1024.0;
+        let mut held = interval(side, fixture.boundary(), 0.0, dt);
+        if fixture.loss == 0.0 && view == 1 {
+            let boundary = reservoir(fixture.elevation, -0.0);
+            if side.index() == 0 {
+                held.left = boundary;
+            } else {
+                held.right = boundary;
             }
         }
+        let tensor = native::<R>(&client, &held, view)?;
+        let host = origin.step(dt, &held)?.next;
+        let current = origin.step_tensor(dt, &tensor)?.next;
+        let saved = current.snapshot_data()?;
+        assert_same(&saved, &host.snapshot_data()?);
+        let receipt = current
+            .last_step()?
+            .ok_or("Missing native reservoir receipt")?;
+        let trace = receipt.boundary_traces[side.index()]
+            .as_ref()
+            .ok_or("Missing native reservoir trace")?;
+        for (actual, reference) in [
+            (trace.depth_m, fixture.depth),
+            (trace.outward_velocity_m_per_s, fixture.velocity),
+            (trace.outward_discharge_m3_per_s, fixture.discharge),
+            (trace.momentum_flux_m4_per_s2, fixture.momentum),
+        ] {
+            assert!(
+                (actual - reference).abs() <= 1e-12 + 1e-12 * reference.abs(),
+                "{}: actual={actual:e}, independent reference={reference:e}",
+                fixture.name
+            );
+        }
+        let velocity = trace.outward_velocity_m_per_s;
+        let dissipation = trace.outward_discharge_m3_per_s
+            * (fixture.shape.gravity() * (trace.depth_m - fixture.elevation)
+                + velocity * velocity / 2.0);
+        assert!(
+            (dissipation - fixture.dissipation).abs() <= 1e-10 + 1e-12 * fixture.dissipation.abs(),
+            "{}: dissipation={dissipation:e}, independent reference={:e}",
+            fixture.name,
+            fixture.dissipation
+        );
+        let certificate = trace
+            .reservoir
+            .as_ref()
+            .ok_or("Missing native reservoir certificate")?;
+        assert!(certificate.depth_lower_m <= f64::from_bits(fixture.root_floor_bits));
+        assert!(certificate.depth_upper_m >= f64::from_bits(fixture.root_ceil_bits));
+        let checkpoint = current.snapshot();
+        overwrite_aliases::<R>(&client, &tensor)?;
+        assert_same(&current.snapshot_data()?, &saved);
+        assert_same(&checkpoint.data()?, &saved);
+        let trusted = origin.restore(&checkpoint)?;
+        let cold = origin.import_snapshot(&saved)?;
+        assert_same(&trusted.snapshot_data()?, &saved);
+        assert_same(&cold.snapshot_data()?, &saved);
+        held.start_s = dt;
+        held.end_s = 2.0 * dt;
+        let fresh = native::<R>(&client, &held, (view + 1) % 3)?;
+        let expected = current
+            .step_tensor(2.0 * dt, &fresh)?
+            .next
+            .snapshot_data()?;
+        assert_same(
+            &host.step(2.0 * dt, &held)?.next.snapshot_data()?,
+            &expected,
+        );
+        for restarted in [trusted, cold] {
+            assert_same(
+                &restarted
+                    .step_tensor(2.0 * dt, &fresh)?
+                    .next
+                    .snapshot_data()?,
+                &expected,
+            );
+        }
+        assert_same(&origin.snapshot_data()?, &before);
     }
-    for fixture in FIXTURES.into_iter().take(2) {
+    for &(index, left_index, right_index) in &selection.mixed {
+        let fixture = FIXTURES[index];
         let origin = ChannelReach::<R>::new(
             client.clone(),
             definition(fixture.shape, 3, 128.0, 4.0, 1.0),
@@ -142,27 +194,23 @@ where
             },
             fixture.boundary(),
         ];
-        for (left_index, left) in policies.iter().enumerate() {
-            for (right_index, right) in policies.iter().enumerate() {
-                let dt = 1.0 / 1024.0;
-                let held = ChannelForcingInterval {
-                    start_s: 0.0,
-                    end_s: dt,
-                    left: left.clone(),
-                    right: right.clone(),
-                    lateral_inputs: Vec::new(),
-                };
-                let tensor = native::<R>(&client, &held, (left_index + right_index) % 3)?;
-                let current = origin.step_tensor(dt, &tensor)?.next;
-                let saved = current.snapshot_data()?;
-                assert_same(&saved, &origin.step(dt, &held)?.next.snapshot_data()?);
-                assert_same(
-                    &origin.restore(&current.snapshot())?.snapshot_data()?,
-                    &saved,
-                );
-                assert_same(&origin.import_snapshot(&saved)?.snapshot_data()?, &saved);
-            }
-        }
+        let dt = 1.0 / 1024.0;
+        let held = ChannelForcingInterval {
+            start_s: 0.0,
+            end_s: dt,
+            left: policies[left_index].clone(),
+            right: policies[right_index].clone(),
+            lateral_inputs: Vec::new(),
+        };
+        let tensor = native::<R>(&client, &held, (left_index + right_index) % 3)?;
+        let current = origin.step_tensor(dt, &tensor)?.next;
+        let saved = current.snapshot_data()?;
+        assert_same(&saved, &origin.step(dt, &held)?.next.snapshot_data()?);
+        assert_same(
+            &origin.restore(&current.snapshot())?.snapshot_data()?,
+            &saved,
+        );
+        assert_same(&origin.import_snapshot(&saved)?.snapshot_data()?, &saved);
     }
     Ok(())
 }

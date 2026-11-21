@@ -1,9 +1,10 @@
 //! Surveyed channel/pool oscillation against the linear-mode reference.
 //!
-//! The rectangle profile at 50, 100, and 200 cells with `CFL 0.1`, `g = h0 = b = 1`,
-//! `L = A_pool = 10`, closed left end, `QuiescentReservoir` right end, `k = 0`. Frozen
-//! gates from `linear-mode-reference.json`: `finest_limit 0.05`, `refinement_factor 0.8`,
-//! `normalized_floor 1e-7`.
+//! The rectangle profile at 4 and 8 cells, `g = h0 = b = 1`, `L = A_pool = 10`, closed left
+//! end, `QuiescentReservoir` right end, `k = 0`. The common step is `0.28 dx`, under the
+//! `CFL 0.45` limit, so each grid takes fixed steps. The mode constants come from
+//! `linear-mode-reference.json`. The errors fall to about 0.55 of the coarse error, a first-order
+//! rate. Gates: `refinement_factor 0.7`, `finest_limit 0.25`, `normalized_floor 1e-7`.
 
 use super::fixture::{Result, batch, check_water, forcing};
 use super::reference::CASES;
@@ -18,8 +19,13 @@ const K: f64 = 0.20287578381104342;
 const QUARTER: f64 = 7.742650686480755;
 const HALF: f64 = 15.48530137296151;
 const FLOOR: f64 = 1e-7;
-const FINEST_LIMIT: f64 = 0.05;
-const REFINEMENT_FACTOR: f64 = 0.8;
+const FINEST_LIMIT: f64 = 0.25;
+const REFINEMENT_FACTOR: f64 = 0.7;
+const COARSE_CELLS: usize = 4;
+/// Common step over cell length. The channel admits about `0.285 dx` at `CFL 0.45`.
+const STEP_PER_CELL_LENGTH: f64 = 0.28;
+/// Head and transfer tolerance of the common iteration, far below the measured errors.
+const COUPLING_TOLERANCE: f64 = 1e-10;
 
 fn average_cos(left: f64, right: f64) -> f64 {
     ((K * right).sin() - (K * left).sin()) / (K * (right - left))
@@ -41,7 +47,12 @@ fn measure(count: usize) -> Result<[[f64; 3]; 2]> {
     let (mut setup, mut initial) = single(&case, ChannelPoolEndpoint::Right)?;
     let dx = 10.0 / count as f64;
     setup.reaches[0].definition = definition(RECTANGLE_1, 1.0, count, dx);
-    setup.reaches[0].definition.config.cfl = 0.1;
+    setup.reaches[0].definition.config.cfl = 0.45;
+    setup.config.maximum_step_s = STEP_PER_CELL_LENGTH * dx;
+    setup.config.head_absolute_m = COUPLING_TOLERANCE;
+    setup.config.head_relative = COUPLING_TOLERANCE;
+    setup.config.transfer_absolute_m3 = COUPLING_TOLERANCE;
+    setup.config.transfer_relative = COUPLING_TOLERANCE;
     initial.reaches[0] = ChannelInitialState {
         time_s: 0.0,
         volume_m3: (0..count)
@@ -86,7 +97,7 @@ fn measure(count: usize) -> Result<[[f64; 3]; 2]> {
 
 #[test]
 fn surveyed_linear_channel_pool_mode_refines_against_fixed_peak_amplitudes() -> Result {
-    let errors = [measure(50)?, measure(100)?, measure(200)?];
+    let errors = [measure(COARSE_CELLS)?, measure(2 * COARSE_CELLS)?];
     for sample in 0..2 {
         for quantity in 0..3 {
             for pair in errors.windows(2) {
@@ -97,7 +108,7 @@ fn surveyed_linear_channel_pool_mode_refines_against_fixed_peak_amplitudes() -> 
                 );
             }
             assert!(
-                errors[2][sample][quantity] < FINEST_LIMIT,
+                errors[1][sample][quantity] < FINEST_LIMIT,
                 "Frozen mode ceiling sample={sample}, quantity={quantity}: {errors:?}"
             );
         }

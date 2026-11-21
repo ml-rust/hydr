@@ -1,0 +1,14 @@
+# nextest runs each test in its own process, and each process that touches a
+# device creates its own CUDA context or WebGPU device. Without a cap, a
+# parallel run exhausts device memory and context creation fails with
+# CUDA_ERROR_OUT_OF_MEMORY.
+#
+# The `gpu` group caps tests that touch a device. A test that uses a GPU must
+# carry `cuda` or `wgpu` in its name.
+
+[test-groups]
+gpu = { max-threads = 4 }
+
+[[profile.default.overrides]]
+filter = 'test(/cuda|wgpu/)'
+test-group = 'gpu'

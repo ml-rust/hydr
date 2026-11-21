@@ -10,6 +10,7 @@ mod identity;
 mod lifecycle;
 #[path = "channel_pools/linear_mode.rs"]
 mod linear_mode;
+#[allow(dead_code)]
 #[path = "channel_pools/native.rs"]
 mod native;
 #[path = "channel_pools/physics.rs"]
@@ -45,5 +46,9 @@ mod surveyed_restoration;
 #[test]
 fn native_finite_pool_forcing_preserves_views_aliases_signed_zero_and_destination_restarts()
 -> fixture::Result {
-    native::execute::<runtime::Runtime>(runtime::client(), runtime::client())
+    native::execute::<runtime::Runtime>(
+        runtime::client(),
+        runtime::client(),
+        native::Coverage::all(),
+    )
 }

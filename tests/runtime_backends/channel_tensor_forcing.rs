@@ -14,7 +14,10 @@ pub(super) mod transport;
 #[test]
 fn selected_cuda_executes_native_channel_forcing_and_complete_restart() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    transport::execute::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+    transport::execute::<CudaRuntime>(
+        CudaClient::new(CudaDevice::new(0))?,
+        transport::device_runs(),
+    )
 }
 
 #[cfg(feature = "wgpu")]

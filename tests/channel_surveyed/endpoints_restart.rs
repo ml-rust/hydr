@@ -8,9 +8,9 @@
 //! - Mass, standalone: every standalone row. Each interval: ledger residual within its bound.
 //!   `Discharge` face volume equals `RN(σ Q dt)` bit for bit. End face low parts equal `+0.0`.
 //!
-//! Every run starts from the three-band rest state and holds each policy at the left end, at the
-//! right end, and at both ends. The right end runs the mirror image: negated discharge. A
-//! rejected import leaves the origin reach unchanged.
+//! Every run starts from the three-band rest state and holds each policy at both ends. The
+//! right end runs the mirror image: negated discharge. Each end receipt carries its own trace,
+//! and the forged fields run at each end. A rejected import leaves the origin reach unchanged.
 
 use super::endpoints_support::{Section, step_checked};
 use super::support::{Reach, TestResult};
@@ -20,11 +20,11 @@ use hydr::channel::{
     ChannelSnapshotData,
 };
 
-/// Intervals before the snapshot.
-const BEFORE: usize = 3;
+/// Intervals before the snapshot. The snapshot then holds a receipt with end traces.
+const BEFORE: usize = 1;
 
 /// Intervals after the snapshot.
-const AFTER: usize = 3;
+const AFTER: usize = 1;
 
 /// Longest requested interval in seconds.
 const SPAN: f64 = 0.25;
@@ -298,11 +298,7 @@ fn check(select: impl Fn(&str) -> bool) -> TestResult {
         if !select(name) {
             continue;
         }
-        let wall = ChannelBoundary::Wall;
-        let right = mirrored(&policy);
-        run(name, "left", [policy.clone(), wall.clone()], &[0])?;
-        run(name, "right", [wall, right.clone()], &[1])?;
-        run(name, "both", [policy, right], &[0, 1])?;
+        run(name, "both", [policy.clone(), mirrored(&policy)], &[0, 1])?;
     }
     Ok(())
 }

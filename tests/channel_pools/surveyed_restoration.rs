@@ -1,7 +1,7 @@
 //! Coordinated restart of a surveyed channel/pool setup.
 //!
-//! Frozen criterion, "Coordinated restart"): the trusted restore and the cold
-//! import of a package taken after three intervals continue bit for bit as the uninterrupted
+//! Frozen criterion, "Coordinated restart": the trusted restore and the cold
+//! import of a package taken after one interval continue bit for bit as the uninterrupted
 //! run does, and a forged shared transfer packet rejects. The cases are the frozen
 //! rectangular surveyed case and the first three-band case.
 
@@ -11,6 +11,10 @@ use super::surveyed_fixture::{rest_depth, single, surveyed_case};
 use super::surveyed_reference::{SurveyedCase, THREE_BANDS_CASES};
 use hydr::channel::ChannelBoundary;
 use hydr::coupling::{ChannelPoolEndpoint, ChannelPoolSnapshotData};
+
+/// Accepted `0.125 s` intervals before the package. One interval leaves a retained shared
+/// receipt to replay.
+const HISTORY: usize = 1;
 
 /// The forcing of an interval: the unconnected end holds the case at rest, with signed zeros.
 fn held(
@@ -26,13 +30,13 @@ fn held(
     interval
 }
 
-/// The initial batch and the batch after three intervals of one case.
+/// The initial batch and the batch after `HISTORY` intervals of one case.
 fn history(case: &SurveyedCase) -> Result<(Batch, Batch)> {
     let (mut setup, initial) = single(case, ChannelPoolEndpoint::Right)?;
     setup.connections[0].entrance_loss_coefficient = -0.0;
     let origin = batch(setup, initial)?;
     let mut current = origin.clone();
-    for index in 0..3 {
+    for index in 0..HISTORY {
         let end = (index + 1) as f64 / 8.0;
         let interval = held(&current, case, end);
         current = current.trial_to(end, &interval)?.into_next();
@@ -65,7 +69,7 @@ fn replays(case: &SurveyedCase) -> Result {
     let cold = origin.import_snapshot(&saved)?;
     for restored in [&trusted, &cold] {
         assert_eq!(restored.snapshot_data()?, saved);
-        assert_eq!(restored.accepted_steps(), 3);
+        assert_eq!(restored.accepted_steps(), HISTORY);
         let last = restored
             .last_step()?
             .ok_or("Missing restored common receipt")?;
@@ -77,7 +81,7 @@ fn replays(case: &SurveyedCase) -> Result {
         };
         assert_eq!(velocity_m_per_s.to_bits(), (-0.0_f64).to_bits());
     }
-    let end = 0.5;
+    let end = (HISTORY + 1) as f64 / 8.0;
     let interval = held(&current, case, end);
     let expected = current
         .trial_to(end, &interval)?

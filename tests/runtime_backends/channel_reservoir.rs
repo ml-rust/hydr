@@ -11,5 +11,8 @@ mod native;
 fn selected_cuda_executes_native_reservoir_roots_mixed_endpoints_and_complete_restart()
 -> super::Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    native::execute::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+    native::execute::<CudaRuntime>(
+        CudaClient::new(CudaDevice::new(0))?,
+        native::Selection::device(),
+    )
 }

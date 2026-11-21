@@ -252,7 +252,45 @@ where
     Ok(())
 }
 
-pub fn execute<R>(client: R::Client) -> TestResult
+/// Rectangle and triangle sections of every native forcing run.
+const SHAPES: [Shape; 2] = [
+    Shape::Rectangle {
+        gravity: 1.0,
+        width: 7.0,
+    },
+    Shape::Triangle {
+        gravity: 2.0,
+        coefficient: 1.0,
+    },
+];
+
+/// Every shape, cell count and policy, as `(shape, cells, policy)` runs.
+pub fn all_runs() -> Vec<(Shape, usize, usize)> {
+    let mut runs = Vec::new();
+    for shape in SHAPES {
+        for count in [1, 3] {
+            for policy in 0..5 {
+                runs.push((shape, count, policy));
+            }
+        }
+    }
+    runs
+}
+
+/// Each policy once for a device. Both shapes run on one and on three cells, and the policies
+/// cover every operand view.
+pub fn device_runs() -> Vec<(Shape, usize, usize)> {
+    let [rectangle, triangle] = SHAPES;
+    vec![
+        (rectangle, 1, 0),
+        (triangle, 3, 1),
+        (rectangle, 3, 2),
+        (triangle, 1, 3),
+        (rectangle, 3, 4),
+    ]
+}
+
+pub fn execute<R>(client: R::Client, runs: Vec<(Shape, usize, usize)>) -> TestResult
 where
     R: Runtime<DType = DType>,
     R::Client: BinaryOps<R>
@@ -275,85 +313,72 @@ where
         + BatchedBisectionAlgorithms<R>,
 {
     assert_ne!(((0.03_f64 / 7.0) * 7.0).to_bits(), 0.03_f64.to_bits());
-    for shape in [
-        Shape::Rectangle {
-            gravity: 1.0,
-            width: 7.0,
-        },
-        Shape::Triangle {
-            gravity: 2.0,
-            coefficient: 1.0,
-        },
-    ] {
-        for count in [1, 3] {
-            for policy in 0..5 {
-                let layout = with_laterals(definition(shape, count, 4.0, 4.0, 1.0));
-                let depths: Vec<_> = (0..count).map(|i| 1.0 + i as f64 / 32.0).collect();
-                let velocities: Vec<_> = (0..count).map(|i| i as f64 / 64.0).collect();
-                let origin = ChannelReach::<R>::new(
-                    client.clone(),
-                    layout,
-                    initial(shape, &vec![4.0; count], &depths, &velocities),
-                )?;
-                let before = origin.snapshot_data()?;
-                let end = 1.0 / 1024.0;
-                let held = forcing(0.0, end, policy);
-                let host = origin.step(end, &held)?.next;
-                let tensor_held = native::<R>(&client, &held, policy % 3)?;
-                let current = origin.step_tensor(end, &tensor_held)?.next;
-                assert_eq!(current.time().to_bits(), end.to_bits());
-                let saved = current.snapshot_data()?;
-                assert_same(&saved, &host.snapshot_data()?);
-                assert_same(&origin.snapshot_data()?, &before);
-                let receipt = current
-                    .last_step()?
-                    .ok_or("Missing native forcing receipt")?;
-                for (endpoint, boundary) in [&held.left, &held.right].into_iter().enumerate() {
-                    if let ChannelBoundary::Discharge { discharge_m3_per_s } = boundary {
-                        let trace = receipt.boundary_traces[endpoint]
-                            .as_ref()
-                            .ok_or("Missing native discharge trace")?;
-                        let sign = if endpoint == 0 { -1.0 } else { 1.0 };
-                        assert_eq!(
-                            trace.outward_discharge_m3_per_s.to_bits(),
-                            (sign * discharge_m3_per_s).to_bits()
-                        );
-                        assert_eq!(
-                            receipt.face_volume_m3[endpoint * count].to_bits(),
-                            (discharge_m3_per_s * end).to_bits()
-                        );
-                    }
-                }
-                let checkpoint = current.snapshot();
-                overwrite_aliases::<R>(&client, &tensor_held)?;
-                assert_same(&current.snapshot_data()?, &saved);
-                assert_same(&checkpoint.data()?, &saved);
-                let trusted = origin.restore(&checkpoint)?;
-                let cold = origin.import_snapshot(&saved)?;
-                assert_same(&trusted.snapshot_data()?, &saved);
-                assert_same(&cold.snapshot_data()?, &saved);
-                let fresh = forcing(end, end * 2.0, policy);
-                let tensor_fresh = native::<R>(&client, &fresh, (policy + 1) % 3)?;
-                let expected = current
-                    .step_tensor(end * 2.0, &tensor_fresh)?
-                    .next
-                    .snapshot_data()?;
-                assert_same(
-                    &host.step(end * 2.0, &fresh)?.next.snapshot_data()?,
-                    &expected,
+    for (shape, count, policy) in runs {
+        let layout = with_laterals(definition(shape, count, 4.0, 4.0, 1.0));
+        let depths: Vec<_> = (0..count).map(|i| 1.0 + i as f64 / 32.0).collect();
+        let velocities: Vec<_> = (0..count).map(|i| i as f64 / 64.0).collect();
+        let origin = ChannelReach::<R>::new(
+            client.clone(),
+            layout,
+            initial(shape, &vec![4.0; count], &depths, &velocities),
+        )?;
+        let before = origin.snapshot_data()?;
+        let end = 1.0 / 1024.0;
+        let held = forcing(0.0, end, policy);
+        let host = origin.step(end, &held)?.next;
+        let tensor_held = native::<R>(&client, &held, policy % 3)?;
+        let current = origin.step_tensor(end, &tensor_held)?.next;
+        assert_eq!(current.time().to_bits(), end.to_bits());
+        let saved = current.snapshot_data()?;
+        assert_same(&saved, &host.snapshot_data()?);
+        assert_same(&origin.snapshot_data()?, &before);
+        let receipt = current
+            .last_step()?
+            .ok_or("Missing native forcing receipt")?;
+        for (endpoint, boundary) in [&held.left, &held.right].into_iter().enumerate() {
+            if let ChannelBoundary::Discharge { discharge_m3_per_s } = boundary {
+                let trace = receipt.boundary_traces[endpoint]
+                    .as_ref()
+                    .ok_or("Missing native discharge trace")?;
+                let sign = if endpoint == 0 { -1.0 } else { 1.0 };
+                assert_eq!(
+                    trace.outward_discharge_m3_per_s.to_bits(),
+                    (sign * discharge_m3_per_s).to_bits()
                 );
-                for restarted in [trusted, cold] {
-                    assert_same(
-                        &restarted
-                            .step_tensor(end * 2.0, &tensor_fresh)?
-                            .next
-                            .snapshot_data()?,
-                        &expected,
-                    );
-                }
-                assert_same(&current.snapshot_data()?, &saved);
+                assert_eq!(
+                    receipt.face_volume_m3[endpoint * count].to_bits(),
+                    (discharge_m3_per_s * end).to_bits()
+                );
             }
         }
+        let checkpoint = current.snapshot();
+        overwrite_aliases::<R>(&client, &tensor_held)?;
+        assert_same(&current.snapshot_data()?, &saved);
+        assert_same(&checkpoint.data()?, &saved);
+        let trusted = origin.restore(&checkpoint)?;
+        let cold = origin.import_snapshot(&saved)?;
+        assert_same(&trusted.snapshot_data()?, &saved);
+        assert_same(&cold.snapshot_data()?, &saved);
+        let fresh = forcing(end, end * 2.0, policy);
+        let tensor_fresh = native::<R>(&client, &fresh, (policy + 1) % 3)?;
+        let expected = current
+            .step_tensor(end * 2.0, &tensor_fresh)?
+            .next
+            .snapshot_data()?;
+        assert_same(
+            &host.step(end * 2.0, &fresh)?.next.snapshot_data()?,
+            &expected,
+        );
+        for restarted in [trusted, cold] {
+            assert_same(
+                &restarted
+                    .step_tensor(end * 2.0, &tensor_fresh)?
+                    .next
+                    .snapshot_data()?,
+                &expected,
+            );
+        }
+        assert_same(&current.snapshot_data()?, &saved);
     }
     Ok(())
 }

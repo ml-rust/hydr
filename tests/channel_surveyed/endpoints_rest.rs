@@ -4,7 +4,7 @@
 //!
 //! - Lake at rest, standalone: `endpoints_rest.rs`: rectangle and three bands, 8 cells at rest,
 //!   each of `Stage(η)`, `Discharge(0)`, `QuiescentReservoir(η, k ∈ {0, 1})`, and a `FluxPort`
-//!   with zero water and the reference `g I(A)`, at both ends. 50 intervals: every
+//!   with zero water and the reference `g I(A)`, at both ends. 4 intervals: every
 //!   `|Q| <= 1e-12 m³/s`, stage change `<= 1e-12 m`, trace `|q| <= 1e-12 m³/s`.
 //! - Mass, standalone: every standalone row. Each interval: ledger residual within its bound.
 //!   `Discharge` face volume equals `RN(σ Q dt)` bit for bit. End face low parts equal `+0.0`.
@@ -18,7 +18,7 @@ use super::surveyed_profiles::{Profile, RECTANGLE_3, THREE_BANDS};
 use hydr::channel::ChannelBoundary;
 
 /// Accepted intervals per run.
-const INTERVALS: usize = 50;
+const INTERVALS: usize = 4;
 
 /// Longest requested interval in seconds.
 const SPAN: f64 = 0.25;

@@ -7,7 +7,7 @@
 
 use crate::fixture::{Result, contains};
 use crate::ports_fixture::{Batch, Reach, Scenario, step, west};
-use crate::ports_restart::{HALF, run, state};
+use crate::ports_restart::{run, state};
 use hydr::coupling::{
     SurfaceChannelError, SurfaceChannelIntervalSnapshotData, SurfaceChannelPortRegime,
     SurfaceChannelSnapshotData,
@@ -16,6 +16,13 @@ use hydr::coupling::{
 /// Requested duration of every interval, in s.
 const DT: f64 = 0.25;
 
+/// Intervals before the restart checkpoint. The port first reverses near interval 38.
+const BEFORE: usize = 36;
+
+/// Intervals after a checkpoint. The run of `BEFORE + AFTER` intervals crosses the reversal,
+/// so it moves water both ways.
+const AFTER: usize = 8;
+
 /// A surveyed reach above its floodplain drains through a port and a bank link, then refills.
 fn case() -> Scenario {
     let mut case = Scenario::rest(1.0, 1.6, 0.5, vec![west("p")]).with_surveyed(true);
@@ -23,9 +30,9 @@ fn case() -> Scenario {
     case
 }
 
-/// The checkpoint after `HALF` intervals.
+/// The checkpoint after `AFTER` intervals, with a draining port receipt.
 fn package() -> Result<SurfaceChannelSnapshotData> {
-    Ok(run(case().build()?, HALF)?.snapshot_data()?)
+    Ok(run(case().build()?, AFTER)?.snapshot_data()?)
 }
 
 fn last_interval(
@@ -63,10 +70,10 @@ fn rejects(data: &SurfaceChannelSnapshotData, fragments: &[&str]) -> Result {
 
 #[test]
 fn surveyed_ported_snapshots_round_trip_and_restart_bit_for_bit() -> Result {
-    let whole = run(case().build()?, 2 * HALF)?;
+    let middle = run(case().build()?, BEFORE)?;
+    let whole = run(step(&middle, DT)?, AFTER - 1)?;
     let ledger = &whole.port_ledgers()?[0];
     assert!(ledger.surface_to_channel_m3 > 0.0 && ledger.channel_to_surface_m3 > 0.0);
-    let middle = run(case().build()?, HALF)?;
     let data = middle.snapshot_data()?;
     let interval = &data
         .last_interval
@@ -94,7 +101,7 @@ fn surveyed_ported_snapshots_round_trip_and_restart_bit_for_bit() -> Result {
         assert_eq!(state(&batch)?, expected, "{name} at the checkpoint");
         assert_eq!(batch.snapshot_data()?, data, "{name} package");
         assert_eq!(
-            state(&run(batch, HALF)?)?,
+            state(&run(batch, AFTER)?)?,
             state(&whole)?,
             "{name} after continuing"
         );
@@ -104,7 +111,7 @@ fn surveyed_ported_snapshots_round_trip_and_restart_bit_for_bit() -> Result {
 
 #[test]
 fn surveyed_zero_history_package_restarts_the_whole_run() -> Result {
-    let whole = run(case().build()?, 2 * HALF)?;
+    let whole = run(case().build()?, AFTER)?;
     let origin = case().build()?;
     let zero = origin.snapshot_data()?;
     assert!(zero.last_interval.is_none());
@@ -116,7 +123,7 @@ fn surveyed_zero_history_package_restarts_the_whole_run() -> Result {
     )?;
     for batch in [imported, resumed] {
         assert_eq!(state(&batch)?, state(&origin)?);
-        assert_eq!(state(&run(batch, 2 * HALF)?)?, state(&whole)?);
+        assert_eq!(state(&run(batch, AFTER)?)?, state(&whole)?);
     }
     Ok(())
 }

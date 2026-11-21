@@ -132,7 +132,44 @@ fn native<R: Runtime<DType = DType>>(
     })
 }
 
-pub fn execute<R>(client: R::Client, destination_client: R::Client) -> Result
+/// Frozen reference runs as `(triangular, endpoint)`, and the views of the native alias runs.
+///
+/// A reference run uses the triangular ideal inflow row when `triangular` is true, and the
+/// first frozen row otherwise. An alias run in view `v` continues in view `(v + 1) % 3`.
+pub struct Coverage {
+    pub references: Vec<(bool, ChannelPoolEndpoint)>,
+    pub views: Vec<usize>,
+}
+
+impl Coverage {
+    /// Both rows at both endpoints, and every view.
+    pub fn all() -> Self {
+        let mut references = Vec::new();
+        for triangular in [false, true] {
+            for endpoint in [ChannelPoolEndpoint::Left, ChannelPoolEndpoint::Right] {
+                references.push((triangular, endpoint));
+            }
+        }
+        Self {
+            references,
+            views: vec![0, 1, 2],
+        }
+    }
+
+    /// Each row at a different endpoint, and one alias run that steps in both
+    /// non-contiguous views.
+    pub fn device() -> Self {
+        Self {
+            references: vec![
+                (false, ChannelPoolEndpoint::Left),
+                (true, ChannelPoolEndpoint::Right),
+            ],
+            views: vec![1],
+        }
+    }
+}
+
+pub fn execute<R>(client: R::Client, destination_client: R::Client, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: BinaryOps<R>
@@ -165,77 +202,73 @@ where
         .find(|case| case.name == "triangular-inflow-ideal" && case.pool_area == 1.0)
         .copied()
         .ok_or("Missing frozen triangular runtime reference")?;
-    for reference_case in [CASES[0], triangle] {
-        for endpoint in [ChannelPoolEndpoint::Left, ChannelPoolEndpoint::Right] {
-            let (reference_setup, reference_initial) = single(reference_case, endpoint)?;
-            let reference_origin = ChannelPoolBatch::<R>::new(
-                client.clone(),
-                reference_setup.clone(),
-                reference_initial,
-            )?;
-            let reference_next = reference_origin
-                .trial_to(0.125, &forcing(&reference_setup, 0.0, 0.125))?
-                .into_next();
-            let reference_step = reference_next
-                .last_step()?
-                .ok_or("Missing runtime finite-pool reference receipt")?;
-            let reference_reach = reference_next
-                .reach("reach")
-                .ok_or("Missing runtime reference reach")?;
-            let reference_child = reference_reach
-                .last_step()?
-                .ok_or("Missing runtime reference child receipt")?;
-            let (endpoint_index, normal) = match endpoint {
-                ChannelPoolEndpoint::Left => (0, -1.0),
-                ChannelPoolEndpoint::Right => (1, 1.0),
-            };
-            let reference_trace = reference_child.boundary_traces[endpoint_index]
-                .as_ref()
-                .ok_or("Missing runtime reference trace")?;
-            let reference_state = reference_reach.state()?;
-            let expected = reference_case.expected;
-            for (actual, frozen) in [
-                (reference_trace.depth_m, expected.depth),
-                (reference_trace.outward_velocity_m_per_s, expected.velocity),
-                (
-                    reference_trace.outward_discharge_m3_per_s,
-                    expected.discharge,
-                ),
-                (
-                    reference_trace.momentum_flux_m4_per_s2,
-                    expected.momentum_flux,
-                ),
-                (
-                    reference_step.transfers[0].signed_volume_m3,
-                    expected.transfer,
-                ),
-                (
-                    reference_step.transfers[0].midpoint_pool_elevation_m,
-                    expected.head,
-                ),
-                (
-                    reference_next.pools().states()?[0].volume_m3,
-                    expected.pool_volume,
-                ),
-                (reference_state[0].volume_m3, expected.channel_volume),
-                (
-                    reference_step.transfers[0].longitudinal_momentum_impulse_m4_per_s,
-                    -normal * 0.125 * expected.momentum_flux,
-                ),
-                (
-                    reference_state[0].longitudinal_momentum_m4_per_s,
-                    normal * expected.right_momentum,
-                ),
-            ] {
-                assert!(
-                    (actual - frozen).abs() <= 1e-10 + 1e-10 * frozen.abs(),
-                    "{} {endpoint:?}: actual={actual:e}, independent reference={frozen:e}",
-                    reference_case.name
-                );
-            }
+    for &(triangular, endpoint) in &coverage.references {
+        let reference_case = if triangular { triangle } else { CASES[0] };
+        let (reference_setup, reference_initial) = single(reference_case, endpoint)?;
+        let reference_origin =
+            ChannelPoolBatch::<R>::new(client.clone(), reference_setup.clone(), reference_initial)?;
+        let reference_next = reference_origin
+            .trial_to(0.125, &forcing(&reference_setup, 0.0, 0.125))?
+            .into_next();
+        let reference_step = reference_next
+            .last_step()?
+            .ok_or("Missing runtime finite-pool reference receipt")?;
+        let reference_reach = reference_next
+            .reach("reach")
+            .ok_or("Missing runtime reference reach")?;
+        let reference_child = reference_reach
+            .last_step()?
+            .ok_or("Missing runtime reference child receipt")?;
+        let (endpoint_index, normal) = match endpoint {
+            ChannelPoolEndpoint::Left => (0, -1.0),
+            ChannelPoolEndpoint::Right => (1, 1.0),
+        };
+        let reference_trace = reference_child.boundary_traces[endpoint_index]
+            .as_ref()
+            .ok_or("Missing runtime reference trace")?;
+        let reference_state = reference_reach.state()?;
+        let expected = reference_case.expected;
+        for (actual, frozen) in [
+            (reference_trace.depth_m, expected.depth),
+            (reference_trace.outward_velocity_m_per_s, expected.velocity),
+            (
+                reference_trace.outward_discharge_m3_per_s,
+                expected.discharge,
+            ),
+            (
+                reference_trace.momentum_flux_m4_per_s2,
+                expected.momentum_flux,
+            ),
+            (
+                reference_step.transfers[0].signed_volume_m3,
+                expected.transfer,
+            ),
+            (
+                reference_step.transfers[0].midpoint_pool_elevation_m,
+                expected.head,
+            ),
+            (
+                reference_next.pools().states()?[0].volume_m3,
+                expected.pool_volume,
+            ),
+            (reference_state[0].volume_m3, expected.channel_volume),
+            (
+                reference_step.transfers[0].longitudinal_momentum_impulse_m4_per_s,
+                -normal * 0.125 * expected.momentum_flux,
+            ),
+            (
+                reference_state[0].longitudinal_momentum_m4_per_s,
+                normal * expected.right_momentum,
+            ),
+        ] {
+            assert!(
+                (actual - frozen).abs() <= 1e-10 + 1e-10 * frozen.abs(),
+                "{} {endpoint:?}: actual={actual:e}, independent reference={frozen:e}",
+                reference_case.name
+            );
         }
     }
-    for view in 0..3 {
+    for &view in &coverage.views {
         let (mut setup, mut initial) = single(CASES[0], ChannelPoolEndpoint::Right)?;
         setup.reaches[0].definition = definition(false, 1.0, 1.0, 2, 16.0, 0.375);
         initial.reaches[0].volume_m3 = vec![4.8; 2];

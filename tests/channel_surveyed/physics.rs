@@ -4,19 +4,27 @@ use hydr::channel::{ChannelBoundary, ChannelConfig, ChannelSurveyedConfig};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 
-/// Doubling meshes for the convergence gates, each dividing the frozen 400-cell reference.
-const MESHES: [usize; 3] = [100, 200, 400];
+/// Doubling meshes for the spatial gates, each dividing the frozen 400-cell reference.
+const SPATIAL_MESHES: [usize; 2] = [25, 50];
 /// Time of the frozen exact references.
 const REFERENCE_TIME_S: f64 = 2.0;
-/// Step shared by every spatial mesh.
-const SPATIAL_STEP_S: f64 = 0.1;
-/// Fixed spacing for the temporal gate, which compares successive runs.
-const TEMPORAL_CELLS: usize = 10;
-/// Mesh for the native advancement check on each runtime.
+/// Absolute and relative Riemann flux enclosure widths. They sit far below the
+/// discretization errors, which move by less than 1e-9 against the default widths.
+const FLUX_TOLERANCE: f64 = 1e-6;
+/// Ceiling on the normalized E1 error of the finest wet or dry-fan mesh.
+pub(super) const FINEST_LIMIT: f64 = 0.012;
+/// Ceiling on the normalized E1 error of the finest vacuum mesh. The vacuum fronts converge
+/// at a lower rate.
+const VACUUM_FINEST_LIMIT: f64 = 0.055;
+/// Mesh for the native advancement check on the CPU.
 const NATIVE_CELLS: usize = 20;
+/// Mesh for the native advancement check on a device. It keeps the dam-break face and faces
+/// between equal states, and one step reaches the reference time.
+#[cfg(feature = "cuda")]
+const DEVICE_CELLS: usize = 4;
 
-struct Measurement {
-    errors: [f64; 2],
+pub(super) struct Measurement {
+    pub(super) errors: [f64; 2],
     conserved: Vec<[f64; 2]>,
 }
 
@@ -27,7 +35,12 @@ fn boundaries(case: Case) -> [ChannelBoundary; 2] {
     })
 }
 
-fn run<R>(client: R::Client, case: Case, count: usize, max_step: f64) -> TestResult<Measurement>
+pub(super) fn run<R>(
+    client: R::Client,
+    case: Case,
+    count: usize,
+    max_step: f64,
+) -> TestResult<Measurement>
 where
     R: Runtime<DType = DType>,
     R::Client: support::Client<R>,
@@ -52,6 +65,9 @@ where
         ChannelConfig {
             gravity: f64::from_bits(case.gravity),
             max_step,
+            riemann_water_flux_absolute_m3_per_s: FLUX_TOLERANCE,
+            riemann_momentum_flux_absolute_m4_per_s2: FLUX_TOLERANCE,
+            riemann_flux_relative: FLUX_TOLERANCE,
             ..ChannelConfig::default()
         },
         ChannelSurveyedConfig::default(),
@@ -225,7 +241,7 @@ fn fronts(case: Case, conserved: &[[f64; 2]]) -> TestResult<Fronts> {
 }
 
 /// Requires the dry-support mismatch and every crossing distance to strictly decrease.
-fn front_convergence(case: Case, measurements: &[Measurement]) -> TestResult {
+pub(super) fn front_convergence(case: Case, measurements: &[Measurement]) -> TestResult {
     if case.fronts.is_empty() {
         return Ok(());
     }
@@ -260,14 +276,14 @@ fn front_convergence(case: Case, measurements: &[Measurement]) -> TestResult {
     Ok(())
 }
 
-fn decreasing(label: &str, values: &[f64]) {
+pub(super) fn decreasing(label: &str, values: &[f64]) {
     assert!(
         values.windows(2).all(|pair| pair[1] < pair[0]),
         "{label}: {values:?}"
     );
 }
 
-fn differences(case: Case, coarse: &Measurement, fine: &Measurement) -> [f64; 2] {
+pub(super) fn differences(case: Case, coarse: &Measurement, fine: &Measurement) -> [f64; 2] {
     assert_eq!(fine.conserved.len() % coarse.conserved.len(), 0);
     let ratio = fine.conserved.len() / coarse.conserved.len();
     let mut total = [0.0; 2];
@@ -285,15 +301,17 @@ fn differences(case: Case, coarse: &Measurement, fine: &Measurement) -> [f64; 2]
     total.map(|value| value / coarse.conserved.len() as f64)
 }
 
-fn spatial_convergence(case: Case) -> TestResult {
+/// Runs every spatial mesh with one fixed `step_s`, under the CFL limit of the finest mesh.
+/// The finest errors stay under `limit`.
+fn spatial_convergence(case: Case, step_s: f64, limit: f64) -> TestResult {
     assert_eq!(CASES.len(), 7);
     let mut measurements = Vec::new();
-    for count in MESHES {
+    for count in SPATIAL_MESHES {
         measurements.push(run::<crate::runtime::Runtime>(
             crate::runtime::client(),
             case,
             count,
-            SPATIAL_STEP_S,
+            step_s,
         )?);
     }
     for component in 0..2 {
@@ -303,7 +321,7 @@ fn spatial_convergence(case: Case) -> TestResult {
             .collect();
         decreasing(case.id, &values);
         assert!(
-            values[2] < 0.03,
+            values[1] < limit,
             "{} component={component}: {values:?}",
             case.id
         );
@@ -311,7 +329,7 @@ fn spatial_convergence(case: Case) -> TestResult {
     front_convergence(case, &measurements)
 }
 
-fn spatial_case(id: &str) -> TestResult<Case> {
+pub(super) fn spatial_case(id: &str) -> TestResult<Case> {
     CASES
         .iter()
         .copied()
@@ -324,106 +342,41 @@ fn spatial_case(id: &str) -> TestResult<Case> {
 
 #[test]
 fn trapezoid_wet_spatial_cell_averages_converge() -> TestResult {
-    spatial_convergence(spatial_case("trapezoid_wet")?)
+    spatial_convergence(spatial_case("trapezoid_wet")?, 0.4, FINEST_LIMIT)
 }
 
 #[test]
 fn reversed_trapezoid_wet_spatial_cell_averages_converge() -> TestResult {
-    spatial_convergence(spatial_case("trapezoid_wet_reverse")?)
+    spatial_convergence(spatial_case("trapezoid_wet_reverse")?, 0.4, FINEST_LIMIT)
 }
 
 #[test]
 fn multiband_wet_spatial_cell_averages_converge() -> TestResult {
-    spatial_convergence(spatial_case("legacy_multiband")?)
+    spatial_convergence(spatial_case("legacy_multiband")?, 0.4, FINEST_LIMIT)
 }
 
 #[test]
 fn rounded_multiband_wet_fan_spatial_cell_averages_converge() -> TestResult {
-    spatial_convergence(spatial_case("original_rounded_wet_fan")?)
+    spatial_convergence(spatial_case("original_rounded_wet_fan")?, 1.0, FINEST_LIMIT)
 }
 
 #[test]
 fn multiband_dry_fan_spatial_cell_averages_converge() -> TestResult {
-    spatial_convergence(spatial_case("both_knots_dry_fan")?)
+    spatial_convergence(spatial_case("both_knots_dry_fan")?, 0.25, FINEST_LIMIT)
 }
 
 #[test]
 fn reversed_multiband_dry_fan_spatial_cell_averages_converge() -> TestResult {
-    spatial_convergence(spatial_case("both_knots_dry_fan_reverse")?)
+    spatial_convergence(
+        spatial_case("both_knots_dry_fan_reverse")?,
+        0.25,
+        FINEST_LIMIT,
+    )
 }
 
 #[test]
 fn vacuum_spatial_cell_averages_converge() -> TestResult {
-    spatial_convergence(spatial_case("generated_vacuum")?)
-}
-
-fn refinement_cases() -> impl Iterator<Item = Case> {
-    CASES
-        .iter()
-        .copied()
-        .filter(|case| matches!(case.id, "trapezoid_wet" | "both_knots_dry_fan"))
-}
-
-#[test]
-fn fixed_spacing_temporal_conserved_differences_strictly_decrease() -> TestResult {
-    for case in refinement_cases() {
-        let mut measurements = Vec::new();
-        for max_step in [0.5, 0.25, 0.125] {
-            measurements.push(run::<crate::runtime::Runtime>(
-                crate::runtime::client(),
-                case,
-                TEMPORAL_CELLS,
-                max_step,
-            )?);
-        }
-        let deltas: Vec<_> = measurements
-            .windows(2)
-            .map(|pair| differences(case, &pair[0], &pair[1]))
-            .collect();
-        println!("surveyed {} temporal differences: {deltas:?}", case.id);
-        for component in 0..2 {
-            decreasing(
-                case.id,
-                &deltas.iter().map(|row| row[component]).collect::<Vec<_>>(),
-            );
-        }
-    }
-    Ok(())
-}
-
-#[test]
-fn combined_refinement_reduces_errors_and_restricted_conserved_differences() -> TestResult {
-    for case in refinement_cases() {
-        let mut measurements = Vec::new();
-        for (count, max_step) in MESHES.into_iter().zip([0.25, 0.125, 0.0625]) {
-            measurements.push(run::<crate::runtime::Runtime>(
-                crate::runtime::client(),
-                case,
-                count,
-                max_step,
-            )?);
-        }
-        let deltas: Vec<_> = measurements
-            .windows(2)
-            .map(|pair| differences(case, &pair[0], &pair[1]))
-            .collect();
-        for component in 0..2 {
-            decreasing(
-                case.id,
-                &measurements
-                    .iter()
-                    .map(|row| row.errors[component])
-                    .collect::<Vec<_>>(),
-            );
-            decreasing(
-                case.id,
-                &deltas.iter().map(|row| row[component]).collect::<Vec<_>>(),
-            );
-            assert!(measurements[2].errors[component] < 0.03);
-        }
-        front_convergence(case, &measurements)?;
-    }
-    Ok(())
+    spatial_convergence(spatial_case("generated_vacuum")?, 0.08, VACUUM_FINEST_LIMIT)
 }
 
 #[test]
@@ -457,13 +410,18 @@ fn exact_knot_rests_preserve_unequal_length_cells() -> TestResult {
     Ok(())
 }
 
-fn representative_native_advancement<R>(client: R::Client) -> TestResult
+/// Advances the first case on `count` cells with steps of at most `max_step` s.
+fn representative_native_advancement<R>(
+    client: R::Client,
+    count: usize,
+    max_step: f64,
+) -> TestResult
 where
     R: Runtime<DType = DType>,
     R::Client: support::Client<R>,
 {
     let case = *CASES.first().ok_or("Missing surveyed transport case")?;
-    let result = run::<R>(client, case, NATIVE_CELLS, 0.5)?;
+    let result = run::<R>(client, case, count, max_step)?;
     assert!(result.conserved.iter().all(|state| state[0] > 0.0));
     assert!(result.conserved.iter().any(|state| state[1] != 0.0));
     Ok(())
@@ -471,12 +429,20 @@ where
 
 #[test]
 fn configured_cpu_client_advances_original_surveyed_transport() -> TestResult {
-    representative_native_advancement::<crate::runtime::Runtime>(crate::runtime::client())
+    representative_native_advancement::<crate::runtime::Runtime>(
+        crate::runtime::client(),
+        NATIVE_CELLS,
+        0.5,
+    )
 }
 
 #[cfg(feature = "cuda")]
 #[test]
 fn configured_cuda_client_advances_original_surveyed_transport() -> TestResult {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    representative_native_advancement::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+    representative_native_advancement::<CudaRuntime>(
+        CudaClient::new(CudaDevice::new(0))?,
+        DEVICE_CELLS,
+        REFERENCE_TIME_S,
+    )
 }

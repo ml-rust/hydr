@@ -180,7 +180,11 @@ where
     Ok(())
 }
 
-fn mixed_compaction<R>(client: &R::Client, strided: bool) -> Result
+/// One batch of mixed rows: dry and wet traces, a vacuum, and profiles out of order.
+///
+/// `Full` cycles every eligible case over 33 rows. `Sample` keeps one row per profile, dry
+/// trace, wet trace, and vacuum class, in the same reversed order.
+fn mixed_compaction<R>(client: &R::Client, strided: bool, coverage: Coverage) -> Result
 where
     R: Runtime<DType = DType>,
     R::Client: Client<R>,
@@ -198,9 +202,15 @@ where
         .collect();
     assert!(eligible.len() > 10);
     assert!(eligible.len() <= 33);
-    let cases: Vec<_> = (0..33)
-        .map(|i| eligible[eligible.len() - 1 - i % eligible.len()])
-        .collect();
+    let cases: Vec<_> = if coverage.is_full() {
+        (0..33)
+            .map(|i| eligible[eligible.len() - 1 - i % eligible.len()])
+            .collect()
+    } else {
+        coverage.select(eligible.iter().rev().copied(), |case| {
+            (case.profile, case.dry, case.wet, case.id.contains("vacuum"))
+        })
+    };
     assert!(cases.iter().any(|case| case.dry));
     assert!(cases.iter().any(|case| case.wet));
     assert!(cases.iter().any(|case| case.id.contains("vacuum")));
@@ -248,7 +258,7 @@ where
         Coverage::Full
     };
     isolated::<R>(&client, strided, coverage)?;
-    mixed_compaction::<R>(&client, strided)
+    mixed_compaction::<R>(&client, strided, Coverage::Full)
 }
 
 fn configured_cpu(strided: bool) -> Result {
@@ -279,5 +289,5 @@ fn actual_cuda_encloses_all_frozen_waves() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
     let client = CudaClient::new(CudaDevice::new(0))?;
     isolated::<CudaRuntime>(&client, false, Coverage::Sample)?;
-    mixed_compaction::<CudaRuntime>(&client, true)
+    mixed_compaction::<CudaRuntime>(&client, true, Coverage::Sample)
 }

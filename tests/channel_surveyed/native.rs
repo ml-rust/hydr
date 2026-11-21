@@ -95,12 +95,13 @@ where
     Ok(())
 }
 
-fn execute<R>(client: R::Client) -> TestResult
+/// Runs the native source, rejection, and restart checks on a reach of each cell count.
+fn execute<R>(client: R::Client, counts: &[usize]) -> TestResult
 where
     R: Runtime<DType = DType>,
     R::Client: Client<R>,
 {
-    for count in [1, 33] {
+    for &count in counts {
         let origin = ChannelReach::<R>::new(
             client.clone(),
             definition(count, 0.03, true),
@@ -163,14 +164,16 @@ where
 
 #[test]
 fn native_strided_sources_copy_operands_and_replay_complete_packages() -> TestResult {
-    execute::<crate::runtime::Runtime>(crate::runtime::client())
+    execute::<crate::runtime::Runtime>(crate::runtime::client(), &[1, 33])
 }
 
+/// The device runs one reach with an interior face and separate end cells. The CPU test
+/// covers the one-cell reach.
 #[cfg(feature = "cuda")]
 #[test]
 fn cuda_surveyed_sources_and_restart_use_actual_selected_device() -> TestResult {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    execute::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+    execute::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?, &[3])
 }
 
 #[cfg(feature = "wgpu")]

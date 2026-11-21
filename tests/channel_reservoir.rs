@@ -7,6 +7,7 @@ mod admission;
 mod boundary_common;
 #[path = "channel_reservoir/fixtures.rs"]
 mod fixtures;
+#[allow(dead_code)]
 #[path = "channel_reservoir/native.rs"]
 mod native;
 #[path = "channel_reservoir/physics.rs"]
@@ -23,7 +24,7 @@ mod transport;
 #[test]
 fn native_reservoir_operands_preserve_bits_alias_isolation_and_complete_restart()
 -> boundary_common::TestResult {
-    native::execute::<runtime::Runtime>(runtime::client())
+    native::execute::<runtime::Runtime>(runtime::client(), native::Selection::all())
 }
 
 #[test]

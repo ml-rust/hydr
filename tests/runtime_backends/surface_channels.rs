@@ -23,8 +23,27 @@ use scenario::{ReachSpec, Spec, weir};
 /// Requested duration of every port interval, in s. The CFL limit shortens it.
 const PORT_DT: f64 = 0.25;
 
-/// Port intervals before the checkpoint, and after it.
+/// Port intervals before the checkpoint, and after it. The reach refills after about 38
+/// intervals and drains again after about 68.
 const PORT_HALF: usize = 40;
+
+/// Start and end of the storm rain in the CPU/CUDA parity port run, in s.
+const STORM: [f64; 2] = [0.3, 0.8];
+
+/// Storm rain rate, in m/s.
+const STORM_RAIN: f64 = 1.0;
+
+/// Potential evaporation after the storm, in m/s.
+const STORM_EVAPORATION: f64 = 2.0;
+
+/// Storm port intervals before the checkpoint. The checkpoint falls at the start of the rain.
+#[cfg(feature = "cuda")]
+const STORM_BEFORE: usize = 2;
+
+/// Storm port intervals after the checkpoint. The rain refills the reach from the third
+/// interval, and evaporation drains it again from the eighth.
+#[cfg(feature = "cuda")]
+const STORM_AFTER: usize = 6;
 
 /// End of the flood, in seconds. Surface evaporation drains the surface afterwards.
 const FLOOD_END: f64 = 0.5;
@@ -192,15 +211,44 @@ fn port_case() -> Scenario {
     case
 }
 
+/// Port case parts. With `storm`, rain lifts the surface above the reach, then evaporation
+/// lowers it again.
+fn port_parts(storm: bool) -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
+    let (mut setup, initial) = port_case().parts()?;
+    if storm {
+        let surface = &mut setup.surface;
+        let cells = ports_fixture::CELLS;
+        let interval = |start, end, rain, evaporation| ForcingInterval {
+            start,
+            end,
+            rain: vec![rain; cells],
+            potential_evaporation: vec![evaporation; cells],
+            withdrawal: vec![0.0; cells],
+            boundaries: Vec::new(),
+        };
+        surface.forcing = ForcingSchedule::new(
+            &surface.domain,
+            &surface.boundaries,
+            vec![
+                interval(0.0, STORM[0], 0.0, 0.0),
+                interval(STORM[0], STORM[1], STORM_RAIN, 0.0),
+                interval(STORM[1], 1000.0, 0.0, STORM_EVAPORATION),
+            ],
+        )?;
+    }
+    Ok((setup, initial))
+}
+
 /// Runs the port case on one client and checks restart against the whole run.
 ///
 /// Returns the final per-cell states and the final checkpoint package for comparison.
 macro_rules! surface_channel_port_execution {
-    ($runtime:ty, $client:expr) => {{
+    ($runtime:ty, $client:expr, $storm:expr, $before:expr, $after:expr) => {{
         use hydr::coupling::SurfaceChannelBatch;
 
         let client = $client;
-        let (setup, initial) = port_case().parts()?;
+        let (before, after): (usize, usize) = ($before, $after);
+        let (setup, initial) = port_parts($storm)?;
         let build =
             || SurfaceChannelBatch::<$runtime>::new(client.clone(), setup.clone(), initial.clone());
         // Accepts `count` intervals. Records port flow into and out of the reach.
@@ -224,14 +272,14 @@ macro_rules! surface_channel_port_execution {
             }
             Ok((batch, flows))
         };
-        let (middle, [_, drained]) = advance(build()?, PORT_HALF)?;
+        let (middle, [_, drained]) = advance(build()?, before)?;
         assert!(
             drained,
             "the reach must drain onto the surface through the port"
         );
         let trusted = middle.snapshot();
         let data = middle.snapshot_data()?;
-        let (whole, [refilled, redrained]) = advance(middle, PORT_HALF)?;
+        let (whole, [refilled, redrained]) = advance(middle, after)?;
         assert!(
             refilled,
             "the surface must refill the reach through the port"
@@ -258,7 +306,7 @@ macro_rules! surface_channel_port_execution {
             ("resumed", resumed),
         ] {
             assert_eq!(batch.snapshot_data()?, data, "{name} at the checkpoint");
-            let (continued, _) = advance(batch, PORT_HALF)?;
+            let (continued, _) = advance(batch, after)?;
             assert_eq!(
                 continued.snapshot_data()?,
                 expected,
@@ -274,7 +322,13 @@ macro_rules! surface_channel_port_execution {
 
 #[test]
 fn selected_cpu_client_executes_surface_channel_port_reversal_and_restart() -> Result {
-    surface_channel_port_execution!(runtime::Runtime, runtime::client());
+    surface_channel_port_execution!(
+        runtime::Runtime,
+        runtime::client(),
+        false,
+        PORT_HALF,
+        PORT_HALF
+    );
     Ok(())
 }
 
@@ -282,11 +336,23 @@ fn selected_cpu_client_executes_surface_channel_port_reversal_and_restart() -> R
 #[test]
 fn selected_cuda_client_executes_surface_channel_port_reversal_and_restart() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    let cpu = surface_channel_port_execution!(runtime::Runtime, runtime::client());
-    let cuda = surface_channel_port_execution!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?);
+    let cpu = surface_channel_port_execution!(
+        runtime::Runtime,
+        runtime::client(),
+        true,
+        STORM_BEFORE,
+        STORM_AFTER
+    );
+    let cuda = surface_channel_port_execution!(
+        CudaRuntime,
+        CudaClient::new(CudaDevice::new(0))?,
+        true,
+        STORM_BEFORE,
+        STORM_AFTER
+    );
     // Accepted cell states match bit for bit. Lifetime counters, ledgers, bounds and iteration
     // residuals come from device reductions and differ in their last bits.
-    let config = port_case().parts()?.0.config;
+    let config = port_parts(true)?.0.config;
     super::same_states_bounded_data(&cpu, &cuda, config.mass_absolute_m3, config.mass_relative)
 }
 

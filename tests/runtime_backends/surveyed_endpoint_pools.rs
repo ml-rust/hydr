@@ -15,11 +15,21 @@ use surface::pools_fixture::{Case, DATUM, REACH, pond, pool_end};
 /// Intervals before the checkpoint, and after it. Each interval is slow on three bands.
 const HALF: usize = 1;
 
-/// Seconds of one interval.
+/// Seconds of one interval in the CPU runs.
 const BAND_DT: f64 = 0.125;
+
+/// Seconds of one interval in the CPU/CUDA parity runs. Water still crosses the end. The parity
+/// runs compare the uninterrupted intervals. The CPU tests check the restart.
+#[cfg(feature = "cuda")]
+const PARITY_DT: f64 = 0.0009765625;
 
 /// Rest depth of the three-band reach, in m.
 const BAND_REST: f64 = 1.5;
+
+/// Absolute head and transfer tolerance of the common iteration, in m and m³. A pool end
+/// interval then accepts after two iterations, not three. Pairing, restart, and parity compare
+/// bits, so they hold at any tolerance.
+const COUPLING_TOLERANCE: f64 = 1e-8;
 
 /// The frozen three-band row of `name` on a pool of 1 m².
 fn bands_case(name: &str) -> Result<SurveyedCase> {
@@ -44,9 +54,9 @@ fn pool_end_parts(
         ..pool_end("end", ChannelEnd::Right, "pool")
     }];
     let (mut setup, mut initial) = base.parts()?;
-    setup.config.head_absolute_m = 1e-13;
+    setup.config.head_absolute_m = COUPLING_TOLERANCE;
     setup.config.head_relative = 0.0;
-    setup.config.transfer_absolute_m3 = 1e-12;
+    setup.config.transfer_absolute_m3 = COUPLING_TOLERANCE;
     setup.config.transfer_relative = 0.0;
     setup.surface.config.gravity = case.gravity;
     let mut reach: ChannelReachDefinition =
@@ -83,13 +93,15 @@ fn pool_end_forcing(start_s: f64, end_s: f64) -> SurfaceChannelForcingInterval {
     }
 }
 
-/// Surface pool end on three bands, paired exactly every interval, then restarted.
+/// Surface pool end on three bands, paired exactly every interval, then restarted when
+/// `$restart` holds.
 macro_rules! pool_end_run {
-    ($runtime:ty, $client:expr, $case:expr) => {{
+    ($runtime:ty, $client:expr, $case:expr, $dt:expr, $restart:expr) => {{
         use hydr::coupling::SurfaceChannelBatch;
 
         let client = $client;
         let case: SurveyedCase = $case;
+        let dt: f64 = $dt;
         let (setup, initial) = pool_end_parts(&case)?;
         let build =
             || SurfaceChannelBatch::<$runtime>::new(client.clone(), setup.clone(), initial.clone());
@@ -98,7 +110,7 @@ macro_rules! pool_end_run {
                        run: &mut Run|
          -> Result<SurfaceChannelBatch<$runtime>> {
             for _ in 0..count {
-                let target = batch.time() + BAND_DT;
+                let target = batch.time() + dt;
                 while batch.time() < target {
                     let held = pool_end_forcing(batch.time(), target);
                     batch = batch.trial_to(target, &held)?.into_next();
@@ -136,12 +148,14 @@ macro_rules! pool_end_run {
         let expected = whole.snapshot_data()?;
         let ends = &whole.pool_end_ledgers()?[0];
         assert!(ends.reach_to_pool_m3 > 0.0 || ends.pool_to_reach_m3 > 0.0);
-        let restored = build()?.restore(&trusted)?;
-        let imported = build()?.import_snapshot(&data)?;
-        for (name, batch) in [("restored", restored), ("imported", imported)] {
-            same_text(&batch.snapshot_data()?, &data, name);
-            let continued = advance(batch, HALF, &mut Run::default())?;
-            same_text(&continued.snapshot_data()?, &expected, name);
+        if $restart {
+            let restored = build()?.restore(&trusted)?;
+            let imported = build()?.import_snapshot(&data)?;
+            for (name, batch) in [("restored", restored), ("imported", imported)] {
+                same_text(&batch.snapshot_data()?, &data, name);
+                let continued = advance(batch, HALF, &mut Run::default())?;
+                same_text(&continued.snapshot_data()?, &expected, name);
+            }
         }
         run
     }};
@@ -152,7 +166,9 @@ fn selected_cpu_client_executes_surveyed_pool_end_on_three_bands_with_restart() 
     let run = pool_end_run!(
         runtime::Runtime,
         runtime::client(),
-        bands_case("three-bands-leaving")?
+        bands_case("three-bands-leaving")?,
+        BAND_DT,
+        true
     );
     assert_eq!(run.ledgers.len(), 2 * HALF);
     Ok(())
@@ -163,23 +179,38 @@ fn selected_cpu_client_executes_surveyed_pool_end_on_three_bands_with_restart() 
 fn selected_cuda_client_matches_cpu_surveyed_pool_end_on_three_bands() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
     let name = "three-bands-leaving";
-    let cpu = pool_end_run!(runtime::Runtime, runtime::client(), bands_case(name)?);
+    let cpu = pool_end_run!(
+        runtime::Runtime,
+        runtime::client(),
+        bands_case(name)?,
+        PARITY_DT,
+        false
+    );
     let cuda = pool_end_run!(
         CudaRuntime,
         CudaClient::new(CudaDevice::new(0))?,
-        bands_case(name)?
+        bands_case(name)?,
+        PARITY_DT,
+        false
     );
     super::same(name, &cpu, &cuda)
 }
 
-/// Channel/pool attachment on three bands, checked every interval, then restarted.
+/// Channel/pool attachment on three bands, checked every interval, then restarted when
+/// `$restart` holds.
 macro_rules! channel_pool_run {
-    ($runtime:ty, $client:expr, $case:expr) => {{
+    ($runtime:ty, $client:expr, $case:expr, $dt:expr, $restart:expr) => {{
         use hydr::coupling::ChannelPoolBatch;
 
         let client = $client;
         let case: SurveyedCase = $case;
-        let (setup, initial) = pools::surveyed_fixture::single(&case, ChannelPoolEndpoint::Right)?;
+        let dt: f64 = $dt;
+        let (mut setup, initial) =
+            pools::surveyed_fixture::single(&case, ChannelPoolEndpoint::Right)?;
+        setup.config.head_absolute_m = COUPLING_TOLERANCE;
+        setup.config.head_relative = 0.0;
+        setup.config.transfer_absolute_m3 = COUPLING_TOLERANCE;
+        setup.config.transfer_relative = 0.0;
         let build =
             || ChannelPoolBatch::<$runtime>::new(client.clone(), setup.clone(), initial.clone());
         let advance = |mut batch: ChannelPoolBatch<$runtime>,
@@ -187,7 +218,7 @@ macro_rules! channel_pool_run {
                        run: &mut Run|
          -> Result<ChannelPoolBatch<$runtime>> {
             for _ in 0..count {
-                let target = batch.time() + BAND_DT;
+                let target = batch.time() + dt;
                 while batch.time() < target {
                     let held =
                         pools::surveyed_fixture::held(&setup, BAND_REST, batch.time(), target);
@@ -221,12 +252,14 @@ macro_rules! channel_pool_run {
             connection.channel_to_pool_volume_m3 > 0.0
                 || connection.pool_to_channel_volume_m3 > 0.0
         );
-        let restored = build()?.restore(&trusted)?;
-        let imported = build()?.import_snapshot(&data)?;
-        for (name, batch) in [("restored", restored), ("imported", imported)] {
-            same_text(&batch.snapshot_data()?, &data, name);
-            let continued = advance(batch, HALF, &mut Run::default())?;
-            same_text(&continued.snapshot_data()?, &expected, name);
+        if $restart {
+            let restored = build()?.restore(&trusted)?;
+            let imported = build()?.import_snapshot(&data)?;
+            for (name, batch) in [("restored", restored), ("imported", imported)] {
+                same_text(&batch.snapshot_data()?, &data, name);
+                let continued = advance(batch, HALF, &mut Run::default())?;
+                same_text(&continued.snapshot_data()?, &expected, name);
+            }
         }
         run
     }};
@@ -237,7 +270,9 @@ fn selected_cpu_client_executes_surveyed_channel_pool_on_three_bands_with_restar
     let run = channel_pool_run!(
         runtime::Runtime,
         runtime::client(),
-        bands_case("three-bands-entering")?
+        bands_case("three-bands-entering")?,
+        BAND_DT,
+        true
     );
     assert_eq!(run.ledgers.len(), 2 * HALF);
     Ok(())
@@ -248,11 +283,19 @@ fn selected_cpu_client_executes_surveyed_channel_pool_on_three_bands_with_restar
 fn selected_cuda_client_matches_cpu_surveyed_channel_pool_on_three_bands() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
     let name = "three-bands-entering";
-    let cpu = channel_pool_run!(runtime::Runtime, runtime::client(), bands_case(name)?);
+    let cpu = channel_pool_run!(
+        runtime::Runtime,
+        runtime::client(),
+        bands_case(name)?,
+        PARITY_DT,
+        false
+    );
     let cuda = channel_pool_run!(
         CudaRuntime,
         CudaClient::new(CudaDevice::new(0))?,
-        bands_case(name)?
+        bands_case(name)?,
+        PARITY_DT,
+        false
     );
     super::same(name, &cpu, &cuda)
 }

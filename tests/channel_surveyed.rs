@@ -33,6 +33,8 @@ mod lifecycle;
 mod native;
 #[path = "channel_surveyed/physics.rs"]
 mod physics;
+#[path = "channel_surveyed/physics_refinement.rs"]
+mod physics_refinement;
 #[path = "channel_surveyed/sources.rs"]
 mod sources;
 #[path = "channel_surveyed/support.rs"]

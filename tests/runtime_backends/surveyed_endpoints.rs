@@ -132,6 +132,14 @@ const LENGTH: f64 = 2.5;
 const DEPTH: f64 = 1.5;
 const SPAN: f64 = 0.25;
 
+/// Cells of the standalone CPU/CUDA parity run. Each end owns its own cell.
+#[cfg(feature = "cuda")]
+const PARITY_CELLS: usize = 2;
+
+/// Requested interval of the standalone CPU/CUDA parity run, in s.
+#[cfg(feature = "cuda")]
+const PARITY_SPAN: f64 = 1.0 / 64.0;
+
 /// Intervals before the checkpoint, and after it.
 const HALF: usize = 1;
 
@@ -156,20 +164,21 @@ fn ends(section: &Section) -> Result<[ChannelBoundary; 2]> {
 
 /// Three-band reach under `Stage` and `FluxPort`, checked every interval, then restarted.
 macro_rules! standalone_run {
-    ($runtime:ty, $client:expr) => {{
+    ($runtime:ty, $client:expr, $cells:expr, $span:expr) => {{
         use hydr::channel::ChannelReach;
         use standalone::support;
 
         let client = $client;
+        let (cells, span): (usize, f64) = ($cells, $span);
         let section = section();
         let ends = ends(&section)?;
         let origin = support::reach::<$runtime>(
             client.clone(),
             section.definition(),
-            &[LENGTH; CELLS],
-            &[0.0; CELLS],
-            &[section.area(DEPTH); CELLS],
-            &[0.0; CELLS],
+            &vec![LENGTH; cells],
+            &vec![0.0; cells],
+            &vec![section.area(DEPTH); cells],
+            &vec![0.0; cells],
             ChannelConfig {
                 gravity: section.gravity,
                 ..ChannelConfig::default()
@@ -181,7 +190,7 @@ macro_rules! standalone_run {
                        run: &mut Run|
          -> Result<ChannelReach<$runtime>> {
             for _ in 0..count {
-                let (start, target) = (current.time(), current.time() + SPAN);
+                let (start, target) = (current.time(), current.time() + span);
                 let held = support::forcing(start, target, ends.clone());
                 current = current.step(target, &held)?.next;
                 assert!(current.time() > start);
@@ -228,7 +237,7 @@ macro_rules! standalone_run {
 
 #[test]
 fn selected_cpu_client_executes_surveyed_stage_and_flux_port_with_restart() -> Result {
-    let run = standalone_run!(runtime::Runtime, runtime::client());
+    let run = standalone_run!(runtime::Runtime, runtime::client(), CELLS, SPAN);
     assert_eq!(run.ledgers.len(), 2 * HALF);
     Ok(())
 }
@@ -237,8 +246,18 @@ fn selected_cpu_client_executes_surveyed_stage_and_flux_port_with_restart() -> R
 #[test]
 fn selected_cuda_client_matches_cpu_surveyed_stage_and_flux_port() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    let cpu = standalone_run!(runtime::Runtime, runtime::client());
-    let cuda = standalone_run!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?);
+    let cpu = standalone_run!(
+        runtime::Runtime,
+        runtime::client(),
+        PARITY_CELLS,
+        PARITY_SPAN
+    );
+    let cuda = standalone_run!(
+        CudaRuntime,
+        CudaClient::new(CudaDevice::new(0))?,
+        PARITY_CELLS,
+        PARITY_SPAN
+    );
     same("standalone", &cpu, &cuda)
 }
 
@@ -252,9 +271,10 @@ fn port_case() -> Scenario {
     case
 }
 
-/// Surface port on a surveyed rectangle with a bank link, checked every interval, then restarted.
+/// Surface port on a surveyed rectangle with a bank link, checked every interval, then
+/// restarted when `$restart` holds.
 macro_rules! port_run {
-    ($runtime:ty, $client:expr) => {{
+    ($runtime:ty, $client:expr, $restart:expr) => {{
         use hydr::coupling::SurfaceChannelBatch;
 
         let client = $client;
@@ -296,12 +316,14 @@ macro_rules! port_run {
         let expected = whole.snapshot_data()?;
         let ledger = &whole.port_ledgers()?[0];
         assert!(ledger.surface_to_channel_m3 > 0.0 || ledger.channel_to_surface_m3 > 0.0);
-        let restored = build()?.restore(&trusted)?;
-        let imported = build()?.import_snapshot(&data)?;
-        for (name, batch) in [("restored", restored), ("imported", imported)] {
-            same_text(&batch.snapshot_data()?, &data, name);
-            let continued = advance(batch, HALF, &mut Run::default())?;
-            same_text(&continued.snapshot_data()?, &expected, name);
+        if $restart {
+            let restored = build()?.restore(&trusted)?;
+            let imported = build()?.import_snapshot(&data)?;
+            for (name, batch) in [("restored", restored), ("imported", imported)] {
+                same_text(&batch.snapshot_data()?, &data, name);
+                let continued = advance(batch, HALF, &mut Run::default())?;
+                same_text(&continued.snapshot_data()?, &expected, name);
+            }
         }
         run
     }};
@@ -309,17 +331,18 @@ macro_rules! port_run {
 
 #[test]
 fn selected_cpu_client_executes_surveyed_port_with_bank_link_and_restart() -> Result {
-    let run = port_run!(runtime::Runtime, runtime::client());
+    let run = port_run!(runtime::Runtime, runtime::client(), true);
     assert_eq!(run.ledgers.len(), 2 * HALF);
     Ok(())
 }
 
+/// The parity run compares the uninterrupted intervals. The CPU test checks the restart.
 #[cfg(feature = "cuda")]
 #[test]
 fn selected_cuda_client_matches_cpu_surveyed_port_with_bank_link() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    let cpu = port_run!(runtime::Runtime, runtime::client());
-    let cuda = port_run!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?);
+    let cpu = port_run!(runtime::Runtime, runtime::client(), false);
+    let cuda = port_run!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?, false);
     same("surface port", &cpu, &cuda)
 }
 

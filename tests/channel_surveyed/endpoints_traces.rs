@@ -9,7 +9,9 @@
 //! - Multi-band traces: three bands and wide bottom. `Stage`, `Discharge`, and
 //!   `QuiescentReservoir` (`k = 0`, `0.5`), entering and leaving, both ends. Trace depths in
 //!   every band, and one within `1e-6 m` of each knot. Reference inside the enclosure. Nominal
-//!   within `1e-11` plus `1e-12` relative. Flux widths within the configured budgets.
+//!   within `1e-11` plus `1e-12` relative. Flux widths within the configured budgets. The
+//!   rows run are the first rows that cover each policy with each end and direction, each
+//!   policy in each band, and each knot, plus the row with the largest nominal error.
 //!
 //! The certified depth enclosure is public for reservoir rows only, through
 //! `ChannelReservoirTrace`. A `Stage` enclosure is the two-sum enclosure of `η - z_min`. Every
@@ -199,30 +201,83 @@ fn check(index: usize, row: &Trace) -> TestResult<f64> {
     Ok(observed.worst)
 }
 
-/// Checks every `(index, row)` and prints the largest nominal error.
+/// Checks every `(index, row)` and prints the largest nominal error and its row.
 fn run<'a>(rows: impl Iterator<Item = (usize, &'a Trace)>, label: &str) -> TestResult {
-    let mut worst: f64 = 0.0;
+    let (mut worst, mut worst_row): (f64, usize) = (0.0, 0);
     let mut count = 0;
     for (index, row) in rows {
         let error = check(index, row).map_err(|error| format!("{label} row {index}: {error}"))?;
-        worst = worst.max(error);
+        if error > worst {
+            (worst, worst_row) = (error, index);
+        }
         count += 1;
     }
-    println!("{label}: rows={count}, worst nominal error={worst:e}");
+    println!("{label}: rows={count}, worst nominal error={worst:e} at row {worst_row}");
     Ok(())
 }
 
-/// The multi-band rows of profile `name`: trace depths in every band, one within `1e-6 m`
-/// of each knot, then every row against its reference.
+/// Policy kind: stage, discharge, reservoir `k = 0`, reservoir `k > 0`.
+fn kind(policy: Policy) -> u8 {
+    match policy {
+        Policy::Stage { .. } => 0,
+        Policy::Discharge { .. } => 1,
+        Policy::Reservoir {
+            entrance_loss_coefficient,
+            ..
+        } => 2 + u8::from(entrance_loss_coefficient > 0.0),
+    }
+}
+
+/// `MULTIBAND` rows with the largest nominal error over each full profile: three bands, then
+/// wide bottom.
+const HARDEST: [usize; 2] = [141, 245];
+
+/// The rows that first cover each policy kind with each end and direction, each policy kind
+/// in each band, and each interior knot within `1e-6 m`, plus the `HARDEST` rows.
+fn covering<'a>(
+    rows: impl Iterator<Item = (usize, &'a Trace)>,
+    knots: &[f64],
+) -> Vec<(usize, &'a Trace)> {
+    let mut directions = std::collections::BTreeSet::new();
+    let mut bands = std::collections::BTreeSet::new();
+    let mut near = vec![false; knots.len()];
+    rows.filter(|&(index, row)| {
+        let policy = kind(row.policy);
+        let direction = directions.insert((policy, row.end == End::Left, row.leaving));
+        let band = bands.insert((policy, row.band));
+        let mut knot = false;
+        for (seen, &value) in near.iter_mut().zip(knots) {
+            if !*seen && (row.depth.nearest - value).abs() <= 1e-6 {
+                *seen = true;
+                knot = true;
+            }
+        }
+        direction || band || knot || HARDEST.contains(&index)
+    })
+    .collect()
+}
+
+/// The covering multi-band rows of profile `name`: trace depths in every band, one within
+/// `1e-6 m` of each knot, then every selected row against its reference.
 fn multiband(name: &str) -> TestResult {
-    let rows = || {
+    let all = || {
         MULTIBAND
             .iter()
             .enumerate()
             .filter(move |(_, row)| row.profile.name == name)
     };
-    let (_, first) = rows().next().ok_or("missing profile rows")?;
+    let (_, first) = all().next().ok_or("missing profile rows")?;
     let knots = first.profile.knots;
+    let selected = covering(all(), &knots[1..knots.len() - 1]);
+    let rows = || selected.iter().copied();
+    let directions: std::collections::BTreeSet<_> = rows()
+        .map(|(_, row)| (kind(row.policy), row.end == End::Left, row.leaving))
+        .collect();
+    assert_eq!(
+        directions.len(),
+        16,
+        "{name}: a policy, end, and direction holds no trace"
+    );
     let bands: std::collections::BTreeSet<_> = rows().map(|(_, row)| row.band).collect();
     assert_eq!(
         bands.len(),

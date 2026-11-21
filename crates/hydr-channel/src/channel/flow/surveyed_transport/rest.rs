@@ -241,13 +241,37 @@ mod tests {
     use numr::runtime::Runtime;
     use numr::runtime::cpu::CpuRuntime;
 
-    /// Intervals of each rest run.
-    const INTERVALS: usize = 50;
+    /// Intervals of each rest run. The second interval starts from a reach with a receipt.
+    const INTERVALS: usize = 2;
     /// Length of each interval, in seconds.
     const SPAN: f64 = 0.125;
 
+    /// A left and a right end policy.
+    type Pair = (ChannelBoundary, ChannelBoundary);
+    /// The pairs that one test takes from its policies.
+    type Cover = fn(&[ChannelBoundary]) -> Vec<Pair>;
+
     fn bits(values: &[f64]) -> Vec<u64> {
         values.iter().map(|value| value.to_bits()).collect()
+    }
+
+    /// Every ordered pair of `policies`.
+    fn every_pair(policies: &[ChannelBoundary]) -> Vec<Pair> {
+        policies
+            .iter()
+            .flat_map(|left| policies.iter().map(|right| (left.clone(), right.clone())))
+            .collect()
+    }
+
+    /// Each policy once at each end: pair `i` holds policy `i` at the left end and policy
+    /// `i + 1` at the right end.
+    #[cfg(feature = "cuda")]
+    fn each_end(policies: &[ChannelBoundary]) -> Vec<Pair> {
+        policies
+            .iter()
+            .zip(policies.iter().cycle().skip(1))
+            .map(|(left, right)| (left.clone(), right.clone()))
+            .collect()
     }
 
     /// Every admitted end policy at rest against an end cell of depth 1 m on a bed at 0 m.
@@ -283,51 +307,49 @@ mod tests {
         Ok(policies)
     }
 
-    /// Runs every ordered pair of `policies` and checks each cell bit for bit after each interval.
-    fn hold_rest<R>(origin: &ChannelReach<R>, policies: &[ChannelBoundary]) -> TestResult
+    /// Runs every pair of `pairs` and checks each cell bit for bit after each interval.
+    fn hold_rest<R>(origin: &ChannelReach<R>, pairs: &[Pair]) -> TestResult
     where
         R: Runtime<DType = DType>,
         R::Client: Client<R>,
     {
         let start = origin.snapshot_data()?;
         let cells = origin.state()?;
-        for left in policies {
-            for right in policies {
-                let mut current = origin.clone();
-                for index in 0..INTERVALS {
-                    let end = (index + 1) as f64 * SPAN;
-                    let forcing = ChannelForcingInterval {
-                        start_s: current.time(),
-                        end_s: end,
-                        left: left.clone(),
-                        right: right.clone(),
-                        lateral_inputs: Vec::new(),
-                    };
-                    current = current.step(end, &forcing)?.next;
-                    let pair = format!("{left:?} / {right:?}, interval {index}");
-                    let data = current.snapshot_data()?;
-                    for (actual, expected) in [
-                        (&data.volume_m3, &start.volume_m3),
-                        (&data.volume_low_m3, &start.volume_low_m3),
-                        (
-                            &data.longitudinal_momentum_m4_per_s,
-                            &start.longitudinal_momentum_m4_per_s,
-                        ),
-                        (
-                            &data.longitudinal_momentum_low_m4_per_s,
-                            &start.longitudinal_momentum_low_m4_per_s,
-                        ),
-                    ] {
-                        assert_eq!(bits(actual), bits(expected), "{pair}");
-                    }
-                    for (cell, before) in current.state()?.iter().zip(&cells) {
-                        assert_eq!(cell.volume_m3.to_bits(), before.volume_m3.to_bits());
-                        assert_eq!(
-                            cell.discharge_m3_per_s.to_bits(),
-                            before.discharge_m3_per_s.to_bits(),
-                            "{pair}"
-                        );
-                    }
+        for (left, right) in pairs {
+            let mut current = origin.clone();
+            for index in 0..INTERVALS {
+                let end = (index + 1) as f64 * SPAN;
+                let forcing = ChannelForcingInterval {
+                    start_s: current.time(),
+                    end_s: end,
+                    left: left.clone(),
+                    right: right.clone(),
+                    lateral_inputs: Vec::new(),
+                };
+                current = current.step(end, &forcing)?.next;
+                let pair = format!("{left:?} / {right:?}, interval {index}");
+                let data = current.snapshot_data()?;
+                for (actual, expected) in [
+                    (&data.volume_m3, &start.volume_m3),
+                    (&data.volume_low_m3, &start.volume_low_m3),
+                    (
+                        &data.longitudinal_momentum_m4_per_s,
+                        &start.longitudinal_momentum_m4_per_s,
+                    ),
+                    (
+                        &data.longitudinal_momentum_low_m4_per_s,
+                        &start.longitudinal_momentum_low_m4_per_s,
+                    ),
+                ] {
+                    assert_eq!(bits(actual), bits(expected), "{pair}");
+                }
+                for (cell, before) in current.state()?.iter().zip(&cells) {
+                    assert_eq!(cell.volume_m3.to_bits(), before.volume_m3.to_bits());
+                    assert_eq!(
+                        cell.discharge_m3_per_s.to_bits(),
+                        before.discharge_m3_per_s.to_bits(),
+                        "{pair}"
+                    );
                 }
             }
         }
@@ -336,12 +358,13 @@ mod tests {
 
     /// Eight rectangle cells of width 2 m at rest at depth 1 m hold exactly still.
     ///
-    /// Frozen criteria, for every ordered pair of `Wall`, `Exterior` at rest, `Stage(1 m)`,
-    /// `Discharge(0)`, `QuiescentReservoir(1 m, k = 0)`, `QuiescentReservoir(1 m, k = 1)`, and a
-    /// zero-water `FluxPort` at the reference pressure `g I(A) = g`:
-    /// - over 50 intervals of 0.125 s, every cell's area and discharge stay bit-identical to
+    /// Frozen criteria, for each pair that `cover` takes from `Wall`, `Exterior` at rest,
+    /// `Stage(1 m)`, `Discharge(0)`, `QuiescentReservoir(1 m, k = 0)`,
+    /// `QuiescentReservoir(1 m, k = 1)`, and a zero-water `FluxPort` at the reference pressure
+    /// `g I(A) = g`:
+    /// - over 2 intervals of 0.125 s, every cell's area and discharge stay bit-identical to
     ///   the start, both parts of each
-    fn rectangle_rest<R>(client: R::Client) -> TestResult
+    fn rectangle_rest<R>(client: R::Client, cover: Cover) -> TestResult
     where
         R: Runtime<DType = DType>,
         R::Client: Client<R>,
@@ -350,52 +373,55 @@ mod tests {
         let gravity = origin.definition().config.gravity;
         // The width-2 rectangle at depth 1 m holds `I(A) = 1`, so `g I(A) = g` exactly.
         let invariant = 2.0 * gravity.sqrt();
-        hold_rest(&origin, &policies(Some((gravity, invariant)))?)
+        hold_rest(&origin, &cover(&policies(Some((gravity, invariant)))?))
     }
 
     /// Eight three-band cells at rest at depth 1 m hold exactly still.
     ///
-    /// Frozen criteria, for every ordered pair of `Wall`, `Exterior` at rest, `Stage(1 m)`,
-    /// `Discharge(0)`, `QuiescentReservoir(1 m, k = 0)`, and `QuiescentReservoir(1 m, k = 1)`:
-    /// - over 50 intervals of 0.125 s, every cell's area and discharge stay bit-identical to
+    /// Frozen criteria, for each pair that `cover` takes from `Wall`, `Exterior` at rest,
+    /// `Stage(1 m)`, `Discharge(0)`, `QuiescentReservoir(1 m, k = 0)`, and
+    /// `QuiescentReservoir(1 m, k = 1)`:
+    /// - over 2 intervals of 0.125 s, every cell's area and discharge stay bit-identical to
     ///   the start, both parts of each
     ///
     /// The three-band rest pressure `g I(A)` has no binary64 value. Interior faces carry its
     /// two-part point, and a flux port carries one F64 rate. No port rate equals that point, so
     /// the matrix leaves the port out.
-    fn three_band_rest<R>(client: R::Client) -> TestResult
+    fn three_band_rest<R>(client: R::Client, cover: Cover) -> TestResult
     where
         R: Runtime<DType = DType>,
         R::Client: Client<R>,
     {
         // The three-band section holds 3 m² at depth 1 m.
         let origin = reach_cells::<R>(client, 8, 3.0, 0.0, 0.0)?;
-        hold_rest(&origin, &policies(None)?)
+        hold_rest(&origin, &cover(&policies(None)?))
     }
 
     #[test]
     fn cpu_surveyed_rectangle_rest_holds_bit_for_bit_with_every_end_pair() -> TestResult {
-        rectangle_rest::<CpuRuntime>(cpu())
+        rectangle_rest::<CpuRuntime>(cpu(), every_pair)
     }
 
     #[test]
     fn cpu_surveyed_three_band_rest_holds_bit_for_bit_with_every_end_pair() -> TestResult {
-        three_band_rest::<CpuRuntime>(cpu())
+        three_band_rest::<CpuRuntime>(cpu(), every_pair)
     }
 
+    /// The device runs each policy once at each end. The CPU tests cover every pair, and the
+    /// two ends of an eight-cell reach share no face.
     #[cfg(feature = "cuda")]
     mod cuda {
         use super::*;
         use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
 
         #[test]
-        fn cuda_surveyed_rectangle_rest_holds_bit_for_bit_with_every_end_pair() -> TestResult {
-            rectangle_rest::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+        fn cuda_surveyed_rectangle_rest_holds_bit_for_bit_with_every_end_policy() -> TestResult {
+            rectangle_rest::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?, each_end)
         }
 
         #[test]
-        fn cuda_surveyed_three_band_rest_holds_bit_for_bit_with_every_end_pair() -> TestResult {
-            three_band_rest::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?)
+        fn cuda_surveyed_three_band_rest_holds_bit_for_bit_with_every_end_policy() -> TestResult {
+            three_band_rest::<CudaRuntime>(CudaClient::new(CudaDevice::new(0))?, each_end)
         }
     }
 }

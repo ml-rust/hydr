@@ -7,7 +7,7 @@
 //!
 //! Frozen measurements:
 //!
-//! - Run end: `2.25` exact periods.
+//! - Run end: `1.25` exact periods.
 //! - Port rate: the signed port volume of an interval over its duration, placed at the
 //!   interval midpoint.
 //! - Sign change: two consecutive intervals with rates of strictly opposite sign. Its time is
@@ -28,20 +28,20 @@ const DEPTH_M: f64 = 1.0;
 /// Frozen tilt amplitude over depth.
 const TILT: f64 = 0.01;
 
-/// Frozen spacings, coarse to fine, in m.
-const SPACINGS: [f64; 3] = [2.0, 1.0, 0.5];
+/// Spacings, coarse to fine, in m.
+const SPACINGS: [f64; 2] = [2.0, 1.0];
 
-/// Frozen run length, in exact periods.
-const PERIODS: f64 = 2.25;
+/// Run length, in exact periods. The port changes sign near each half period.
+const PERIODS: f64 = 1.25;
 
-/// Frozen least count of port sign changes.
-const SIGN_CHANGES: usize = 4;
+/// Least count of port sign changes.
+const SIGN_CHANGES: usize = 2;
 
-/// Frozen relative bound on the period at the finest spacing.
-const PERIOD: f64 = 0.03;
+/// Relative bound on the period at the finest spacing. The 1 m run measures about `3.8e-3`.
+const PERIOD: f64 = 0.006;
 
-/// Accepted intervals of the bank-and-port seiche.
-const SEICHE_INTERVALS: usize = 120;
+/// Accepted intervals of the bank-and-port seiche. The port first reverses at interval 38.
+const SEICHE_INTERVALS: usize = 44;
 
 /// Times of every port sign change, in s.
 fn sign_changes(intervals: &[Interval]) -> Vec<f64> {

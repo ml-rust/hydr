@@ -15,6 +15,7 @@ fn selected_cuda_executes_finite_pool_non_knot_cuts_mixed_connections_and_restar
     native::execute::<CudaRuntime>(
         CudaClient::new(CudaDevice::new(0))?,
         CudaClient::new(CudaDevice::new(0))?,
+        native::Coverage::device(),
     )
 }
 

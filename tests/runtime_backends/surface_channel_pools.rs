@@ -32,21 +32,41 @@ use pools_fixture::{
     surface,
 };
 
-/// Requested duration of every interval, in s. Every decision time is a multiple of it.
-const DT: f64 = 0.5;
+/// Interval length, relay decision times, gate actuator rate and end of one run.
+struct Timing {
+    /// Requested duration of every interval, in s. Every decision time is a multiple of it.
+    dt: f64,
+    /// Decision times of both relays, in s.
+    decisions: &'static [f64],
+    /// Opening and closing rate of the gate actuator, in m/s.
+    gate_rate: f64,
+    /// End of the run, in s. It falls after the gate arrives.
+    end: f64,
+}
 
-/// Decision times of both relays, in s.
-const DECISIONS: [f64; 8] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+/// CPU run: the first decision falls at 1 s and the gate arrives at 4 s.
+const LONG: Timing = Timing {
+    dt: 0.5,
+    decisions: &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+    gate_rate: 0.1,
+    end: 8.0,
+};
 
-/// End of the run, in s. The first gate decision falls at 1 s and the gate arrives at 4 s.
-const END: f64 = 8.0;
+/// CPU/CUDA parity run: the first decision falls at 0.25 s and the gate arrives at 0.5 s.
+#[cfg(feature = "cuda")]
+const SHORT: Timing = Timing {
+    dt: 0.25,
+    decisions: &[0.25, 0.5, 0.75],
+    gate_rate: 1.2,
+    end: 0.75,
+};
 
 /// A pond joined to a sump by a submerged orifice, fed by a pipe and by the reach's right end.
 ///
 /// An actuated gate drains the pond onto the surface. A controlled pump lifts the sump onto the
 /// surface through a free outlet. The pond starts at its upper gate threshold, so the first
-/// decision opens the gate, and the gate arrives three seconds later.
-fn case() -> pools_fixture::Result<Case> {
+/// decision opens the gate. The gate travels 0.3 m at the actuator rate of `timing`.
+fn case(timing: &Timing) -> pools_fixture::Result<Case> {
     let mut case = Case::tanks(0.0, 0.5);
     case.ponds = vec![
         (pond("pond", 0.0, 8.0, 2.0)?, 0.5 * 8.0),
@@ -80,12 +100,12 @@ fn case() -> pools_fixture::Result<Case> {
             (surface(), 0.0),
         ),
     ];
-    let schedule = (0.0, &DECISIONS[..], 20.0);
+    let schedule = (0.0, timing.decisions, 20.0);
     case.operating = Some(SurfaceChannelOperating {
         gates: Some(controlled_gate(
             "outlet",
             [0.4, 0.5],
-            ([0.0, 0.3], 0.1),
+            ([0.0, 0.3], timing.gate_rate),
             schedule,
         )),
         pumps: Some(controlled_pump(
@@ -140,14 +160,15 @@ fn forcing(setup: &SurfaceChannelSetup, start: f64, end: f64) -> SurfaceChannelF
 /// Fails unless the run crosses the relay decisions and the gate arrival, and every structure
 /// and the pool end carry water.
 macro_rules! pool_execution {
-    ($runtime:ty, $client:expr) => {{
+    ($runtime:ty, $client:expr, $timing:expr) => {{
         use hydr::coupling::SurfaceChannelBatch;
 
-        let (setup, initial) = case()?.parts()?;
+        let timing: &Timing = $timing;
+        let (setup, initial) = case(timing)?.parts()?;
         let mut batch = SurfaceChannelBatch::<$runtime>::new($client, setup, initial)?;
         let mut states = Vec::new();
-        while batch.time() < END {
-            let end = (batch.time() + DT).min(END);
+        while batch.time() < timing.end {
+            let end = (batch.time() + timing.dt).min(timing.end);
             let held = forcing(batch.setup(), batch.time(), end);
             batch = batch.trial_to(end, &held)?.into_next();
             let pools = batch.pools().map(|pools| pools.states()).transpose()?;
@@ -187,7 +208,7 @@ macro_rules! pool_execution {
 
 #[test]
 fn selected_cpu_client_executes_surface_channel_pools_with_structures() -> Result {
-    let states = pool_execution!(runtime::Runtime, runtime::client());
+    let states = pool_execution!(runtime::Runtime, runtime::client(), &LONG);
     assert!(states.len() >= 16);
     Ok(())
 }
@@ -196,8 +217,9 @@ fn selected_cpu_client_executes_surface_channel_pools_with_structures() -> Resul
 #[test]
 fn selected_cuda_client_matches_cpu_surface_channel_pools_with_structures() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    let cpu = pool_execution!(runtime::Runtime, runtime::client());
-    let cuda = pool_execution!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?);
+    let cpu = pool_execution!(runtime::Runtime, runtime::client(), &SHORT);
+    let cuda = pool_execution!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?, &SHORT);
+    assert_eq!(cpu.len(), cuda.len(), "accepted interval count");
     for (interval, (cpu, cuda)) in cpu.iter().zip(&cuda).enumerate() {
         super::same_bits(cpu, cuda)
             .map_err(|error| format!("interval {}: {error}", interval + 1))?;

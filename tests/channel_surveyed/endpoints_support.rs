@@ -105,8 +105,28 @@ impl Section {
         profile(self.profile.name, self.profile.points, self.profile.cap)
     }
 
+    /// Default reach config at the section gravity.
+    pub fn config(&self) -> ChannelConfig {
+        ChannelConfig {
+            gravity: self.gravity,
+            ..ChannelConfig::default()
+        }
+    }
+
     /// Reach of `count` cells of `length` with every cell at area `area` and discharge `q`.
     pub fn reach(&self, count: usize, length: f64, area: f64, discharge: f64) -> TestResult<Reach> {
+        self.reach_with(count, length, area, discharge, self.config())
+    }
+
+    /// [`Section::reach`] with an explicit reach config.
+    pub fn reach_with(
+        &self,
+        count: usize,
+        length: f64,
+        area: f64,
+        discharge: f64,
+        config: ChannelConfig,
+    ) -> TestResult<Reach> {
         reach::<crate::runtime::Runtime>(
             crate::runtime::client(),
             self.definition(),
@@ -114,10 +134,7 @@ impl Section {
             &vec![0.0; count],
             &vec![area; count],
             &vec![discharge; count],
-            ChannelConfig {
-                gravity: self.gravity,
-                ..ChannelConfig::default()
-            },
+            config,
             ChannelSurveyedConfig::default(),
         )
     }

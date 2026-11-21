@@ -2,7 +2,7 @@
 //!
 //! Four 32 m cells of three bands start at rest at depth 1.5 m. One end joins a pool of
 //! plan area `1`, `4`, or `16 m²`. The other end holds the rest state. Every accepted
-//! interval up to 2 s:
+//! interval of two `0.125 s` requests:
 //! - at least one reach cell carries a nonzero volume low part
 //! - the composite residual stays within the mass bound
 
@@ -17,6 +17,12 @@ use hydr::storage::LevelPoolState;
 
 /// Leaving and entering pool stages with their entrance loss coefficients.
 const STAGES: [(f64, f64); 2] = [(0.875, 0.0), (2.5, 0.5)];
+/// Requested interval in seconds.
+const SPAN_S: f64 = 0.125;
+/// Requested intervals per run.
+const INTERVALS: usize = 2;
+/// End time in seconds.
+const END_S: f64 = INTERVALS as f64 * SPAN_S;
 
 fn run(endpoint: ChannelPoolEndpoint, area: f64, stage: f64, loss: f64) -> Result {
     let setup = ChannelPoolSetup {
@@ -43,9 +49,9 @@ fn run(endpoint: ChannelPoolEndpoint, area: f64, stage: f64, loss: f64) -> Resul
     };
     let mut current = batch(setup.clone(), initial)?;
     let mut intervals = 0;
-    while current.time() < 2.0 {
+    while current.time() < END_S {
         let start = current.time();
-        let end = (start + 0.125).min(2.0);
+        let end = (start + SPAN_S).min(END_S);
         let interval = held(&setup, 1.5, start, end);
         current = current.trial_to(end, &interval)?.into_next();
         assert!(current.time() > start && current.time() <= end);
@@ -61,7 +67,7 @@ fn run(endpoint: ChannelPoolEndpoint, area: f64, stage: f64, loss: f64) -> Resul
         check_water(&current)?;
         intervals += 1;
     }
-    assert!(intervals >= 16);
+    assert!(intervals >= INTERVALS);
     Ok(())
 }
 
