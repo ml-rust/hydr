@@ -7,6 +7,7 @@ use numr::tensor::Tensor;
 use super::{
     StructureBatch, StructureElement, StructureError, StructureInputErrorKind, StructureOperation,
 };
+use crate::structures::tensor::culvert::CulvertHint;
 use crate::structures::tensor::{
     TensorStaticOperations, TensorStructureHeads, TensorStructureInput, TensorStructureResult,
     check_structure_tensor,
@@ -101,11 +102,44 @@ impl<R: Runtime<DType = DType>> CouplingStructures<R> {
             + numr::ops::UnaryOps<R>
             + solvr::interpolate::Interp1dAlgorithms<R>,
     {
+        self.evaluate_heads_from([stage_a, stage_b], [bed_a, bed_b], [wet_a, wet_b], None)
+    }
+
+    /// Laws at `stage`, `bed` and `wet` of endpoints `[A, B]`, with the culvert root searches
+    /// started at `hint`.
+    ///
+    /// A hint from [`TensorStructureResult::culvert_hint`] of the same laws only moves where each
+    /// search starts. Every enclosure stays certified, but its bits follow the hint.
+    #[doc(hidden)]
+    pub fn evaluate_heads_from(
+        &self,
+        [stage_a, stage_b]: [&Tensor<R>; 2],
+        [bed_a, bed_b]: [&Tensor<R>; 2],
+        [wet_a, wet_b]: [&Tensor<R>; 2],
+        hint: Option<&CulvertHint<R>>,
+    ) -> Result<TensorStructureResult<R>, StructureError>
+    where
+        R::Client: numr::ops::CumulativeOps<R>
+            + numr::ops::BinaryOps<R>
+            + numr::ops::CompareOps<R>
+            + numr::ops::ConditionalOps<R>
+            + numr::ops::CorrectlyRoundedOps<R>
+            + numr::ops::IndexingOps<R>
+            + numr::ops::ReduceOps<R>
+            + numr::ops::ScalarOps<R>
+            + numr::ops::ShapeOps<R>
+            + numr::ops::TwoSumOps<R>
+            + numr::ops::TypeConversionOps<R>
+            + numr::ops::UnaryOps<R>
+            + solvr::interpolate::Interp1dAlgorithms<R>,
+    {
         let context = &self.batch.context;
         let heads = TensorStructureHeads::from_tensors(
             context, stage_a, stage_b, bed_a, bed_b, wet_a, wet_b,
         )?;
-        let input = TensorStructureInput::with_static_operations(context, heads, &self.tensors)?;
+        let mut input =
+            TensorStructureInput::with_static_operations(context, heads, &self.tensors)?;
+        input.culvert_hint = hint.cloned();
         crate::structures::numerics::proposal(context, &input)
     }
 

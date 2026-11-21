@@ -8,7 +8,7 @@
 //! - [`outlet`] inverts the outlet curve at fixed tailwater on `[0, 2 Q_i]`. A drowned full
 //!   barrel takes its closed form. Every other row runs one certified root search over the
 //!   outlet march ([`outlet_root`]), and a row whose outlet headwater at `Q_i` stays below `H`
-//!   is inlet-governed.
+//!   is inlet-governed. An input hint starts each search near an earlier root ([`warm`]).
 //!
 //! The inversion runs in `Q` at fixed tailwater. `HW_o` is not monotone in tailwater, which
 //! the inversion never needs.
@@ -20,6 +20,8 @@ mod lanes;
 mod outlet;
 mod outlet_root;
 mod sensitivity;
+mod settle;
+mod warm;
 
 use crate::structures::numerics::culvert::Arithmetic;
 use crate::structures::tensor::culvert::{
@@ -62,8 +64,14 @@ where
         let lanes = lanes::classify(self, context, input, &self.lane)?;
         let selected = Selected::new(self, &lanes.rows)?;
         let inlet = inlet::invert(self, &selected, &lanes)?;
-        let outlet = outlet::invert(self, context, &selected, &lanes, &inlet)?;
-        assemble::assemble(self, context, &selected, &lanes, &inlet, &outlet, result)
+        let hint = input.culvert_hint.as_ref();
+        let outlet = outlet::invert(self, context, &selected, &lanes, &inlet, hint)?;
+        let mut result =
+            assemble::assemble(self, context, &selected, &lanes, &inlet, &outlet, result)?;
+        if let (Some(older), Some(culvert)) = (hint, result.culvert.as_mut()) {
+            culvert.hint = culvert.hint.clone().over(older, &self.barrel.client)?;
+        }
+        Ok(result)
     }
 }
 

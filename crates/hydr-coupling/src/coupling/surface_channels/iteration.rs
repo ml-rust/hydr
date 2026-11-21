@@ -2,6 +2,7 @@
 
 use super::context::{Context, Ops};
 use super::evaluate::{Accepted, Attempt, Evaluation, Trials};
+use super::link_law::LawAt;
 use super::start::Start;
 use super::{SurfaceChannelConfig, SurfaceChannelError};
 use numr::algorithm::correctly_rounded;
@@ -317,7 +318,7 @@ where
                 &attempt.operations,
                 (&start.stage, &start.wet),
                 &self.level_heads(&start.stage)?,
-                true,
+                LawAt::Start,
             )?
             .regime;
         // Layout: end stages, signed volumes, end wet masks, link regimes, then pool-end support.

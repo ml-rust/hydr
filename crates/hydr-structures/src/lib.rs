@@ -11,4 +11,5 @@ pub mod internal {
     pub use crate::structures::coupling::CouplingStructures;
     pub use crate::structures::identity::{bits, same_elements};
     pub use crate::structures::tensor::TensorStructureResult;
+    pub use crate::structures::tensor::culvert::CulvertHint;
 }

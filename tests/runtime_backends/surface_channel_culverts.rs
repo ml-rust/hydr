@@ -11,9 +11,7 @@
 //! weir. Each culvert must carry water.
 
 use super::Result;
-use crate::culverts_fixture::{
-    drowning_case, reversal_case, roadway_case, sweep_case, tide, tide_rate,
-};
+use crate::culverts_fixture::{drowning_case, reversal_case, roadway_case, sweep_case, tide};
 use crate::pools_fixture::Case;
 
 /// One culvert case: its builder, its tide, its longest interval, and its end, in s.
@@ -31,32 +29,41 @@ fn still(_: f64) -> f64 {
     0.0
 }
 
+/// A flood for one interval, then an ebb that drops the reach below the lagoon.
+fn short_tide(t: f64) -> f64 {
+    if t < 0.5 { 0.1 } else { -0.1 }
+}
+
 /// The four culvert cases with the interval counts of the parity runs.
+///
+/// Parity needs every law path once, not a long run: the tide both ways, inlet control into a
+/// dry basin, a partly full outlet whose one interval runs cold and warm root searches, and a
+/// drowned barrel under a road.
 pub fn runs() -> [Run; 4] {
     [
         Run {
             case: reversal_case,
-            tide: tide_rate,
+            tide: short_tide,
             dt: 0.5,
-            end_s: 8.0,
+            end_s: 2.0,
         },
         Run {
             case: sweep_case,
             tide: still,
             dt: 0.5,
-            end_s: 7.0,
+            end_s: 1.0,
         },
         Run {
             case: drowning_case,
             tide: still,
             dt: 0.5,
-            end_s: 1.0,
+            end_s: 0.5,
         },
         Run {
             case: roadway_case,
             tide: still,
             dt: 0.5,
-            end_s: 3.0,
+            end_s: 1.0,
         },
     ]
 }

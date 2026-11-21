@@ -115,9 +115,24 @@ pub const LONG_RISE_M: f64 = 0.9;
 ///
 /// The outlet runs partly full. The basin fills past the crown, so the barrel runs full.
 pub fn drowning_case() -> Result<Case> {
+    drowning_from(0.5)
+}
+
+/// Basin depth of [`crown_case`], in m: below the crown of the long barrel.
+pub const CROWN_START_M: f64 = 0.8;
+
+/// The culvert of [`drowning_case`] into a basin `CROWN_START_M` deep, near the crown.
+///
+/// The outlet runs partly full and drowns within a few intervals.
+pub fn crown_case() -> Result<Case> {
+    drowning_from(CROWN_START_M)
+}
+
+/// A large head pond 1 m deep drains through a long mild culvert into a basin `depth_m` deep.
+fn drowning_from(depth_m: f64) -> Result<Case> {
     let mut case = Case::tanks(0.0, 0.0);
     case.ponds = vec![
-        (pond("basin", 0.0, 10.0, 3.0)?, 0.5 * 10.0),
+        (pond("basin", 0.0, 10.0, 3.0)?, depth_m * 10.0),
         (pond("head", 0.0, 1000.0, 3.0)?, 1.0 * 1000.0),
     ];
     case.structures = vec![structure(

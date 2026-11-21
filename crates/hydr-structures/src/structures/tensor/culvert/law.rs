@@ -4,7 +4,7 @@
 //! B-end inlet. A culvert without one end repeats its other end in that row, so admission
 //! never sees an undeclared inlet. The flap keeps those rows unused.
 
-use super::{TensorBarrelContext, TensorInletContext, TensorOutletContext};
+use super::{Bounds, TensorBarrelContext, TensorInletContext, TensorOutletContext};
 use crate::structures::numerics::culvert::{inlet::anchors, outlet};
 use crate::structures::tensor::{
     TensorStructureContext, TensorStructureInput, TensorStructureResult,
@@ -13,6 +13,7 @@ use crate::structures::{
     CulvertBarrel, CulvertClient, CulvertSide, DirectionPolicy, StructureError, StructureLaw,
 };
 use numr::dtype::DType;
+use numr::ops::{BinaryOps, ConditionalOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
@@ -30,7 +31,7 @@ pub(crate) trait CulvertLaw<R: Runtime<DType = DType>>: Send + Sync {
 }
 
 /// Culvert operands per element, `[n]` wide and zero off culvert lanes.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct TensorCulvertResult<R: Runtime<DType = DType>> {
     /// Donor stage above the inlet invert.
     pub headwater: Tensor<R>,
@@ -40,6 +41,56 @@ pub(crate) struct TensorCulvertResult<R: Runtime<DType = DType>> {
     pub lower: Tensor<R>,
     /// Upper bound of the per-barrel discharge.
     pub upper: Tensor<R>,
+    /// Outlet roots of this evaluation, for the search of a later one.
+    pub hint: CulvertHint<R>,
+}
+
+/// Outlet roots of one culvert evaluation, each `[m]` over the culvert lanes.
+///
+/// A later evaluation of the same laws at nearby heads searches its outlet root near these
+/// first. The hint only sets where the search starts. Every enclosure stays certified by the
+/// residual signs at its ends, so a stale hint costs work and never accuracy.
+///
+/// A hinted evaluation returns its own roots over the hint's, lane by lane.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct CulvertHint<R: Runtime<DType = DType>> {
+    /// 1 where the outlet governs or ties with a searched root.
+    pub(crate) held: Tensor<R>,
+    /// Oriented row of each lane, as F64.
+    pub(crate) rows: Tensor<R>,
+    /// Donor stage above the inlet invert, in metres.
+    pub(crate) headwater: Tensor<R>,
+    /// Receiver stage above the outlet invert, in metres.
+    pub(crate) tailwater: Tensor<R>,
+    /// Outlet root enclosure per barrel, in m³/s.
+    pub(crate) root: Bounds<R>,
+    /// Bounds on `|dQ/dHW| / Q` and `|dQ/dTW| / Q` of the outlet root, per metre.
+    pub(crate) slope: Bounds<R>,
+}
+
+impl<R: Runtime<DType = DType>> CulvertHint<R> {
+    /// This hint on its held lanes, and `older` on the others.
+    pub(crate) fn over(self, older: &Self, c: &R::Client) -> numr::error::Result<Self>
+    where
+        R::Client: BinaryOps<R> + ConditionalOps<R>,
+    {
+        let pick = |new: &Tensor<R>, old: &Tensor<R>| c.where_cond(&self.held, new, old);
+        Ok(Self {
+            rows: pick(&self.rows, &older.rows)?,
+            headwater: pick(&self.headwater, &older.headwater)?,
+            tailwater: pick(&self.tailwater, &older.tailwater)?,
+            root: [
+                pick(&self.root[0], &older.root[0])?,
+                pick(&self.root[1], &older.root[1])?,
+            ],
+            slope: [
+                pick(&self.slope[0], &older.slope[0])?,
+                pick(&self.slope[1], &older.slope[1])?,
+            ],
+            held: c.maximum(&self.held, &older.held)?,
+        })
+    }
 }
 
 /// Culvert rows of one structure batch.

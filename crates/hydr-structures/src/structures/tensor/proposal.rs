@@ -4,7 +4,7 @@ use numr::{dtype::DType, runtime::Runtime};
 use numr::tensor::Tensor;
 
 #[doc(hidden)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TensorStructureResult<R: Runtime<DType = DType>> {
     pub(crate) culvert: Option<super::culvert::TensorCulvertResult<R>>,
     pub(crate) gate: Option<super::gate::TensorGateResult<R>>,
@@ -23,4 +23,12 @@ pub struct TensorStructureResult<R: Runtime<DType = DType>> {
     ///
     /// Zero where the element carries no discharge.
     pub head_sensitivity: Tensor<R>,
+}
+
+impl<R: Runtime<DType = DType>> TensorStructureResult<R> {
+    /// Outlet roots of the culvert lanes, or `None` without culverts.
+    #[doc(hidden)]
+    pub fn culvert_hint(&self) -> Option<&super::culvert::CulvertHint<R>> {
+        self.culvert.as_ref().map(|culvert| &culvert.hint)
+    }
 }

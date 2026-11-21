@@ -24,6 +24,7 @@ use super::SurfaceChannelError;
 use super::context::{Context, Ops, transfer_error};
 use super::evaluate::{Attempt, Evaluation};
 use super::levelling::Levelling;
+use super::link_law::LawAt;
 use super::start::Start;
 use crate::numerics::water_transfers::AggregationKind;
 use hydr_structures::internal::TensorStructureResult;
@@ -40,6 +41,9 @@ const ROUND_LIMIT: usize = 64;
 
 /// Head sensitivity a culvert lane reports without a certified bound, `2^256` per metre.
 const SENSITIVITY_CAP: f64 = f64::from_bits(0x4ff0_0000_0000_0000);
+
+/// Bisection residual `V - K(W(V))` of every link at volumes `V`, `[L]`.
+type Residual<'a, R> = dyn Fn(&Tensor<R>) -> Result<Tensor<R>, SurfaceChannelError> + 'a;
 
 /// Stage response of every link's two sides to exchange, each `[L]`.
 pub(super) struct Response<R: Runtime<DType = DType>> {
@@ -153,7 +157,7 @@ where
                     &c.midpoint(&start_b, &channel)?,
                 ],
                 [wet_a, wet_b],
-                (&levelling.level, false),
+                (&levelling.level, LawAt::Trial(&attempt.culvert_roots)),
             )?;
             let weir = structures.held_volumes(&law, attempt.dt).map_err(|error| {
                 SurfaceChannelError::Numerical(format!("link volumes: {error}"))
@@ -182,11 +186,57 @@ where
         };
         let modelled = &modelled;
         let (proposal, proposed_law) = kept(&accepted, [&wet_a, &wet_b])?;
-        let rising = c.le(&accepted, &proposal)?;
-        let mut lower = c.where_cond(modelled, &c.minimum(&accepted, &proposal)?, &accepted)?;
-        let mut upper = c.where_cond(modelled, &c.maximum(&accepted, &proposal)?, &accepted)?;
-        let at_accepted = c.sub(&accepted, &proposal)?;
-        let at_proposal = residual(&proposal)?;
+        // With every link a culvert, no bisection bracket opens.
+        let mut volume = if self.culverts.as_ref().is_some_and(|k| k.every) {
+            accepted.clone()
+        } else {
+            self.bisect(&accepted, &proposal, modelled, &residual)?
+        };
+        if let Some(culverts) = &self.culverts {
+            let stepped = self.sensitivity_step(
+                &accepted,
+                &proposal,
+                &proposed_law.head_sensitivity,
+                response,
+            )?;
+            volume = c.where_cond(&culverts.mask, &stepped, &volume)?;
+        }
+        let shift = c.sub(&volume, &accepted)?;
+        let moved = c.cat(
+            &[
+                &c.neg(&c.mul(&shift, &response.inverse[0])?)?,
+                &c.mul(&shift, &response.inverse[1])?,
+            ],
+            0,
+        )?;
+        let change = self
+            .donors
+            .aggregate(c, &moved, AggregationKind::Momentum)
+            .map_err(transfer_error)?
+            .value;
+        let stages = c.add(&end, &change)?;
+        Ok(match &ends {
+            Some(ends) => c.cat(&[&stages, &volume, ends, &flags], 0)?,
+            None => c.cat(&[&stages, &volume, &flags], 0)?,
+        })
+    }
+
+    /// Bisects every `modelled` link between its `accepted` volume and its `proposal` to the
+    /// root of `residual`, `[L]`. Other links keep `accepted`.
+    fn bisect(
+        &self,
+        accepted: &Tensor<R>,
+        proposal: &Tensor<R>,
+        modelled: &Tensor<R>,
+        residual: &Residual<'_, R>,
+    ) -> Result<Tensor<R>, SurfaceChannelError> {
+        let c = &self.client;
+        let one = self.scalar(1.0)?;
+        let rising = c.le(accepted, proposal)?;
+        let mut lower = c.where_cond(modelled, &c.minimum(accepted, proposal)?, accepted)?;
+        let mut upper = c.where_cond(modelled, &c.maximum(accepted, proposal)?, accepted)?;
+        let at_accepted = c.sub(accepted, proposal)?;
+        let at_proposal = residual(proposal)?;
         let mut residual_lower = c.where_cond(&rising, &at_accepted, &at_proposal)?;
         let mut residual_upper = c.where_cond(&rising, &at_proposal, &at_accepted)?;
         let resolution = c.mul_scalar(&c.sub(&upper, &lower)?, f64::EPSILON)?;
@@ -215,34 +265,7 @@ where
             residual_lower = c.where_cond(&up, &value, &residual_lower)?;
         }
         let nearer = c.le(&c.abs(&residual_lower)?, &c.abs(&residual_upper)?)?;
-        let mut volume = c.where_cond(&nearer, &lower, &upper)?;
-        if let Some(culverts) = &self.culverts {
-            let stepped = self.sensitivity_step(
-                &accepted,
-                &proposal,
-                &proposed_law.head_sensitivity,
-                response,
-            )?;
-            volume = c.where_cond(&culverts.mask, &stepped, &volume)?;
-        }
-        let shift = c.sub(&volume, &accepted)?;
-        let moved = c.cat(
-            &[
-                &c.neg(&c.mul(&shift, &response.inverse[0])?)?,
-                &c.mul(&shift, &response.inverse[1])?,
-            ],
-            0,
-        )?;
-        let change = self
-            .donors
-            .aggregate(c, &moved, AggregationKind::Momentum)
-            .map_err(transfer_error)?
-            .value;
-        let stages = c.add(&end, &change)?;
-        Ok(match &ends {
-            Some(ends) => c.cat(&[&stages, &volume, ends, &flags], 0)?,
-            None => c.cat(&[&stages, &volume, &flags], 0)?,
-        })
+        Ok(c.where_cond(&nearer, &lower, &upper)?)
     }
 
     /// Response volume of every link from its law's head sensitivity, `[L]`. Culvert links take

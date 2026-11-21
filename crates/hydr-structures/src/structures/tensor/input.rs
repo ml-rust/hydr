@@ -19,6 +19,8 @@ pub(crate) struct TensorStructureInput<R: Runtime<DType = DType>> {
     pub wet_b: Tensor<R>,
     pub unknown_a: Tensor<R>,
     pub unknown_b: Tensor<R>,
+    /// Outlet roots of an earlier evaluation, where the culvert root searches start.
+    pub culvert_hint: Option<super::culvert::CulvertHint<R>>,
 }
 #[derive(Debug)]
 pub(crate) struct TensorStructureHeads<R: Runtime<DType = DType>> {
@@ -225,6 +227,7 @@ impl<R: Runtime<DType = DType>> TensorStructureInput<R> {
             wet_b: heads.wet_b,
             unknown_a: heads.unknown_a,
             unknown_b: heads.unknown_b,
+            culvert_hint: None,
         };
         input.check_unknown(context, isolated)?;
         Ok(input)

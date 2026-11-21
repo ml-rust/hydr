@@ -17,6 +17,8 @@ pub(in super::super) struct CulvertStops<R: Runtime<DType = DType>> {
     pub stop: [Tensor<R>; 2],
     /// Plan area of endpoints A and B at their invert stops, each `[L]`.
     pub area: [Tensor<R>; 2],
+    /// Every link is a culvert.
+    pub every: bool,
 }
 
 impl<R: Runtime<DType = DType>> CulvertStops<R> {
@@ -51,6 +53,7 @@ impl<R: Runtime<DType = DType>> CulvertStops<R> {
             mask: column(&|_, law| f64::from(u8::from(law.culvert().is_some())))?,
             stop: [stop(0)?, stop(1)?],
             area: [area(0)?, area(1)?],
+            every: laws.iter().all(|law| law.culvert().is_some()),
         }))
     }
 }

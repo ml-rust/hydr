@@ -632,7 +632,7 @@ Construct a `restore` or `import_snapshot` destination with the same setup and o
 
 Pass `data.surface.setup.forcing.clone()` to `resume` for a plain restart.
 
-`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-7`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-8`). Import checks both first. A package of an earlier format rejects by identity: schema `hydr-surface-channel-checkpoint-6` predates culvert structures, and schema `-5` or contract `hydr-surface-channel-numr-cpu-7` predates secant probes in surveyed roots. Capture a new package. Import checks every nested package identity, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
+`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-7`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-9`). Import checks both first. A package of an earlier format rejects by identity: contract `hydr-surface-channel-numr-cpu-8` predates warm culvert root searches, schema `hydr-surface-channel-checkpoint-6` predates culvert structures, and schema `-5` or contract `hydr-surface-channel-numr-cpu-7` predates secant probes in surveyed roots. Capture a new package. Import checks every nested package identity, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
 
 The replay includes decision completion. At a decision end, the recalculation samples the converged stages and completes each operating child, then compares the child packages.
 
@@ -687,7 +687,9 @@ Structure and pool limits:
 - `culvert-invert-cap`: A draining culvert donor stops just above its invert. A cap ends its flow, never a rejection.
 - `culvert-sensitivity-step`: A culvert link's response step comes from its certified head sensitivity, without bisection.
 
-Each culvert evaluation runs at least one outlet march. A partly full outlet costs far more than a drowned full barrel, which takes a closed form. Every fixed-point update evaluates each culvert twice: once in the map and once for the response step.
+Each culvert evaluation runs at least one outlet march. A partly full outlet costs far more than a drowned full barrel, which takes a closed form. Every fixed-point update evaluates each culvert twice: once in the map and once for the response step. The first iterate reuses the culvert laws of the accepted start.
+
+Inside one attempt, each culvert evaluation starts its outlet root search in a window around the root of the evaluation before it. The accepted start laws seed the first window. A window only sets where the search starts. Its ends must certify their residual signs, and a lane whose window misses the root searches from zero. So the accepted bits follow the attempt's evaluation order, and a restart repeats that order bit for bit.
 
 Port limits:
 

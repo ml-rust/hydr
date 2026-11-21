@@ -3,12 +3,14 @@
 use super::SurfaceChannelError;
 use super::context::{Context, NodeEnd, Ops};
 use super::forcing::BoundForcing;
+use super::link_law::LawAt;
 use super::pools::{PoolChild, PoolStart};
 use super::ports::PortStart;
 use super::structures::{LinkLaw, LinkOperations};
 use crate::channel::{ChannelReach, ChannelTensorLateralInput, ChannelTensorWaterAmount};
 use crate::solver::Solver;
 use hydr_channel::internal::ChannelCouplingReservation;
+use hydr_structures::internal::TensorStructureResult;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, IndexingOps, ShapeOps};
 use numr::runtime::{Runtime, RuntimeClient};
@@ -31,6 +33,13 @@ pub(super) struct Start<R: Runtime<DType = DType>> {
     pub wet: Tensor<R>,
     /// First fixed-point iterate: accepted stages, zero volumes, accepted support and regimes.
     pub initial: Tensor<R>,
+    /// Link laws at the accepted stages under `operations`, before the equal-heads rule, or
+    /// `None` without links.
+    ///
+    /// The first iterate's midpoint stages and wet masks repeat the accepted ones in every bit,
+    /// so its evaluation takes these laws. Their culvert roots seed the root searches of every
+    /// attempt. See [`Context::evaluate`].
+    pub law: Option<TensorStructureResult<R>>,
     /// Slot operands of every linked reach, or `None` when a linked reach is ported or
     /// pool-ended.
     ///
@@ -179,18 +188,20 @@ where
         };
         let pool_batch = pool_child.map(|child| &child.batch);
         let end_support = self.start_end_support(reaches, pool_batch, reach_ids)?;
-        let (stage, wet, initial) = if self.link_count == 0 && end_support.is_none() {
-            (zeros.clone(), zeros.clone(), zeros)
+        let (stage, wet, initial, law) = if self.link_count == 0 && end_support.is_none() {
+            (zeros.clone(), zeros.clone(), zeros, None)
         } else {
             let linked: Vec<&ChannelReach<R>> =
                 self.linked.iter().map(|r| &reaches[r.reach]).collect();
             let (stage, wet) = self.node_stages(surface, &linked, pool_batch, reach_ids)?;
             self.check_pumps(&operations.laws, &stage, &wet)?;
-            let regime = if self.link_count == 0 {
-                zeros.clone()
+            let (regime, law) = if self.link_count == 0 {
+                (zeros.clone(), None)
             } else {
-                self.weir(operations, (&stage, &wet), &self.level_heads(&stage)?, true)?
-                    .regime
+                let law = self.raw_weir(operations, (&stage, &wet), LawAt::Start)?;
+                let level = self.level_heads(&stage)?;
+                let regime = self.level_weir(law.clone(), &stage, &level)?.regime;
+                (regime, Some(law))
             };
             let initial = match &end_support {
                 // Pool-end volumes and support follow the link volumes and regimes.
@@ -200,7 +211,7 @@ where
                 }
                 None => c.cat(&[&stage, &zeros, &wet, &regime], 0)?,
             };
-            (stage, wet, initial)
+            (stage, wet, initial, law)
         };
         let ports = self.port_start(surface, reaches, reach_ids)?;
         Ok(Start {
@@ -208,6 +219,7 @@ where
             stage,
             wet,
             initial,
+            law,
             slots,
             channel_limit_s,
             reservations,

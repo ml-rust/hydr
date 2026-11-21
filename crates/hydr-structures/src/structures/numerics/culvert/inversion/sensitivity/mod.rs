@@ -41,7 +41,7 @@ use numr::dtype::DType;
 use numr::ops::{BinaryOps, ConditionalOps};
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
-use solvr::common::arithmetic::{ArithmeticResult, with_interval_arithmetic};
+use solvr::common::arithmetic::{ArithmeticResult, Interval, with_interval_arithmetic};
 
 /// Smallest `E`, `2^-256` m, so every bound stays at or below [`CAP`].
 const E_FLOOR: f64 = f64::from_bits(0x2ff0_0000_0000_0000);
@@ -57,6 +57,8 @@ pub(crate) struct Governs<R: Runtime<DType = DType>> {
 }
 
 /// Bounds the head sensitivity of every lane. `point` is the per-barrel discharge.
+///
+/// Also returns the outlet profile bounds of each head alone, zero off outlet profile lanes.
 pub(crate) fn bound<R>(
     law: &TensorCulvertLaw<R>,
     rows: &Selected<R>,
@@ -65,7 +67,7 @@ pub(crate) fn bound<R>(
     outlet_discharge: &OutletDischarge<R>,
     governs: &Governs<R>,
     point: &Tensor<R>,
-) -> Result<Tensor<R>, StructureError>
+) -> Result<(Tensor<R>, Profile<R>), StructureError>
 where
     R: Runtime<DType = DType>,
     R::Client: CulvertClient<R>,
@@ -87,9 +89,13 @@ where
     let profile = if any(c, &profile_side)? {
         profile_sensitivity(law, rows, lanes, &profile_side, point)?
     } else {
-        barrel.zero.clone()
+        Profile {
+            bound: barrel.zero.clone(),
+            head: barrel.zero.clone(),
+            tail: barrel.zero.clone(),
+        }
     };
-    let outlet_bound = c.where_cond(&full, &full_bound, &profile)?;
+    let outlet_bound = c.where_cond(&full, &full_bound, &profile.bound)?;
     let combined = c.where_cond(
         &governs.inlet,
         &inlet_bound,
@@ -100,7 +106,7 @@ where
         )?,
     )?;
     let flowing = c.maximum(&inlet_side, &governs.outlet)?;
-    Ok(c.where_cond(&flowing, &combined, &barrel.zero)?)
+    Ok((c.where_cond(&flowing, &combined, &barrel.zero)?, profile))
 }
 
 /// `1 / E` upper bounds, with `E` floored at [`E_FLOOR`].
@@ -117,14 +123,14 @@ where
     Ok(a.div_positive(&unit, &safe)?.upper().clone())
 }
 
-/// Profile bound `max(1, |dHW/dTW|) / E` on the `wanted` lanes from one march, zero elsewhere.
+/// Profile bounds on the `wanted` lanes from one march, zero elsewhere.
 fn profile_sensitivity<R>(
     law: &TensorCulvertLaw<R>,
     rows: &Selected<R>,
     lanes: &Lanes<R>,
     wanted: &Tensor<R>,
     point: &Tensor<R>,
-) -> Result<Tensor<R>, StructureError>
+) -> Result<Profile<R>, StructureError>
 where
     R: Runtime<DType = DType>,
     R::Client: CulvertClient<R>,
@@ -150,20 +156,49 @@ where
         discharge: &q,
         tailwater,
     };
-    let bound = with_interval_arithmetic(c, DType::F64, "culvert outlet sensitivity", |a| {
-        let slopes = outlet::head_slopes(a, &operands)?;
-        let c = a.client();
-        let one = &barrel.one;
-        let cap = barrel.constant(CAP)?;
-        let gain = c.where_cond(&slopes.known, &slopes.gain, one)?;
-        let gain = c.maximum(&gain, &barrel.constant(E_FLOOR)?)?;
-        let tail = c.where_cond(&slopes.known, &slopes.tail, one)?;
-        let tail = a.point(&c.maximum(&tail, one)?)?;
-        let ratio = a.div_positive(&tail, &gain)?;
-        let capped = c.minimum(ratio.upper(), &cap)?;
-        Ok(c.where_cond(&slopes.known, &capped, &cap)?)
-    })?;
-    Ok(c.where_cond(wanted, &bound, &barrel.zero)?)
+    let [bound, head, tail] =
+        with_interval_arithmetic(c, DType::F64, "culvert outlet sensitivity", |a| {
+            let slopes = outlet::head_slopes(a, &operands)?;
+            let c = a.client();
+            let one = &barrel.one;
+            let cap = barrel.constant(CAP)?;
+            let gain = c.where_cond(&slopes.known, &slopes.gain, one)?;
+            let gain = c.maximum(&gain, &barrel.constant(E_FLOOR)?)?;
+            let tail = c.where_cond(&slopes.known, &slopes.tail, one)?;
+            let wide = a.point(&c.maximum(&tail, one)?)?;
+            let unit = a.point(one)?;
+            let alone = a.point(&tail)?;
+            let ratios = [
+                a.div_positive(&wide, &gain)?,
+                a.div_positive(&unit, &gain)?,
+                a.div_positive(&alone, &gain)?,
+            ];
+            let c = a.client();
+            let capped = |ratio: &Interval<R>| -> ArithmeticResult<Tensor<R>> {
+                Ok(c.where_cond(&slopes.known, &c.minimum(ratio.upper(), &cap)?, &cap)?)
+            };
+            Ok([
+                capped(&ratios[0])?,
+                capped(&ratios[1])?,
+                capped(&ratios[2])?,
+            ])
+        })?;
+    let keep = |value: &Tensor<R>| c.where_cond(wanted, value, &barrel.zero);
+    Ok(Profile {
+        bound: keep(&bound)?,
+        head: keep(&head)?,
+        tail: keep(&tail)?,
+    })
+}
+
+/// Outlet profile sensitivities on the wanted lanes, each per metre and zero elsewhere.
+pub(crate) struct Profile<R: Runtime<DType = DType>> {
+    /// `max(1, |dHW/dTW|) / E`, a bound for either head.
+    pub(crate) bound: Tensor<R>,
+    /// `1 / E`, the bound for the headwater alone.
+    pub(crate) head: Tensor<R>,
+    /// `|dHW/dTW| / E`, the bound for the tailwater alone.
+    pub(crate) tail: Tensor<R>,
 }
 
 #[cfg(test)]

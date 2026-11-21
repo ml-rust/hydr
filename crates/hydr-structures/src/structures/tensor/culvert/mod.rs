@@ -7,5 +7,6 @@ mod outlet;
 
 pub(crate) use context::{Bounds, TensorBarrelContext};
 pub(crate) use inlet::TensorInletContext;
+pub use law::CulvertHint;
 pub(crate) use law::{CulvertLaw, TensorCulvertLaw, TensorCulvertResult};
 pub(crate) use outlet::TensorOutletContext;

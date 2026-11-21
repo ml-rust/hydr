@@ -6,7 +6,9 @@
 //!   in closed form. It keeps its relative precision as the heads approach each other.
 //! - Every other lane: one certified root of `HW_o(Q) - HW` over `[0, 2 Q_i]`, from
 //!   [`outlet_root`](super::outlet_root). A lane whose outlet headwater at `Q_i` stays below
-//!   `HW` has `Q_o > Q_i`, so the inlet governs.
+//!   `HW` has `Q_o > Q_i`, so the inlet governs. With a hint, a lane first searches a window
+//!   around its earlier root inside `[0, Q_i]`, see [`warm`](super::warm). Only lanes that the
+//!   windows miss run the probe at `Q_i` and the search from zero.
 //!
 //! `HW_o` rises with `Q`, but no positive slope floor is proven for the partly full profile.
 //! The solver's floor is `2^-600`, and each residual endpoint of magnitude below `2^-600 U`
@@ -22,7 +24,9 @@ use super::Selected;
 use super::inlet::{InletDischarge, any};
 use super::lanes::Lanes;
 use super::outlet_root::{self, Refine};
+use super::warm;
 use crate::structures::tensor::TensorStructureContext;
+use crate::structures::tensor::culvert::CulvertHint;
 use crate::structures::tensor::culvert::{Bounds, TensorCulvertLaw};
 use crate::structures::{CulvertClient, StructureError};
 use numr::dtype::DType;
@@ -43,15 +47,20 @@ pub(crate) struct OutletDischarge<R: Runtime<DType = DType>> {
     pub(crate) level: Tensor<R>,
     /// 1 where the still level lies certainly above the headwater, so `Q_o = 0` exactly.
     pub(crate) dead: Tensor<R>,
+    /// 1 where the root search gave `Q_o`.
+    pub(crate) searched: Tensor<R>,
 }
 
 /// Inverts the outlet curve of every flowing lane at its headwater and tailwater.
+///
+/// Each root search starts at its window around `hint`, if any. See [`warm`](super::warm).
 pub(crate) fn invert<R>(
     law: &TensorCulvertLaw<R>,
     context: &TensorStructureContext<R>,
     rows: &Selected<R>,
     lanes: &Lanes<R>,
     inlet: &InletDischarge<R>,
+    hint: Option<&CulvertHint<R>>,
 ) -> Result<OutletDischarge<R>, StructureError>
 where
     R: Runtime<DType = DType>,
@@ -116,13 +125,37 @@ where
         &c.ge(&still[1], &lanes.headwater)?,
     )?;
     let candidates = c.mul(&c.mul(&open, &c.sub(one, &level)?)?, &c.sub(one, &dead)?)?;
+    let infinity = barrel.constant(f64::INFINITY)?;
+    let mut bounds = [
+        c.where_cond(&full, &closed[0], &infinity)?,
+        c.where_cond(&full, &closed[1], &infinity)?,
+    ];
+    let mut solved = full.clone();
+    let mut searched = barrel.zero.clone();
+    // A warm lane searches its window inside `[0, Q_i]` first. A root there lies below `Q_i`,
+    // as the probe below would show. Only the lanes the windows miss run the probe.
+    let mut cold = candidates.clone();
+    if hint.is_some() {
+        let window = warm::window(barrel, lanes, &candidates, &inlet.bounds[1], hint)?;
+        if any(c, &window.warm)? {
+            let found = outlet_root::solve_warm(law, rows, lanes, &window)?;
+            let take = found.enclosed;
+            bounds = [
+                c.where_cond(&take, &found.bounds[0], &bounds[0])?,
+                c.where_cond(&take, &found.bounds[1], &bounds[1])?,
+            ];
+            solved = c.maximum(&solved, &take)?;
+            cold = c.mul(&candidates, &c.sub(one, &take)?)?;
+            searched = take;
+        }
+    }
     // One march at the inlet discharge's upper end. `HW_o(Q_i) < HW` there means
     // `Q_o > Q_i`, so the inlet governs and the root search skips the lane.
     // A lane whose residual there is certified positive has its root below `Q_i`, so its search
     // runs on `[0, Q_i]`. The others search `[0, 2 Q_i]`.
     let doubled = c.mul_scalar(&inlet.bounds[1], 2.0)?;
-    let (search, ceiling) = if any(c, &candidates)? {
-        let probe = c.where_cond(&candidates, &inlet.bounds[1], &barrel.zero)?;
+    let (search, ceiling) = if any(c, &cold)? {
+        let probe = c.where_cond(&cold, &inlet.bounds[1], &barrel.zero)?;
         let lane: Vec<i64> = (0..barrel.width())
             .map(|index| i64::try_from(index).unwrap_or(i64::MAX))
             .collect();
@@ -139,18 +172,12 @@ where
         let inlet_side = c.lt(&upper, &barrel.zero)?;
         let outlet_side = c.gt(&lower, &barrel.zero)?;
         (
-            c.mul(&candidates, &c.sub(one, &inlet_side)?)?,
+            c.mul(&cold, &c.sub(one, &inlet_side)?)?,
             c.where_cond(&outlet_side, &inlet.bounds[1], &doubled)?,
         )
     } else {
-        (candidates, doubled)
+        (cold, doubled)
     };
-    let infinity = barrel.constant(f64::INFINITY)?;
-    let mut bounds = [
-        c.where_cond(&full, &closed[0], &infinity)?,
-        c.where_cond(&full, &closed[1], &infinity)?,
-    ];
-    let mut solved = full.clone();
     if any(c, &search)? {
         let found = outlet_root::solve(law, rows, lanes, &search, &ceiling)?;
         let unresolved = c.mul(
@@ -169,6 +196,7 @@ where
             c.where_cond(&take, &found.bounds[1], &bounds[1])?,
         ];
         solved = c.maximum(&solved, &take)?;
+        searched = c.maximum(&searched, &take)?;
     }
     let solved_upper = c.where_cond(&solved, &bounds[1], &barrel.zero)?;
     context.finite(
@@ -181,5 +209,6 @@ where
         full,
         level,
         dead,
+        searched,
     })
 }

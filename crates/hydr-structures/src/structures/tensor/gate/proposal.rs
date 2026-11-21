@@ -3,7 +3,7 @@ use numr::{dtype::DType, runtime::Runtime};
 
 use numr::tensor::Tensor;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct TensorGateGeometry<R: Runtime<DType = DType>> {
     pub opening: Tensor<R>,
     pub crown_high: Tensor<R>,
@@ -23,7 +23,7 @@ pub(crate) struct TensorGateGeometry<R: Runtime<DType = DType>> {
     pub closure_uncertainty: Tensor<R>,
     pub closure_allowance: Tensor<R>,
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct TensorGateResult<R: Runtime<DType = DType>> {
     pub geometry: TensorGateGeometry<R>,
     pub ratio: Tensor<R>,

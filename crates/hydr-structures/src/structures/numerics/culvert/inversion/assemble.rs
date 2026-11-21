@@ -11,11 +11,11 @@ use super::lanes::Lanes;
 use super::outlet::OutletDischarge;
 use super::sensitivity::{self, Governs};
 use crate::structures::tensor::codes;
-use crate::structures::tensor::culvert::{TensorCulvertLaw, TensorCulvertResult};
+use crate::structures::tensor::culvert::{CulvertHint, TensorCulvertLaw, TensorCulvertResult};
 use crate::structures::tensor::{TensorStructureContext, TensorStructureResult};
 use crate::structures::{CulvertClient, StructureError};
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps};
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps, TypeConversionOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
@@ -89,7 +89,24 @@ where
         outlet: outlet_governs,
         tie,
     };
-    let bound = sensitivity::bound(law, rows, lanes, inlet, outlet, &governs, &point)?;
+    let (bound, profile) = sensitivity::bound(law, rows, lanes, inlet, outlet, &governs, &point)?;
+    // A searched outlet root that governs or ties seeds a later search. Its profile march ran at
+    // that root, so the profile bounds hold its sensitivity to each head.
+    let held = c.mul(&outlet.searched, &c.maximum(&governs.outlet, &governs.tie)?)?;
+    let hint = CulvertHint {
+        root: [
+            c.where_cond(&held, &outlet.bounds[0], zero)?,
+            c.where_cond(&held, &outlet.bounds[1], zero)?,
+        ],
+        slope: [
+            c.where_cond(&held, &profile.head, zero)?,
+            c.where_cond(&held, &profile.tail, zero)?,
+        ],
+        rows: c.cast(&lanes.rows, DType::F64)?,
+        headwater: lanes.headwater.clone(),
+        tailwater: lanes.tailwater.clone(),
+        held,
+    };
 
     let put = |wide: &Tensor<R>, lane: &Tensor<R>| c.index_put(wide, 0, &law.lanes, lane);
     let empty = &context.zero;
@@ -112,6 +129,7 @@ where
         tailwater: put(empty, &lanes.tailwater)?,
         lower: put(empty, &lower)?,
         upper: put(empty, &upper)?,
+        hint,
     });
     Ok(result)
 }

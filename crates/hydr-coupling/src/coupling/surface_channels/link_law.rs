@@ -3,6 +3,7 @@
 use super::SurfaceChannelError;
 use super::context::{Context, Ops};
 use super::structures::LinkOperations;
+use crate::coupling::links::culvert_roots::CulvertRoots;
 use crate::structures::{StructureError, StructureInputErrorKind, StructureLaw};
 use hydr_structures::internal::TensorStructureResult;
 use numr::dtype::DType;
@@ -26,12 +27,28 @@ const CULVERT_CODES: [f64; 3] = [13.0, 14.0, 15.0];
 /// Structures regime code of equal heads above the crest.
 const EQUAL_HEADS_CODE: f64 = 5.0;
 
+/// Stages of one law evaluation.
+pub(super) enum LawAt<'a, R: Runtime<DType = DType>> {
+    /// The accepted start stages.
+    Start,
+    /// Stages inside an attempt, whose latest culvert roots start the root searches.
+    Trial(&'a CulvertRoots<R>),
+}
+
+impl<R: Runtime<DType = DType>> Clone for LawAt<'_, R> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<R: Runtime<DType = DType>> Copy for LawAt<'_, R> {}
+
 impl<R: Runtime<DType = DType>> Context<R>
 where
     R::Client: Ops<R>,
 {
     /// Law of every link under `operations` at group `stage` with support `wet`, both
-    /// `[S + C + P]`. `start` marks the accepted start stages.
+    /// `[S + C + P]`, at the stages `at`.
     ///
     /// A submerged link where `level` is one counts as equal heads and carries no water.
     pub fn weir(
@@ -39,16 +56,41 @@ where
         operations: &LinkOperations<R>,
         (stage, wet): (&Tensor<R>, &Tensor<R>),
         level: &Tensor<R>,
-        start: bool,
+        at: LawAt<'_, R>,
+    ) -> Result<TensorStructureResult<R>, SurfaceChannelError> {
+        let law = self.raw_weir(operations, (stage, wet), at)?;
+        self.level_weir(law, stage, level)
+    }
+
+    /// Law of every link under `operations` at group `stage` with support `wet`, before the
+    /// equal-heads rule of [`Context::level_weir`].
+    pub fn raw_weir(
+        &self,
+        operations: &LinkOperations<R>,
+        (stage, wet): (&Tensor<R>, &Tensor<R>),
+        at: LawAt<'_, R>,
     ) -> Result<TensorStructureResult<R>, SurfaceChannelError> {
         let c = &self.client;
         let gather = |values: &Tensor<R>, index: &Tensor<R>| c.index_select(values, 0, index);
-        self.link_weir(
+        self.link_law(
             operations,
             [&gather(stage, &self.link_a)?, &gather(stage, &self.link_b)?],
             [&gather(wet, &self.link_a)?, &gather(wet, &self.link_b)?],
-            (level, start),
+            at,
         )
+    }
+
+    /// The equal-heads rule of [`Context::link_weir`] over `law`, a [`Context::raw_weir`] result
+    /// at group `stage`.
+    pub fn level_weir(
+        &self,
+        law: TensorStructureResult<R>,
+        stage: &Tensor<R>,
+        level: &Tensor<R>,
+    ) -> Result<TensorStructureResult<R>, SurfaceChannelError> {
+        let c = &self.client;
+        let gather = |index: &Tensor<R>| c.index_select(stage, 0, index);
+        self.level_law(law, [&gather(&self.link_a)?, &gather(&self.link_b)?], level)
     }
 
     /// One where a link's endpoint stages in `stage`, `[S + C + P]`, differ by at most the head
@@ -83,7 +125,7 @@ where
     }
 
     /// Law of every link under `operations` at its surface and channel `stages` and `wet` masks,
-    /// each `[L]`. `start` marks the accepted start stages.
+    /// each `[L]`, at the stages `at`.
     ///
     /// A side supports flow when it is wet and stands above its attachment bed. A link in a
     /// submerged-type regime where `level` is one counts as equal heads and carries no water. A
@@ -93,20 +135,50 @@ where
         operations: &LinkOperations<R>,
         [surface, channel]: [&Tensor<R>; 2],
         [wet_surface, wet_channel]: [&Tensor<R>; 2],
-        (level, start): (&Tensor<R>, bool),
+        (level, at): (&Tensor<R>, LawAt<'_, R>),
+    ) -> Result<TensorStructureResult<R>, SurfaceChannelError> {
+        let law = self.link_law(
+            operations,
+            [surface, channel],
+            [wet_surface, wet_channel],
+            at,
+        )?;
+        self.level_law(law, [surface, channel], level)
+    }
+
+    /// Law of every link under `operations` at its surface and channel `stages` and `wet` masks,
+    /// each `[L]`, before the equal-heads rule.
+    fn link_law(
+        &self,
+        operations: &LinkOperations<R>,
+        [surface, channel]: [&Tensor<R>; 2],
+        [wet_surface, wet_channel]: [&Tensor<R>; 2],
+        at: LawAt<'_, R>,
     ) -> Result<TensorStructureResult<R>, SurfaceChannelError> {
         let c = &self.client;
-        let mut law = operations
-            .structures()?
-            .evaluate_heads(
-                surface,
-                channel,
-                &self.bed_a,
-                &self.bed_b,
-                &c.mul(wet_surface, &c.gt(surface, &self.bed_a)?)?,
-                &c.mul(wet_channel, &c.gt(channel, &self.bed_b)?)?,
-            )
-            .map_err(|error| self.law_error(&error, start))?;
+        let structures = operations.structures()?;
+        let stage = [surface, channel];
+        let bed = [&self.bed_a, &self.bed_b];
+        let wet_a = c.mul(wet_surface, &c.gt(surface, &self.bed_a)?)?;
+        let wet_b = c.mul(wet_channel, &c.gt(channel, &self.bed_b)?)?;
+        let wet = [&wet_a, &wet_b];
+        match at {
+            LawAt::Start => structures.evaluate_heads_from(stage, bed, wet, None),
+            LawAt::Trial(roots) => roots.evaluate(structures, stage, bed, wet),
+        }
+        .map_err(|error| self.law_error(&error, matches!(at, LawAt::Start)))
+    }
+
+    /// The equal-heads rule over `law` at end `stages`, each `[L]`.
+    ///
+    /// A link in a submerged-type regime where `level` is one carries no water.
+    fn level_law(
+        &self,
+        mut law: TensorStructureResult<R>,
+        [surface, channel]: [&Tensor<R>; 2],
+        level: &Tensor<R>,
+    ) -> Result<TensorStructureResult<R>, SurfaceChannelError> {
+        let c = &self.client;
         let mut submerged = c.eq(&law.regime, &self.scalar(SUBMERGED_CODES[0])?)?;
         for code in &SUBMERGED_CODES[1..] {
             submerged = c.maximum(&submerged, &c.eq(&law.regime, &self.scalar(*code)?)?)?;

@@ -7,9 +7,9 @@
 //! - The discharge falls as the basin fills. Between neighbouring intervals the mean discharge
 //!   changes by at most `JUMP` of the larger value, across the change of control included.
 
-use crate::culverts_fixture::{LONG_RISE_M, drowning_case, sweep_case};
+use crate::culverts_fixture::{CROWN_START_M, LONG_RISE_M, crown_case, sweep_case};
 use crate::pools_evidence::{check, pool_stage};
-use crate::pools_fixture::{Batch, Case, PoolForcing, Result, forcing, transfer};
+use crate::pools_fixture::{Batch, Case, PoolForcing, Result, forcing, state, transfer};
 use hydr::structures::StructureRegime;
 
 /// `case` advanced to `end` in intervals of at most `DT`, each checked, with the mean culvert
@@ -79,7 +79,10 @@ fn a_filling_basin_moves_a_culvert_from_inlet_to_outlet_control() -> Result {
 }
 
 /// End of the drowning run, in s.
-const DROWNING_END_S: f64 = 6.0;
+const DROWNING_END_S: f64 = 2.5;
+
+// The drowning basin starts below the crown, so the outlet starts partly full.
+const _: () = assert!(CROWN_START_M < LONG_RISE_M);
 
 /// Frozen criteria, fixed before the first run:
 /// - Every interval passes the mass, pairing, and composite checks and reports outlet control.
@@ -89,7 +92,7 @@ const DROWNING_END_S: f64 = 6.0;
 ///   value, across the crown included.
 #[test]
 fn a_filling_basin_drowns_a_partly_full_culvert_outlet() -> Result {
-    let (batch, discharges, regimes) = sweep(&drowning_case()?, DROWNING_END_S)?;
+    let (batch, discharges, regimes) = sweep(&crown_case()?, DROWNING_END_S)?;
     println!("culvert drowning: regimes={regimes:?}, discharges={discharges:?}");
     for regime in &regimes {
         assert_eq!(
@@ -100,5 +103,44 @@ fn a_filling_basin_drowns_a_partly_full_culvert_outlet() -> Result {
     }
     assert!(pool_stage(&batch, "basin")? > LONG_RISE_M);
     continuous(&discharges);
+    Ok(())
+}
+
+/// Frozen criterion, fixed before the first run: after one interval of the partly full outlet,
+/// snapshot and restore, import into a fresh batch, and resume each match the checkpoint state
+/// bit for bit. Import recalculates that interval, warm root searches included. Each path then
+/// matches the uninterrupted run over one more interval.
+#[test]
+fn a_partly_full_outlet_restarts_bit_for_bit() -> Result {
+    let interval = |batch: &Batch| -> Result<Batch> {
+        let end = batch.time() + DT;
+        let held = forcing(batch, end, &PoolForcing::default());
+        Ok(batch.trial_to(end, &held)?.into_next())
+    };
+    let checkpoint = interval(&crown_case()?.build()?)?;
+    let culvert = transfer(&checkpoint, "culvert")?;
+    assert_eq!(culvert.regime, StructureRegime::CulvertOutletControl);
+    let expected = state(&checkpoint)?;
+    let data = checkpoint.snapshot_data()?;
+    let restored = crown_case()?.build()?.restore(&checkpoint.snapshot())?;
+    let imported = crown_case()?.build()?.import_snapshot(&data)?;
+    let resumed = Batch::resume(
+        crate::runtime::client(),
+        &data,
+        data.surface.setup.forcing.clone(),
+    )?;
+    let uninterrupted = state(&interval(&checkpoint)?)?;
+    for (path, batch) in [
+        ("restore", restored),
+        ("import", imported),
+        ("resume", resumed),
+    ] {
+        assert_eq!(state(&batch)?, expected, "{path} at the checkpoint");
+        assert_eq!(
+            state(&interval(&batch)?)?,
+            uninterrupted,
+            "{path} after the checkpoint"
+        );
+    }
     Ok(())
 }

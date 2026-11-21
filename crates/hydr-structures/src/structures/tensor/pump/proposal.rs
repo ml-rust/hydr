@@ -3,7 +3,7 @@ use numr::{dtype::DType, runtime::Runtime};
 
 use numr::tensor::Tensor;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct TensorPumpResult<R: Runtime<DType = DType>> {
     pub head_high: Tensor<R>,
     pub head_low: Tensor<R>,

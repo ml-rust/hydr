@@ -141,6 +141,7 @@ where
                     prepared.as_ref(),
                     &prepared_external,
                     &input,
+                    None,
                 )?;
                 let (head_residual, transfer_residual, flags) =
                     self.context.residuals(&input, &evaluated.packet)?;

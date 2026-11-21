@@ -18,12 +18,14 @@ use super::SurfaceChannelError;
 use super::context::{Context, Ops};
 use super::exchange::Exchange;
 use super::levelling::Levelling;
+use super::link_law::LawAt;
 use super::memo::TrialMemo;
 use super::pools::{PoolAttempt, PoolChild, charge};
 use super::ports::PortBinding;
 use super::start::Start;
 use super::structures::LinkOperations;
 use crate::channel::ChannelReach;
+use crate::coupling::links::culvert_roots::CulvertRoots;
 use crate::solver::Solver;
 use crate::storage::LevelPoolBatch;
 use hydr_solver::internal::SurfaceCouplingStage;
@@ -78,6 +80,8 @@ pub(super) struct Attempt<R: Runtime<DType = DType>> {
     ///
     /// They depend on no iterate, so every evaluation of the attempt takes them.
     pub operations: Arc<LinkOperations<R>>,
+    /// Culvert roots of the attempt's latest law evaluation.
+    pub culvert_roots: CulvertRoots<R>,
 }
 
 /// Kept child trials of one attempt.
@@ -200,6 +204,7 @@ where
             ports,
             pools,
             operations,
+            culvert_roots: CulvertRoots::new(start.law.as_ref()),
         })
     }
 
@@ -235,13 +240,22 @@ where
         let (law, mut exchange) = if self.link_count == 0 {
             (None, self.no_exchange()?)
         } else {
-            let wet = c.maximum(&start.wet, &end_wet)?;
-            let law = self.weir(
-                &attempt.operations,
-                (&midpoint, &wet),
-                &levelling.level,
-                false,
-            )?;
+            // The first iterate holds the accepted stages and wet masks. Its midpoint and wet
+            // masks then repeat them in every bit, so it takes the start laws.
+            let first = Arc::ptr_eq(&start.operations, &attempt.operations)
+                && x.shares_storage_with(&start.initial);
+            let law = match (&start.law, first) {
+                (Some(law), true) => self.level_weir(law.clone(), &midpoint, &levelling.level)?,
+                _ => {
+                    let wet = c.maximum(&start.wet, &end_wet)?;
+                    self.weir(
+                        &attempt.operations,
+                        (&midpoint, &wet),
+                        &levelling.level,
+                        LawAt::Trial(&attempt.culvert_roots),
+                    )?
+                }
+            };
             let proposed = attempt
                 .operations
                 .structures()?

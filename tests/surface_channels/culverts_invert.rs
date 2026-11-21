@@ -42,17 +42,22 @@ fn invert_case() -> Result<Case> {
     Ok(case)
 }
 
+/// Intervals of the draining run: the cap binds in the first, and two more rest at the stop.
+const DRAIN_INTERVALS: usize = 3;
+
 /// Frozen criteria, fixed before the first run:
-/// - Every one of 10 intervals accepts and passes the mass, pairing, and composite checks.
+/// - Every one of `DRAIN_INTERVALS` intervals accepts and passes the mass, pairing, and
+///   composite checks.
 /// - The pond never falls below its inlet invert.
-/// - The invert cap binds in some interval: its cap factor falls below one.
+/// - The invert cap binds in some interval before the last: its cap factor falls below one.
 /// - Every later interval moves `0.0` bit for bit with cap factor `0.0`.
 /// - The pond ends within the invert band `[z, z + 2 allowance(z)]`.
 #[test]
 fn a_draining_culvert_stops_at_its_inlet_invert() -> Result {
     let mut batch = invert_case()?.build()?;
     let mut capped = false;
-    for index in 0..10 {
+    let mut rested = false;
+    for index in 0..DRAIN_INTERVALS {
         batch = step(&batch, DT, &PoolForcing::default())?;
         check(&batch, &[])?;
         let pond = pool_stage(&batch, "pond")?;
@@ -65,10 +70,12 @@ fn a_draining_culvert_stops_at_its_inlet_invert() -> Result {
                 "{link:?}"
             );
             assert_eq!(link.cap_factor.to_bits(), 0.0f64.to_bits(), "{link:?}");
+            rested = true;
         }
         capped |= link.cap_factor < 1.0;
     }
     assert!(capped, "the invert cap never bound");
+    assert!(rested, "no interval followed the binding cap");
     let band = 2.0 * (ALLOWANCE + ALLOWANCE * INVERT_M);
     assert!(pool_stage(&batch, "pond")? <= INVERT_M + band);
     Ok(())

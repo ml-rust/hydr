@@ -3,6 +3,7 @@ use super::{CoupledLevelPoolError, context::Context, exchange::Exchange, heads::
 use crate::coupling::links::LinkError;
 use crate::storage::LevelPoolBatch;
 use hydr_storage::internal::PreparedLevelPoolInterval;
+use hydr_structures::internal::TensorStructureResult;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, IndexingOps,
@@ -41,6 +42,8 @@ where
         + UnaryOps<R>
         + Interp1dAlgorithms<R>,
 {
+    /// The map at iterate `x`. `start_law` holds the laws at the accepted start heads when `x`
+    /// is the first iterate, whose midpoint heads repeat them in every bit.
     pub fn evaluate(
         &self,
         pools: &LevelPoolBatch<R>,
@@ -48,6 +51,7 @@ where
         prepared: Option<&PreparedLevelPoolInterval<'_, R>>,
         external: &PreparedInflows<R>,
         x: &Tensor<R>,
+        start_law: Option<&TensorStructureResult<R>>,
     ) -> Result<Evaluation<R>, CoupledLevelPoolError> {
         self.check_packet(x)?;
         let n = self.pool_count();
@@ -57,14 +61,17 @@ where
         let estimate = x.narrow(0, 0, n)?;
         let estimate_wet = x.narrow(0, n + e, n)?;
         let heads = self.midpoint_heads(&start, &estimate, &start_wet, &estimate_wet)?;
-        let result = self.structures.evaluate_heads(
-            &heads.a,
-            &heads.b,
-            &self.bed_a,
-            &self.bed_b,
-            &heads.wet_a,
-            &heads.wet_b,
-        )?;
+        let result = match start_law {
+            Some(law) => law.clone(),
+            None => self.structures.evaluate_heads(
+                &heads.a,
+                &heads.b,
+                &self.bed_a,
+                &self.bed_b,
+                &heads.wet_a,
+                &heads.wet_b,
+            )?,
+        };
         let mut exchange = self.exchange(
             self.structures.held_volumes(&result, end - pools.time())?,
             prepared.map_or_else(|| pools.volumes_tensor(), |p| p.available_volume()),
@@ -164,6 +171,7 @@ pub(super) fn solve<R>(
     end: f64,
     prepared: Option<&PreparedLevelPoolInterval<'_, R>>,
     external: &PreparedInflows<R>,
+    start_law: &TensorStructureResult<R>,
 ) -> Result<SolvedInterval<R>, CoupledLevelPoolError>
 where
     R: Runtime<DType = DType>,
@@ -185,11 +193,14 @@ where
         + AndersonAlgorithms<R>,
 {
     let error = RefCell::new(None);
+    let initial = context.initial_packet(pools)?;
+    // The first iterate takes the start laws.
+    let law_at = |x: &Tensor<R>| x.shares_storage_with(&initial).then_some(start_law);
     // The map keeps its latest iterate and evaluation. With no history and unit mixing, the
     // root is the last iterate, so its evaluation is the candidate.
     let latest: RefCell<Option<(Tensor<R>, Evaluation<R>)>> = RefCell::new(None);
     let map = |x: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
-        match context.evaluate(pools, end, prepared, external, x) {
+        match context.evaluate(pools, end, prepared, external, x, law_at(x)) {
             Ok(evaluation) => {
                 let packet = evaluation.packet.clone();
                 *latest.borrow_mut() = Some((x.clone(), evaluation));
@@ -222,7 +233,6 @@ where
             ..RootOptions::default()
         },
     };
-    let initial = context.initial_packet(pools)?;
     let root = context
         .client
         .anderson_with_convergence(map, &initial, &options, |x, gx, _| {
@@ -265,7 +275,7 @@ where
     // the root is not the latest evaluated iterate.
     let final_evaluation = match latest.into_inner() {
         Some((input, evaluation)) if input.shares_storage_with(&root.x) => evaluation,
-        _ => context.evaluate(pools, end, prepared, external, &root.x)?,
+        _ => context.evaluate(pools, end, prepared, external, &root.x, law_at(&root.x))?,
     };
     let (head, volume, flags) = context.residuals(&root.x, &final_evaluation.packet)?;
     if !flags || head > config.head_absolute_m || volume > config.transfer_absolute_m3 {

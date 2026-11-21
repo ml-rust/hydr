@@ -3,6 +3,7 @@
 //! Each function keeps the operation order of the coordinator it came from. Callers supply their
 //! own rejection texts where the coordinators word them differently.
 
+pub(crate) mod culvert_roots;
 pub(crate) mod cutoffs;
 pub(crate) mod cuts;
 pub(crate) mod donors;

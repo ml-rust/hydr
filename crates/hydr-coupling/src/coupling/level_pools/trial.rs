@@ -9,6 +9,7 @@ use super::{
 use crate::storage::{LevelPoolBatch, LevelPoolError, LevelPoolSnapshot};
 use crate::structures::{StructureError, StructureInputErrorKind};
 use hydr_storage::internal::LevelPoolSourcePlan;
+use hydr_structures::internal::TensorStructureResult;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, CumulativeOps, IndexingOps,
@@ -20,6 +21,12 @@ use numr::tensor::Tensor;
 use solvr::interpolate::Interp1dAlgorithms;
 use solvr::optimize::roots::AndersonAlgorithms;
 use std::sync::Arc;
+
+/// Bound pool forcing and source plan of one attempt.
+type AttemptForcing<'a, 'b, R> = (
+    Option<&'a BoundPoolForcing<R>>,
+    Option<&'a LevelPoolSourcePlan<'b, R>>,
+);
 
 #[derive(Clone, Debug)]
 pub(super) struct StoredStart<R: Runtime<DType = DType>> {
@@ -189,7 +196,9 @@ where
             &self.pools.stages_tensor()?,
             &self.context.wet(self.pools.volumes_tensor())?,
         )?;
-        self.context.structures.evaluate_heads(
+        // The first iterate of every attempt repeats these heads in every bit, so its
+        // evaluation takes these laws.
+        let start_law = self.context.structures.evaluate_heads(
             &start_heads.a,
             &start_heads.b,
             &self.context.bed_a,
@@ -210,9 +219,8 @@ where
             match self.attempt(
                 end,
                 requested_end,
-                retries,
-                forcing_interval,
-                source_plan,
+                (retries, &start_law),
+                (forcing_interval, source_plan),
                 inflows,
             ) {
                 Ok(next) => return Ok(CoupledLevelPoolTrial { next }),
@@ -247,13 +255,14 @@ where
             }
         }
     }
+    /// One attempt to `end` after `retries` shorter attempts. `start_law` holds the laws at the
+    /// accepted start heads.
     fn attempt(
         &self,
         end: f64,
         requested: f64,
-        retries: usize,
-        forcing_interval: Option<&BoundPoolForcing<R>>,
-        source_plan: Option<&LevelPoolSourcePlan<'_, R>>,
+        (retries, start_law): (usize, &TensorStructureResult<R>),
+        (forcing_interval, source_plan): AttemptForcing<'_, '_, R>,
         inflows: &BoundInflows<R>,
     ) -> Result<Self, CoupledLevelPoolError> {
         let steps = self.pools.accepted_steps().checked_add(1).ok_or_else(|| {
@@ -290,6 +299,7 @@ where
             end,
             prepared.as_ref(),
             &external,
+            start_law,
         )?;
         let checked_mass = self.context.mass_check(
             &self.pools,
