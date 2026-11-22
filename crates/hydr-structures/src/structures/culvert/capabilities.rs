@@ -68,9 +68,9 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
             "An elliptical, pipe-arch or flat-floor arch barrel whose dimensions break its tangent-arc rules rejects at construction. Each message names the rule, the values and the dimension to change.",
         ),
         unsupported(
-            "arc-barrel-geometry",
+            "arc-barrel-depths",
             UnsupportedReason::RejectedByAdmission,
-            "A batch holding an elliptical, pipe-arch or flat-floor arch barrel rejects. Their geometry is not yet available.",
+            "Critical and normal depth on a batch holding an elliptical, pipe-arch or flat-floor arch barrel reject, naming the row. Their depth certificates are not yet available. Geometry queries accept every shape.",
         ),
         unsupported(
             "empty-barrel-batch",
@@ -116,9 +116,9 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
         },
     ],
     summary: Summary {
-        equations: "circular and box closed-conduit geometry, critical depth Q^2 T = g A^3, and Manning normal depth on the rising conveyance limb",
-        method: "F64 interval enclosures with correctly rounded acos and log, and certified bisection in s = y/D",
-        assessment: "independent 100-digit references lie inside every enclosure; CPU and CUDA bounds match bit for bit",
+        equations: "circular, box and tangent-arc closed-conduit geometry, and on circular and box barrels critical depth Q^2 T = g A^3 and Manning normal depth on the rising conveyance limb",
+        method: "F64 interval enclosures with correctly rounded acos and log, arc bands from each wall's chord and circular segment, and certified bisection in s = y/D",
+        assessment: "independent 100-digit references lie inside every enclosure; CPU and CUDA bounds match bit for bit on circular and box barrels",
     },
 };
 

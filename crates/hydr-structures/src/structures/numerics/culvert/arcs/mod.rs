@@ -6,9 +6,9 @@
 //!
 //! Every layout has three bands from the invert: bottom, corner and top. A flat-floor arch
 //! repeats its one arc in all three bands, each starting at the floor normal `psi_0` with the
-//! floor wetted. Each band records its arc, its start angle, sine and cosine, and its start
-//! depth, area, wetted perimeter and moment. The layout also records the full-state constants
-//! and the widest depth.
+//! floor wetted. Each band records its arc, its start angle, sine and cosine, its start depth,
+//! area, wetted perimeter and moment, and the lowest and highest depth of its circle. The
+//! layout also records the full-state constants and the widest depth.
 //!
 //! | Shape | Bottom arc | Corner arcs | Top arc |
 //! | --- | --- | --- | --- |
@@ -19,12 +19,16 @@
 //!
 //! Every family runs on every row with a harmless admitted barrel on rows of another shape.
 
-mod cap;
+pub(crate) mod cap;
+mod corner;
 mod inputs;
 mod layout;
 #[cfg(test)]
 mod layout_rows;
 mod normals;
+
+pub(crate) use inputs::ArcInputs;
+pub(crate) use layout::layout;
 
 use super::{Arithmetic, BarrelClient};
 use crate::structures::tensor::culvert::Bounds;
@@ -47,6 +51,10 @@ pub(crate) struct ArcBand<R: Runtime<DType = DType>> {
     pub(crate) start_area: Bounds<R>,
     pub(crate) start_perimeter: Bounds<R>,
     pub(crate) start_moment: Bounds<R>,
+    /// `y_k - r_k`, exact zero on a bottom band.
+    pub(crate) circle_low: Bounds<R>,
+    /// `y_k + r_k`, the rise `D` on a top band and on an arch.
+    pub(crate) circle_high: Bounds<R>,
 }
 
 /// Bands from the invert, full-state constants with the moment `M(D)`, and the widest depth.
@@ -60,7 +68,7 @@ pub(crate) struct ArcLayout<R: Runtime<DType = DType>> {
 }
 
 /// Intersection of two enclosures of one value.
-fn meet<R>(
+pub(crate) fn meet<R>(
     a: &mut Arithmetic<'_, R>,
     x: &Interval<R>,
     y: &Interval<R>,

@@ -5,15 +5,19 @@
 //!
 //! | Rows | Branch |
 //! | --- | --- |
-//! | `y = 0` | exact zeros, and `T = P = B` for a box |
+//! | `y = 0` | exact zeros, and `T = P = B` for a box and a flat-floor arch |
 //! | circle, `0 < y < D/16` | shallow series in `s = y/D` with a certified tail |
 //! | circle, `D/16 <= y < D` | `acos` closed forms |
 //! | box, `0 < y < D` | rectangle closed forms |
-//! | `y >= D` | full-state constants, with moment `A_full (y - D/2)` |
+//! | arc, `0 < y < D` | band formulas, with the circle series near a three-radius invert |
+//! | `y >= D` | full-state constants, with moment `A_full (y - D/2)`, or `M(D) + A_full (y - D)` on arc rows |
+//!
+//! A context without arc rows skips the arc branch.
 //!
 //! A negative or NaN depth yields inverted bounds, which reject the enclosing call at its
 //! completion check.
 
+mod arcs;
 mod circular;
 mod full;
 mod range;
@@ -94,12 +98,21 @@ where
     )?;
     let full = full::at_depth(a, barrel, &c.where_cond(&full_rows, depth, &barrel.rise)?)?;
 
-    let edge = c.mul(&barrel.boxed, &barrel.span)?;
-    let layers = [
-        (&trig_rows, &trig),
-        (&shallow_rows, &shallow),
-        (&full_rows, &full),
-    ];
+    let mut edge = c.mul(&barrel.boxed, &barrel.span)?;
+    let mut layers = vec![(&trig_rows, &trig), (&shallow_rows, &shallow)];
+    let arcs = match &barrel.arcs {
+        Some(rows) => {
+            let free_arcs = c.mul(&free, &rows.arced)?;
+            edge = c.add(&edge, &rows.floor_width)?;
+            Some(arcs::evaluate(a, barrel, rows, depth, &free_arcs)?)
+        }
+        None => None,
+    };
+    if let Some(arcs) = &arcs {
+        layers.push((&arcs.banded, &arcs.bands));
+        layers.push((&arcs.shallow_rows, &arcs.shallow));
+    }
+    layers.push((&full_rows, &full));
     let rows = Selection {
         valid: &valid,
         dry: &dry,

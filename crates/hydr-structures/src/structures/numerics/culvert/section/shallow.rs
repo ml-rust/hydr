@@ -34,25 +34,42 @@ where
     let d = a.point(rise)?;
     let top_width = top_width(a, barrel, &y, &d)?;
     let s = a.div_positive(&y, rise)?;
-    let r = a.sqrt_nonnegative(&s)?;
-    let [asin, area_sum, moment_sum] = sums(a, &barrel.series, &s, &barrel.one, &barrel.zero)?;
+    from_fraction(a, barrel, top_width, &d, &s)
+}
+
+/// Encloses the circle geometry of diameter `d` at depth fraction `s = y/d < 1`.
+///
+/// `top_width` is the caller's enclosure of `T`.
+pub(super) fn from_fraction<R>(
+    a: &mut Arithmetic<'_, R>,
+    barrel: &TensorBarrelContext<R>,
+    top_width: Interval<R>,
+    d: &Interval<R>,
+    s: &Interval<R>,
+) -> ArithmeticResult<Quantities<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    let r = a.sqrt_nonnegative(s)?;
+    let [asin, area_sum, moment_sum] = sums(a, &barrel.series, s, &barrel.one, &barrel.zero)?;
 
     let two = a.point(&barrel.constant(2.0)?)?;
     let half_angle = a.mul(&r, &asin)?;
     let angle = a.mul(&two, &half_angle)?;
-    let perimeter = a.mul(&d, &angle)?;
+    let perimeter = a.mul(d, &angle)?;
 
-    let square = a.mul(&d, &d)?;
-    let rs = a.mul(&r, &s)?;
+    let square = a.mul(d, d)?;
+    let rs = a.mul(&r, s)?;
     let area_unit = a.mul(&rs, &area_sum)?;
     let area = a.mul(&square, &area_unit)?;
 
-    let cubed = a.mul(&square, &d)?;
-    let rs2 = a.mul(&rs, &s)?;
+    let cubed = a.mul(&square, d)?;
+    let rs2 = a.mul(&rs, s)?;
     let moment_unit = a.mul(&rs2, &moment_sum)?;
     let moment = a.mul(&cubed, &moment_unit)?;
 
-    let ds = a.mul(&d, &s)?;
+    let ds = a.mul(d, s)?;
     let numerator = a.mul(&ds, &area_sum)?;
     let denominator = a.mul(&two, &asin)?;
     let radius = a.div_positive_interval(&numerator, &denominator)?;

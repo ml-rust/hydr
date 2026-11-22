@@ -3,10 +3,12 @@
 //! - `A`, `P` and `M` increase in `y`, so each range runs from the lower end's lower bound to the
 //!   upper end's upper bound.
 //! - `T` is unimodal: its least value lies at an end. A circle range holding `D/2` reaches `D`.
-//!   Otherwise `T` is monotone on the range and its largest value lies at an end.
-//! - `R` divides the `A` range by the `P` range. A circle range from `y = 0` has `P = 0` at its
-//!   lower end. It uses `0 <= R <= y`: below `D/2`, `A <= y T` and `P = D phi >= D sin(phi) = T`.
-//!   Above it, `A <= y D` and `P >= pi D / 2`.
+//!   An arc range holding the widest depth reaches the widest width. Otherwise `T` is monotone
+//!   on the range and its largest value lies at an end.
+//! - `R` divides the `A` range by the `P` range. A range from `y = 0` of a circle or a
+//!   three-radius arc barrel has `P = 0` at its lower end. It uses `0 <= R <= y`, which holds for
+//!   every convex section: below the widest depth `A <= y T` and `P >= T`, above it `A <= y W`
+//!   and `P >= W`, with `W` the widest width.
 //!
 //! A range below 0, reversed, NaN or reaching the crown yields inverted bounds, which reject the
 //! enclosing call at its completion check. Split an integral at the crown instead.
@@ -43,9 +45,18 @@ where
     let low = at_depth(a, barrel, &lower)?.geometry;
     let high = at_depth(a, barrel, &upper)?.geometry;
 
+    // Arc rows also hold both end enclosures whole: a seam between the ends may order them
+    // apart by a rounding.
     let spans = |a: &mut Arithmetic<'_, R>, pick: fn(&Quantities<R>) -> &Interval<R>| {
         let [bottom, top] = [pick(&low).lower(), pick(&high).upper()];
-        reject(a, barrel, &valid, bottom, top)
+        let Some(rows) = &barrel.arcs else {
+            return reject(a, barrel, &valid, bottom, top);
+        };
+        let least = c.minimum(bottom, pick(&high).lower())?;
+        let most = c.maximum(top, pick(&low).upper())?;
+        let bottom = c.where_cond(&rows.arced, &least, bottom)?;
+        let top = c.where_cond(&rows.arced, &most, top)?;
+        reject(a, barrel, &valid, &bottom, &top)
     };
     let area = spans(a, |q| &q.area)?;
     let perimeter = spans(a, |q| &q.perimeter)?;
@@ -60,6 +71,17 @@ where
         )?,
         &barrel.circular,
     )?;
+    let width_end = match &barrel.arcs {
+        Some(rows) => {
+            let [first, last] = &rows.widest_depth;
+            let holds_widest = c.mul(
+                &c.mul(&c.le(&lower, last)?, &c.ge(&upper, first)?)?,
+                &rows.arced,
+            )?;
+            c.where_cond(&holds_widest, &rows.widest_width, &width_end)?
+        }
+        None => width_end,
+    };
     let width_top = c.where_cond(&holds_middle, &barrel.rise, &width_end)?;
     let top_width = reject(a, barrel, &valid, &width_floor, &width_top)?;
 

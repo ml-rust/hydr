@@ -79,7 +79,7 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                     0.419_475_92,
                 )?)]),
                 K::Definition,
-                "arc barrel geometry not yet available",
+                "outlet control on arc barrels not yet available",
             ),
         ],
         "adverse-beyond-range" => vec![(

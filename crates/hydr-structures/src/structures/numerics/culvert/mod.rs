@@ -3,14 +3,7 @@
 //! Every quantity is a solvr `Interval`. Callers open one `with_interval_arithmetic` call and
 //! pass its context to these functions, so no function here adds a probe or a host read.
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "barrel batches read the arc layout once they admit arc barrels"
-    )
-)]
-mod arcs;
+pub(crate) mod arcs;
 #[cfg(test)]
 mod certificate_rows;
 pub(crate) mod constants;

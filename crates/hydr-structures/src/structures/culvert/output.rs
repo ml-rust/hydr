@@ -10,7 +10,8 @@ use numr::tensor::Tensor;
 /// Flow state of one barrel row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BarrelState {
-    /// Depth zero. Every quantity is an exact zero, except `T = P = B` for a box.
+    /// Depth zero. Every quantity is an exact zero, except `T = P = B` for a box and a
+    /// flat-floor arch.
     Dry,
     /// Free surface below the crown, `0 < y < D`.
     Free,
@@ -44,7 +45,8 @@ pub struct CulvertBarrelGeometryRow {
     /// Hydraulic radius `A / P`, in metres.
     pub hydraulic_radius_m: (f64, f64),
     /// Hydrostatic moment `integral from 0 to y of (y - eta) T(eta) d eta`, in cubic metres.
-    /// In the full state it is `A_full (y - D/2)`.
+    /// In the full state it is `A_full (y - D/2)` for a circle or a box, and `M(D) + A_full (y - D)`
+    /// for an arc barrel.
     pub hydrostatic_moment_m3: (f64, f64),
 }
 

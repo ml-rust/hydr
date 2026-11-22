@@ -608,7 +608,7 @@ cargo run --example gate_trajectories_reference
 
 ## Culvert barrel geometry
 
-`hydr::structures::CulvertBarrelBatch` encloses the geometry of closed circular and box barrels. It also encloses each barrel's critical depth and Manning normal depth. It computes no culvert discharge.
+`hydr::structures::CulvertBarrelBatch` encloses the geometry of closed barrels: circles, boxes, ellipses, pipe-arches and flat-floor arches. It also encloses the critical depth and Manning normal depth of circular and box barrels. It computes no culvert discharge.
 
 Read capabilities with `culvert_barrel_capabilities()`. It returns a `ComponentCapabilities` declaration: arithmetic, runtimes, unsupported uses, and limits.
 
@@ -627,7 +627,7 @@ Each constructor returns `StructureInputErrorKind::Definition` for these inputs:
 
 The message names the field, its value, and the corrective action.
 
-Four more constructors build barrels from tangent circular arcs. Every batch rejects these barrels with `StructureInputErrorKind::Definition`, because their geometry is not yet available. Use a circular or box barrel for queries.
+Four more constructors build barrels from tangent circular arcs. `geometry`, `geometry_over` and `full_geometry` accept them. `critical_depth`, `normal_depth`, `CulvertInletBatch`, `CulvertOutletBatch` and `StructureBatch::with_culverts` reject them with `StructureInputErrorKind::Definition`, naming the row. Use a circular or box barrel for those.
 
 | Constructor | Shape | Rules |
 | --- | --- | --- |
@@ -638,7 +638,7 @@ Four more constructors build barrels from tangent circular arcs. Every batch rej
 
 The constructor derives the remaining radius from tangency: the invert and crown radius of a horizontal ellipse, the side radius of a vertical ellipse, the top radius of a pipe-arch, and the arc radius of an arch. These constructors also reject a radius whose cube, times 64, overflows F64. `given_radius_m()` returns the radii you supplied, in constructor order, and `None` for a circle, a box or an arch.
 
-`CulvertBarrelBatch::<R>::new(client, barrels)` uploads one row per barrel. Circle and box rows mix in one batch. It rejects an empty list. It also rejects a runtime without these F64 contracts:
+`CulvertBarrelBatch::<R>::new(client, barrels)` uploads one row per barrel. Rows of every shape mix in one batch. It rejects an empty list. It also rejects a runtime without these F64 contracts:
 
 - IEEE basic arithmetic with nearest-even rounding and gradual underflow.
 - Fused multiply-add.
@@ -671,13 +671,13 @@ A geometry row holds `(lower, upper)` pairs of these quantities:
 | `top_width_m` | Free-surface width `T`. Zero in the full state. |
 | `wetted_perimeter_m` | Wetted perimeter `P` |
 | `hydraulic_radius_m` | `A / P` |
-| `hydrostatic_moment_m3` | Integral of `(y - eta) T(eta)` from the invert to `y`. In the full state it is `A_full (y - D/2)`. |
+| `hydrostatic_moment_m3` | Integral of `(y - eta) T(eta)` from the invert to `y`. In the full state it is `A_full (y - D/2)` for a circle or a box, and `M(D) + A_full (y - D)` for an arc barrel, with `M(D)` the moment at the crown. |
 
 Each row also carries a `BarrelState`:
 
 | State | Depth | Meaning |
 | --- | --- | --- |
-| `Dry` | `y = 0` | Every quantity is an exact zero. A box keeps `T = P = B`. |
+| `Dry` | `y = 0` | Every quantity is an exact zero. A box and a flat-floor arch keep `T = P = B`. |
 | `Free` | `0 < y < D` | Free surface below the crown |
 | `Full` | `y >= D` | Full-barrel constants. Depth above the crown is pressure head. |
 
@@ -737,9 +737,11 @@ Independent 100-digit references are frozen before any kernel runs.
 | [Critical depth](../tests/culvert_barrels/critical.rs) and [normal depth](../tests/culvert_barrels/normal.rs) | Statuses match the reference class of the exact root. Every promised enclosure contains it. No depth shows a certified reversal as discharge rises. Normal depth also rises with roughness and as slope falls. |
 | [Layouts](../tests/culvert_barrels/layouts.rs) | Widths 1, 31, 32, 33, 64, and 65 mix circle and box rows. Every lane of every query equals its single-row result bit for bit. |
 | [Admission](../tests/culvert_barrels/admission.rs) | Each rejection names its row, value, and action |
+| [Arc barrels](../tests/culvert_shapes/geometry.rs) | Twelve ellipses, pipe-arches and arches at frozen depths, junctions and seams included. Every reference lies inside its enclosure within a frozen width. [Sweeps](../tests/culvert_shapes/sweeps.rs) show no certified reversal, `dA/dy = T` and `dM/dy = A`, and ranges that hold their ends and references. [Layouts](../tests/culvert_shapes/layouts.rs) of widths 1, 33 and 65 mix arc, circle and box rows bit for bit. |
 
 ```sh
 cargo test --test culvert_barrels
+cargo test --test culvert_shapes
 ```
 
 | Runtime | Behavior |
@@ -752,7 +754,8 @@ cargo test --test culvert_barrels
 
 - Queries hold no state and advance no storage. No snapshot exists.
 - Full-barrel pressure flow and full-barrel friction stay with the caller.
-- Only circular and box barrels. No elliptical, arch, or pipe-arch sections.
+- Critical and normal depth cover circular and box barrels only.
+- CUDA parity covers circular and box barrels only.
 - No outlet control, barrel profile, or culvert discharge. [`CulvertInletBatch`](#culvert-inlet-control) gives inlet-control headwater.
 
 ## Culvert inlet control

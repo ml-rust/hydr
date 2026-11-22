@@ -7,7 +7,7 @@ use super::{
 };
 use crate::structures::StructureError;
 use crate::structures::numerics::culvert::{RowNames, critical, normal, section};
-use crate::structures::tensor::culvert::TensorBarrelContext;
+use crate::structures::tensor::culvert::{TensorBarrelContext, reject_arc_barrels};
 use numr::dtype::DType;
 use numr::ops::{
     CompareOps, CorrectlyRoundedOps, NextRepresentableOps, ScalarOps, TensorOps, TwoSumOps,
@@ -19,11 +19,12 @@ use solvr::optimize::CertifiedBisectionAlgorithms;
 use std::fmt;
 use std::sync::Arc;
 
-/// Circular and box culvert barrels, one row each, with certified geometry queries.
+/// Culvert barrels, one row each, with certified geometry queries.
 ///
 /// Every quantity is an enclosure: the exact value at each represented depth lies inside its
 /// `[lower, upper]` pair. CPU and CUDA give bit-identical bounds.
 /// The free-surface domain is `[0, D)`. The crown `y = D` and every depth above it are full.
+/// Geometry covers every shape. Critical and normal depth cover circular and box barrels only.
 #[derive(Clone)]
 pub struct CulvertBarrelBatch<R: Runtime<DType = DType>> {
     barrels: Arc<[CulvertBarrel]>,
@@ -134,7 +135,8 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
 
     /// Encloses the full-state geometry at the crown `y = D` of every barrel.
     ///
-    /// Area, perimeter and radius hold for every full depth. The moment is `A_full D / 2`.
+    /// Area, perimeter and radius hold for every full depth. The moment is `A_full D / 2` for a
+    /// circle and a box, and the crown moment `M(D)` for an arc barrel.
     pub fn full_geometry(&self) -> Result<CulvertBarrelGeometry<R>, StructureError>
     where
         R::Client: TensorOps<R>
@@ -161,8 +163,8 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
     ///
     /// `discharge_m3_per_s` is an F64 `[m]` tensor of per-barrel discharge magnitudes on the
     /// batch device. [`CriticalDepthStatus`] states what each row's enclosure holds.
-    /// Rejects a negative or nonfinite discharge, naming its row, and a nonfinite or
-    /// nonpositive gravity.
+    /// Rejects a negative or nonfinite discharge, naming its row, a nonfinite or nonpositive
+    /// gravity, and a batch holding an elliptical, pipe-arch or flat-floor arch barrel.
     pub fn critical_depth(
         &self,
         discharge_m3_per_s: &Tensor<R>,
@@ -179,6 +181,7 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             + CertifiedBisectionAlgorithms<R>,
     {
         let context = &*self.context;
+        reject_arc_barrels(&self.barrels, "critical depth")?;
         check_gravity(gravity_m_per_s2)?;
         check_discharges(context, "discharge_m3_per_s", discharge_m3_per_s)?;
         let gravity = context.constant(gravity_m_per_s2)?;
@@ -201,7 +204,8 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
     /// [`NormalDepthStatus`] states what each row's enclosure holds. A zero or adverse slope
     /// reports `NonPositiveSlope` whatever the discharge.
     /// Rejects a negative or nonfinite discharge, a nonpositive or nonfinite `n` and a nonfinite
-    /// slope, naming the row.
+    /// slope, naming the row, and a batch holding an elliptical, pipe-arch or flat-floor arch
+    /// barrel.
     pub fn normal_depth(
         &self,
         discharge_m3_per_s: &Tensor<R>,
@@ -219,6 +223,7 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             + CertifiedBisectionAlgorithms<R>,
     {
         let context = &*self.context;
+        reject_arc_barrels(&self.barrels, "normal depth")?;
         check_manning(
             context,
             [

@@ -4,7 +4,9 @@ use super::{CulvertInletHeadwater, CulvertInletRow};
 use crate::structures::culvert::input::check_discharges;
 use crate::structures::numerics::culvert::RowNames;
 use crate::structures::numerics::culvert::inlet::{anchors, evaluate};
-use crate::structures::tensor::culvert::{TensorBarrelContext, TensorInletContext};
+use crate::structures::tensor::culvert::{
+    TensorBarrelContext, TensorInletContext, reject_arc_barrels,
+};
 use crate::structures::{CulvertBarrel, StructureError};
 use numr::dtype::DType;
 use numr::ops::{
@@ -66,6 +68,7 @@ impl<R: Runtime<DType = DType>> CulvertInletBatch<R> {
             row.check().map_err(|error| error.at(index))?;
         }
         let barrels: Arc<[CulvertBarrel]> = rows.iter().map(|row| row.barrel).collect();
+        reject_arc_barrels(&barrels, "inlet control")?;
         let barrel = TensorBarrelContext::new(client, &barrels)?;
         let unit = barrel.unit_circles()?;
         let inlet = anchors::prepare(&barrels, &barrel, &unit, &rows)?;

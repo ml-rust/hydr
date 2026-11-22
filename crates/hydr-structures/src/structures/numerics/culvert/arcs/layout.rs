@@ -1,12 +1,7 @@
 //! Band start values chained from the invert, and the full-state constants.
 //!
 //! The bottom band of a three-radius section is a cap of the bottom circle up to `psi_1`. The
-//! corner band adds, from `psi_1` to `psi_2` with `dy = r_c (cos psi_1 - cos psi_2)`:
-//!
-//! - `A += 2 x_c dy + r_c^2 ((psi_2 - psi_1) - sin psi_2 cos psi_2 + sin psi_1 cos psi_1)`
-//! - `P += 2 r_c (psi_2 - psi_1)`
-//! - `M += A_1 dy + x_c dy^2 + r_c^3 I_2`, with
-//!   `I_2 = [sin t - t cos t - sin^3 t / 3] from psi_1 to psi_2 - (psi_1 - sin psi_1 cos psi_1) dy / r_c`
+//! corner band chains on from `psi_1` to `psi_2`, see `corner`.
 //!
 //! The top band is a cap of the top circle seen from the crown, of height `h_t = D - y_2`. It
 //! closes the full state: `A_full = A_2 + A_cap`, `P_full = P_2 + P_cap` and
@@ -16,15 +11,14 @@
 //! `P_full = B + P_cap` and `M(D) = D A_cap - M_cap`.
 
 use super::cap::{Cap, Shared, cap};
+use super::corner::{Corner, corner};
 use super::inputs::ArcInputs;
 use super::normals::{FlatArch, ThreeRadius, copy, flat_arch, nonnegative, three_radius};
 use super::{ArcBand, ArcLayout, meet, pick};
-use crate::structures::numerics::culvert::constants::PI;
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient};
 use crate::structures::tensor::culvert::SeriesTensors;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
-use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval};
 
 /// Band arc and start values inside the interval call, in [`ArcBand`] field order.
@@ -39,6 +33,8 @@ struct Band<R: Runtime<DType = DType>> {
     area: Interval<R>,
     perimeter: Interval<R>,
     moment: Interval<R>,
+    low: Interval<R>,
+    high: Interval<R>,
 }
 
 /// Full-state constants inside the interval call.
@@ -63,21 +59,8 @@ where
     R::Client: BarrelClient<R>,
 {
     let like = &inputs.arch;
-    let device = like.device();
-    let fill = |value: f64| Tensor::<R>::full_scalar(like.shape(), DType::F64, value, device);
-    let pi = a.bounds(&fill(f64::from_bits(PI[0]))?, &fill(f64::from_bits(PI[1]))?)?;
-    let half = a.point(&fill(0.5)?)?;
-    let half_pi = a.mul(&pi, &half)?;
-    let shared = Shared {
-        zero: fill(0.0)?,
-        one: fill(1.0)?,
-        two: a.point(&fill(2.0)?)?,
-        three: fill(3.0)?,
-        half,
-        pi,
-        half_pi,
-        series: SeriesTensors::constant(like.shape()[0], device)?,
-    };
+    let series = SeriesTensors::constant(like.shape()[0], like.device())?;
+    let shared = Shared::new(a, like, &series)?;
     let three = three_radius(a, inputs)?;
     let (bottom, corner, top, full) = three_radius_bands(a, &shared, &three)?;
     let arch = flat_arch(a, &inputs.arch_operands)?;
@@ -95,6 +78,8 @@ where
             start_area: pick(a, mask, &arch_band.area, &three.area)?,
             start_perimeter: pick(a, mask, &arch_band.perimeter, &three.perimeter)?,
             start_moment: pick(a, mask, &arch_band.moment, &three.moment)?,
+            circle_low: pick(a, mask, &arch_band.low, &three.low)?,
+            circle_high: pick(a, mask, &arch_band.high, &three.high)?,
         })
     };
     let bands = [band(&bottom)?, band(&corner)?, band(&top)?];
@@ -111,7 +96,7 @@ where
 /// Bottom, corner and top bands of the three-radius section, then its full state.
 fn three_radius_bands<R>(
     a: &mut Arithmetic<'_, R>,
-    shared: &Shared<R>,
+    shared: &Shared<'_, R>,
     t: &ThreeRadius<R>,
 ) -> ArithmeticResult<ThreeBands<R>>
 where
@@ -139,37 +124,12 @@ where
     let crown_height = a.sub(&t.rise, &y2)?;
     let crown_height = meet(a, &top.height, &crown_height)?;
 
-    // Corner band, psi_1 to psi_2. Every bracket term is nonnegative.
     let psi1 = &bottom.angle;
-    let sweep = a.sub(&psi2, psi1)?;
-    let end2 = a.mul(&t.sin2, &t.minus_cos2)?;
-    let end1 = a.mul(&t.sin1, &t.cos1)?;
-    let bracket = a.add(&sweep, &end2)?;
-    let bracket = a.add(&bracket, &end1)?;
-    let corner_square = a.mul(&t.corner, &t.corner)?;
-    let swept = a.mul(&corner_square, &bracket)?;
-    let strip = a.mul(&t.offset, &dy)?;
-    let strip = a.mul(&shared.two, &strip)?;
-    let area = a.add(&bottom.area, &strip)?;
-    let area = a.add(&area, &swept)?;
-    let arc = a.mul(&t.corner, &sweep)?;
-    let arc = a.mul(&shared.two, &arc)?;
-    let perimeter = a.add(&bottom.perimeter, &arc)?;
-
-    let at2 = antiderivative(a, shared, &psi2, &t.sin2, &t.minus_cos2, true)?;
-    let at1 = antiderivative(a, shared, psi1, &t.sin1, &t.cos1, false)?;
-    let segment = a.sub(psi1, &end1)?;
-    let tail = a.mul(&segment, &cos_sum)?;
-    let i2 = a.sub(&at2, &at1)?;
-    let i2 = a.sub(&i2, &tail)?;
-    let corner_cube = a.mul(&corner_square, &t.corner)?;
-    let swept_moment = a.mul(&corner_cube, &i2)?;
-    let lifted = a.mul(&bottom.area, &dy)?;
-    let dy_square = a.mul(&dy, &dy)?;
-    let strip_moment = a.mul(&t.offset, &dy_square)?;
-    let moment = a.add(&bottom.moment, &lifted)?;
-    let moment = a.add(&moment, &strip_moment)?;
-    let moment = a.add(&moment, &swept_moment)?;
+    let Corner {
+        area,
+        perimeter,
+        moment,
+    } = corner(a, shared, t, &bottom, &psi2, &dy, &cos_sum)?;
 
     let full = close(a, &area, &perimeter, &moment, &top, &crown_height)?;
     let full = Full {
@@ -187,9 +147,13 @@ where
         area: copy(a, &bottom.area)?,
         perimeter: copy(a, &bottom.perimeter)?,
         moment: copy(a, &bottom.moment)?,
+        low: a.sub(&t.height, &t.corner)?,
+        high: a.add(&t.height, &t.corner)?,
     };
     let top_cos = a.sub(&zero, &t.minus_cos2)?;
     let top_centre = a.sub(&t.rise, &t.top)?;
+    let top_diameter = a.mul(&shared.two, &t.top)?;
+    let bottom_diameter = a.mul(&shared.two, &t.bottom)?;
     let top_band = Band {
         centre_x: copy(a, &zero)?,
         centre_y: top_centre,
@@ -201,6 +165,8 @@ where
         area,
         perimeter,
         moment,
+        low: a.sub(&t.rise, &top_diameter)?,
+        high: copy(a, &t.rise)?,
     };
     let bottom_band = Band {
         centre_x: copy(a, &zero)?,
@@ -212,34 +178,11 @@ where
         depth: copy(a, &zero)?,
         area: copy(a, &zero)?,
         perimeter: copy(a, &zero)?,
+        low: copy(a, &zero)?,
+        high: bottom_diameter,
         moment: zero,
     };
     Ok((bottom_band, corner_band, top_band, full))
-}
-
-/// `sin t - t cos t - sin^3 t / 3` from the sine, the cosine (negated when `negated`) and `t`.
-fn antiderivative<R>(
-    a: &mut Arithmetic<'_, R>,
-    shared: &Shared<R>,
-    angle: &Interval<R>,
-    sin: &Interval<R>,
-    cos: &Interval<R>,
-    negated: bool,
-) -> ArithmeticResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: BarrelClient<R>,
-{
-    let angle_cos = a.mul(angle, cos)?;
-    let square = a.mul(sin, sin)?;
-    let cube = a.mul(&square, sin)?;
-    let third = a.div_positive(&cube, &shared.three)?;
-    let linear = if negated {
-        a.add(sin, &angle_cos)?
-    } else {
-        a.sub(sin, &angle_cos)?
-    };
-    a.sub(&linear, &third)
 }
 
 /// Full state from the start values of the band below the cap and the cap of height `height`.
@@ -275,7 +218,7 @@ where
 /// The band every arch row repeats three times, and the arch full state.
 fn arch_band<R>(
     a: &mut Arithmetic<'_, R>,
-    shared: &Shared<R>,
+    shared: &Shared<'_, R>,
     f: &FlatArch<R>,
 ) -> ArithmeticResult<(Band<R>, Full<R>)>
 where
@@ -291,6 +234,7 @@ where
     // The cap above the floor has height D, so its stacked moment uses D exactly.
     let full = close(a, &zero, &f.span, &zero, &arc, &f.rise)?;
     let full = Full { widest, ..full };
+    let diameter = a.mul(&shared.two, &f.radius)?;
     let band = Band {
         centre_x: copy(a, &zero)?,
         centre_y: centre,
@@ -302,6 +246,8 @@ where
         area: copy(a, &zero)?,
         perimeter: copy(a, &f.span)?,
         moment: zero,
+        low: a.sub(&f.rise, &diameter)?,
+        high: copy(a, &f.rise)?,
     };
     Ok((band, full))
 }
@@ -313,6 +259,7 @@ mod tests {
     use crate::structures::tensor::culvert::Bounds;
     use crate::structures::{CulvertBarrel, StructureError};
     use numr::runtime::cpu::{CpuDevice, CpuRuntime};
+    use numr::tensor::Tensor;
     use solvr::common::arithmetic::with_interval_arithmetic;
 
     type Cpu = CpuRuntime;
@@ -379,7 +326,7 @@ mod tests {
     fn layout_holds_the_frozen_references() -> Result<(), StructureError> {
         assert_eq!(
             LAYOUT_SHA256,
-            "c4a952e33384cb545f04d9a41358e381c1fa190245b4be8e61b92ddf101501b4"
+            "51debc4680d88121a9c5022973cb327111741b275140edeb215c00364661c7fb"
         );
         let (barrels, found) = layouts()?;
         let mut failures = Vec::new();

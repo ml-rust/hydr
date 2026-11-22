@@ -99,7 +99,7 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                     9.81,
                 )]),
                 K::Definition,
-                "arc barrel geometry not yet available",
+                "inlet control on arc barrels not yet available",
             ),
         ],
         "falling-transition" => vec![

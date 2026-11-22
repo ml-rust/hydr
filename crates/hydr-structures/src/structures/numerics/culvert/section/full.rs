@@ -1,16 +1,19 @@
 //! Full state from the crown upward: depth above the crown changes no geometry.
 //!
-//! | Quantity | Circle | Box |
-//! | --- | --- | --- |
-//! | `A_full` | `pi D^2 / 4` | `B D` |
-//! | `T` | `0` | `0` |
-//! | `P_full` | `pi D` | `2 (B + D)` |
-//! | `R_full` | `D / 4` | `B D / (2 (B + D))` |
-//! | `M` | `A_full (y - D/2)` | `A_full (y - D/2)` |
+//! | Quantity | Circle | Box | Arc |
+//! | --- | --- | --- | --- |
+//! | `A_full` | `pi D^2 / 4` | `B D` | band chain to the crown |
+//! | `T` | `0` | `0` | `0` |
+//! | `P_full` | `pi D` | `2 (B + D)` | band chain to the crown |
+//! | `R_full` | `D / 4` | `B D / (2 (B + D))` | `A_full / P_full` |
+//! | `M` | `A_full (y - D/2)` | `A_full (y - D/2)` | `M(D) + A_full (y - D)` |
+//!
+//! A pipe-arch or an arch has its centroid off `D/2`, so arc rows add the head above the crown
+//! to the crown moment `M(D)`.
 
 use super::Quantities;
 use crate::structures::numerics::culvert::constants::PI;
-use crate::structures::numerics::culvert::{Arithmetic, BarrelClient};
+use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose};
 use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext};
 use numr::dtype::DType;
 use numr::ops::ConditionalOps;
@@ -114,7 +117,16 @@ where
     let y = a.point(depth)?;
     let centroid = a.point(&barrel.half_rise)?;
     let head = a.sub(&y, &centroid)?;
-    let moment = a.mul(&area, &head)?;
+    let mut moment = a.mul(&area, &head)?;
+    if let Some(rows) = &barrel.arcs {
+        let [lower, upper] = &rows.full_moment;
+        let crown = a.bounds(lower, upper)?;
+        let d = a.point(&barrel.rise)?;
+        let above = a.sub(&y, &d)?;
+        let pressed = a.mul(&area, &above)?;
+        let arc = a.add(&crown, &pressed)?;
+        moment = choose(a, &rows.arced, &arc, &moment)?;
+    }
     let top_width = a.point(&barrel.zero)?;
     Ok(Quantities {
         area,

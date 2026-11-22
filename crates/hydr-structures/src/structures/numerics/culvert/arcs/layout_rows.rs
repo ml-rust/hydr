@@ -10,7 +10,7 @@
 
 /// SHA256 of the frozen `geometry.json`.
 pub(super) const LAYOUT_SHA256: &str =
-    "c4a952e33384cb545f04d9a41358e381c1fa190245b4be8e61b92ddf101501b4";
+    "51debc4680d88121a9c5022973cb327111741b275140edeb215c00364661c7fb";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Shape {

@@ -73,7 +73,7 @@ static CULVERT: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "culvert-arc-barrel",
             UnsupportedReason::RejectedByAdmission,
-            "StructureBatch::with_culverts rejects a culvert whose barrel is elliptical, pipe-arch or flat-floor arch. Their geometry is not yet available.",
+            "StructureBatch::with_culverts rejects a culvert whose barrel is elliptical, pipe-arch or flat-floor arch, naming the element. Their inlet and outlet control are not yet available.",
         ),
         unsupported(
             "culvert-end-mismatch",

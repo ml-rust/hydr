@@ -113,7 +113,7 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
             vec![(
                 with_culverts(element(law, DirectionPolicy::AtoBOnly)),
                 K::Definition,
-                "arc barrel geometry not yet available",
+                "the culvert law on arc barrels not yet available",
             )]
         }
         "invalid-culvert-definition" => vec![
