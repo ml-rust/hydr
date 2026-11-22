@@ -32,10 +32,4 @@ impl<R: Runtime<DType = DType>> SurfaceChannelTrial<R> {
             SurfaceChannelError::Numerical("candidate lacks its common interval receipt".into())
         })
     }
-
-    /// Runoff transfer of every delivery lane over the candidate interval.
-    #[doc(hidden)]
-    pub fn runoff_transfers(&self) -> Vec<super::SurfaceChannelRunoffTransfer> {
-        self.next.runoff_transfers()
-    }
 }

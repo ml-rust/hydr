@@ -10,12 +10,13 @@ use super::context::Context;
 use super::frames::{Children, Frame, NodePackages, Parts, checked, node_children, rejected};
 use super::identity;
 use super::operating::admit;
-use super::runoff::build_child;
+use super::runoff::{build_child, restored_child};
 use super::snapshot::{
     SurfaceChannelSetupData, SurfaceChannelSnapshot, SurfaceChannelSnapshotData,
 };
 use super::{SurfaceChannelDefinition, SurfaceChannelError};
 use crate::channel::ChannelSnapshotData;
+use crate::runoff::SubcatchmentSnapshotData;
 use crate::solver::{ForcingSchedule, SnapshotData, Solver};
 use numr::dtype::DType;
 use numr::ops::{
@@ -158,7 +159,12 @@ where
             reaches,
             pools,
             operating,
-            runoff: build_child(&self.context.client, &self.definition, &self.initial)?,
+            runoff: restored_child(
+                self.runoff.as_ref(),
+                &self.initial,
+                prefix,
+                start_runoff(data),
+            )?,
         };
         let parts = Parts {
             definition: Arc::clone(&self.definition),
@@ -255,8 +261,9 @@ where
 {
     /// Builds a batch on `client` from a caller-owned package, then continues the surface forcing.
     ///
-    /// The surface definition comes from the nested surface package. The pools and operating
-    /// children build fresh from the setup and original states, then restore their packages.
+    /// The surface definition comes from the nested surface package. The pools, operating
+    /// children, and runoff child build fresh from the setup and original states, then restore
+    /// their packages.
     /// Pass `data.surface.setup.forcing.clone()` as `surface_forcing` for a plain restart.
     /// See [`SurfaceChannelBatch::continue_surface_forcing`] for the splice rule.
     ///
@@ -308,12 +315,13 @@ where
             fresh_operating.as_ref(),
         );
         let (pools, operating) = node_children(&context, prefix, bases, nodes)?;
+        let fresh_runoff = build_child(&client, &definition, initial)?;
         let frame = Frame {
             surface,
             reaches,
             pools,
             operating,
-            runoff: build_child(&client, &definition, initial)?,
+            runoff: restored_child(fresh_runoff.as_ref(), initial, prefix, start_runoff(data))?,
         };
         let parts = Parts {
             context,
@@ -352,6 +360,14 @@ fn start_frame(
             &data.reaches,
             (data.pools.as_ref(), data.operating.as_ref()),
         ),
+    }
+}
+
+/// The runoff package of the frame an import restores.
+fn start_runoff(data: &SurfaceChannelSnapshotData) -> Option<&SubcatchmentSnapshotData> {
+    match &data.last_interval {
+        Some(last) => last.previous.runoff.as_ref(),
+        None => data.runoff.as_ref(),
     }
 }
 

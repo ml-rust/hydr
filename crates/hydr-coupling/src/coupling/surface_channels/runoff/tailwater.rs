@@ -142,7 +142,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::basin::{Basin, Receiver, advance, balanced, forcing, isolated};
+    use super::super::basin::{Basin, Receiver, advance, balanced, forcing, isolated, transfers};
     use super::super::scenario::{input_message, starts};
     use crate::coupling::surface_channels::SurfaceChannelError;
     use crate::coupling::surface_channels::structures::scenario::TestResult;
@@ -175,8 +175,7 @@ mod tests {
         let next = advance(&batch, 0.5, 0.0)?;
         let end = next.time();
         assert!(end < 0.5, "end={end}");
-        let transfer = next
-            .runoff_transfers()
+        let transfer = transfers(&next)?
             .into_iter()
             .next()
             .ok_or("one delivery lane")?;

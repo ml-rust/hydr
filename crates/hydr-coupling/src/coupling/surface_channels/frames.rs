@@ -9,7 +9,7 @@ use super::operating::OperatingChildren;
 use super::pool_ends::PoolEndCounters;
 use super::pools::PoolChild;
 use super::ports::{PortCounters, PortTopology};
-use super::runoff::RunoffCounters;
+use super::runoff::import_runoff_counters;
 use super::snapshot::SurfaceChannelCounterData;
 use super::state::LinkCounters;
 use super::{SurfaceChannelDefinition, SurfaceChannelInitialState, SurfaceChannelOperatingData};
@@ -300,6 +300,13 @@ where
                 "time or accepted count differs from the coordinator counters",
             )?;
         }
+        if let Some(runoff) = &runoff {
+            require(
+                runoff.time().to_bits() == time.to_bits() && runoff.accepted_steps() == steps,
+                &path("runoff"),
+                "time or accepted count differs from the coordinator counters",
+            )?;
+        }
         for (child, child_time, child_steps) in operating.iter().flat_map(|o| o.clocks()) {
             require(
                 child_time.to_bits() == time.to_bits() && child_steps == steps,
@@ -474,10 +481,6 @@ fn import_counters<R: Runtime<DType = DType>>(
         roundoff_bound_m3: tensor(2)?,
         ports,
         pool_ends,
-        runoff: context
-            .runoff
-            .as_ref()
-            .map(|topology| RunoffCounters::zero(&context.client, topology))
-            .transpose()?,
+        runoff: import_runoff_counters(context, &data.runoff, advanced, prefix)?,
     })
 }

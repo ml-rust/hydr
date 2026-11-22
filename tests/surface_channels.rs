@@ -1,5 +1,5 @@
 //! Surface/channel coordinator definitions, construction checks, common intervals, reach-end
-//! ports, pools, structure links, pool ends, operating children, and checkpoints.
+//! ports, pools, structure links, pool ends, operating children, native runoff, and checkpoints.
 
 #[allow(dead_code)]
 #[path = "support/analytic.rs"]
@@ -107,6 +107,11 @@ mod reference;
 mod refinement;
 #[path = "surface_channels/restoration.rs"]
 mod restoration;
+#[path = "surface_channels/runoff.rs"]
+mod runoff;
+#[allow(dead_code)]
+#[path = "surface_channels/runoff_fixture.rs"]
+mod runoff_fixture;
 #[path = "support/runtime.rs"]
 mod runtime;
 #[path = "surface_channels/scenario.rs"]

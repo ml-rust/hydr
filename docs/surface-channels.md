@@ -1,6 +1,6 @@
 # Couple the surface to channel reaches
 
-Use `SurfaceChannelBatch<R>` to advance the 2D surface engine, 1D channel reaches, and level pools over one common interval. Water crosses a bank weir between a surface cell and a channel cell, in either direction. A structure joins any two of a surface cell, a channel cell, and a pool. Water and momentum cross a reach-end port between a line of surface faces and one reach end. A reach end can also meet a pool.
+Use `SurfaceChannelBatch<R>` to advance the 2D surface engine, 1D channel reaches, and level pools over one common interval. Water crosses a bank weir between a surface cell and a channel cell, in either direction. A structure joins any two of a surface cell, a channel cell, and a pool. Water and momentum cross a reach-end port between a line of surface faces and one reach end. A reach end can also meet a pool. Subcatchment runoff can drain into reach cells and pools.
 
 Read [channel flow](channels.md), [numerics](numerics.md), and [structure laws](structures.md#orifices-and-rectangular-weirs) before constructing the inputs. Read [level pools](level-pool.md) and [coupled level pools](coupled-level-pools.md) before declaring pools. Read [controlled gates](controlled-gates.md), [controlled pumps](controlled-pumps.md), and [gate actuators](gate-actuators.md) before declaring operating children.
 
@@ -18,6 +18,7 @@ Read capabilities with `surface_channel_capabilities()`. It returns a `Component
 | Structures | `SurfaceChannelStructure` entries | One weir, orifice, gate, pump, or culvert between two nodes. See [structures](#join-nodes-through-structures). |
 | Pool ends | `SurfaceChannelPoolEnd` entries | One reach end against one pool. See [pool ends](#couple-a-reach-end-to-a-pool). |
 | Operating children | `SurfaceChannelOperating` | The children that operate gates and pumps. See [controls](#operate-gates-and-pumps). |
+| Runoff | `SurfaceChannelRunoff` | Subcatchments whose outlets drain into reach cells and pools. See [native runoff](#attach-native-runoff). |
 
 Links, ports, structures, and pool ends together must hold at least one entry. A setup with none rejects.
 
@@ -466,6 +467,101 @@ A dry signal node at a decision rejects without retry. The error names the contr
 
 A control or actuator admission error rejects without retry and names the child. Capability `continuous-control` records that controls decide at sampled times only.
 
+## Attach native runoff
+
+The coordinator can own one `SubcatchmentBatch`. Its outlets drain into reach cells and pools. Read [subcatchments](subcatchment.md) and [contributing support](contributing-support.md) first.
+
+### Declare runoff
+
+Set `SurfaceChannelSetup.runoff` to a `SurfaceChannelRunoff`:
+
+| Field | Holds |
+| --- | --- |
+| `support` | A `SupportPlanInput` over the surface domain. It names the modelled sources, the surface cells they own, and pool rain support. |
+| `definitions` | Every `SubcatchmentDefinition` the plan names, in numerical order |
+| `config` | The `SubcatchmentConfig` of the runoff child |
+| `outlets` | One `SurfaceChannelRunoffOutlet` per active modelled outlet |
+
+Each outlet holds:
+
+- `outlet_id`: the `outlet_id` of one active `ModelledRunoff` contribution.
+- `destination`: one `SurfaceChannelRunoffDestination`.
+- `free_outlet`: the outlet invert in the surface datum, in metres, and evidence that receiving water below it cannot change the export.
+
+| Destination | Receives |
+| --- | --- |
+| `ChannelCells { reach_id, cells }` | Cells of one reach. Each `SurfaceChannelRunoffShare` holds a cell index and a positive weight. |
+| `Pool { pool_id }` | One coordinator pool |
+| `SurfaceCells { cells }` | Not supported. Construction checks the cells, but every trial returns `Input` naming `runoff-attachment`. |
+
+`SurfaceChannelInitialState.runoff` holds one `SubcatchmentState` per active definition, in definition order. The runoff child starts at `initial.time_s`.
+
+Each forcing interval sets `SurfaceChannelForcingInterval.runoff`. It holds one `SubcatchmentContributionInput` per active source over exactly `[start_s, end_s]`. Each record holds rain and evaporation rates. External runon must be zero.
+
+### Delivery lanes
+
+Each potential subarea of an outlet's definition is one lane. Each lane delivers to every target of its outlet. One lane and one target form a delivery lane.
+
+- Reach target: the coordinator adds one `Inflow` lateral binding per delivery lane, `runoff-attachment:<outlet>:<subarea>:<cell>`.
+- Pool target: the coordinator adds one pool inflow binding per lane, `runoff-attachment:<outlet>:<subarea>`.
+
+Caller bindings and caller inputs with the prefix `runoff-attachment:` reject with `reserved-binding-prefix`.
+
+Weights normalize once. One target takes each lane volume in every bit. Several targets split it by weight. The parts sum to the lane within a rounding bound.
+
+### What one attempt does
+
+1. The trial admits the runoff rates once. A receiving stage above its outlet invert rejects with `Input`, `runoff-outlet-submerged`.
+2. After the surface step limits, the runoff child trials from its accepted state to the attempt end.
+3. Each delivery lane takes its interval volume. Reaches take it as inflow with zero velocity. Pools take it beside the caller inflows.
+4. The volumes stay fixed through the link fixed point.
+5. A receiving stage above its invert at the candidate end shortens the interval.
+6. Each receiving binding must hold its delivered volume in every bit.
+
+A shorter attempt trials the runoff child again to the new end. It never scales a volume. Runoff rates need no recompute: they hold over every sub-span. A `SubcatchmentError::Numerical` from the runoff child halves the interval. Other runoff errors return as `SurfaceChannelError::Runoff`.
+
+Incoming runoff funds no withdrawal in the same interval.
+
+### Admission checks
+
+Each rule below rejects with `SurfaceChannelError::Input`. The message starts with the rule name. Construction checks every rule except forcing data, which each trial checks.
+
+| Rule | Rejects |
+| --- | --- |
+| `unmapped-runoff-outlet` | An active outlet without a destination, or a destination for an unknown or replaced outlet |
+| `duplicate-runoff-outlet` | An outlet with two destinations |
+| `runoff-destination` | An unknown reach or pool, no target cells, a cell outside the grid or reach, a repeated cell, or a weight that is not finite and positive |
+| `runoff-free-outlet` | A nonfinite invert, or empty evidence |
+| `runoff-duplicate-writer` | A caller pool inflow whose `physical_support_id` names a selected modelled source or one of its atoms |
+| `suppressed-rain` | Nonzero surface rain on a cell a selected source owns. At each trial, nonzero pool rain on a pool a selected source owns. |
+| `runoff-plan` | A plan that does not compile against the surface domain, or runoff definitions that differ from the plan |
+| `runoff-without-setup` | Runoff states without `setup.runoff`. At each trial, forcing records without it. |
+
+`suppressed-rain` also applies to the window `continue_surface_forcing` and `resume` receive. Rate records that miss a source, repeat one, or carry runon reject at each trial with `runoff-forcing`.
+
+### Read runoff results
+
+| Call or field | Holds |
+| --- | --- |
+| `runoff()` | The read-only runoff child, or `None` without active runoff |
+| `runoff_ledgers()?` | One `SurfaceChannelRunoffLedger` per delivery lane: outlet, subarea, target, lifetime volume, and rounding bound |
+| `SurfaceChannelStepDiagnostics.runoff` | One `SurfaceChannelRunoffTransfer` per delivery lane: interval volume, receiving stage at the start and end, and invert |
+| `SurfaceChannelWaterBalance.runoff_storage_m3` | Runoff child storage. `storage_m3` includes it. |
+| `SurfaceChannelWaterBalance.runoff_delivered_m3` | Runoff the receiving reaches and pools recorded |
+
+The composite balance adds the runoff child's storage, rain, infiltration, evaporation, and soil water adjustment. Delivered runoff stays inside the system, so it leaves the reach lateral totals and the external pool inflow totals. Over the lifetime, the runoff child's outlet volume, the lane ledgers, and the receivers' totals agree within their bounds.
+
+### Runoff limits
+
+- `runoff-free-outlet-attested`: You attest each outlet's invert. Receiving water never feeds back on the export.
+- `runoff-stage-sampled`: The receiving stage is checked at the accepted start and the candidate end only. Request shorter intervals where the receiving water nears the invert.
+- `runoff-recomputed-on-shortening`: A shorter attempt recomputes the runoff.
+- `runoff-zero-momentum`: Runoff enters a reach with zero velocity.
+- `runoff-span-rounding`: A split over several cells pairs within a rounding bound. Use one target for exact pairing.
+- `pool-rain-atoms-unmeasured`: The plan checks pool rain atom ownership, never pool area.
+
+Run `cargo run --example surface_runoff` for one subcatchment into a reach cell and one into a pool.
+
 ## Advance one common interval
 
 1. Create `SurfaceChannelForcingInterval` with `start_s = batch.time()` and one `SurfaceChannelReachForcing` per reach. Leave each ported end and each pool end `None`. Add `pool_sources` and `pool_inflows` when the setup has pools.
@@ -632,7 +728,7 @@ Construct a `restore` or `import_snapshot` destination with the same setup and o
 
 Pass `data.surface.setup.forcing.clone()` to `resume` for a plain restart.
 
-`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-8`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-9`). Import checks both first. A package of an earlier format rejects by identity: schema `hydr-surface-channel-checkpoint-7` predates the current setup, original-state, and forcing fields, contract `hydr-surface-channel-numr-cpu-8` predates warm culvert root searches, schema `hydr-surface-channel-checkpoint-6` predates culvert structures, and schema `-5` or contract `hydr-surface-channel-numr-cpu-7` predates secant probes in surveyed roots. Capture a new package. Import checks every nested package identity, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
+`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-8`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-10`). Import checks both first. A package of an earlier format rejects by identity: contract `hydr-surface-channel-numr-cpu-9` predates the runoff package, runoff counters, runoff transfers, and runoff balance totals, schema `hydr-surface-channel-checkpoint-7` predates the runoff setup, original-state, and forcing fields, contract `hydr-surface-channel-numr-cpu-8` predates warm culvert root searches, schema `hydr-surface-channel-checkpoint-6` predates culvert structures, and schema `-5` or contract `hydr-surface-channel-numr-cpu-7` predates secant probes in surveyed roots. Capture a new package. Import checks every nested package identity, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
 
 The replay includes decision completion. At a decision end, the recalculation samples the converged stages and completes each operating child, then compares the child packages.
 
@@ -647,9 +743,13 @@ The package also holds these parts:
 | `pools` | The accepted `LevelPoolSnapshotData` |
 | `operating` | The accepted `SurfaceChannelOperatingData` of every operating child |
 | `counters` | `structures`, `pool_ends`, and `pool_inflows` ledgers beside the link and port ledgers |
-| `last_interval.previous` | The start-frame pool and operating packages |
+| `last_interval.previous` | The start-frame pool, operating, and runoff packages |
+| `setup.runoff`, `initial.runoff` | The runoff declaration and the original runoff states |
+| `runoff` | The accepted `SubcatchmentSnapshotData`, or `None` without active runoff |
+| `counters.runoff` | `SurfaceChannelRunoffCounterData`: one lane ledger per delivery lane and the summed split bound |
+| `last_interval.forcing.runoff`, `last_interval.diagnostics.runoff` | The runoff rate records and transfers of the last interval |
 
-Import rejects a pool whose original volume differs from `initial.pools`.
+Import rejects a pool whose original volume differs from `initial.pools`. It rejects a runoff package whose original storage differs from the storage of `initial.runoff`. Import and `resume` restore the start-frame runoff package, then replay the last interval and compare the runoff package and counters bit for bit.
 
 The nested surface package carries exchange water, port water included. It restores only through the coordinator. `Solver::restore_data`, `Solver::restore`, and `Solver::resume` reject it.
 
@@ -666,7 +766,8 @@ Preserve every package field and floating-point value exactly. Follow the [persi
 | Surveyed reaches with any channel endpoint policy at an unowned end | Scalar endpoints on dry, critical, or supercritical water, as on every reach |
 | Reversal through one link, structure, pool end, or port between intervals | Normal momentum exchange through bank links, and child subcycling |
 | Surface rain, impervious land, Modified Green-Ampt soil, evaporation, and withdrawal | Device-resident forcing |
-| Caller lateral inflow and withdrawal on reaches | Runoff attachment to coordinator pools |
+| Caller lateral inflow and withdrawal on reaches | Rain on channel water surfaces |
+| Subcatchment runoff into reach cells and pools through free outlets | Runoff into surface cells, tailwater feedback on runoff, external runon, and routing between subcatchments |
 | Level pools with local rain, bottom loss, evaporation, and external inflow | Pool ports. A pool holds no momentum. |
 | Weirs, submerged orifices, gates, pumps, and HDS-5 circular and box culverts between surface cells, channel cells, and pools | Partial orifice flow, pump priming, net positive suction head, motor dynamics, and culvert barrel storage |
 | Fixed blockage scenarios with evidence | Blockage probability, inferred blockage, and geometry events over time |

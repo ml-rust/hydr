@@ -2,13 +2,13 @@
 
 Use `hydr::runoff::SubcatchmentBatch` to calculate storage, soil losses, and runoff from three declared subareas. Start by checking the physical support.
 
-This standalone component does not attach runoff to a hydraulic model or infer GIS ownership. Run the [example](../examples/subcatchment.rs) to inspect its inputs and outputs:
+This component infers no GIS ownership. On its own it attaches runoff to no hydraulic model. Run the [example](../examples/subcatchment.rs) to inspect its inputs and outputs:
 
 ```sh
 cargo run --example subcatchment
 ```
 
-To send free outlet volumes into storage pools, use the [runoff-to-pool coordinator](runoff-pools.md).
+To send free outlet volumes into storage pools, use the [runoff-to-pool coordinator](runoff-pools.md). To send them into reach cells and coordinator pools beside the 2D surface, [attach native runoff](surface-channels.md#attach-native-runoff) to the surface/channel coordinator. Neither drains runoff into surface cells.
 
 Read capabilities with `subcatchment_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, the outlet endpoint, sources, the routing option, nested and parent components, unsupported uses, and limits.
 
@@ -246,6 +246,6 @@ The tools freeze physical inputs, norms, reference controls, and source hashes b
 
 This standalone component excludes:
 
-- Inter-catchment graphs and hydraulic attachment.
+- Inter-catchment graphs, and runoff into surface cells.
 - Groundwater, LID, snow, and water quality.
 - Tailwater feedback.

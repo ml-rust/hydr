@@ -43,8 +43,9 @@ fn surface_channels_admit_declared_endpoints_regimes_and_sources() -> Result {
     let (_, reverse) = one_interval(&pair(1.1, 1.5))?;
     assert!(spill.links[0].signed_volume_m3 > 0.0, "{spill:?}");
     assert!(reverse.links[0].signed_volume_m3 < 0.0, "{reverse:?}");
-    // Port endpoints and regimes carry their own evidence in `surface_channel_ports`, and pool,
-    // structure, and pool-end endpoints in `surface_channel_pools`.
+    // Port endpoints and regimes carry their own evidence in `surface_channel_ports`, pool,
+    // structure, and pool-end endpoints in `surface_channel_pools`, and the runoff outlet in
+    // `surface_channel_runoff`.
     for endpoint in declared.endpoints {
         for &kind in endpoint.admitted {
             if kind != BoundaryKind::SuppressedRectangularWeir
@@ -245,6 +246,7 @@ fn surface_channels_nest_and_attach_declared_components() -> Result {
             ComponentId::ControlledGate => hydr::structures::controlled_gate_capabilities(),
             ComponentId::ControlledPump => hydr::structures::controlled_pump_capabilities(),
             ComponentId::Culvert => hydr::structures::culvert_capabilities(),
+            ComponentId::Subcatchment => hydr::runoff::subcatchment_capabilities(),
             other => return Err(format!("surface/channel: no case for {other:?}").into()),
         };
         assert!(child.attachable_to.contains(&ComponentId::SurfaceChannels));
@@ -420,7 +422,8 @@ fn rejection_cases(id: &str) -> Option<Vec<Rejection>> {
         ],
         id => {
             return crate::surface_channel_ports::rejection_cases(id)
-                .or_else(|| crate::surface_channel_pools::rejection_cases(id));
+                .or_else(|| crate::surface_channel_pools::rejection_cases(id))
+                .or_else(|| crate::surface_channel_runoff::rejection_cases(id));
         }
     })
 }

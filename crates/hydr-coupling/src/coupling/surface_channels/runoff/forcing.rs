@@ -126,7 +126,7 @@ mod tests {
         assert!(message.contains("surface cell=0"), "{message}");
         let reach = build(parts()?)?;
         let next = reach.trial_to(0.5, &forcing(&reach, 0.5, vec![record(0.0, 0.5, 1e-5)]))?;
-        assert_eq!(next.runoff_transfers().len(), 1);
+        assert_eq!(next.diagnostics()?.runoff.len(), 1);
         Ok(())
     }
 

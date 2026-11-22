@@ -9,15 +9,15 @@ use super::{
     SurfaceChannelInitialState, SurfaceChannelLink, SurfaceChannelLinkLedger,
     SurfaceChannelOperating, SurfaceChannelOperatingData, SurfaceChannelPoolEnd,
     SurfaceChannelPoolEndLedger, SurfaceChannelPort, SurfaceChannelPortLedger, SurfaceChannelReach,
-    SurfaceChannelRunoff, SurfaceChannelSetup, SurfaceChannelStepDiagnostics,
-    SurfaceChannelStructure, SurfaceChannelStructureLedger,
+    SurfaceChannelRunoff, SurfaceChannelRunoffLedger, SurfaceChannelSetup,
+    SurfaceChannelStepDiagnostics, SurfaceChannelStructure, SurfaceChannelStructureLedger,
 };
 use crate::channel::{ChannelSnapshot, ChannelSnapshotData};
 use crate::coupling::checkpoint;
 use crate::coupling::level_pools::{
     CoupledPoolInflowBinding, CoupledPoolInflowLedger, CoupledPoolSupport,
 };
-use crate::runoff::SubcatchmentBatch;
+use crate::runoff::{SubcatchmentBatch, SubcatchmentSnapshotData};
 use crate::solver::{Snapshot, SnapshotData, SolverSetup};
 use crate::storage::{
     LevelPoolConfig, LevelPoolElement, LevelPoolSnapshotData, LevelPoolSourcePolicy,
@@ -30,7 +30,7 @@ use std::sync::Arc;
 /// Schema identity of the surface/channel snapshot package.
 pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-8";
 /// Numerical contract identity of the surface/channel snapshot package.
-pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-9";
+pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-10";
 
 /// Complete caller-owned continuation. Preserve every floating-point bit when encoding.
 ///
@@ -56,8 +56,10 @@ pub struct SurfaceChannelSnapshotData {
     pub pools: Option<LevelPoolSnapshotData>,
     /// Complete accepted operating packages, or `None` without operating children.
     pub operating: Option<SurfaceChannelOperatingData>,
-    /// Lifetime link, structure, port, pool-end, and pool inflow counters, accepted count, and
-    /// common time.
+    /// Complete accepted runoff package, or `None` without active runoff.
+    pub runoff: Option<SubcatchmentSnapshotData>,
+    /// Lifetime link, structure, port, pool-end, pool inflow, and runoff counters, accepted
+    /// count, and common time.
     pub counters: SurfaceChannelCounterData,
     /// Last common interval with its start frame, absent before the first accepted interval.
     pub last_interval: Option<SurfaceChannelIntervalSnapshotData>,
@@ -89,7 +91,6 @@ pub struct SurfaceChannelSetupData {
     /// Operating children as declared, or `None` without them.
     pub operating: Option<SurfaceChannelOperating>,
     /// Native runoff as declared, or `None` without it.
-    #[doc(hidden)]
     pub runoff: Option<SurfaceChannelRunoff>,
     /// Evidence that surface cells, channel cells, and pools store no water twice.
     pub storage_exclusion_evidence: String,
@@ -159,6 +160,19 @@ pub struct SurfaceChannelCounterData {
     pub pool_ends: Vec<SurfaceChannelPoolEndLedger>,
     /// Lifetime external pool inflow ledgers in declared binding order.
     pub pool_inflows: Vec<CoupledPoolInflowLedger>,
+    /// Lifetime runoff delivery counters. Empty and zero without runoff.
+    pub runoff: SurfaceChannelRunoffCounterData,
+}
+
+/// Authoritative runoff delivery counters at one accepted time.
+///
+/// Every value is `+0.0` before the first accepted interval.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SurfaceChannelRunoffCounterData {
+    /// Lifetime delivered volume of every delivery lane, in delivery-lane order.
+    pub ledgers: Vec<SurfaceChannelRunoffLedger>,
+    /// Upward-rounded sum of every interval's span split bound, in m³.
+    pub split_bound_m3: f64,
 }
 
 /// Authoritative port counters at one accepted time.
@@ -191,6 +205,8 @@ pub struct SurfaceChannelPreviousData {
     pub pools: Option<LevelPoolSnapshotData>,
     /// Complete operating packages at the interval start, or `None` without operating children.
     pub operating: Option<SurfaceChannelOperatingData>,
+    /// Complete runoff package at the interval start, or `None` without active runoff.
+    pub runoff: Option<SubcatchmentSnapshotData>,
     /// Coordinator counters at the interval start.
     pub counters: SurfaceChannelCounterData,
 }
@@ -225,6 +241,7 @@ impl SurfaceChannelSnapshotData {
             (&self.surface, &self.reaches),
             (self.pools.as_ref(), self.operating.as_ref()),
         )?;
+        check_runoff("", self.runoff.as_ref())?;
         if let Some(last) = &self.last_interval {
             let previous = &last.previous;
             check_frame(
@@ -232,9 +249,20 @@ impl SurfaceChannelSnapshotData {
                 (&previous.surface, &previous.reaches),
                 (previous.pools.as_ref(), previous.operating.as_ref()),
             )?;
+            check_runoff("last_interval.previous.", previous.runoff.as_ref())?;
         }
         Ok(())
     }
+}
+
+/// Checks the runoff package identity of one frame.
+fn check_runoff(prefix: &str, runoff: Option<&SubcatchmentSnapshotData>) -> Result<(), String> {
+    runoff.map_or(Ok(()), |runoff| {
+        checkpoint::subcatchment(
+            &format!("surface-channel checkpoint {prefix}runoff"),
+            runoff,
+        )
+    })
 }
 
 /// Checks the surface, reach, pool, and operating package identities of one frame.

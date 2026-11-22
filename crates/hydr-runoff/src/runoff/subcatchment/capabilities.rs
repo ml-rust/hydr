@@ -73,7 +73,7 @@ static SUBCATCHMENT: ComponentCapabilities = ComponentCapabilities {
         default: None,
     }],
     nested: &[ComponentId::Reservoir, ComponentId::Soil],
-    attachable_to: &[ComponentId::RunoffPools],
+    attachable_to: &[ComponentId::RunoffPools, ComponentId::SurfaceChannels],
     unsupported: &[
         unsupported(
             "soil-support-mismatch",
@@ -112,10 +112,10 @@ static SUBCATCHMENT: ComponentCapabilities = ComponentCapabilities {
             SUBCATCHMENT_DOC,
         ),
         unsupported(
-            "surface-solver",
+            "surface-cell-runoff",
             UnsupportedReason::NotAttached,
-            "exists as a standalone component; not attached to this subcatchment",
-            "docs/integration.md",
+            "No export drains into surface cells; the surface/channel coordinator delivers it into reach cells and pools only.",
+            "docs/surface-channels.md",
         ),
         unsupported(
             "gpu-numerical-qualification",

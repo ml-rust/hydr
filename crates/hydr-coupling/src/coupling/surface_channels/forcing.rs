@@ -57,7 +57,6 @@ pub struct SurfaceChannelForcingInterval {
     pub pool_inflows: Vec<CoupledPoolInflow>,
     /// One rate record per active modelled source over exactly `[start_s, end_s]`, in any
     /// order. Empty without runoff.
-    #[doc(hidden)]
     pub runoff: Vec<SubcatchmentContributionInput>,
 }
 

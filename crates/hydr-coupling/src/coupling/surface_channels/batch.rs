@@ -119,7 +119,6 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
     }
 
     /// Read-only runoff child, or `None` without active runoff.
-    #[doc(hidden)]
     pub fn runoff(&self) -> Option<&SubcatchmentBatch<R>> {
         self.runoff.as_ref()
     }

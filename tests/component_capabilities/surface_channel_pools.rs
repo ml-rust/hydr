@@ -258,6 +258,8 @@ fn surface_channel_pools_admit_declared_endpoints_and_regimes() -> Result {
         for &kind in endpoint.admitted {
             let moved = match (endpoint.id, kind) {
                 (_, BoundaryKind::FluxPort) => continue,
+                // Runoff outlet delivery has its own case in `surface_channel_runoff.rs`.
+                (EndpointId::Outlet, _) => continue,
                 (
                     EndpointId::ReachLeft | EndpointId::ReachRight,
                     BoundaryKind::QuiescentReservoir,

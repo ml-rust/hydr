@@ -113,6 +113,9 @@ mod surface_channel_ports;
 #[path = "component_capabilities/surface_channel_pools.rs"]
 mod surface_channel_pools;
 
+#[path = "component_capabilities/surface_channel_runoff.rs"]
+mod surface_channel_runoff;
+
 #[path = "component_capabilities/culvert_barrels.rs"]
 mod culvert_barrels;
 

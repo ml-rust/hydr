@@ -184,8 +184,56 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
     unsupported(
         "runoff-attachment",
         UnsupportedReason::NotAttached,
-        "Runoff attaches to level pools through runoff pools, not to coordinator pools.",
-        "docs/runoff-pools.md",
+        "No runoff drains into surface cells. Construction checks the cells, but every trial rejects the outlet. Runoff drains into reach cells and pools.",
+        SURFACE_CHANNELS_DOC,
+    ),
+    unsupported(
+        "unmapped-runoff-outlet",
+        UnsupportedReason::RejectedByAdmission,
+        "An active runoff outlet without a destination, or a destination for an unknown or replaced outlet, rejects.",
+        SURFACE_CHANNELS_DOC,
+    ),
+    unsupported(
+        "duplicate-runoff-outlet",
+        UnsupportedReason::RejectedByAdmission,
+        "A runoff outlet with two destinations rejects.",
+        SURFACE_CHANNELS_DOC,
+    ),
+    unsupported(
+        "runoff-outlet-submerged",
+        UnsupportedReason::RejectedByAdmission,
+        "A receiving stage above the outlet invert rejects at the accepted start and shortens the interval at the candidate end.",
+        SURFACE_CHANNELS_DOC,
+    ),
+    unsupported(
+        "runoff-duplicate-writer",
+        UnsupportedReason::RejectedByAdmission,
+        "A caller pool inflow whose physical support names a selected modelled source or its atoms rejects.",
+        SURFACE_CHANNELS_DOC,
+    ),
+    unsupported(
+        "suppressed-rain",
+        UnsupportedReason::RejectedByAdmission,
+        "Nonzero rain on a surface cell or pool whose rain support a selected runoff source owns rejects.",
+        SURFACE_CHANNELS_DOC,
+    ),
+    unsupported(
+        "runoff-backwater-feedback",
+        UnsupportedReason::OutsideModel,
+        "No tailwater feedback or reversed flow through a runoff outlet; receiving water never changes the export.",
+        SURFACE_CHANNELS_DOC,
+    ),
+    unsupported(
+        "runoff-external-runon",
+        UnsupportedReason::OutsideModel,
+        "No external runon into the runoff child; every admitted runoff input is a rate.",
+        SURFACE_CHANNELS_DOC,
+    ),
+    unsupported(
+        "catchment-graphs",
+        UnsupportedReason::OutsideModel,
+        "No routing between subcatchments and no geometric nonoverlap proof; the caller attests the support partition.",
+        SURFACE_CHANNELS_DOC,
     ),
     unsupported(
         "blockage-probability",

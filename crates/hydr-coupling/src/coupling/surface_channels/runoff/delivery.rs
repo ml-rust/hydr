@@ -155,7 +155,7 @@ pub(in super::super) fn with_runoff<R: Runtime<DType = DType>>(
 
 #[cfg(test)]
 mod tests {
-    use super::super::basin::{Basin, Receiver, advance, balanced, pond_volume};
+    use super::super::basin::{Basin, Receiver, advance, balanced, pond_volume, transfers};
     use super::super::scenario::share;
     use crate::coupling::surface_channels::structures::scenario::{Batch, TestResult};
 
@@ -194,8 +194,7 @@ mod tests {
             assert_eq!(offset, if linked { 2 } else { 0 });
             for _ in 0..4 {
                 batch = advance(&batch, 0.25, 0.0)?;
-                let delivered: Vec<u64> = batch
-                    .runoff_transfers()
+                let delivered: Vec<u64> = transfers(&batch)?
                     .iter()
                     .map(|transfer| transfer.volume_m3.to_bits())
                     .collect();
@@ -218,7 +217,10 @@ mod tests {
         let mut total = 0.0;
         for _ in 0..4 {
             batch = advance(&batch, 0.25, 0.0)?;
-            let volume = batch.runoff_transfers()[0].volume_m3;
+            let volume = transfers(&batch)?
+                .first()
+                .ok_or("one delivery lane")?
+                .volume_m3;
             total += volume;
             let ledgers = batch.runoff_ledgers()?;
             assert_eq!(ledgers[0].delivered_volume_m3.to_bits(), total.to_bits());

@@ -6,7 +6,6 @@ use crate::runoff::{SubcatchmentConfig, SubcatchmentDefinition, SupportPlanInput
 ///
 /// The coordinator compiles the plan against the surface domain and open faces. The plan
 /// selects the active modelled sources and suppresses rain over their support.
-#[doc(hidden)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelRunoff {
     /// Complete contributing-support declaration over the surface domain.
@@ -20,7 +19,6 @@ pub struct SurfaceChannelRunoff {
 }
 
 /// One active outlet and the destination of every potential subarea lane it drains.
-#[doc(hidden)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelRunoffOutlet {
     /// Exact `outlet_id` of one active modelled contribution.
@@ -32,10 +30,15 @@ pub struct SurfaceChannelRunoffOutlet {
 }
 
 /// Receiving coordinator nodes of one outlet.
-#[doc(hidden)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum SurfaceChannelRunoffDestination {
     /// Active surface cells by global row-major index.
+    ///
+    /// Construction checks the targets, but no surface cell takes runoff yet. Every trial of a
+    /// coordinator with this destination returns [`SurfaceChannelError::Input`] naming
+    /// `runoff-attachment`.
+    ///
+    /// [`SurfaceChannelError::Input`]: crate::coupling::SurfaceChannelError::Input
     SurfaceCells {
         /// Nonempty distinct cells with positive weights.
         cells: Vec<SurfaceChannelRunoffShare>,
@@ -57,7 +60,6 @@ pub enum SurfaceChannelRunoffDestination {
 /// One receiving cell and its share of every lane of the outlet.
 ///
 /// Weights normalize once at construction. A single target takes every lane volume unchanged.
-#[doc(hidden)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SurfaceChannelRunoffShare {
     /// Global row-major surface cell index, or ordered cell index inside the reach.
@@ -69,7 +71,6 @@ pub struct SurfaceChannelRunoffShare {
 /// Free-outlet attestation of one outlet.
 ///
 /// The outlet stays free while the receiving stage stays at or below the invert.
-#[doc(hidden)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelFreeOutlet {
     /// Finite outlet invert in the surface vertical datum, in metres.

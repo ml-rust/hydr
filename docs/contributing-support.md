@@ -4,7 +4,7 @@ Use `hydr::runoff::SupportPlan` to declare who supplies rainfall/runoff and cons
 
 The application supplies GIS overlays, acquired data, and partition evidence. Hydr checks declared metadata without proving geometric disjointness.
 
-This component establishes no hydraulic runoff attachment or physical source composition.
+The plan composes no physical source by itself. To drain modelled runoff into reach cells and pools, pass the plan input to the surface/channel coordinator. See [attach native runoff](surface-channels.md#attach-native-runoff).
 
 ## Try the example
 
@@ -26,7 +26,7 @@ Construct `SupportPlan::new(input, domain, boundaries, definitions)` with explic
 | --- | --- |
 | `SupportAtom` | Unique identity and finite positive represented area |
 | `SurfaceCellSupport` | One complete disjoint footprint per active cell, including suppressed cells |
-| `ModelledRunoff` | Exactly one source per supplied definition, with a unique future outlet ID |
+| `ModelledRunoff` | Exactly one source per supplied definition, with a unique outlet ID |
 | `ImportedRunoff` or `MeasuredFlow` | Complete already-composed input at exactly one matching bound face |
 | `Baseflow` or `Release` | Empty-support leaf included exactly once by a selected imported/measured root |
 | `BoundaryBinding` | Exactly one identity/provenance binding per declared open face |
@@ -109,7 +109,7 @@ Coverage containment is insufficient. Supply fresh input packets after interval 
 
 This ownership component requires every modelled external runon volume to equal zero.
 
-Positive runon needs donor provenance and a future paired coordinator. A receiving model ID cannot establish donor ownership.
+Positive runon needs donor provenance, which no consumer supplies. A receiving model ID cannot establish donor ownership.
 
 The lower-level standalone subcatchment API still accepts explicit destination volumes. That API does not acquire this ownership claim.
 
@@ -179,10 +179,10 @@ Physical values pass unchanged. Hydr composes no rate, momentum, stage, or tange
 
 Rejected admission preserves immutable plans and every numerical state.
 
-Component snapshots acquire no unused support metadata. A future coordinator must persist its complete immutable plan and accepted records.
+Component snapshots acquire no unused support metadata. The surface/channel coordinator persists the plan input in `setup.runoff` and the last interval's rate records in `last_interval.forcing.runoff`.
 
 ## Unsupported uses
 
 - Persistence: Durable token serialization remains outside this component.
-- Coupling: Paired runoff exchange and hydraulic attachment remain unsupported.
+- Coupling: Runoff into surface cells and tailwater feedback on outlets remain unsupported. The surface/channel coordinator drains modelled runoff into reach cells and pools only.
 - Data services: Provider frameworks and source aggregation remain outside this component.

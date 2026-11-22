@@ -272,6 +272,8 @@ where
             surface_exchange_out_m3: surface_out,
             channel_exchange_in_m3: channel_in,
             channel_exchange_out_m3: channel_out,
+            runoff_storage_m3: runoff.map_or(0.0, |r| r.storage),
+            runoff_delivered_m3: runoff.map_or(0.0, |r| r.delivered),
             residual_m3: residual,
             bound_m3: bound,
         })

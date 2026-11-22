@@ -718,6 +718,25 @@ These rejections run as in-crate tests with frozen criteria: pool capacity, a dr
 
 These cases establish no measured-event accuracy. An orifice does not satisfy culvert inlet or outlet control. [Culvert coordinator checks](#culvert-coordinator-checks) cover culvert links.
 
+### Native runoff
+
+An impervious subcatchment without depression storage drains into a closed pond or into cells of a walled reach. The criteria below were fixed before any run.
+
+| Case | Enforced criterion |
+| --- | --- |
+| [Recession](../crates/hydr-coupling/src/coupling/surface_channels/runoff/accounting.rs) | 1 cm of runoff drains without rain into the pond and into a reach cell. Exact `d(t) = (d0^(1-p) + (p-1) α t)^(1/(1-p))`. The largest relative error over `t = 1` to `4 s` falls at each of five halvings from `1 s`. The finest relative error at `4 s` is at most `2e-3`. |
+| Constant rain | Same file. Rain on a dry subcatchment into the pond, against a 50-digit ODE reference. The largest error falls at each refinement. The finest relative error at the final row is at most `2e-2`. |
+| Mass identity | Same cases. Receiver gain plus runoff storage equals initial runoff storage plus rain, within the composite bound, every interval. |
+| [Shortened attempt](../crates/hydr-coupling/src/coupling/surface_channels/runoff/attempt.rs) | A reach limits the interval by its CFL number. The delivered volume equals the runoff child trialled alone to the accepted end, bit for bit. It differs from the full-interval volume scaled by the duration ratio. |
+| Span split | Same file. One outlet spans two reach cells with weights 1 and 3. The parts sum to the export within the split bound and keep the 1:3 ratio within four ulps. |
+| Zero momentum | Same file. Runoff into a moving reach equals a caller inflow of the same volume at zero velocity, bit for bit. |
+| [Pairing](../crates/hydr-coupling/src/coupling/surface_channels/runoff/delivery.rs) | Each reach and pool binding holds its delivered volume bit for bit. A lane ledger holds the running sum of the transfers bit for bit. |
+| [Tailwater](../crates/hydr-coupling/src/coupling/surface_channels/runoff/tailwater.rs) | A receiving stage above the invert at the start rejects as input. A crossing at the end shortens the interval, or without retries returns `Unresolved` naming `runoff-outlet-submerged`. |
+| [Restart](../crates/hydr-coupling/src/coupling/surface_channels/runoff/restart.rs) | After three intervals into the pond and into a reach cell, `restore`, `import_snapshot`, and `resume` repeat three more intervals bit for bit. A zero-history package restarts at the epoch. One changed runoff bit in the package, the counters, the start frame, or the transfers rejects and names the field. |
+| [Public receipts and restart](../tests/surface_channels/runoff.rs) | Transfers, lane ledgers, and balance totals agree over four intervals. A package taken after two intervals imports and resumes bit for bit. |
+| [Capability declaration](../tests/component_capabilities/surface_channel_runoff.rs) | The outlet endpoint delivers water into both destinations. Every runoff `RejectedByAdmission` entry has a rejecting case. A surface-cell destination rejects at its first trial. |
+| [No-runoff regression](../tests/surface_channels/frozen.rs) | The frozen digests of contract `9` hold after the text maps back to that format. |
+
 ## Culvert barrel checks
 
 [Culvert barrel cases](../tests/culvert_barrels.rs) compare circular and box barrel enclosures against independent 100-digit references. The references are frozen before any kernel runs. Read the [barrel guide](structures.md#culvert-barrel-geometry) for inputs, statuses, and limits.
@@ -786,7 +805,7 @@ The CUDA tests of these components also run the same case on CPU and compare com
 | Culvert laws | Regime, status, direction, discharge, and operands match bit for bit over the mixed lanes and each layout width |
 | Culvert coordinators | A tide both ways, inlet control into the control sweep's dry basin, one interval of the partly full drowning outlet, and the roadway case of the surface/channel coordinator, and the rising sea and roadway cases of coupled level pools. After every accepted interval the text of every package, ledger, and child state is equal between CPU and CUDA. |
 | Level pools, reservoirs, subcatchments | Per-element states match bit for bit. Batch totals and residual diagnostics agree within `volume_absolute + volume_relative * scale`. |
-| Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart through one bank link. A second case drains a reach through a port and a bank link together, refills it, and drains it again, with restart. Its cell states also match bit for bit. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. A third case runs pools with an orifice, a pump, an actuated gate, and a pool end across relay decisions and a gate arrival. After every accepted interval the text of every child state, package, and ledger is equal between CPU and CUDA, signed zero included. |
+| Surface/channel | Surface and reach cell states match bit for bit after flood, recession, and restart through one bank link. A second case drains a reach through a port and a bank link together, refills it, and drains it again, with restart. Its cell states also match bit for bit. Lifetime counters, ledgers, bounds, and iteration residuals agree within `mass_absolute_m3 + mass_relative * scale`. A third case runs pools with an orifice, a pump, an actuated gate, and a pool end across relay decisions and a gate arrival. After every accepted interval the text of every child state, package, and ledger is equal between CPU and CUDA, signed zero included. A fourth case drains native runoff into a pond and into a reach cell over three intervals, with resume. The same equal-text rule applies to it. |
 | Surveyed endpoints | Four cases run on both clients: a standalone `Stage` and `FluxPort`, a port on a surveyed rectangle with a bank link, a pool end on three bands, and a channel/pool connection on three bands. Each restarts bit for bit. Cell volumes and momenta equal the CPU run bit for bit every interval. CPU and CUDA ledgers differ by at most the sum of their reported bounds. |
 
 Those totals and diagnostics differ in their last bits between CPU and CUDA. CUDA execution establishes no GPU accuracy qualification.

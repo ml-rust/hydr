@@ -115,6 +115,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
             structures,
             pool_ends,
             pools: context.pool_steps(pools)?,
+            runoff: step.runoff_transfers(context),
         })
     }
 }

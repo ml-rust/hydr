@@ -13,3 +13,7 @@ pub mod ports_fixture;
 #[allow(dead_code)]
 #[path = "../surface_channels/pools_fixture.rs"]
 pub mod pools_fixture;
+
+#[allow(dead_code)]
+#[path = "../surface_channels/runoff_fixture.rs"]
+pub mod runoff_fixture;

@@ -1,7 +1,8 @@
 //! Host projections of accepted common intervals, link counters, and the composite balance.
 
 use super::{
-    SurfaceChannelPoolEndTransfer, SurfaceChannelPoolStep, SurfaceChannelStructureTransfer,
+    SurfaceChannelPoolEndTransfer, SurfaceChannelPoolStep, SurfaceChannelRunoffTransfer,
+    SurfaceChannelStructureTransfer,
 };
 
 /// Weir regime of one link at its accepted midpoint heads.
@@ -123,9 +124,9 @@ pub struct SurfaceChannelStepDiagnostics {
     pub head_residual_m: f64,
     /// Largest signed-volume change of the last fixed-point update, in cubic metres.
     pub transfer_residual_m3: f64,
-    /// Surface, channel, and pool storage at the start, in cubic metres.
+    /// Surface, channel, pool, and runoff storage at the start, in cubic metres.
     pub storage_before_m3: f64,
-    /// Surface, channel, and pool storage at the end, in cubic metres.
+    /// Surface, channel, pool, and runoff storage at the end, in cubic metres.
     pub storage_after_m3: f64,
     /// Link water the surface received, in cubic metres. Port water stays out.
     pub surface_exchange_in_m3: f64,
@@ -153,6 +154,8 @@ pub struct SurfaceChannelStepDiagnostics {
     pub pool_ends: Vec<SurfaceChannelPoolEndTransfer>,
     /// Every pool at the interval end, in ascending pool identity. Empty without pools.
     pub pools: Vec<SurfaceChannelPoolStep>,
+    /// Runoff of every delivery lane, in delivery-lane order. Empty without runoff.
+    pub runoff: Vec<SurfaceChannelRunoffTransfer>,
 }
 
 /// Lifetime directional exchange through one link.
@@ -168,23 +171,25 @@ pub struct SurfaceChannelLinkLedger {
     pub roundoff_bound_m3: f64,
 }
 
-/// Lifetime water accounting of the surface, every reach, and the pools as one system.
+/// Lifetime water accounting of the surface, every reach, the pools, and the runoff child as one
+/// system.
 ///
 /// Link, structure, and pool-end exchange stays inside the system. It enters only the separate
-/// exchange totals.
+/// exchange totals. Delivered runoff also stays inside. It enters only `runoff_delivered_m3`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelWaterBalance {
-    /// Original surface, channel, and pool storage, in cubic metres.
+    /// Original surface, channel, pool, and runoff storage, in cubic metres.
     pub initial_storage_m3: f64,
-    /// Current surface, channel, and pool storage, in cubic metres.
+    /// Current surface, channel, pool, and runoff storage, in cubic metres.
     pub storage_m3: f64,
-    /// Rain, inward ports, channel endpoint inflow, caller lateral inflow, pool rain, and
-    /// external pool inflow, in m³.
+    /// Rain, inward ports, channel endpoint inflow, caller lateral inflow, pool rain, external
+    /// pool inflow, and runoff rain, in m³.
     pub external_in_m3: f64,
     /// Land withdrawal, infiltration, evaporation, outward ports, channel endpoint outflow,
-    /// caller lateral withdrawal, and pool bottom loss and evaporation, in cubic metres.
+    /// caller lateral withdrawal, pool bottom loss and evaporation, and runoff infiltration and
+    /// evaporation, in cubic metres.
     pub external_out_m3: f64,
-    /// Signed surface numerical water adjustments, in cubic metres.
+    /// Signed surface numerical water adjustments and runoff soil water adjustments, in m³.
     pub water_adjustment_m3: f64,
     /// Exchange water the surface received, in cubic metres.
     pub surface_exchange_in_m3: f64,
@@ -194,6 +199,11 @@ pub struct SurfaceChannelWaterBalance {
     pub channel_exchange_in_m3: f64,
     /// Exchange water the channels gave, in cubic metres.
     pub channel_exchange_out_m3: f64,
+    /// Current runoff child storage, in cubic metres. `storage_m3` includes it. Zero without
+    /// runoff.
+    pub runoff_storage_m3: f64,
+    /// Runoff the receiving reaches and pools recorded, in cubic metres. Zero without runoff.
+    pub runoff_delivered_m3: f64,
     /// Storage change minus external water and adjustments, in cubic metres.
     pub residual_m3: f64,
     /// Admitted magnitude of `residual_m3`: the configured mass budget, child residuals,

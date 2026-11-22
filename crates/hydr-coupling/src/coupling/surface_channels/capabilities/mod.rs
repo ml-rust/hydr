@@ -122,6 +122,10 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
             id: EndpointId::ExteriorFace,
             admitted: PORT,
         },
+        Endpoint {
+            id: EndpointId::Outlet,
+            admitted: &[BoundaryKind::RunoffOutletNoFeedback],
+        },
     ],
     regimes: &[
         weir_regime(Regime::FreeWeirFlow),
@@ -169,6 +173,7 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         ComponentId::ControlledGate,
         ComponentId::ControlledPump,
         ComponentId::Culvert,
+        ComponentId::Subcatchment,
     ],
     attachable_to: &[],
     unsupported: unsupported::UNSUPPORTED,
@@ -268,11 +273,41 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
             summary: "A blockage or condition is a fixed caller scenario with evidence; the law parameters hold its geometry.",
             doc: SURFACE_CHANNELS_DOC,
         },
+        Limit {
+            id: "runoff-free-outlet-attested",
+            summary: "The caller attests each runoff outlet's invert and that receiving water below it cannot change the export.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
+            id: "runoff-stage-sampled",
+            summary: "The receiving stage is checked against the outlet invert at the accepted start and the candidate end only; a crossing inside the interval and back stays undetected.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
+            id: "runoff-recomputed-on-shortening",
+            summary: "A shorter attempt trials the runoff child again from its accepted state to the new end; no volume is scaled.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
+            id: "runoff-zero-momentum",
+            summary: "Runoff enters a reach with zero longitudinal velocity.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
+            id: "runoff-span-rounding",
+            summary: "An outlet spread over several reach cells splits each lane volume by normalized weights; the parts sum to the lane within a rounding bound. One target keeps every bit.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
+            id: "pool-rain-atoms-unmeasured",
+            summary: "The support plan checks pool rain atom ownership, never pool plan area against atom area; pool plan area varies with stage.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
     ],
     summary: Summary {
-        equations: "2D shallow-water surface, 1D channel reaches, and level pools exchanging water through suppressed rectangular bank weirs with Villemonte submergence, structure links (weirs, submerged orifices, hydrostatic gates, pumps, HDS-5 culverts) between surface cells, channel cells, and pools, pool ends at quiescent reservoir heads, and water and normal momentum through reach-end ports under one hydrostatic HLL face flux",
+        equations: "2D shallow-water surface, 1D channel reaches, and level pools exchanging water through suppressed rectangular bank weirs with Villemonte submergence, structure links (weirs, submerged orifices, hydrostatic gates, pumps, HDS-5 culverts) between surface cells, channel cells, and pools, pool ends at quiescent reservoir heads, water and normal momentum through reach-end ports under one hydrostatic HLL face flux, and nonlinear-reservoir subcatchment runoff into reach cells and pools through free outlets",
         method: "fixed-point iteration of end stages, signed link volumes, and pool-end volumes over one common interval, with a plan-area response step per update, midpoint-head law volumes, levelling, crest, suction, and culvert invert caps per link, one shared factor per donor over surface lanes, channel slots, and post-source pool water, an explicit HLL port flux from the accepted-start states per attempt, event-aligned intervals with per-interval operations from prescribed, actuated, and controlled-pump children and decision completion from the converged candidate, and nested child admission",
-        assessment: "selected spill, reversal, donor-limit, retry, restart, pool, structure, and control cases; field accuracy remains unestablished",
+        assessment: "selected spill, reversal, donor-limit, retry, restart, pool, structure, control, and runoff cases; field accuracy remains unestablished",
     },
 };
 

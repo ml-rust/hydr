@@ -84,6 +84,9 @@ mod pools_fixture;
 mod reference_rows;
 #[path = "runtime_backends/reservoir.rs"]
 mod reservoir;
+#[allow(dead_code)]
+#[path = "surface_channels/runoff_fixture.rs"]
+mod runoff_fixture;
 #[path = "runtime_backends/runoff_pools.rs"]
 mod runoff_pools;
 #[path = "support/runtime.rs"]
@@ -99,6 +102,8 @@ mod support;
 mod surface_channel_culverts;
 #[path = "runtime_backends/surface_channel_pools.rs"]
 mod surface_channel_pools;
+#[path = "runtime_backends/surface_channel_runoff.rs"]
+mod surface_channel_runoff;
 #[path = "runtime_backends/surface_channels.rs"]
 mod surface_channels;
 #[path = "runtime_backends/surveyed_endpoints.rs"]

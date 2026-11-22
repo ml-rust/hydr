@@ -21,7 +21,7 @@ use crate::coupling::surface_channels::structures::scenario::{
 use crate::coupling::surface_channels::{
     SurfaceChannelBatch, SurfaceChannelConfig, SurfaceChannelError, SurfaceChannelForcingInterval,
     SurfaceChannelInitialState, SurfaceChannelNode, SurfaceChannelReach,
-    SurfaceChannelReachForcing, SurfaceChannelSetup,
+    SurfaceChannelReachForcing, SurfaceChannelRunoffTransfer, SurfaceChannelSetup,
 };
 use crate::runoff::{
     CellRainAssignment, Contribution, ContributionKind, PartitionAssertion, PoolRainSupport,
@@ -355,6 +355,11 @@ pub fn alpha() -> TestResult<f64> {
     closure
         .coefficient_si()
         .ok_or_else(|| "a finite coefficient".into())
+}
+
+/// Runoff transfers of the last accepted interval of `batch`.
+pub fn transfers(batch: &Batch) -> TestResult<Vec<SurfaceChannelRunoffTransfer>> {
+    Ok(batch.last_step()?.ok_or("an accepted interval")?.runoff)
 }
 
 /// Fails unless the lifetime composite balance of `batch` holds.

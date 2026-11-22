@@ -147,7 +147,6 @@ pub struct SurfaceChannelPoolStep {
 }
 
 /// Runoff delivered through one delivery lane over one common interval.
-#[doc(hidden)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelRunoffTransfer {
     /// Exact outlet identity.
@@ -167,7 +166,6 @@ pub struct SurfaceChannelRunoffTransfer {
 }
 
 /// Lifetime runoff delivered through one delivery lane.
-#[doc(hidden)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelRunoffLedger {
     /// Exact outlet identity.

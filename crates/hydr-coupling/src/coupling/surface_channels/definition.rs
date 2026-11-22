@@ -215,7 +215,6 @@ pub struct SurfaceChannelSetup {
     /// has a manual owner.
     pub operating: Option<SurfaceChannelOperating>,
     /// Native runoff owned by the coordinator, or `None` without it.
-    #[doc(hidden)]
     pub runoff: Option<SurfaceChannelRunoff>,
     /// Evidence that surface cells, channel cells, and pools store no water twice.
     pub storage_exclusion_evidence: String,
@@ -238,6 +237,5 @@ pub struct SurfaceChannelInitialState {
     pub pools: Vec<LevelPoolState>,
     /// One runoff state per active modelled definition, in definition order. Empty without
     /// runoff.
-    #[doc(hidden)]
     pub runoff: Vec<SubcatchmentState>,
 }

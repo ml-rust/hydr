@@ -159,7 +159,9 @@ fn check_parts<R: Runtime<DType = DType>>(
 
 #[cfg(test)]
 mod tests {
-    use super::super::basin::{Basin, REACH, Receiver, advance, balanced, forcing, isolated};
+    use super::super::basin::{
+        Basin, REACH, Receiver, advance, balanced, forcing, isolated, transfers,
+    };
     use super::super::scenario::share;
     use super::split_bound;
     use crate::channel::{ChannelLateralBinding, ChannelLateralDirection, ChannelLateralInput};
@@ -192,7 +194,7 @@ mod tests {
         let next = advance(&batch, 0.5, 0.0)?;
         let end = next.time();
         assert!(end < 0.5, "end={end}");
-        let transfers = next.runoff_transfers();
+        let transfers = transfers(&next)?;
         let [transfer] = transfers.as_slice() else {
             return Err("one delivery lane".into());
         };
@@ -222,8 +224,7 @@ mod tests {
         let batch = basin.build()?;
         let mut next = advance(&batch, 0.25, 0.0)?;
         let export = isolated(&batch, 0.25)?[0];
-        let parts: Vec<f64> = next
-            .runoff_transfers()
+        let parts: Vec<f64> = transfers(&next)?
             .iter()
             .map(|transfer| transfer.volume_m3)
             .collect();
@@ -258,7 +259,10 @@ mod tests {
         let batch = basin.build()?;
         let next = advance(&batch, 0.25, 0.0)?;
         assert_eq!(next.time().to_bits(), 0.25_f64.to_bits());
-        let volume = next.runoff_transfers()[0].volume_m3;
+        let volume = transfers(&next)?
+            .first()
+            .ok_or("one delivery lane")?
+            .volume_m3;
         let (mut setup, mut initial) = basin.parts()?;
         setup.runoff = None;
         initial.runoff.clear();

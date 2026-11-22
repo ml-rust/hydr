@@ -213,6 +213,7 @@ pub(super) fn replayed(
     require(same_value(&found.operating, &given.operating), || {
         "operating".into()
     })?;
+    require(same_value(&found.runoff, &given.runoff), || "runoff".into())?;
     counters("counters", &found.counters, &given.counters)?;
     match (&found.last_interval, &given.last_interval) {
         (Some(a), Some(b)) => {
@@ -282,6 +283,9 @@ fn counters(path: &str, a: &SurfaceChannelCounterData, b: &SurfaceChannelCounter
     })?;
     require(same_value(&a.pool_inflows, &b.pool_inflows), || {
         format!("{path}.pool_inflows")
+    })?;
+    require(same_value(&a.runoff, &b.runoff), || {
+        format!("{path}.runoff")
     })
 }
 
@@ -426,7 +430,10 @@ fn diagnostics(
     require(same_value(&a.pool_ends, &b.pool_ends), || {
         format!("{path}.pool_ends")
     })?;
-    require(same_value(&a.pools, &b.pools), || format!("{path}.pools"))
+    require(same_value(&a.pools, &b.pools), || format!("{path}.pools"))?;
+    require(same_value(&a.runoff, &b.runoff), || {
+        format!("{path}.runoff")
+    })
 }
 
 fn same_port_transfer(a: &SurfaceChannelPortTransfer, b: &SurfaceChannelPortTransfer) -> bool {

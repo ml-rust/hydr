@@ -26,6 +26,7 @@ mod definition;
 mod delivery;
 mod forcing;
 mod report;
+mod restart;
 mod tailwater;
 mod targets;
 mod topology;
@@ -54,6 +55,9 @@ pub(super) use delivery::{
     RunoffStart, pool_receipts, runoff_delivery, runoff_end, runoff_start, with_runoff,
 };
 pub(super) use forcing::check_schedule;
-pub(super) use report::RunoffStep;
+pub(super) use report::{
+    RunoffStep, counter_data as runoff_counter_data, import_counters as import_runoff_counters,
+};
+pub(super) use restart::restored_child;
 pub(super) use topology::RunoffTopology;
 pub(super) use writers::check_caller_pool_inflows;

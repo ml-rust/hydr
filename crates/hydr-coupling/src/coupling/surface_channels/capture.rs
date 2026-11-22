@@ -4,7 +4,7 @@ use super::SurfaceChannelError;
 use super::batch::SurfaceChannelBatch;
 use super::context::Context;
 use super::pools::{PoolChild, pool_error};
-use super::runoff::check_schedule;
+use super::runoff::{check_schedule, runoff_counter_data};
 use super::snapshot::{
     SURFACE_CHANNEL_CONTRACT_VERSION, SURFACE_CHANNEL_SNAPSHOT_SCHEMA, SurfaceChannelCounterData,
     SurfaceChannelIntervalSnapshotData, SurfaceChannelPreviousData, SurfaceChannelSetupData,
@@ -12,6 +12,7 @@ use super::snapshot::{
 };
 use super::state::{LinkCounters, PreviousFrame, StoredStep};
 use crate::channel::{ChannelError, ChannelSnapshotData};
+use crate::runoff::{SubcatchmentBatch, SubcatchmentSnapshotData};
 use crate::solver::{ForcingSchedule, Solver};
 use crate::storage::LevelPoolSnapshotData;
 use numr::dtype::DType;
@@ -206,6 +207,7 @@ where
                         reaches: named(setup, previous)?,
                         pools: pool_data(context, frame.pools.as_ref())?,
                         operating: frame.operating.as_ref().map(|o| o.data()).transpose()?,
+                        runoff: runoff_data(frame.runoff.as_ref())?,
                         counters: counter_data(
                             (&frame.counters, frame.pools.as_ref()),
                             context,
@@ -227,6 +229,7 @@ where
             reaches: named(setup, reaches)?,
             pools: pool_data(context, self.pools.as_ref())?,
             operating: self.operating.as_ref().map(|o| o.data()).transpose()?,
+            runoff: runoff_data(self.runoff.as_ref())?,
             counters: counter_data(
                 (&self.counters, self.pools.as_ref()),
                 context,
@@ -299,5 +302,31 @@ where
         structures: counters.structure_ledgers(context)?,
         pool_ends: counters.pool_ends.ledgers(&context.pool_end_ids()),
         pool_inflows: context.pool_inflow_ledgers(pools)?,
+        runoff: runoff_counter_data(context, counters.runoff.as_ref())?,
     })
+}
+
+/// The package of the accepted runoff child, or `None` without active runoff.
+fn runoff_data<R: Runtime<DType = DType>>(
+    runoff: Option<&SubcatchmentBatch<R>>,
+) -> Result<Option<SubcatchmentSnapshotData>, SurfaceChannelError>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + CorrectlyRoundedOps<R>
+        + IndexingOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + BatchedBisectionAlgorithms<R>
+        + BatchedNewtonAlgorithms<R>,
+{
+    runoff
+        .map(SubcatchmentBatch::snapshot_data)
+        .transpose()
+        .map_err(SurfaceChannelError::Runoff)
 }

@@ -98,10 +98,9 @@ pub use error::SurfaceChannelError;
 pub use forcing::{SurfaceChannelForcingInterval, SurfaceChannelReachForcing};
 pub use node_output::{
     SurfaceChannelOperationReceipt, SurfaceChannelPoolEndLedger, SurfaceChannelPoolEndTransfer,
-    SurfaceChannelPoolStep, SurfaceChannelStructureLedger, SurfaceChannelStructureTransfer,
+    SurfaceChannelPoolStep, SurfaceChannelRunoffLedger, SurfaceChannelRunoffTransfer,
+    SurfaceChannelStructureLedger, SurfaceChannelStructureTransfer,
 };
-#[doc(hidden)]
-pub use node_output::{SurfaceChannelRunoffLedger, SurfaceChannelRunoffTransfer};
 pub use operating::{
     SurfaceChannelActuators, SurfaceChannelControlledGates, SurfaceChannelControlledPumps,
     SurfaceChannelControls, SurfaceChannelOperating, SurfaceChannelOperatingData,
@@ -113,7 +112,6 @@ pub use output::{
     SurfaceChannelWaterBalance, SurfaceChannelWeirRegime,
 };
 pub use pool_ends::SurfaceChannelPoolEnd;
-#[doc(hidden)]
 pub use runoff::{
     SurfaceChannelFreeOutlet, SurfaceChannelRunoff, SurfaceChannelRunoffDestination,
     SurfaceChannelRunoffOutlet, SurfaceChannelRunoffShare,
@@ -121,7 +119,8 @@ pub use runoff::{
 pub use snapshot::{
     SURFACE_CHANNEL_CONTRACT_VERSION, SURFACE_CHANNEL_SNAPSHOT_SCHEMA, SurfaceChannelCounterData,
     SurfaceChannelIntervalSnapshotData, SurfaceChannelPortCounterData, SurfaceChannelPreviousData,
-    SurfaceChannelSetupData, SurfaceChannelSnapshot, SurfaceChannelSnapshotData,
+    SurfaceChannelRunoffCounterData, SurfaceChannelSetupData, SurfaceChannelSnapshot,
+    SurfaceChannelSnapshotData,
 };
 pub use structures::{
     StructureScenario, SurfaceChannelAttachment, SurfaceChannelNode, SurfaceChannelOperationOwner,
