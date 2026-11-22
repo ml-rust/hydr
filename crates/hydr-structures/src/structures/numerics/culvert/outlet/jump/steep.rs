@@ -60,17 +60,18 @@ where
     let below = c.mul(&solved, &c.lt(&yn[1], &classes.critical[0])?)?;
     let wanted = c.mul(&critical, &below)?;
 
+    let outline = outlet.outline(barrel);
     let critical_depth = a.bounds(&classes.critical[0], &classes.critical[1])?;
-    let v_c = coordinate(a, &barrel.circular, rise, &critical_depth)?;
+    let v_c = coordinate(a, &outline, rise, &critical_depth)?;
     let normal_depth = a.bounds(&yn[0], &yn[1])?;
-    let v_n = coordinate(a, &barrel.circular, rise, &normal_depth)?;
+    let v_n = coordinate(a, &outline, rise, &normal_depth)?;
     let minus = fill(rise, -1.0)?;
     let params = ProfileParams {
         numerator: minus.clone(),
         denominator: one.clone(),
         ..march.profile.spec.params.clone()
     };
-    let params = with_peak(a, params)?;
+    let params = with_peak(a, params, barrel)?;
     let at_start = integrand(a, &params, &v_c, 1, None)?;
     let value = jet::coefficient(a, &at_start.value, 0, rise)?;
     let start = a.point(v_c.lower())?;
@@ -84,7 +85,7 @@ where
     ];
     let room = guarded(c, &minus, v_c.lower(), v_n.upper())?;
     let active = c.mul(&c.mul(&wanted, &room)?, &at_start.valid)?;
-    let harmless = fill(rise, 0.5)?;
+    let harmless = outline.harmless()?;
     let keep = |value: &Tensor<R>| c.where_cond(&active, value, &harmless);
     let spec = ProfileSpec {
         params,

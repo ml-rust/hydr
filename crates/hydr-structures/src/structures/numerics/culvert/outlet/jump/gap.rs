@@ -6,7 +6,6 @@ use super::super::depth::depth_at;
 use super::super::levels::Accuracy;
 use super::super::partition::Profile;
 use super::super::quadrature::integrate;
-use super::super::trig::fill;
 use super::scan::Bracket;
 use super::steep::{Steep, momentum, pair};
 use crate::structures::StructureError;
@@ -109,6 +108,8 @@ where
     let rtol = Accuracy::Fine.depth_tolerance();
     let found = depth_at(c, solve.s2, owner, &x, &wanted, rtol)?;
     let rows = solve.barrel.select(owner)?;
+    let shapes = solve.outlet.select(c, owner)?;
+    let outline = shapes.outline(&rows);
     // A wanted lane without a supercritical depth gets inverted bounds, which reject the solve.
     let missing = c.mul(&wanted, &c.sub(&rows.one, &found.solved)?)?;
     let scale = [
@@ -122,13 +123,13 @@ where
         |a| {
             let scale = a.bounds(&scale[0], &scale[1])?;
             let v2 = a.point(point)?;
-            let y2 = depth(a, &rows.circular, &rows.rise, &v2)?;
-            let middle = fill(&rows.one, 0.5)?;
+            let y2 = depth(a, &outline, &rows.rise, &v2)?;
+            let middle = outline.harmless()?;
             let v1 = a.bounds(
                 &c.where_cond(&found.solved, &found.lower, &middle)?,
                 &c.where_cond(&found.solved, &found.upper, &middle)?,
             )?;
-            let y1 = depth(a, &rows.circular, &rows.rise, &v1)?;
+            let y1 = depth(a, &outline, &rows.rise, &v1)?;
             let m2 = momentum(a, &rows, &scale, &y2)?;
             let m1 = momentum(a, &rows, &scale, &y1)?;
             let value = a.sub(&m2, &m1)?;

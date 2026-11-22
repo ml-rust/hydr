@@ -68,7 +68,7 @@ static CULVERT_OUTLET: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "invalid-outlet-row",
             UnsupportedReason::RejectedByAdmission,
-            "An empty row list, a nonfinite or nonpositive length, Manning n or gravity, a nonfinite or negative entrance loss, a nonfinite slope, or an elliptical, pipe-arch or flat-floor arch barrel rejects.",
+            "An empty row list, a nonfinite or nonpositive length, Manning n or gravity, a nonfinite or negative entrance loss, or a nonfinite slope rejects.",
         ),
         unsupported(
             "adverse-beyond-range",
@@ -117,7 +117,7 @@ static CULVERT_OUTLET: ComponentCapabilities = ComponentCapabilities {
         ),
         limit(
             "conveyance-peak-hull",
-            "Near a circle's conveyance peak capacity S - Sf nearly vanishes at the peak depth. Where it falls within rounding of zero inside a profile, the march holds no distance past that point. A profile that has not covered the barrel before it holds the hull from the last certified depth to the crown with full flow beyond, or to the far bound of the normal depth.",
+            "Near a circle's or an arc barrel's conveyance peak capacity S - Sf nearly vanishes at the peak depth. Where it falls within rounding of zero inside a profile, the march holds no distance past that point. A profile that has not covered the barrel before it holds the hull from the last certified depth to the crown with full flow beyond, or to the far bound of the normal depth. On an arc barrel the march bounds friction over the certified peak enclosure [s_N, s_F] as a whole.",
         ),
         limit(
             "inlet-energy-dip",
@@ -134,7 +134,7 @@ static CULVERT_OUTLET: ComponentCapabilities = ComponentCapabilities {
     ],
     summary: Summary {
         equations: "HDS-5 full-barrel loss with Ku = 2g, direct-step profiles dx/dy = (1 - Fr^2)/(S - Sf) from max(TW, yc), and the momentum function for the jump",
-        method: "F64 interval enclosures; certified Simpson over a graded partition in a smooth section coordinate with order-4 Taylor jets for the fourth derivative; certified bisection for the inlet depth and the jump",
+        method: "F64 interval enclosures; certified Simpson over a graded partition in a smooth section coordinate (circle half angle, box depth fraction, arc normal angle split at each junction) with order-4 Taylor jets for the fourth derivative; certified bisection for the inlet depth and the jump",
         assessment: "independent 100-digit full-barrel rows and adaptive-quadrature profile rows lie inside every enclosure within their frozen tolerances",
     },
 };

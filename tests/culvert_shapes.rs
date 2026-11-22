@@ -1,5 +1,5 @@
-//! Tangent-arc barrels: frozen independent references, construction, geometry, critical depth
-//! and normal depth.
+//! Tangent-arc barrels: frozen independent references, construction, geometry, critical depth,
+//! normal depth and outlet control.
 
 #[allow(dead_code)]
 #[path = "support/runtime.rs"]
@@ -25,6 +25,13 @@ mod depths;
 
 #[path = "culvert_shapes/depth_laws.rs"]
 mod depth_laws;
+
+#[allow(dead_code)]
+#[path = "culvert_shapes/outlet_rows.rs"]
+mod outlet_rows;
+
+#[path = "culvert_shapes/outlets.rs"]
+mod outlets;
 
 use hydr::structures::{
     CriticalDepthStatus, CulvertBarrel, CulvertBarrelBatch, CulvertBarrelShape, NormalDepthStatus,

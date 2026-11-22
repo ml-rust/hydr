@@ -13,8 +13,13 @@
 //! The pipe-arch corner centres sit at height `y_c`, with
 //! `h^2 = (r_b - B/2) (r_b + B/2 - 2 r_c)`. Its rules on `y_c` hold for the exact section:
 //! the host enclosure certifies them, so the kernel enclosures of the same forms agree.
+//!
+//! The rules and derived radii are evaluated in a [`Frame`] that scales the rise into `[1, 2)`
+//! by a power of two. Every rule is homogeneous in length, so it holds in the frame exactly when
+//! it holds in metres, and no square or product underflows or overflows there.
 
 use super::enclosure::Enclosure;
+use super::frame::Frame;
 use super::{CulvertBarrel, CulvertBarrelShape, dimension, scales};
 use crate::structures::StructureError;
 
@@ -45,11 +50,16 @@ impl CulvertBarrel {
         }
         let fields = format!("span_m={span_m:?},rise_m={rise_m:?},side_radius_m={side_radius_m:?}");
         scales(span_m, rise_m, &[("side", side_radius_m)], &fields)?;
-        let radius = ellipse_radius(span_m, rise_m, side_radius_m);
+        let frame = Frame::new(rise_m, &[span_m, side_radius_m], &fields)?;
+        let radius = ellipse_radius(
+            frame.scaled(span_m),
+            frame.scaled(rise_m),
+            frame.scaled(side_radius_m),
+        );
         scales(
             span_m,
             rise_m,
-            &[("invert and crown", radius.upper)],
+            &[("invert and crown", frame.back(radius.upper))],
             &fields,
         )?;
         Ok(Self::new(
@@ -86,9 +96,19 @@ impl CulvertBarrel {
         }
         let fields = format!("span_m={span_m:?},rise_m={rise_m:?},end_radius_m={end_radius_m:?}");
         scales(span_m, rise_m, &[("end", end_radius_m)], &fields)?;
+        let frame = Frame::new(rise_m, &[span_m, end_radius_m], &fields)?;
         // The side radius is the horizontal-ellipse radius of the section turned a quarter turn.
-        let radius = ellipse_radius(rise_m, span_m, end_radius_m);
-        scales(span_m, rise_m, &[("side", radius.upper)], &fields)?;
+        let radius = ellipse_radius(
+            frame.scaled(rise_m),
+            frame.scaled(span_m),
+            frame.scaled(end_radius_m),
+        );
+        scales(
+            span_m,
+            rise_m,
+            &[("side", frame.back(radius.upper))],
+            &fields,
+        )?;
         Ok(Self::new(
             CulvertBarrelShape::VerticalEllipse,
             span_m,
@@ -130,23 +150,33 @@ impl CulvertBarrel {
         );
         let given = [("corner", corner_radius_m), ("bottom", bottom_radius_m)];
         scales(span_m, rise_m, &given, &fields)?;
-        let layout = PipeArch::new(span_m, rise_m, corner_radius_m, bottom_radius_m);
+        let frame = Frame::new(rise_m, &[span_m, corner_radius_m, bottom_radius_m], &fields)?;
+        let rise = frame.scaled(rise_m);
+        let corner = frame.scaled(corner_radius_m);
+        let layout = PipeArch::new(
+            frame.scaled(span_m),
+            rise,
+            corner,
+            frame.scaled(bottom_radius_m),
+        );
         if layout.gap.lower.is_nan() || layout.gap.lower <= 0.0 {
-            let top = Enclosure::exact(corner_radius_m).add(layout.corner_height);
+            let top = Enclosure::exact(corner).add(layout.corner_height);
+            let top = frame.back_enclosure(top);
             return Err(StructureError::definition(format!(
                 "{fields}: a pipe-arch needs a rise above the corner-centre height plus the corner radius, [{:?}, {:?}] m. Supply a larger rise or a larger bottom radius",
                 top.lower, top.upper
             )));
         }
         if layout.reach.lower.is_nan() || layout.reach.lower < 0.0 {
-            let above = Enclosure::exact(rise_m).sub(layout.corner_height);
+            let above = Enclosure::exact(rise).sub(layout.corner_height);
+            let above = frame.back_enclosure(above);
             return Err(StructureError::definition(format!(
                 "{fields}: a pipe-arch needs the rise above the corner centres, [{:?}, {:?}] m, at most half the span. Supply a smaller rise or a smaller bottom radius",
                 above.lower, above.upper
             )));
         }
         let top = layout.top_radius();
-        scales(span_m, rise_m, &[("top", top.upper)], &fields)?;
+        scales(span_m, rise_m, &[("top", frame.back(top.upper))], &fields)?;
         Ok(Self::new(
             CulvertBarrelShape::PipeArch,
             span_m,
@@ -174,8 +204,14 @@ impl CulvertBarrel {
         }
         let fields = format!("span_m={span_m:?},rise_m={rise_m:?}");
         scales(span_m, rise_m, &[], &fields)?;
-        let radius = arch_radius(span_m, rise_m);
-        scales(span_m, rise_m, &[("arc", radius.upper)], &fields)?;
+        let frame = Frame::new(rise_m, &[span_m], &fields)?;
+        let radius = arch_radius(frame.scaled(span_m), frame.scaled(rise_m));
+        scales(
+            span_m,
+            rise_m,
+            &[("arc", frame.back(radius.upper))],
+            &fields,
+        )?;
         Ok(Self::new(CulvertBarrelShape::Arch, span_m, rise_m, &[]))
     }
 }
@@ -374,6 +410,49 @@ mod tests {
         CulvertBarrel::arch(2.0, 2.0)?;
         CulvertBarrel::arch(2.0, 0.5)?;
         Ok(())
+    }
+
+    /// Frozen criterion: every evidence barrel scaled by `2^-900` or `2^300` admits, and each
+    /// rule rejects at those scales as it does in metres.
+    #[test]
+    fn admission_holds_at_every_representable_scale() {
+        type Build = fn(f64) -> Result<CulvertBarrel, StructureError>;
+        let admitted: [Build; 4] = [
+            |k| CulvertBarrel::horizontal_ellipse(1.524 * k, 0.9652 * k, 0.419_475_92 * k),
+            |k| CulvertBarrel::vertical_ellipse(0.9652 * k, 1.524 * k, 0.419_475_92 * k),
+            |k| CulvertBarrel::pipe_arch(1.8542 * k, 1.397 * k, 0.4572 * k, 1.938_528 * k),
+            |k| CulvertBarrel::arch(3.048 * k, 1.6002 * k),
+        ];
+        let rejected: [(Build, &str); 2] = [
+            (
+                |k| CulvertBarrel::pipe_arch(2.0 * k, 1.0 * k, 0.5 * k, 1.01 * k),
+                "a pipe-arch needs a rise above the corner-centre height plus the corner radius",
+            ),
+            (
+                |k| CulvertBarrel::pipe_arch(2.0 * k, 1.8 * k, 0.5 * k, 2.0 * k),
+                "a pipe-arch needs the rise above the corner centres",
+            ),
+        ];
+        for scale in [2f64.powi(-900), 1.0, 2f64.powi(300)] {
+            for (shape, build) in admitted.iter().enumerate() {
+                let barrel = build(scale);
+                assert!(barrel.is_ok(), "shape {shape} at {scale:e}: {barrel:?}");
+            }
+            for (build, expected) in rejected {
+                let text = message(build(scale));
+                assert!(
+                    text.as_deref().is_some_and(|t| t.contains(expected)),
+                    "{text:?} lacks {expected:?} at {scale:e}"
+                );
+            }
+        }
+        // Dimensions too far apart to share one frame reject with an action.
+        let text = message(CulvertBarrel::vertical_ellipse(1e-300, 1e300, 1e-301));
+        let expected = "the dimensions differ in size by more than F64 can scale to a unit rise. Supply dimensions closer in size";
+        assert!(
+            text.as_deref().is_some_and(|t| t.contains(expected)),
+            "{text:?} lacks {expected:?}"
+        );
     }
 
     #[test]

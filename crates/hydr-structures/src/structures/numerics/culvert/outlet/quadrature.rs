@@ -341,6 +341,7 @@ mod tests {
             denominator: tensor(&[1.0, 1.0])?,
             peak: [tensor(&[4.0, 4.0])?, tensor(&[4.0, 4.0])?],
             peak_excess: tensor(&[f64::MAX, f64::MAX])?,
+            arcs: None,
         };
         let Enclosure {
             bounds: [lower, upper],
@@ -382,6 +383,7 @@ mod tests {
             denominator: tensor(&[-1.0, -1.0])?,
             peak: [tensor(&[4.0, 4.0])?, tensor(&[4.0, 4.0])?],
             peak_excess: tensor(&[f64::MAX, f64::MAX])?,
+            arcs: None,
         };
         let Enclosure { bounds, known } = integrate(
             &client,

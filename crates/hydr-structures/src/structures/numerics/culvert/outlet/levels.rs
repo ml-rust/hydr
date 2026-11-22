@@ -85,7 +85,7 @@ where
     Ok(level)
 }
 
-/// Highest lane level between nodes `low` and `high` of each row of `levels` `[p, LANES]`.
+/// Highest lane level between nodes `low` and `high` of each row of `levels` `[p, lanes]`.
 ///
 /// `low` and `high` are F64 node indices. A row with `high <= low` takes the level of lane
 /// `low`, clamped to the last lane.
@@ -100,17 +100,18 @@ where
     R::Client: BarrelClient<R>,
 {
     let p = low.numel();
-    let index: Vec<f64> = (0..LANES).map(|k| k as f64).collect();
-    let index = Tensor::<R>::from_slice(&index, &[1, LANES], low.device())?
-        .broadcast_to(&[p, LANES])?
+    let lanes = levels.shape().get(1).copied().unwrap_or(LANES);
+    let index: Vec<f64> = (0..lanes).map(|k| k as f64).collect();
+    let index = Tensor::<R>::from_slice(&index, &[1, lanes], low.device())?
+        .broadcast_to(&[p, lanes])?
         .contiguous()?;
     let wide = |value: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
         value
             .reshape(&[p, 1])?
-            .broadcast_to(&[p, LANES])?
+            .broadcast_to(&[p, lanes])?
             .contiguous()
     };
-    let first = c.minimum(low, &fill(low, (LANES - 1) as f64)?)?;
+    let first = c.minimum(low, &fill(low, (lanes - 1) as f64)?)?;
     let end = c.maximum(high, &c.add_scalar(&first, 1.0)?)?;
     let inside = c.mul(&c.ge(&index, &wide(&first)?)?, &c.lt(&index, &wide(&end)?)?)?;
     c.max(&c.mul(levels, &inside)?, &[1], false)

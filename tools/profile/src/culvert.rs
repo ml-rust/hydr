@@ -1,6 +1,9 @@
 //! Profiles the certified culvert outlet march and the culvert law proposal.
 //!
-//! Usage: `culvert-profile <headwater|jump|law|show> <calls>`.
+//! Usage: `culvert-profile <headwater|jump|law|circle|arc|show> <calls>`.
+//!
+//! `circle` and `arc` run `CulvertOutletBatch::headwater` on one mild partly full lane: a
+//! circle, or a pipe-arch of a similar rise.
 //!
 //! `show` prints the jump rows of the outlet lanes and the law outputs once, for comparing
 //! enclosures across changes.
@@ -134,6 +137,29 @@ fn law_query() -> Result<(StructureBatch<CpuRuntime>, Vec<StructureHeads>)> {
     Ok((batch, packets))
 }
 
+/// One mild partly full lane: a pipe-arch when `arc`, else a circle of a similar rise.
+fn single_lane(arc: bool) -> Result<Query> {
+    let barrel = if arc {
+        CulvertBarrel::pipe_arch(1.8542, 1.397, 0.4572, 1.938_528)?
+    } else {
+        CulvertBarrel::circular(1.4)?
+    };
+    let row = hydr::structures::CulvertOutletRow {
+        barrel,
+        length_m: 40.0,
+        manning_n: 0.013,
+        entrance_loss: 0.5,
+        slope: 0.001,
+        gravity_m_per_s2: 9.81,
+    };
+    let lane = lanes::Lane {
+        row,
+        discharge: 1.2,
+        tailwater: 1.1,
+    };
+    lanes::query::<CpuRuntime>(&client(), &[lane])
+}
+
 /// Prints every jump row of the layout lanes and every law output, one line each.
 fn show() -> Result {
     let (batch, discharge, tailwater) = outlet_query()?;
@@ -153,7 +179,7 @@ fn show() -> Result {
 
 fn main() -> Result {
     let args: Vec<String> = std::env::args().collect();
-    let usage = "usage: culvert-profile <headwater|jump|law|show> <calls>";
+    let usage = "usage: culvert-profile <headwater|jump|law|circle|arc|show> <calls>";
     let mode = args.get(1).ok_or(usage)?;
     let calls: usize = args.get(2).ok_or(usage)?.parse()?;
     let before;
@@ -169,6 +195,14 @@ fn main() -> Result {
                 } else {
                     batch.headwater(&discharge, &tailwater)?;
                 }
+            }
+        }
+        "circle" | "arc" => {
+            let (batch, discharge, tailwater) = single_lane(mode == "arc")?;
+            lanes = discharge.numel();
+            before = Totals::now();
+            for _ in 0..calls {
+                batch.headwater(&discharge, &tailwater)?;
             }
         }
         "law" => {

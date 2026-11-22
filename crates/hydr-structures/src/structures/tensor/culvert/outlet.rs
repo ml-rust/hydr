@@ -1,6 +1,9 @@
-//! Compact `[m]` outlet-control rows: length, roughness, entrance loss, slope and gravity.
+//! Compact `[m]` outlet-control rows: length, roughness, entrance loss, slope, gravity and the
+//! arc bands of the march.
 
-use super::Bounds;
+use super::{Bounds, TensorBarrelContext};
+use crate::structures::numerics::culvert::BarrelClient;
+use crate::structures::numerics::culvert::outlet::{ArcShape, Outline};
 use numr::dtype::DType;
 use numr::ops::IndexingOps;
 use numr::runtime::Runtime;
@@ -20,13 +23,15 @@ pub(crate) struct TensorOutletContext<R: Runtime<DType = DType>> {
     pub(crate) gravity: Tensor<R>,
     /// `B / D`, the span over the rise.
     pub(crate) beta: Bounds<R>,
+    /// Arc bands in units of the rise, `None` when no row is an arc barrel.
+    pub(crate) arcs: Option<ArcShape<R>>,
 }
 
 impl<R: Runtime<DType = DType>> TensorOutletContext<R> {
     /// Gathers the rows at the I64 indices `rows`, in their order. Indices may repeat.
     pub(crate) fn select(&self, c: &R::Client, rows: &Tensor<R>) -> numr::error::Result<Self>
     where
-        R::Client: IndexingOps<R>,
+        R::Client: BarrelClient<R>,
     {
         let take = |value: &Tensor<R>| c.index_select(value, 0, rows);
         let [lower, upper] = &self.beta;
@@ -37,6 +42,20 @@ impl<R: Runtime<DType = DType>> TensorOutletContext<R> {
             slope: take(&self.slope)?,
             gravity: take(&self.gravity)?,
             beta: [take(lower)?, take(upper)?],
+            arcs: self
+                .arcs
+                .as_ref()
+                .map(|arcs| arcs.select(c, rows))
+                .transpose()?,
         })
+    }
+
+    /// The shape view of the rows of `barrel`, the barrel context these rows align with.
+    pub(crate) fn outline<'s>(&'s self, barrel: &'s TensorBarrelContext<R>) -> Outline<'s, R> {
+        Outline {
+            circular: &barrel.circular,
+            beta: &self.beta,
+            arcs: self.arcs.as_ref(),
+        }
     }
 }

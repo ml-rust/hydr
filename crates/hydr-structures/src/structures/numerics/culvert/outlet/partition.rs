@@ -13,12 +13,16 @@
 //! Every lane is surveyed with the fewest panels. [`levels`](super::levels) then picks the
 //! panels each lane runs. A lane that starts past the distance scale keeps its survey.
 //!
+//! A batch with arc rows adds knots at both ends of each junction angle enclosure, so no lane
+//! crosses a junction. See [`junctions`](super::junctions).
+//!
 //! A lane whose integrand is not certified is unknown. Near a nearly double root of `S - Sf`,
-//! at the circle conveyance peak, the margin can fall below the rounding level. An unknown lane
-//! adds zero to the lower distance bounds. Every later node takes the distance scale as its
-//! upper bound, so no target up to that scale counts as reached there.
+//! at the conveyance peak, the margin can fall below the rounding level. An unknown lane adds
+//! zero to the lower distance bounds. Every later node takes the distance scale as its upper
+//! bound, so no target up to that scale counts as reached there.
 
 use super::integrand::ProfileParams;
+use super::junctions;
 use super::levels::{Accuracy, level_for};
 use super::quadrature::{Enclosure, PANELS, refine, simpson};
 use super::trig::fill;
@@ -88,22 +92,32 @@ pub(crate) struct ProfileSpec<R: Runtime<DType = DType>> {
     pub(crate) scale: Tensor<R>,
 }
 
-/// A built profile: nodes `[m, LANES + 1]` and the distance enclosure at each node.
+/// A built profile: nodes `[m, lanes + 1]` and the distance enclosure at each node.
+///
+/// A batch with arc rows has more lanes per row than [`LANES`]: its junction knots and middle
+/// splits.
 pub(crate) struct Profile<R: Runtime<DType = DType>> {
     pub(crate) spec: ProfileSpec<R>,
     pub(crate) nodes: Tensor<R>,
     pub(crate) reach: Bounds<R>,
-    /// Quadrature level of each lane `[m, LANES]`.
+    /// Quadrature level of each lane `[m, lanes]`.
     pub(crate) levels: Tensor<R>,
-    /// Survey remainder bound of each lane `[m, LANES]`.
+    /// Survey remainder bound of each lane `[m, lanes]`.
     pub(crate) remainder: Tensor<R>,
     /// Lane remainder budget per row `[m]`.
     pub(crate) budget: Tensor<R>,
-    /// 1 on lanes whose distance enclosure holds, 0 on unknown lanes `[m, LANES]`.
+    /// 1 on lanes whose distance enclosure holds, 0 on unknown lanes `[m, lanes]`.
     pub(crate) known: Tensor<R>,
     /// 1 on nodes whose distance enclosure holds: no unknown lane lies before them
-    /// `[m, LANES + 1]`.
+    /// `[m, lanes + 1]`.
     pub(crate) held: Tensor<R>,
+}
+
+impl<R: Runtime<DType = DType>> Profile<R> {
+    /// Lanes per row.
+    pub(crate) fn lanes(&self) -> usize {
+        self.levels.shape().get(1).copied().unwrap_or(LANES)
+    }
 }
 
 /// 1 where an asymptotic limit lies ahead of the start along `sign`, with room for the guard.
@@ -174,6 +188,39 @@ where
     nodes = c.where_cond(&first, &start, &nodes)?;
     let active = wide(&spec.active.reshape(&[m, 1])?)?;
     nodes = c.where_cond(&active, &nodes, &start)?;
+    if let Some(arcs) = &spec.params.arcs {
+        let knots = junctions::knots(c, &spec, arcs, &nodes)?;
+        return finish(c, spec, accuracy, knots);
+    }
+    finish(c, spec, accuracy, nodes)
+}
+
+/// Integrates every lane of the placed `nodes` `[m, count]` and accumulates the distances.
+fn finish<R>(
+    c: &R::Client,
+    spec: ProfileSpec<R>,
+    accuracy: Accuracy,
+    nodes: Tensor<R>,
+) -> Result<Profile<R>, StructureError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R> + CertifiedSimpsonAlgorithms<R>,
+{
+    let m = spec.start.numel();
+    let device = spec.start.device().clone();
+    let count = nodes.shape().get(1).copied().unwrap_or(1);
+    let lanes = count - 1;
+    let wide = |value: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
+        value.broadcast_to(&[m, count])?.contiguous()
+    };
+    let column = |index: usize| -> numr::error::Result<Tensor<R>> {
+        let values: Vec<f64> = (0..count)
+            .map(|k| f64::from(u8::from(k == index)))
+            .collect();
+        wide(&Tensor::<R>::from_slice(&values, &[1, count], &device)?)
+    };
+    let asymptotic = wide(&spec.asymptotic.reshape(&[m, 1])?)?;
+    let active = wide(&spec.active.reshape(&[m, 1])?)?;
 
     let low = nodes.narrow(1, 0, lanes)?.contiguous()?;
     let high = nodes.narrow(1, 1, lanes)?.contiguous()?;
@@ -198,7 +245,14 @@ where
         .map(|lane| i64::try_from(lane / lanes).unwrap_or(i64::MAX))
         .collect();
     let owner = Tensor::<R>::from_slice(&owner, &[m * lanes], &device)?;
-    let params = spec.params.select(c, &owner)?;
+    let rows = spec.params.select(c, &owner)?;
+    // Arc lanes carry the one band that holds them. A junction sliver takes no Simpson rule.
+    let (params, sliver) = junctions::lane_params(c, rows, &left, &right)?;
+    let whole = right;
+    let right = match &sliver {
+        Some(sliver) => c.where_cond(&sliver.mask, &left, &whole)?,
+        None => whole.clone(),
+    };
     // Every lane runs the fewest panels first. Its remainder bound then sets its level.
     let survey = simpson(c, &params, &left, &right, PANELS[0])?;
     let budget = c.mul_scalar(&spec.scale, accuracy.budget())?;
@@ -236,11 +290,23 @@ where
         &c.minimum(refined_upper, &survey.bounds[1])?,
         refined_upper,
     )?;
+    let (lower, upper, known) = match &sliver {
+        Some(sliver) => {
+            let found = junctions::sliver_integrals(c, sliver, &left, &whole)?;
+            let mask = &sliver.mask;
+            (
+                c.where_cond(mask, &found.bounds[0], &lower)?,
+                c.where_cond(mask, &found.bounds[1], &upper)?,
+                c.where_cond(mask, &found.known, &refined.known)?,
+            )
+        }
+        None => (lower, upper, refined.known),
+    };
     let lower = lower.reshape(&[m, lanes])?;
     let upper = upper.reshape(&[m, lanes])?;
     let levels = level.reshape(&[m, lanes])?;
     let remainder = survey.remainder.reshape(&[m, lanes])?;
-    let known = refined.known.reshape(&[m, lanes])?;
+    let known = known.reshape(&[m, lanes])?;
 
     let [reach_low, reach_high] =
         with_interval_arithmetic(c, DType::F64, "culvert outlet profile distances", |a| {

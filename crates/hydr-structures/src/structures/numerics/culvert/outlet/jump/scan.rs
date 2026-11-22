@@ -6,15 +6,13 @@ use super::super::depth::DepthEnclosure;
 use super::super::integrand::{floor, shape, slopes};
 use super::super::jet;
 use super::super::levels::span_level;
-use super::super::partition::LANES;
 use super::super::trig::fill;
 use super::steep::{Steep, column, momentum, owners, pair};
 use crate::structures::StructureError;
-use crate::structures::numerics::culvert::constants::CONVEYANCE_PEAK;
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient};
 use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext, TensorOutletContext};
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps};
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval, with_interval_arithmetic};
@@ -70,12 +68,18 @@ where
         found,
     } = *inputs;
     let m = barrel.width();
-    let count = LANES + 1;
+    let lanes_per_row = march.profile.lanes();
+    let count = lanes_per_row + 1;
     let per_row = count + 1;
     let device = &barrel.device;
     let profile = &march.profile;
     let lane_rows = owners::<R>(device, m, count)?;
     let lanes = barrel.select(&lane_rows)?;
+    let lane_outlet = outlet.select(c, &lane_rows)?;
+    let row_outline = outlet.outline(barrel);
+    let lane_outline = lane_outlet.outline(&lanes);
+    let row_spare = row_outline.harmless()?;
+    let lane_spare = lane_outline.harmless()?;
     let table =
         |value: &Tensor<R>| -> numr::error::Result<Tensor<R>> { value.reshape(&[m, per_row]) };
     let v1_low = table(&found.lower)?;
@@ -90,10 +94,9 @@ where
     let head = |value: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
         value.narrow(1, 0, 1)?.contiguous()?.reshape(&[m])
     };
-    // A coordinate of 1/2 lies inside both the circle and the box domain.
-    let harmless = |value: &Tensor<R>, ok: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
-        c.where_cond(ok, value, &fill(ok, 0.5)?)
-    };
+    // Rows and lanes outside `ok` take a coordinate inside their domain.
+    let harmless =
+        |value: &Tensor<R>, ok: &Tensor<R>, spare: &Tensor<R>| c.where_cond(ok, value, spare);
     let s1_params = &profile.spec.params;
 
     let values = with_interval_arithmetic(c, DType::F64, "culvert outlet jump scan", |a| {
@@ -101,10 +104,10 @@ where
         // The supercritical depth at the outlet and the momentum gap there.
         let ok0 = head(&solved)?;
         let v_out = a.bounds(
-            &harmless(&head(&v1_low)?, &ok0)?,
-            &harmless(&head(&v1_high)?, &ok0)?,
+            &harmless(&head(&v1_low)?, &ok0, &row_spare)?,
+            &harmless(&head(&v1_high)?, &ok0, &row_spare)?,
         )?;
-        let y_out = depth(a, &barrel.circular, &barrel.rise, &v_out)?;
+        let y_out = depth(a, &row_outline, &barrel.rise, &v_out)?;
         // Rows without a subcritical outlet take a harmless wet depth.
         let wet = c.where_cond(&steep.candidates, tailwater, &barrel.half_rise)?;
         let tw = a.point(&c.minimum(&wet, &barrel.rise)?)?;
@@ -131,13 +134,13 @@ where
         // A node past an unknown S1 lane has no distance, so its S2 target holds nothing.
         let ok = c.mul(&tail(&solved)?, &profile.held.reshape(&[m * count])?)?;
         let v_node = profile.nodes.reshape(&[m * count])?;
-        let node = a.point(&harmless(&v_node, &ok)?)?;
-        let y2 = depth(a, &lanes.circular, &lanes.rise, &node)?;
+        let node = a.point(&harmless(&v_node, &ok, &lane_spare)?)?;
+        let y2 = depth(a, &lane_outline, &lanes.rise, &node)?;
         let v1 = a.bounds(
-            &harmless(&tail(&v1_low)?, &ok)?,
-            &harmless(&tail(&v1_high)?, &ok)?,
+            &harmless(&tail(&v1_low)?, &ok, &lane_spare)?,
+            &harmless(&tail(&v1_high)?, &ok, &lane_spare)?,
         )?;
-        let y1 = depth(a, &lanes.circular, &lanes.rise, &v1)?;
+        let y1 = depth(a, &lane_outline, &lanes.rise, &v1)?;
         let m2 = momentum(a, &lanes, &lane_scale, &y2)?;
         let m1 = momentum(a, &lanes, &lane_scale, &y1)?;
         let rest = a.sub(&m2, &m1)?;
@@ -154,7 +157,7 @@ where
     let negatives = c.sum(&negative, &[1], false)?;
     let one = &barrel.one;
     let total = fill(zero, count as f64)?;
-    let last = fill(zero, LANES as f64)?;
+    let last = fill(zero, lanes_per_row as f64)?;
     let low_index = c.maximum(&c.sub(&positives, one)?, zero)?;
     let high_index = c.minimum(&c.sub(&total, &negatives)?, &last)?;
     let low_ok = column(c, &positive, &low_index)?;
@@ -176,24 +179,24 @@ where
         let g1 = floor(a, s1_params, &v_low, &v_high)?;
         let rise = &barrel.rise;
         let phi = |a: &mut Arithmetic<'_, R>, v: &Interval<R>| -> ArithmeticResult<Interval<R>> {
-            let shaped = shape(a, &barrel.circular, &outlet.beta, v, 1)?;
+            let shaped = shape(a, &row_outline, v, 1)?;
             let friction = slopes(a, s1_params, &shaped)?;
             let sf = jet::coefficient(a, &friction.friction, 0, rise)?;
             let s = a.point(&outlet.slope)?;
             let excess = a.sub(&s, &sf)?;
-            let section = area(a, &barrel.circular, &outlet.beta, rise, v)?;
+            let section = area(a, &row_outline, rise, v)?;
             a.mul(&section, &excess)
         };
         let low = a.point(&v_low)?;
         let at_low = phi(a, &low)?;
         let critical = a.bounds(&march.classes.critical[0], &march.classes.critical[1])?;
-        let v_c = coordinate(a, &barrel.circular, rise, &critical)?;
+        let v_c = coordinate(a, &row_outline, rise, &critical)?;
         let at_critical = phi(a, &v_c)?;
         let gain = c.sub(at_low.lower(), at_critical.upper())?;
-        // Friction falls with depth below the conveyance peak, and on every box depth.
+        // Friction falls with depth below the conveyance peak enclosure, and on every box depth.
         let high = a.point(&v_high)?;
-        let top = depth(a, &barrel.circular, rise, &high)?;
-        let peak = c.mul_scalar(rise, f64::from_bits(CONVEYANCE_PEAK[0]))?;
+        let top = depth(a, &row_outline, rise, &high)?;
+        let peak = c.mul(rise, &barrel.conveyance_peak[0])?;
         let monotone = c.maximum(&barrel.boxed, &c.le(top.upper(), &peak)?)?;
         let usable = c.mul(&c.mul(&c.gt(&gain, zero)?, &c.gt(&g1, zero)?)?, &monotone)?;
         let gain = a.point(&c.where_cond(&usable, &gain, one)?)?;

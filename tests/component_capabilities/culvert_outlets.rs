@@ -72,15 +72,6 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                 K::Definition,
                 "supply a finite barrel slope",
             ),
-            (
-                batch(vec![row(CulvertBarrel::vertical_ellipse(
-                    0.9652,
-                    1.524,
-                    0.419_475_92,
-                )?)]),
-                K::Definition,
-                "outlet control on arc barrels not yet available",
-            ),
         ],
         "adverse-beyond-range" => vec![(
             batch(vec![CulvertOutletRow {

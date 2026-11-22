@@ -2,17 +2,20 @@
 //!
 //! A circle uses the half angle `v = phi`, with `s = (1 - cos phi) / 2`. Area, top width and
 //! perimeter are then entire functions of `phi`, so the profile stays smooth up to the crown.
-//! A box uses `v = s`. In units of `D`:
+//! A box uses `v = s`. An arc barrel uses the normal angle `v = psi`, band by band, as
+//! [`bands`](super::bands) gives it. In units of `D`:
 //!
 //! | Shape | `a = A / D^2` | `t = T / D` | `p = P / D` | `ds/dv` |
 //! | --- | --- | --- | --- | --- |
 //! | circle | `(phi - sin phi cos phi) / 4` | `sin phi` | `phi` | `sin phi / 2` |
 //! | box | `beta s` | `beta` | `beta + 2 s` | `1` |
+//! | arc band `k` | `c_k - 2 x_k r_k cos psi + r_k^2 (psi - sin psi cos psi)` | `2 (x_k + r_k sin psi)` | `p_k + 2 r_k (psi - psi_k)` | `r_k sin psi` |
 //!
 //! `beta = B / D`. With `F = Q^2 / (g D^5)` and `K = n^2 Q^2 / D^(16/3)`, `Fr^2 = F t / a^3` and
 //! `Sf = K exp((4 ln p - 10 ln a) / 3)`. The signs `lambda` and `mu` make the numerator and the
 //! denominator positive along a profile, so `G > 0` is the distance gained per unit of `v`.
 
+use super::bands::{self, ArcShape, Outline, Trig};
 use super::jet::{self, Jet};
 use super::trig::{fill, negate};
 use super::trig_ends::{sin_cos_ends, sin_cos_near};
@@ -44,54 +47,69 @@ pub(crate) struct ProfileParams<R: Runtime<DType = DType>> {
     pub(crate) numerator: Tensor<R>,
     /// `mu`: +1 where `S > Sf` along the profile, -1 where `Sf > S`.
     pub(crate) denominator: Tensor<R>,
-    /// Coordinate enclosure of the circle conveyance peak `s_K`.
+    /// Coordinate enclosure of the conveyance peak `s_K` on circle and arc rows.
     pub(crate) peak: Bounds<R>,
-    /// Lower bound of `Sf(s_K) - S` on circle rows with `mu = -1`, `f64::MAX` elsewhere.
+    /// Lower bound of the signed denominator `mu (S - Sf)` over the peak enclosure where `Sf`
+    /// may take its extreme there, `f64::MAX` elsewhere. See [`super::screen::with_peak`].
     pub(crate) peak_excess: Tensor<R>,
+    /// Arc bands in units of the rise, `None` when no row is an arc barrel.
+    pub(crate) arcs: Option<ArcShape<R>>,
 }
 
 impl<R: Runtime<DType = DType>> ProfileParams<R> {
+    fn map(
+        &self,
+        take: &dyn Fn(&Tensor<R>) -> numr::error::Result<Tensor<R>>,
+        arcs: Option<ArcShape<R>>,
+    ) -> numr::error::Result<Self> {
+        let pair = |[lower, upper]: &Bounds<R>| -> numr::error::Result<Bounds<R>> {
+            Ok([take(lower)?, take(upper)?])
+        };
+        Ok(Self {
+            circular: take(&self.circular)?,
+            beta: pair(&self.beta)?,
+            rise: take(&self.rise)?,
+            froude: pair(&self.froude)?,
+            log_friction: pair(&self.log_friction)?,
+            slope: take(&self.slope)?,
+            numerator: take(&self.numerator)?,
+            denominator: take(&self.denominator)?,
+            peak: pair(&self.peak)?,
+            peak_excess: take(&self.peak_excess)?,
+            arcs,
+        })
+    }
+
     /// Gathers the rows at the I64 indices `rows`. Indices may repeat.
     pub(crate) fn select(&self, c: &R::Client, rows: &Tensor<R>) -> numr::error::Result<Self>
     where
         R::Client: BarrelClient<R>,
     {
-        let take = |value: &Tensor<R>| c.index_select(value, 0, rows);
-        let pair = |[lower, upper]: &Bounds<R>| -> numr::error::Result<Bounds<R>> {
-            Ok([take(lower)?, take(upper)?])
-        };
-        Ok(Self {
-            circular: take(&self.circular)?,
-            beta: pair(&self.beta)?,
-            rise: take(&self.rise)?,
-            froude: pair(&self.froude)?,
-            log_friction: pair(&self.log_friction)?,
-            slope: take(&self.slope)?,
-            numerator: take(&self.numerator)?,
-            denominator: take(&self.denominator)?,
-            peak: pair(&self.peak)?,
-            peak_excess: take(&self.peak_excess)?,
-        })
+        let arcs = self
+            .arcs
+            .as_ref()
+            .map(|arcs| arcs.select(c, rows))
+            .transpose()?;
+        self.map(&|value| c.index_select(value, 0, rows), arcs)
     }
 
     /// Rows `start .. start + len`.
     pub(crate) fn narrow(&self, start: usize, len: usize) -> numr::error::Result<Self> {
-        let take = |value: &Tensor<R>| value.narrow(0, start, len);
-        let pair = |[lower, upper]: &Bounds<R>| -> numr::error::Result<Bounds<R>> {
-            Ok([take(lower)?, take(upper)?])
-        };
-        Ok(Self {
-            circular: take(&self.circular)?,
-            beta: pair(&self.beta)?,
-            rise: take(&self.rise)?,
-            froude: pair(&self.froude)?,
-            log_friction: pair(&self.log_friction)?,
-            slope: take(&self.slope)?,
-            numerator: take(&self.numerator)?,
-            denominator: take(&self.denominator)?,
-            peak: pair(&self.peak)?,
-            peak_excess: take(&self.peak_excess)?,
-        })
+        let arcs = self
+            .arcs
+            .as_ref()
+            .map(|arcs| arcs.narrow(start, len))
+            .transpose()?;
+        self.map(&|value| value.narrow(0, start, len), arcs)
+    }
+
+    /// The shape view of these rows.
+    pub(crate) fn outline(&self) -> Outline<'_, R> {
+        Outline {
+            circular: &self.circular,
+            beta: &self.beta,
+            arcs: self.arcs.as_ref(),
+        }
     }
 }
 
@@ -101,6 +119,8 @@ pub(crate) struct ShapeJets<R: Runtime<DType = DType>> {
     pub(crate) top: Jet<R>,
     pub(crate) perimeter: Jet<R>,
     pub(crate) step: Jet<R>,
+    /// 1 on rows whose jets hold, when some may not: an arc derivative jet across a junction.
+    pub(crate) valid: Option<Tensor<R>>,
 }
 
 /// `x / divisor` for an exact positive divisor.
@@ -118,11 +138,11 @@ where
 
 /// Section jets with `n` terms over the coordinate enclosure `v`.
 ///
-/// Circle rows need `v` inside `[0, pi]` and box rows inside `[0, 1]`, up to one F64 outward.
+/// Circle and arc rows need `v` inside `[0, pi]` and box rows inside `[0, 1]`, up to one F64
+/// outward.
 pub(crate) fn shape<R>(
     a: &mut Arithmetic<'_, R>,
-    circular: &Tensor<R>,
-    beta: &Bounds<R>,
+    outline: &Outline<'_, R>,
     v: &Interval<R>,
     n: usize,
 ) -> ArithmeticResult<ShapeJets<R>>
@@ -131,6 +151,8 @@ where
     R::Client: BarrelClient<R>,
 {
     let c = a.client();
+    let circular = outline.circular;
+    let beta = outline.beta;
     let like = v.lower();
     let one = Rc::new(a.point(&fill(like, 1.0)?)?);
     let take = |a: &mut Arithmetic<'_, R>, mask: &Tensor<R>, harmless: f64| {
@@ -140,7 +162,8 @@ where
         a.bounds(&lower, &upper)
     };
 
-    let phi = Rc::new(take(a, circular, 1.5)?);
+    // Circle and arc rows share the angle and its sine and cosine.
+    let phi = Rc::new(take(a, &outline.angled(c)?, 1.5)?);
     // Value queries take narrow intervals and derivative jets take wide panels.
     let [sine, cosine] = if n > 1 {
         sin_cos_ends(a, &phi)?
@@ -190,11 +213,45 @@ where
     let box_top = Jet::constant(b, n);
     let box_step = Jet::constant(one, n);
 
-    Ok(ShapeJets {
+    let closed = ShapeJets {
         area: jet::choose(a, circular, &circle_area, &box_area)?,
         top: jet::choose(a, circular, &sin_jet, &box_top)?,
         perimeter: jet::choose(a, circular, &angle, &box_perimeter)?,
         step: jet::choose(a, circular, &circle_step, &box_step)?,
+        valid: None,
+    };
+    let Some(arcs) = outline.arcs else {
+        return Ok(closed);
+    };
+    let ends = if n > 1 {
+        let mut ends = Vec::with_capacity(2);
+        for end in [phi.lower(), phi.upper()] {
+            let point = a.point(end)?;
+            let [sine, cosine] = sin_cos_near(a, &point)?;
+            ends.push([point, sine, cosine]);
+        }
+        <[[Interval<R>; 3]; 2]>::try_from(ends).ok()
+    } else {
+        None
+    };
+    let trig = Trig {
+        sine: &sin_jet,
+        cosine: &cos_jet,
+        segment: &difference,
+        ends,
+    };
+    let arc = bands::shape_jets(a, arcs, &trig, &phi, n)?;
+    let arced = &arcs.arced;
+    let valid = match arc.valid {
+        Some(valid) => c.where_cond(arced, &valid, &fill(like, 1.0)?)?,
+        None => fill(like, 1.0)?,
+    };
+    Ok(ShapeJets {
+        area: jet::choose(a, arced, &arc.area, &closed.area)?,
+        top: jet::choose(a, arced, &arc.top, &closed.top)?,
+        perimeter: jet::choose(a, arced, &arc.perimeter, &closed.perimeter)?,
+        step: jet::choose(a, arced, &arc.step, &closed.step)?,
+        valid: Some(valid),
     })
 }
 
@@ -222,6 +279,10 @@ where
     let n = section.area.len();
     let base = jet::coefficient(a, &section.area, 0, &like)?;
     let valid = c.gt(base.lower(), &fill(&like, 0.0)?)?;
+    let valid = match &section.valid {
+        Some(held) => c.mul(&valid, held)?,
+        None => valid,
+    };
     let unit = Jet::constant(Rc::new(a.point(&fill(&like, 1.0)?)?), n);
     let area = jet::choose(a, &valid, &section.area, &unit)?;
     let square = jet::mul(a, &area, &area)?;
@@ -274,7 +335,7 @@ where
 {
     let c = a.client();
     let like = params.rise.clone();
-    let section = shape(a, &params.circular, &params.beta, v, n)?;
+    let section = shape(a, &params.outline(), v, n)?;
     let Slopes {
         froude,
         friction,
@@ -315,9 +376,12 @@ where
 
 /// Lower bound of `G` over every `v` in `[lower, upper]`, or a nonpositive value when none holds.
 ///
-/// `ds/dv` is concave on each domain, so its minimum sits at an end. `Fr^2` falls with depth,
-/// so the numerator is smallest at the end nearest critical depth. `a` and `p` rise with `v`, so
-/// `|S - Sf| <= |S| + K p(upper)^(4/3) / a(lower)^(10/3)`.
+/// `ds/dv` is concave on the circle and box domains, so its minimum sits at an end. On an arc
+/// row `ds/dpsi = r_k sin psi`, with `sin` concave on `[0, pi]`, so it is at least the least
+/// band radius times the smaller end sine, across junctions too. `Fr^2` falls with depth on
+/// every convex section, because `A T' <= T^2` below the widest depth and `T' <= 0` above it.
+/// So the numerator is smallest at the end nearest critical depth. `a` and `p` rise with `v`,
+/// so `|S - Sf| <= |S| + K p(upper)^(4/3) / a(lower)^(10/3)`.
 pub(crate) fn floor<R>(
     a: &mut Arithmetic<'_, R>,
     params: &ProfileParams<R>,
@@ -334,15 +398,25 @@ where
     let one = a.point(&fill(&like, 1.0)?)?;
     let low = a.point(lower)?;
     let high = a.point(upper)?;
-    let bottom = shape(a, &params.circular, &params.beta, &low, 1)?;
-    let top = shape(a, &params.circular, &params.beta, &high, 1)?;
+    let outline = params.outline();
+    let bottom = shape(a, &outline, &low, 1)?;
+    let top = shape(a, &outline, &high, 1)?;
     let at_bottom = slopes(a, params, &bottom)?;
     let at_top = slopes(a, params, &top)?;
     let term = |a: &mut Arithmetic<'_, R>, jet: &Jet<R>| jet::coefficient(a, jet, 0, &like);
 
     let step_low = term(a, &bottom.step)?;
     let step_high = term(a, &top.step)?;
-    let step = c.minimum(step_low.lower(), step_high.lower())?;
+    let mut step = c.minimum(step_low.lower(), step_high.lower())?;
+    if let Some(arcs) = &params.arcs {
+        let [sine_low, _] = sin_cos_near(a, &low)?;
+        let [sine_high, _] = sin_cos_near(a, &high)?;
+        let sine = c.minimum(sine_low.lower(), sine_high.lower())?;
+        let sine = a.bounds(&c.maximum(&sine, &zero)?, &c.maximum(&sine, &zero)?)?;
+        let least = a.bounds(&arcs.least_radius, &arcs.least_radius)?;
+        let arc = a.mul(&least, &sine)?;
+        step = c.where_cond(&arcs.arced, arc.lower(), &step)?;
+    }
 
     let froude_low = term(a, &at_bottom.froude)?;
     let froude_high = term(a, &at_top.froude)?;

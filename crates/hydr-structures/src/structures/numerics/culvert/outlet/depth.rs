@@ -11,7 +11,7 @@
 
 use super::integrand::floor;
 use super::levels::{level_for, span_level};
-use super::partition::{LANES, Profile};
+use super::partition::Profile;
 use super::quadrature::integrate;
 use super::trig::fill;
 use crate::structures::StructureError;
@@ -89,7 +89,8 @@ where
     R::Client: BarrelClient<R>,
 {
     let p = rows.numel();
-    let count = LANES + 1;
+    let last_lane = profile.lanes();
+    let count = last_lane + 1;
     let device = rows.device().clone();
     let take = |value: &Tensor<R>| c.index_select(value, 0, rows);
     let nodes = take(&profile.nodes)?;
@@ -107,7 +108,7 @@ where
     let below = c.lt(&reach_high, &wide(&target[0])?)?;
     let mut above = c.gt(&reach_low, &wide(&target[1])?)?;
     let pole: Vec<f64> = (0..count)
-        .map(|k| f64::from(u8::from(k == LANES)))
+        .map(|k| f64::from(u8::from(k == last_lane)))
         .collect();
     let pole = Tensor::<R>::from_slice(&pole, &[1, count], &device)?
         .broadcast_to(&[p, count])?
@@ -117,7 +118,7 @@ where
     let above_count = c.sum(&above, &[1], false)?;
     let zero = fill(&below_count, 0.0)?;
     let one = fill(&below_count, 1.0)?;
-    let lanes = fill(&below_count, LANES as f64)?;
+    let lanes = fill(&below_count, last_lane as f64)?;
     let total = fill(&below_count, count as f64)?;
     let low_index = c.maximum(&c.sub(&below_count, &one)?, &zero)?;
     let high_index = c.sub(&total, &above_count)?;
@@ -166,7 +167,7 @@ where
         gather_column(c, &reach_high, &high_index)?,
     ];
     let single = c.eq(&high_index, &c.add(&low_index, &one)?)?;
-    let lane = c.minimum(&low_index, &fill(&low_index, (LANES - 1) as f64)?)?;
+    let lane = c.minimum(&low_index, &fill(&low_index, (last_lane - 1) as f64)?)?;
     Ok(Bracket {
         sign,
         start,

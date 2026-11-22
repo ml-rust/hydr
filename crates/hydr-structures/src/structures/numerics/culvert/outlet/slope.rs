@@ -25,15 +25,17 @@
 //!
 //! - Rising: `F > 0`, so `u_e >= 0` and `w_e >= v_e`. Where `Sf` falls with depth, `sigma` is
 //!   least at the inlet. Then `u_e <= (2 / Q) (y_e - y_s + max(S, 0) l)`.
-//! - Falling below the circle conveyance peak `s_K`, or in a box: `dSf/dy <= 0`, so `a <= 0`.
-//!   Then `w' = |a| (v - w) + 2 Sf / Q`, and `w` never falls below `min(w_s, min v)`. That is
-//!   `v` at the deepest point, the start.
-//! - Falling from above `s_K` in a circle: `Sf` rises and `Fr^2` falls with depth there. So
-//!   `Sf >= S Fr^2` at `y_lo = max(y_e, s_K D)` gives `F >= 0` above `s_K`. Then `w_e` is at
-//!   least `v` at `y_lo`.
-//! - Falling, any shape: `Sf` has one minimum, so `Sf` is largest and `|sigma|` least at an
+//! - Falling below the conveyance peak enclosure `[s_N, s_F]`, or in a box: `dSf/dy <= 0`, so
+//!   `a <= 0`. Then `w' = |a| (v - w) + 2 Sf / Q`, and `w` never falls below `min(w_s, min v)`.
+//!   That is `v` at the deepest point, the start. A circle's enclosure is its frozen `s_K`, an
+//!   arc barrel's the certified `[s_N, s_F]`.
+//! - Falling from above `s_N`: `Sf` rises with depth above `s_F`, and `Fr^2` falls with depth
+//!   on every convex section. So `Sf >= S Fr^2` over `y_lo = [max(y_e, s_N D), max(y_e, s_F D)]`
+//!   gives `F >= 0` from `y_lo` up. Then `w_e` is at least `v` at the top of `y_lo`.
+//! - Falling, circle or box: `Sf` has one minimum, so `Sf` is largest and `|sigma|` least at an
 //!   end. Then
-//!   `u_e <= |sigma_e| dX/dQ + (2 / Q) l max(1, |sigma_e / sigma_s|) max(Sf_s, Sf_e)`.
+//!   `u_e <= |sigma_e| dX/dQ + (2 / Q) l max(1, |sigma_e / sigma_s|) max(Sf_s, Sf_e)`. An arc
+//!   profile that reaches `[s_N, s_F]` also takes the bounds of `Sf` over it, see [`super::zone`].
 //!
 //! The headwater is `HW = Es + ke Q^2 / (2 g A^2)` at the inlet. At fixed `Es` the depth falls
 //! with `Q`, so `E = Q (d_e w_e + ke v_e / (1 - Fr_e^2))` with
@@ -63,7 +65,7 @@ use super::coordinates::{area, coordinate};
 use super::integrand::{ProfileParams, shape, slopes};
 use super::jet::{self, Term};
 use super::trig::{fill, negate};
-use crate::structures::numerics::culvert::constants::CONVEYANCE_PEAK;
+use super::zone::{self, Depths, depths};
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose};
 use crate::structures::tensor::culvert::{TensorBarrelContext, TensorOutletContext};
 use numr::dtype::DType;
@@ -115,17 +117,18 @@ where
 {
     let c = a.client();
     let rise = &barrel.rise;
-    let v = coordinate(a, &barrel.circular, rise, depth)?;
-    let probe = shape(a, &params.circular, &params.beta, &v, 1)?;
+    let outline = params.outline();
+    let v = coordinate(a, &outline, rise, depth)?;
+    let probe = shape(a, &outline, &v, 1)?;
     let unit = jet::coefficient(a, &probe.area, 0, rise)?;
     let valid = c.gt(unit.lower(), &barrel.zero)?;
     let half = a.point(&barrel.half_rise)?;
-    let harmless = coordinate(a, &barrel.circular, rise, &half)?;
+    let harmless = coordinate(a, &outline, rise, &half)?;
     let v = choose(a, &valid, &v, &harmless)?;
-    let jets = shape(a, &params.circular, &params.beta, &v, 1)?;
+    let jets = shape(a, &outline, &v, 1)?;
     let values = slopes(a, params, &jets)?;
     Ok(Section {
-        area: area(a, &barrel.circular, &params.beta, rise, &v)?,
+        area: area(a, &outline, rise, &v)?,
         froude: jet::coefficient(a, &values.froude, 0, rise)?,
         friction: jet::coefficient(a, &values.friction, 0, rise)?,
         valid,
@@ -176,64 +179,6 @@ where
     a.bounds(upper, upper)
 }
 
-/// Depth enclosures of the free profile: inlet, start and the circle peak bound.
-struct Depths<R: Runtime<DType = DType>> {
-    end: Interval<R>,
-    start: Interval<R>,
-    low: Interval<R>,
-    /// 1 where `Sf` falls with depth over the whole profile.
-    monotone: Tensor<R>,
-}
-
-fn depths<R>(
-    a: &mut Arithmetic<'_, R>,
-    operands: &SlopeOperands<'_, R>,
-    free: &Tensor<R>,
-) -> ArithmeticResult<Depths<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: BarrelClient<R>,
-{
-    let SlopeOperands {
-        barrel,
-        march,
-        tailwater,
-        ..
-    } = *operands;
-    let c = a.client();
-    let classes = &march.classes;
-    let rise = &barrel.rise;
-    let half = &barrel.half_rise;
-    let [inlet_low, inlet_high] = &march.headwater.inlet;
-    let end = a.bounds(
-        &c.where_cond(free, inlet_low, half)?,
-        &c.where_cond(free, inlet_high, half)?,
-    )?;
-    let [yc_low, yc_high] = &classes.critical;
-    let start = a.bounds(
-        &c.where_cond(&classes.falling, rise, &c.maximum(tailwater, yc_low)?)?,
-        &c.where_cond(&classes.falling, rise, &c.maximum(tailwater, yc_high)?)?,
-    )?;
-    // A box has no conveyance peak below the crown.
-    let [peak_low, peak_high] = CONVEYANCE_PEAK.map(f64::from_bits);
-    let fraction = a.bounds(&fill(rise, peak_low)?, &fill(rise, peak_high)?)?;
-    let d = a.point(rise)?;
-    let circle_peak = a.mul(&fraction, &d)?;
-    let peak = choose(a, &barrel.circular, &circle_peak, &d)?;
-    let deepest = c.maximum(start.upper(), end.upper())?;
-    let monotone = c.maximum(&barrel.boxed, &c.le(&deepest, peak.lower())?)?;
-    let low = a.bounds(
-        &c.maximum(end.lower(), peak.lower())?,
-        &c.maximum(end.upper(), peak.upper())?,
-    )?;
-    Ok(Depths {
-        end,
-        start,
-        low,
-        monotone,
-    })
-}
-
 /// Lower bound of `E` and upper bound of `|dHW/dTW|` on free-inlet rows, with their mask.
 struct Bound<R: Runtime<DType = DType>> {
     gain: Interval<R>,
@@ -278,6 +223,7 @@ where
         start: y_s,
         low: y_lo,
         monotone,
+        peak,
     } = depths(a, operands, free)?;
     let end = section(a, barrel, params, &y_e)?;
     let start = section(a, barrel, params, &y_s)?;
@@ -321,8 +267,19 @@ where
     let gap_e = magnitude(a, &sigma_e)?;
     let gap_s = magnitude(a, &sigma_s)?;
     let (ratio, ratio_ok) = quotient(a, &gap_e, &gap_s)?;
-    let widest = upper_point(a, &c.maximum(ratio.upper(), &barrel.one)?)?;
-    let steepest = upper_point(a, &c.maximum(start.friction.upper(), end.friction.upper())?)?;
+    let mut widest = c.maximum(ratio.upper(), &barrel.one)?;
+    let mut steepest = c.maximum(start.friction.upper(), end.friction.upper())?;
+    let mut zone_ok = barrel.one.clone();
+    if let Some(arcs) = &operands.outlet.arcs {
+        let zone = zone::falling(a, barrel, params, &arcs.arced, [&y_e, &y_s], &peak, &gap_e)?;
+        let touches = &zone.touches;
+        widest = c.where_cond(touches, &c.maximum(&widest, &zone.ratio)?, &widest)?;
+        let most = c.maximum(&steepest, &zone.friction)?;
+        steepest = c.where_cond(touches, &most, &steepest)?;
+        zone_ok = zone.known;
+    }
+    let widest = upper_point(a, &widest)?;
+    let steepest = upper_point(a, &steepest)?;
     let span = a.mul(&two, &target)?;
     let spread = a.mul(&span, &widest)?;
     let friction = a.mul(&spread, &steepest)?;
@@ -344,6 +301,10 @@ where
         &ratio_ok,
         &c.maximum(&c.sub(&barrel.one, crown)?, &shift_ok)?,
     )?;
+    let fall_ok = match &operands.outlet.arcs {
+        None => fall_ok,
+        Some(_) => c.mul(&fall_ok, &zone_ok)?,
+    };
     let high_ok = c.where_cond(&rising, &monotone, &fall_ok)?;
     let omega_high = c.where_cond(&rising, rise_high.upper(), fall_high.upper())?;
     let omega_high = c.where_cond(&high_ok, &omega_high, &omega_low)?;
@@ -432,8 +393,9 @@ where
     // Critical depth at the inlet.
     let critical = c.mul(&c.maximum(&classes.critical_now, &reach.critical)?, &wet)?;
     let critical_depth = a.bounds(&classes.critical[0], &classes.critical[1])?;
-    let v_c = coordinate(a, &barrel.circular, &barrel.rise, &critical_depth)?;
-    let critical_area = area(a, &barrel.circular, &outlet.beta, &barrel.rise, &v_c)?;
+    let outline = outlet.outline(barrel);
+    let v_c = coordinate(a, &outline, &barrel.rise, &critical_depth)?;
+    let critical_area = area(a, &outline, &barrel.rise, &v_c)?;
     let critical_square = a.mul(&critical_area, &critical_area)?;
     let (critical_gain, critical_ok) = quotient(a, &flow.kinetic, &critical_square)?;
 

@@ -14,7 +14,7 @@
 use super::classes::Classes;
 use super::coordinates::{area, coordinate, depth};
 use super::depth::DepthEnclosure;
-use super::partition::{LANES, Profile};
+use super::partition::Profile;
 use super::trig::fill;
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose};
 use crate::structures::tensor::codes;
@@ -56,8 +56,9 @@ where
     let c = a.client();
     let one = &barrel.one;
     let m = barrel.width();
+    let lanes = profile.lanes();
     let column = |value: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
-        value.narrow(1, LANES, 1)?.contiguous()?.reshape(&[m])
+        value.narrow(1, lanes, 1)?.contiguous()?.reshape(&[m])
     };
     let last = a.bounds(&column(&profile.reach[0])?, &column(&profile.reach[1])?)?;
     let error = a.bounds(&classes.end_error[0], &classes.end_error[1])?;
@@ -77,7 +78,7 @@ where
     )?;
 
     // The last node whose distance lies certainly short of the target.
-    let count = LANES + 1;
+    let count = lanes + 1;
     let wide = |value: &Tensor<R>| -> numr::error::Result<Tensor<R>> {
         value
             .reshape(&[m, 1])?
@@ -154,18 +155,19 @@ where
     let full_head = choose(a, &classes.full_inlet, &head_full, &crown_head)?;
 
     // Free inlet depth and area.
-    let harmless = fill(rise, 0.5)?;
+    let outline = outlet.outline(barrel);
+    let harmless = outline.harmless()?;
     let v = a.bounds(
         &c.where_cond(&free_inlet, &inlet.lower, &harmless)?,
         &c.where_cond(&free_inlet, &inlet.upper, &harmless)?,
     )?;
-    let free_head = depth(a, &barrel.circular, rise, &v)?;
-    let free_area = area(a, &barrel.circular, &outlet.beta, rise, &v)?;
+    let free_head = depth(a, &outline, rise, &v)?;
+    let free_area = area(a, &outline, rise, &v)?;
 
     // Critical depth at the inlet.
     let critical_head = a.bounds(&classes.critical[0], &classes.critical[1])?;
-    let v_c = coordinate(a, &barrel.circular, rise, &critical_head)?;
-    let critical_area = area(a, &barrel.circular, &outlet.beta, rise, &v_c)?;
+    let v_c = coordinate(a, &outline, rise, &critical_head)?;
+    let critical_area = area(a, &outline, rise, &v_c)?;
 
     let full_area = a.bounds(&barrel.full_area[0], &barrel.full_area[1])?;
     let head = choose(a, &free_inlet, &free_head, &critical_head)?;
@@ -183,8 +185,8 @@ where
     let end_low = c.where_cond(open, &classes.end[0], &harmless)?;
     let end_high = c.where_cond(open, &classes.end[1], &harmless)?;
     let span = a.bounds(&c.minimum(&near, &end_low)?, &c.maximum(&near, &end_high)?)?;
-    let span_head = depth(a, &barrel.circular, rise, &span)?;
-    let span_area = area(a, &barrel.circular, &outlet.beta, rise, &span)?;
+    let span_head = depth(a, &outline, rise, &span)?;
+    let span_area = area(a, &outline, rise, &span)?;
     let span_square = a.mul(&span_area, &span_area)?;
     let span_kinetic = a.div_positive_interval(&velocity, &span_square)?;
     let span_headwater = a.add(&span_head, &span_kinetic)?;

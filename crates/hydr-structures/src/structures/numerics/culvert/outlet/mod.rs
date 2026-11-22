@@ -1,4 +1,4 @@
-//! Certified outlet-control headwater `HW_o(Q, TW)` for circle and box barrels.
+//! Certified outlet-control headwater `HW_o(Q, TW)` for circle, box and arc barrels.
 //!
 //! The march starts at the outlet. A full outlet segment carries head at the full-barrel friction
 //! rate `Sf_full - S` per metre upstream, with `Sf_full = n^2 V^2 / R^(4/3)`. A free segment
@@ -13,12 +13,14 @@
 //! budget of the profile and the widths that stop the depth solves.
 
 mod assemble;
+mod bands;
 mod classes;
 mod coordinates;
 mod depth;
 mod integrand;
 mod jet;
 pub(crate) mod jump;
+mod junctions;
 mod levels;
 mod partition;
 mod quadrature;
@@ -26,7 +28,9 @@ mod screen;
 mod slope;
 mod trig;
 mod trig_ends;
+mod zone;
 
+pub(crate) use bands::{ArcShape, Outline};
 pub(crate) use levels::Accuracy;
 pub(crate) use slope::{SlopeOperands, head_slopes};
 
@@ -71,11 +75,16 @@ where
         let values: Vec<f64> = rows.iter().map(f).collect();
         Tensor::<R>::from_slice(&values, &[m], device)
     };
-    let beta = with_interval_arithmetic(&barrel.client, DType::F64, "culvert outlet shape", |a| {
-        let span = a.point(&barrel.span)?;
-        let ratio = a.div_positive(&span, &barrel.rise)?;
-        Ok([ratio.lower().clone(), ratio.upper().clone()])
-    })?;
+    let (beta, arcs) =
+        with_interval_arithmetic(&barrel.client, DType::F64, "culvert outlet shape", |a| {
+            let span = a.point(&barrel.span)?;
+            let ratio = a.div_positive(&span, &barrel.rise)?;
+            let arcs = match &barrel.unit_arcs {
+                Some(rows) => Some(ArcShape::new(a, rows)?),
+                None => None,
+            };
+            Ok(([ratio.lower().clone(), ratio.upper().clone()], arcs))
+        })?;
     Ok(TensorOutletContext {
         length: column(&|r| r.length_m)?,
         manning: column(&|r| r.manning_n)?,
@@ -83,6 +92,7 @@ where
         slope: column(&|r| r.slope)?,
         gravity: column(&|r| r.gravity_m_per_s2)?,
         beta,
+        arcs,
     })
 }
 

@@ -19,7 +19,7 @@ use super::March;
 use super::coordinates::depth;
 use super::depth::depth_at;
 use super::levels::Accuracy;
-use super::partition::{LANES, build};
+use super::partition::build;
 use super::trig::fill;
 use crate::structures::StructureError;
 use crate::structures::numerics::culvert::BarrelClient;
@@ -69,7 +69,7 @@ where
 {
     let c = &barrel.client;
     let m = barrel.width();
-    let count = LANES + 1;
+    let count = march.profile.lanes() + 1;
     let per_row = count + 1;
     let steep = with_interval_arithmetic(c, DType::F64, "culvert outlet jump profile", |a| {
         steep(a, barrel, outlet, march, discharge)
@@ -200,17 +200,18 @@ where
     let upstream = depth_at(c, &s2, &all, &safe, &place_ok, rtol)?;
     let depths = with_interval_arithmetic(c, DType::F64, "culvert outlet jump depths", |a| {
         let ok = c.mul(&place_ok, &upstream.solved)?;
-        let half = &fill(&barrel.one, 0.5)?;
+        let outline = outlet.outline(barrel);
+        let half = &outline.harmless()?;
         let v1 = a.bounds(
             &c.where_cond(&ok, &upstream.lower, half)?,
             &c.where_cond(&ok, &upstream.upper, half)?,
         )?;
-        let y1 = depth(a, &barrel.circular, &barrel.rise, &v1)?;
+        let y1 = depth(a, &outline, &barrel.rise, &v1)?;
         let v2 = a.bounds(
             &c.where_cond(&ok, &v_low, half)?,
             &c.where_cond(&ok, &v_high, half)?,
         )?;
-        let y2 = depth(a, &barrel.circular, &barrel.rise, &v2)?;
+        let y2 = depth(a, &outline, &barrel.rise, &v2)?;
         Ok((ok, pair(&y1), pair(&y2)))
     })?;
     let (jumped, upstream_depth, downstream_depth) = depths;

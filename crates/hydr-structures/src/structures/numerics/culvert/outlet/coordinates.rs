@@ -1,12 +1,13 @@
 //! Maps between depth and the profile coordinate `v`, with the flow area at a coordinate.
 //!
 //! A circle uses the half angle `v = phi`, with `y = D (1 - cos phi) / 2`. A box uses `v = y/D`.
+//! An arc barrel uses the normal angle `v = psi`, with `y = D (y_k - r_k cos psi)` on band `k`.
 
+use super::bands::{Outline, angle_of, fraction_of};
 use super::integrand::{part, shape};
 use super::jet;
 use super::trig::{fill, sin_cos};
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose, clip};
-use crate::structures::tensor::culvert::Bounds;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -15,7 +16,7 @@ use solvr::common::arithmetic::{ArithmeticResult, Interval};
 /// Coordinate `v` of a depth enclosure `[lower, upper]` in metres, clipped to the barrel.
 pub(crate) fn coordinate<R>(
     a: &mut Arithmetic<'_, R>,
-    circular: &Tensor<R>,
+    outline: &Outline<'_, R>,
     rise: &Tensor<R>,
     depth: &Interval<R>,
 ) -> ArithmeticResult<Interval<R>>
@@ -24,19 +25,20 @@ where
     R::Client: BarrelClient<R>,
 {
     let s = a.div_positive(depth, rise)?;
-    fraction_coordinate(a, circular, &s)
+    fraction_coordinate(a, outline, &s)
 }
 
 /// Coordinate `v` of a depth fraction enclosure `s = y/D`, clipped to the barrel.
 pub(crate) fn fraction_coordinate<R>(
     a: &mut Arithmetic<'_, R>,
-    circular: &Tensor<R>,
+    outline: &Outline<'_, R>,
     s: &Interval<R>,
 ) -> ArithmeticResult<Interval<R>>
 where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R>,
 {
+    let circular = outline.circular;
     let like = circular;
     let s = clip(a, s, 0.0, 1.0)?;
     let one = a.point(&fill(like, 1.0)?)?;
@@ -46,13 +48,20 @@ where
     // The exact cosine lies in [-1, 1]. Outward rounding may step one F64 past either end.
     let cosine = clip(a, &cosine, -1.0, 1.0)?;
     let angle = a.acos(&cosine)?;
-    choose(a, circular, &angle, &s)
+    let closed = choose(a, circular, &angle, &s)?;
+    match outline.arcs {
+        None => Ok(closed),
+        Some(arcs) => {
+            let arc = angle_of(a, arcs, &s)?;
+            choose(a, &arcs.arced, &arc, &closed)
+        }
+    }
 }
 
 /// Depth in metres of a coordinate enclosure `v`.
 pub(crate) fn depth<R>(
     a: &mut Arithmetic<'_, R>,
-    circular: &Tensor<R>,
+    outline: &Outline<'_, R>,
     rise: &Tensor<R>,
     v: &Interval<R>,
 ) -> ArithmeticResult<Interval<R>>
@@ -65,7 +74,14 @@ where
     let one = a.point(&fill(like, 1.0)?)?;
     let gap = a.sub(&one, &cosine)?;
     let circle = part(a, &gap, 2.0)?;
-    let s = choose(a, circular, &circle, v)?;
+    let s = choose(a, outline.circular, &circle, v)?;
+    let s = match outline.arcs {
+        None => s,
+        Some(arcs) => {
+            let arc = fraction_of(a, arcs, v, &cosine)?;
+            choose(a, &arcs.arced, &arc, &s)?
+        }
+    };
     let s = clip(a, &s, 0.0, 1.0)?;
     let d = a.point(rise)?;
     a.mul(&d, &s)
@@ -73,13 +89,13 @@ where
 
 /// Flow area in square metres of a coordinate enclosure `v` below the crown.
 ///
-/// The area rises with `v`: `dA/dphi = D^2 sin^2(phi) / 2` for a circle and `B D` for a box.
-/// So the area at each end of `v` bounds it. One evaluation over all of `v` would count `phi`
-/// twice in `phi - sin(phi) cos(phi)`, and at a small angle that enclosure reaches below zero.
+/// The area rises with `v`: `dA/dphi = D^2 sin^2(phi) / 2` for a circle, `B D` for a box and
+/// `T dy/dpsi >= 0` on an arc band. So the area at each end of `v` bounds it. One evaluation
+/// over all of `v` would count `phi` twice in `phi - sin(phi) cos(phi)`, and at a small angle
+/// that enclosure reaches below zero.
 pub(crate) fn area<R>(
     a: &mut Arithmetic<'_, R>,
-    circular: &Tensor<R>,
-    beta: &Bounds<R>,
+    outline: &Outline<'_, R>,
     rise: &Tensor<R>,
     v: &Interval<R>,
 ) -> ArithmeticResult<Interval<R>>
@@ -89,16 +105,15 @@ where
 {
     let low = a.point(v.lower())?;
     let high = a.point(v.upper())?;
-    let at_low = point_area(a, circular, beta, rise, &low)?;
-    let at_high = point_area(a, circular, beta, rise, &high)?;
+    let at_low = point_area(a, outline, rise, &low)?;
+    let at_high = point_area(a, outline, rise, &high)?;
     a.bounds(at_low.lower(), at_high.upper())
 }
 
 /// Flow area in square metres at a coordinate `v`.
 fn point_area<R>(
     a: &mut Arithmetic<'_, R>,
-    circular: &Tensor<R>,
-    beta: &Bounds<R>,
+    outline: &Outline<'_, R>,
     rise: &Tensor<R>,
     v: &Interval<R>,
 ) -> ArithmeticResult<Interval<R>>
@@ -106,7 +121,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R>,
 {
-    let section = shape(a, circular, beta, v, 1)?;
+    let section = shape(a, outline, v, 1)?;
     let unit = jet::coefficient(a, &section.area, 0, rise)?;
     let d = a.point(rise)?;
     let square = a.mul(&d, &d)?;
@@ -137,7 +152,12 @@ mod tests {
         let (low, high) = (tensor(&angles)?, tensor(&wide)?);
         let [lower, upper] = with_interval_arithmetic(&client, DType::F64, "small area", |a| {
             let v = a.bounds(&low, &high)?;
-            let square = area(a, &circular, &beta, &rise, &v)?;
+            let outline = Outline {
+                circular: &circular,
+                beta: &beta,
+                arcs: None,
+            };
+            let square = area(a, &outline, &rise, &v)?;
             Ok([
                 square.lower().try_to_vec::<f64>()?,
                 square.upper().try_to_vec::<f64>()?,
@@ -168,9 +188,14 @@ mod tests {
         let depths = tensor(&[1.0, 0.6])?;
         let [back, square] = with_interval_arithmetic(&client, DType::F64, "coordinates", |a| {
             let y = a.point(&depths)?;
-            let v = coordinate(a, &circular, &rise, &y)?;
-            let back = depth(a, &circular, &rise, &v)?;
-            let square = area(a, &circular, &beta, &rise, &v)?;
+            let outline = Outline {
+                circular: &circular,
+                beta: &beta,
+                arcs: None,
+            };
+            let v = coordinate(a, &outline, &rise, &y)?;
+            let back = depth(a, &outline, &rise, &v)?;
+            let square = area(a, &outline, &rise, &v)?;
             Ok([
                 [
                     back.lower().try_to_vec::<f64>()?,

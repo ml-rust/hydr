@@ -4,9 +4,7 @@ use super::{CulvertOutletHeadwater, CulvertOutletJump, CulvertOutletRow};
 use crate::structures::culvert::input::{check_depths, check_discharges};
 use crate::structures::numerics::culvert::RowNames;
 use crate::structures::numerics::culvert::outlet::{self, Accuracy, jump};
-use crate::structures::tensor::culvert::{
-    TensorBarrelContext, TensorOutletContext, reject_arc_barrels,
-};
+use crate::structures::tensor::culvert::{TensorBarrelContext, TensorOutletContext};
 use crate::structures::{CulvertBarrel, StructureError};
 use numr::dtype::DType;
 use numr::ops::{
@@ -66,7 +64,6 @@ impl<R: Runtime<DType = DType>> CulvertOutletBatch<R> {
             row.check().map_err(|error| error.at(index))?;
         }
         let barrels: Arc<[CulvertBarrel]> = rows.iter().map(|row| row.barrel).collect();
-        reject_arc_barrels(&barrels, "outlet control")?;
         let barrel = TensorBarrelContext::new(client, &barrels)?;
         let unit = barrel.unit()?;
         let outlet = outlet::prepare(&barrel, &rows)?;

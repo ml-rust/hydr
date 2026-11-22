@@ -14,7 +14,11 @@
 //! takes the free-surface perimeter. Its falling profile from the crown is empty, so it leaves
 //! critical depth at the inlet.
 //!
-//! A rising row whose normal depth lies near the circle conveyance peak may pass the peak or
+//! A closed arc section's critical depth lies below its crown, so the crown cap never selects
+//! an arc row. Its free-surface perimeter reaches the full perimeter at the crown, so an arc
+//! row has no priming step.
+//!
+//! A rising row whose normal depth lies near the conveyance peak may pass the peak or
 //! stop below it, so its profile heads for the crown. Lanes past a root on the way stay
 //! unknown. An asymptotic profile records the far bound of its normal-depth enclosure.
 //!
@@ -272,7 +276,8 @@ where
         &c.maximum(tailwater, &yc[0])?,
         &c.maximum(tailwater, &yc[1])?,
     )?;
-    let v0 = coordinate(a, &barrel.circular, rise, &h0)?;
+    let outline = outlet.outline(barrel);
+    let v0 = coordinate(a, &outline, rise, &h0)?;
     let base = ProfileParams {
         circular: barrel.circular.clone(),
         beta: outlet.beta.clone(),
@@ -284,8 +289,9 @@ where
         denominator: one.clone(),
         peak: [zero.clone(), zero.clone()],
         peak_excess: zero.clone(),
+        arcs: outlet.arcs.clone(),
     };
-    let section = shape(a, &barrel.circular, &outlet.beta, &v0, 1)?;
+    let section = shape(a, &outline, &v0, 1)?;
     let at_start = slopes(a, &base, &section)?;
     let start_friction = jet::coefficient(a, &at_start.friction, 0, rise)?;
     let up = and(&free, &c.gt(start_friction.lower(), &outlet.slope)?)?;
@@ -326,19 +332,19 @@ where
         &fill(rise, f64::from_bits(PI[0]))?,
         &fill(rise, f64::from_bits(PI[1]))?,
     )?;
-    let crown = choose(a, &barrel.circular, &crown, &unit)?;
-    let v_tw = coordinate(a, &barrel.circular, rise, &tw)?;
+    let crown = choose(a, &outline.angled(c)?, &crown, &unit)?;
+    let v_tw = coordinate(a, &outline, rise, &tw)?;
     let normal_depth = a.bounds(&yn[0], &yn[1])?;
-    let v_yn = coordinate(a, &barrel.circular, rise, &normal_depth)?;
+    let v_yn = coordinate(a, &outline, rise, &normal_depth)?;
     let critical_depth = a.bounds(&yc[0], &yc[1])?;
-    let v_yc = coordinate(a, &barrel.circular, rise, &critical_depth)?;
+    let v_yc = coordinate(a, &outline, rise, &critical_depth)?;
     let start = pick(
         c,
         &up,
         &ends(&v0),
         &pick(c, &falling, &ends(&crown), &ends(&v_tw))?,
     )?;
-    let harmless = [fill(rise, 0.5)?, fill(rise, 0.5)?];
+    let harmless = [outline.harmless()?, outline.harmless()?];
     let active_raw = or(&or(&asym_up, &crown_up)?, &or(&asym_down, &critical_down)?)?;
     let start = pick(c, &active_raw, &start, &harmless)?;
     let represented = c.where_cond(&up, &start[1], &start[0])?;
@@ -367,7 +373,7 @@ where
         denominator: c.mul(&sign, &fill(rise, -1.0)?)?,
         ..base
     };
-    let params = with_peak(a, params)?;
+    let params = with_peak(a, params, barrel)?;
     let start_interval = a.bounds(&start[0], &start[1])?;
     let start_point = a.point(&start[0])?;
     let start_width = a.sub(&start_interval, &start_point)?;

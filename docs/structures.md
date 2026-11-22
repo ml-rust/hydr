@@ -627,7 +627,7 @@ Each constructor returns `StructureInputErrorKind::Definition` for these inputs:
 
 The message names the field, its value, and the corrective action.
 
-Four more constructors build barrels from tangent circular arcs. `geometry`, `geometry_over` and `full_geometry` accept them. `critical_depth`, `normal_depth`, `CulvertInletBatch`, `CulvertOutletBatch` and `StructureBatch::with_culverts` reject them with `StructureInputErrorKind::Definition`, naming the row. Use a circular or box barrel for those.
+Four more constructors build barrels from tangent circular arcs. `geometry`, `geometry_over`, `full_geometry`, `critical_depth`, `normal_depth` and `CulvertOutletBatch` accept them. `CulvertInletBatch` and `StructureBatch::with_culverts` reject them with `StructureInputErrorKind::Definition`, naming the row. Use a circular or box barrel for those.
 
 | Constructor | Shape | Rules |
 | --- | --- | --- |
