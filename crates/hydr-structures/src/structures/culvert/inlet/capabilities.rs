@@ -65,7 +65,7 @@ static CULVERT_INLET: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "invalid-inlet-row",
             UnsupportedReason::RejectedByAdmission,
-            "An empty row list, a nonfinite slope, a nonfinite or nonpositive gravity, or a coded inlet on a barrel of another shape rejects.",
+            "An empty row list, a nonfinite slope, a nonfinite or nonpositive gravity, a coded inlet on a barrel of another shape, or an elliptical, pipe-arch or flat-floor arch barrel rejects.",
         ),
         unsupported(
             "falling-transition",

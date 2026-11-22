@@ -68,7 +68,7 @@ static CULVERT_OUTLET: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "invalid-outlet-row",
             UnsupportedReason::RejectedByAdmission,
-            "An empty row list, a nonfinite or nonpositive length, Manning n or gravity, a nonfinite or negative entrance loss, or a nonfinite slope rejects.",
+            "An empty row list, a nonfinite or nonpositive length, Manning n or gravity, a nonfinite or negative entrance loss, a nonfinite slope, or an elliptical, pipe-arch or flat-floor arch barrel rejects.",
         ),
         unsupported(
             "adverse-beyond-range",

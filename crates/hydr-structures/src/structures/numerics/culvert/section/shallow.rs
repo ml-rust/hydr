@@ -13,7 +13,7 @@
 use super::{Quantities, top_width};
 use crate::structures::numerics::culvert::constants::SERIES_TERMS;
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient};
-use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext};
+use crate::structures::tensor::culvert::{Bounds, SeriesTensors, TensorBarrelContext};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -35,20 +35,7 @@ where
     let top_width = top_width(a, barrel, &y, &d)?;
     let s = a.div_positive(&y, rise)?;
     let r = a.sqrt_nonnegative(&s)?;
-    let one = a.point(&barrel.one)?;
-    let rest = a.sub(&one, &s)?;
-    // weight = s^m / (1 - s) with m = 14: s^14 = s^8 s^4 s^2.
-    let s2 = a.mul(&s, &s)?;
-    let s4 = a.mul(&s2, &s2)?;
-    let s8 = a.mul(&s4, &s4)?;
-    let s12 = a.mul(&s8, &s4)?;
-    let s14 = a.mul(&s12, &s2)?;
-    let weight = a.div_positive_interval(&s14, &rest)?;
-
-    let series = &barrel.series;
-    let asin = sum(a, barrel, &series.asin, &s, &weight, Tail::Positive)?;
-    let area_sum = sum(a, barrel, &series.area, &s, &weight, Tail::Negative)?;
-    let moment_sum = sum(a, barrel, &series.moment, &s, &weight, Tail::Negative)?;
+    let [asin, area_sum, moment_sum] = sums(a, &barrel.series, &s, &barrel.one, &barrel.zero)?;
 
     let two = a.point(&barrel.constant(2.0)?)?;
     let half_angle = a.mul(&r, &asin)?;
@@ -79,6 +66,36 @@ where
     })
 }
 
+/// Encloses `[sum a_k s^k, sum c_k s^k, sum c_k s^k / (k + 5/2)]` for `0 <= s < 1`.
+///
+/// `one` and `zero` are `[m]` tensors of ones and zeros.
+pub(crate) fn sums<R>(
+    a: &mut Arithmetic<'_, R>,
+    series: &SeriesTensors<R>,
+    s: &Interval<R>,
+    one: &Tensor<R>,
+    zero: &Tensor<R>,
+) -> ArithmeticResult<[Interval<R>; 3]>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    let one = a.point(one)?;
+    let rest = a.sub(&one, s)?;
+    // weight = s^m / (1 - s) with m = 14: s^14 = s^8 s^4 s^2.
+    let s2 = a.mul(s, s)?;
+    let s4 = a.mul(&s2, &s2)?;
+    let s8 = a.mul(&s4, &s4)?;
+    let s12 = a.mul(&s8, &s4)?;
+    let s14 = a.mul(&s12, &s2)?;
+    let weight = a.div_positive_interval(&s14, &rest)?;
+    Ok([
+        sum(a, zero, &series.asin, s, &weight, Tail::Positive)?,
+        sum(a, zero, &series.area, s, &weight, Tail::Negative)?,
+        sum(a, zero, &series.moment, s, &weight, Tail::Negative)?,
+    ])
+}
+
 /// Sign of every coefficient past the leading one.
 #[derive(Clone, Copy)]
 enum Tail {
@@ -89,7 +106,7 @@ enum Tail {
 /// Encloses `sum_k coefficient_k s^k` over all `k`, with the remainder past `SERIES_TERMS`.
 fn sum<R>(
     a: &mut Arithmetic<'_, R>,
-    barrel: &TensorBarrelContext<R>,
+    zero: &Tensor<R>,
     coefficients: &[Bounds<R>],
     s: &Interval<R>,
     weight: &Interval<R>,
@@ -112,8 +129,8 @@ where
     let omitted = coefficient(a, SERIES_TERMS)?;
     let bound = a.mul(&omitted, weight)?;
     let remainder = match tail {
-        Tail::Positive => a.bounds(&barrel.zero, bound.upper())?,
-        Tail::Negative => a.bounds(bound.lower(), &barrel.zero)?,
+        Tail::Positive => a.bounds(zero, bound.upper())?,
+        Tail::Negative => a.bounds(bound.lower(), zero)?,
     };
     a.add(&horner, &remainder)
 }

@@ -60,7 +60,17 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "unrepresentable-barrel-dimensions",
             UnsupportedReason::RejectedByAdmission,
-            "A nonfinite or nonpositive span or rise rejects. So does a rise whose 2^-30 fraction is subnormal, or dimensions whose area, perimeter or moment scale overflows F64.",
+            "A nonfinite or nonpositive span, rise or given radius rejects. So does a rise whose 2^-30 fraction is subnormal, dimensions whose area, perimeter or moment scale overflows F64, or a given or derived radius whose cube overflows F64.",
+        ),
+        unsupported(
+            "arc-barrel-dimensions",
+            UnsupportedReason::RejectedByAdmission,
+            "An elliptical, pipe-arch or flat-floor arch barrel whose dimensions break its tangent-arc rules rejects at construction. Each message names the rule, the values and the dimension to change.",
+        ),
+        unsupported(
+            "arc-barrel-geometry",
+            UnsupportedReason::RejectedByAdmission,
+            "A batch holding an elliptical, pipe-arch or flat-floor arch barrel rejects. Their geometry is not yet available.",
         ),
         unsupported(
             "empty-barrel-batch",
@@ -80,7 +90,7 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "other-barrel-shapes",
             UnsupportedReason::OutsideModel,
-            "Only circular and rectangular box barrels; no elliptical, arch or pipe-arch sections.",
+            "No corrugated metal box, long-span structural plate, true ellipse or tapered sections.",
         ),
         unsupported(
             "culvert-discharge",

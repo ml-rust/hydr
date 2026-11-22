@@ -126,10 +126,12 @@ fn same_culvert(a: &CulvertParameters, b: &CulvertParameters) -> bool {
         }
         _ => false,
     };
+    let radii = |p: &CulvertParameters| p.barrel().given_radius_m().unwrap_or(&[]).to_vec();
     a.applicability() == b.applicability()
         && a.barrel().shape() == b.barrel().shape()
         && a.barrel_count() == b.barrel_count()
         && bits(&values(a), &values(b))
+        && bits(&radii(a), &radii(b))
         && same_end(a.ends().a, b.ends().a)
         && same_end(a.ends().b, b.ends().b)
 }
@@ -192,6 +194,74 @@ mod tests {
                 },
             )?),
         })
+    }
+
+    /// A one-end culvert on `barrel` with explicit form-1 inlet coefficients.
+    fn arc_culvert(barrel: crate::structures::CulvertBarrel) -> TestResult<StructureElement> {
+        use crate::structures::{
+            CulvertAlignment, CulvertApplicability, CulvertEnd, CulvertEnds, CulvertInlet,
+            CulvertInletForm, CulvertParameters, DirectionPolicy,
+        };
+        let inlet =
+            CulvertInlet::explicit(CulvertInletForm::One, [0.0083, 2.0, 0.0379, 0.69], false)?;
+        Ok(StructureElement {
+            id: "c".into(),
+            endpoint_a: "a".into(),
+            endpoint_b: "b".into(),
+            datum: "datum".into(),
+            direction: DirectionPolicy::Bidirectional,
+            law: StructureLaw::Culvert(CulvertParameters::new(
+                barrel,
+                CulvertAlignment {
+                    length_m: 20.0,
+                    invert_a_m: 0.1,
+                    invert_b_m: 0.0,
+                },
+                0.024,
+                1,
+                CulvertEnds {
+                    a: Some(CulvertEnd::new(inlet, 0.5)?),
+                    b: None,
+                },
+                9.81,
+                CulvertApplicability {
+                    coefficient_provenance: "HDS-5".into(),
+                    barrel_condition_assertion: "Clean".into(),
+                },
+            )?),
+        })
+    }
+
+    #[test]
+    fn one_ulp_of_a_given_radius_distinguishes_culverts() -> TestResult {
+        use crate::structures::CulvertBarrel;
+        let pipe =
+            |corner: f64, bottom: f64| CulvertBarrel::pipe_arch(1.8542, 1.397, corner, bottom);
+        let base = arc_culvert(pipe(0.4572, 1.938_528)?)?;
+        assert!(same_elements(
+            std::slice::from_ref(&base),
+            &[arc_culvert(pipe(0.4572, 1.938_528)?)?]
+        ));
+        let ellipse = |side: f64| CulvertBarrel::horizontal_ellipse(1.524, 0.9652, side);
+        let wide = arc_culvert(ellipse(0.419_475_92)?)?;
+        for (reference, other) in [
+            (&base, arc_culvert(pipe(0.4572_f64.next_up(), 1.938_528)?)?),
+            (
+                &base,
+                arc_culvert(pipe(0.4572, 1.938_528_f64.next_down())?)?,
+            ),
+            (&wide, arc_culvert(ellipse(0.419_475_92_f64.next_up())?)?),
+            (
+                &wide,
+                arc_culvert(CulvertBarrel::vertical_ellipse(1.524, 1.6, 0.419_475_92)?)?,
+            ),
+        ] {
+            assert!(!same_elements(
+                std::slice::from_ref(reference),
+                std::slice::from_ref(&other)
+            ));
+        }
+        Ok(())
     }
 
     #[test]

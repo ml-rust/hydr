@@ -1,4 +1,10 @@
 //! Closed-conduit barrel shapes and their admission.
+//!
+//! Elliptical, pipe-arch and flat-floor arch barrels are tangent circular arcs. Their
+//! constructors check the tangency rules of their dimensions. Batches do not yet accept them.
+
+mod arcs;
+mod enclosure;
 
 use crate::structures::StructureError;
 
@@ -10,6 +16,24 @@ pub enum CulvertBarrelShape {
     Circular,
     /// Rectangular box of span `B` and rise `D`.
     Box,
+    /// Four-arc ellipse with span above rise: invert and crown arcs of one radius, two side arcs.
+    HorizontalEllipse,
+    /// Four-arc ellipse with rise above span: two end arcs of one radius, two side arcs.
+    VerticalEllipse,
+    /// Corrugated metal pipe-arch: bottom arc, two corner arcs and a top arc.
+    PipeArch,
+    /// One arc on a flat floor whose chord is the span.
+    Arch,
+}
+
+impl CulvertBarrelShape {
+    /// True for the shapes built from tangent circular arcs.
+    pub(crate) fn arced(self) -> bool {
+        matches!(
+            self,
+            Self::HorizontalEllipse | Self::VerticalEllipse | Self::PipeArch | Self::Arch
+        )
+    }
 }
 
 /// Admitted culvert barrel cross-section, with dimensions in metres.
@@ -18,6 +42,9 @@ pub struct CulvertBarrel {
     shape: CulvertBarrelShape,
     span_m: f64,
     rise_m: f64,
+    /// Given radii in constructor order. Only the first `given` entries are set.
+    radii_m: [f64; 2],
+    given: usize,
 }
 
 /// Dimensions scaled by this factor stay finite, so area, perimeter and moment never overflow.
@@ -34,12 +61,13 @@ impl CulvertBarrel {
     pub fn circular(diameter_m: f64) -> Result<Self, StructureError> {
         dimension("diameter_m", "diameter", diameter_m)?;
         let fields = format!("diameter_m={diameter_m:?}");
-        admit(
+        scales(diameter_m, diameter_m, &[], &fields)?;
+        Ok(Self::new(
             CulvertBarrelShape::Circular,
             diameter_m,
             diameter_m,
-            &fields,
-        )
+            &[],
+        ))
     }
 
     /// Admits a box barrel of span `span_m` and rise `rise_m`.
@@ -50,12 +78,38 @@ impl CulvertBarrel {
         dimension("span_m", "span", span_m)?;
         dimension("rise_m", "rise", rise_m)?;
         let fields = format!("span_m={span_m:?},rise_m={rise_m:?}");
-        admit(CulvertBarrelShape::Box, span_m, rise_m, &fields)
+        scales(span_m, rise_m, &[], &fields)?;
+        Ok(Self::new(CulvertBarrelShape::Box, span_m, rise_m, &[]))
+    }
+
+    /// A barrel from checked dimensions and at most two given radii.
+    fn new(shape: CulvertBarrelShape, span_m: f64, rise_m: f64, given: &[f64]) -> Self {
+        let mut radii_m = [0.0; 2];
+        for (slot, radius) in radii_m.iter_mut().zip(given) {
+            *slot = *radius;
+        }
+        Self {
+            shape,
+            span_m,
+            rise_m,
+            radii_m,
+            given: given.len().min(2),
+        }
     }
 
     /// Barrel shape.
     pub fn shape(&self) -> CulvertBarrelShape {
         self.shape
+    }
+
+    /// Radii the caller gave, in metres and constructor order.
+    ///
+    /// A horizontal ellipse gives its side radius, a vertical ellipse its end radius, and a
+    /// pipe-arch its corner and bottom radius. `None` for a circle, a box and a flat-floor arch.
+    pub fn given_radius_m(&self) -> Option<&[f64]> {
+        self.radii_m
+            .get(..self.given)
+            .filter(|radii| !radii.is_empty())
     }
 
     /// Horizontal width `B` in metres. A circle reports its diameter.
@@ -78,12 +132,16 @@ fn dimension(field: &str, what: &str, value: f64) -> Result<(), StructureError> 
     )))
 }
 
-fn admit(
-    shape: CulvertBarrelShape,
+/// Rejects a rise whose `2^-30` fraction is subnormal, and dimensions or radii whose area,
+/// perimeter, moment or cubed radius scale, times 64, overflows F64.
+///
+/// `radii` pairs each radius with the name the message gives it.
+fn scales(
     span_m: f64,
     rise_m: f64,
+    radii: &[(&str, f64)],
     fields: &str,
-) -> Result<CulvertBarrel, StructureError> {
+) -> Result<(), StructureError> {
     // 2^-992 = MIN_POSITIVE 2^30 is exact. Below it, D 2^-30 is subnormal or rounds.
     let smallest = f64::MIN_POSITIVE / FLOOR_FRACTION;
     if rise_m < smallest {
@@ -103,11 +161,14 @@ fn admit(
             )));
         }
     }
-    Ok(CulvertBarrel {
-        shape,
-        span_m,
-        rise_m,
-    })
+    for (name, radius) in radii {
+        if !(radius * radius * radius * OVERFLOW_MARGIN).is_finite() {
+            return Err(StructureError::definition(format!(
+                "{fields}: the {name} radius cubed times 64 overflows F64. Supply smaller barrel dimensions in metres"
+            )));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -175,6 +236,10 @@ mod tests {
         let rectangle = CulvertBarrel::rectangular_box(2.5, 0.8)?;
         assert_eq!(rectangle.shape(), CulvertBarrelShape::Box);
         assert_eq!((rectangle.span_m(), rectangle.rise_m()), (2.5, 0.8));
+        for barrel in [circle, rectangle] {
+            assert_eq!(barrel.given_radius_m(), None);
+            assert!(!barrel.shape().arced());
+        }
         // The smallest admitted rise keeps D 2^-30 normal.
         let smallest = f64::MIN_POSITIVE / FLOOR_FRACTION;
         assert!(CulvertBarrel::circular(smallest).is_ok());

@@ -71,6 +71,11 @@ static CULVERT: ComponentCapabilities = ComponentCapabilities {
             "A nonfinite invert, a zero barrel count, no culvert end, a negative entrance loss, or an end whose inlet or outlet row the queries reject, rejects.",
         ),
         unsupported(
+            "culvert-arc-barrel",
+            UnsupportedReason::RejectedByAdmission,
+            "StructureBatch::with_culverts rejects a culvert whose barrel is elliptical, pipe-arch or flat-floor arch. Their geometry is not yet available.",
+        ),
+        unsupported(
             "culvert-end-mismatch",
             UnsupportedReason::RejectedByAdmission,
             "A culvert must declare an end for each direction its policy admits and no other.",

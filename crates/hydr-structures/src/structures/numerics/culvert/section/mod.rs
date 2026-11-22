@@ -22,6 +22,7 @@ mod shallow;
 
 pub(crate) use full::full_constants;
 pub(crate) use range::over_depth;
+pub(crate) use shallow::sums;
 
 use super::{Arithmetic, BarrelClient};
 use crate::structures::tensor::codes;

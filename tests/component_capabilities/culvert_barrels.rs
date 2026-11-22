@@ -62,6 +62,36 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                 "times 64 overflows F64",
             ),
         ],
+        "arc-barrel-dimensions" => vec![
+            (
+                dropped(CulvertBarrel::horizontal_ellipse(1.2, 1.5, 0.3)),
+                K::Definition,
+                "a horizontal ellipse needs span above rise",
+            ),
+            (
+                dropped(CulvertBarrel::vertical_ellipse(1.0, 2.0, 0.5)),
+                K::Definition,
+                "a vertical ellipse needs an end radius below half the span",
+            ),
+            (
+                dropped(CulvertBarrel::pipe_arch(2.0, 1.8, 0.5, 2.0)),
+                K::Definition,
+                "a pipe-arch needs the rise above the corner centres",
+            ),
+            (
+                dropped(CulvertBarrel::arch(2.0, 0.4)),
+                K::Definition,
+                "a flat-floor arch needs a rise of at least a quarter of the span",
+            ),
+        ],
+        "arc-barrel-geometry" => vec![(
+            dropped(CulvertBarrelBatch::<Runtime>::new(
+                client(),
+                vec![CulvertBarrel::arch(3.048, 1.6002)?],
+            )),
+            K::Definition,
+            "arc barrel geometry not yet available",
+        )],
         "empty-barrel-batch" => vec![(
             dropped(CulvertBarrelBatch::<Runtime>::new(client(), Vec::new())),
             K::Definition,

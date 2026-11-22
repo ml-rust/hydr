@@ -5,10 +5,9 @@
 use super::integrand::{part, shape};
 use super::jet;
 use super::trig::{fill, sin_cos};
-use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose};
+use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose, clip};
 use crate::structures::tensor::culvert::Bounds;
 use numr::dtype::DType;
-use numr::ops::BinaryOps;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval};
@@ -48,26 +47,6 @@ where
     let cosine = clip(a, &cosine, -1.0, 1.0)?;
     let angle = a.acos(&cosine)?;
     choose(a, circular, &angle, &s)
-}
-
-/// Intersects `x` with `[low, high]`, collapsing an interval wholly outside to the nearer end.
-fn clip<R>(
-    a: &mut Arithmetic<'_, R>,
-    x: &Interval<R>,
-    low: f64,
-    high: f64,
-) -> ArithmeticResult<Interval<R>>
-where
-    R: Runtime<DType = DType>,
-    R::Client: BarrelClient<R>,
-{
-    let c = a.client();
-    let like = x.lower();
-    let floor = fill(like, low)?;
-    let ceiling = fill(like, high)?;
-    let lower = c.minimum(&c.maximum(x.lower(), &floor)?, &ceiling)?;
-    let upper = c.maximum(&c.minimum(x.upper(), &ceiling)?, &floor)?;
-    a.bounds(&lower, &upper)
 }
 
 /// Depth in metres of a coordinate enclosure `v`.

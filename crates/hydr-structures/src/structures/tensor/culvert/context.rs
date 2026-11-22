@@ -18,6 +18,28 @@ pub(crate) struct SeriesTensors<R: Runtime<DType = DType>> {
     pub(crate) moment: Vec<Bounds<R>>,
 }
 
+impl<R: Runtime<DType = DType>> SeriesTensors<R> {
+    /// The certified series coefficient bounds, each `[m]` wide on `device`.
+    pub(crate) fn constant(m: usize, device: &R::Device) -> numr::error::Result<Self> {
+        let bounds = |table: &[[u64; 2]]| -> numr::error::Result<Vec<Bounds<R>>> {
+            table
+                .iter()
+                .map(|[lower, upper]| {
+                    Ok([
+                        Tensor::<R>::full_scalar(&[m], DType::F64, f64::from_bits(*lower), device)?,
+                        Tensor::<R>::full_scalar(&[m], DType::F64, f64::from_bits(*upper), device)?,
+                    ])
+                })
+                .collect()
+        };
+        Ok(Self {
+            asin: bounds(&constants::ASIN)?,
+            area: bounds(&constants::AREA)?,
+            moment: bounds(&constants::MOMENT)?,
+        })
+    }
+}
+
 /// One row per barrel. Circle and box rows mix and the `circular` mask selects per row.
 ///
 /// Every field lives on the device, so [`TensorBarrelContext::select`] gathers rows without a
@@ -65,6 +87,14 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             return Err(StructureError::definition(
                 "barrels=[]: supply at least one culvert barrel",
             ));
+        }
+        if let Some((index, barrel)) = barrels.iter().enumerate().find(|(_, b)| b.shape().arced()) {
+            return Err(StructureError::definition(format!(
+                "barrels[{index}]: shape={:?},span_m={:?},rise_m={:?}: arc barrel geometry not yet available. Use a circular or box barrel",
+                barrel.shape(),
+                barrel.span_m(),
+                barrel.rise_m()
+            )));
         }
         if let Some(error) = crate::tensor::probe_f64::<R, _>(&client)? {
             return Err(StructureError::definition(error.message("culvert barrel")));
@@ -181,32 +211,7 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
                 constants::BOX_NORMAL_SLOPE
             }
         })?;
-        let bounds = |table: &[[u64; 2]]| -> numr::error::Result<Vec<Bounds<R>>> {
-            table
-                .iter()
-                .map(|[lower, upper]| {
-                    Ok([
-                        Tensor::<R>::full_scalar(
-                            &[m],
-                            DType::F64,
-                            f64::from_bits(*lower),
-                            &device,
-                        )?,
-                        Tensor::<R>::full_scalar(
-                            &[m],
-                            DType::F64,
-                            f64::from_bits(*upper),
-                            &device,
-                        )?,
-                    ])
-                })
-                .collect()
-        };
-        let series = SeriesTensors {
-            asin: bounds(&constants::ASIN)?,
-            area: bounds(&constants::AREA)?,
-            moment: bounds(&constants::MOMENT)?,
-        };
+        let series = SeriesTensors::constant(m, &device)?;
         let [full_area, full_perimeter, full_radius] = with_interval_arithmetic(
             &client,
             DType::F64,
@@ -263,6 +268,23 @@ mod tests {
             Some(StructureError::InvalidInput { kind: StructureInputErrorKind::Definition, ref context, .. })
                 if context.contains("supply at least one culvert barrel")
         ));
+    }
+
+    #[test]
+    fn arc_barrels_are_rejected_with_their_row() -> Result<(), StructureError> {
+        let device = CpuDevice::new();
+        let client = CpuRuntime::default_client(&device);
+        let barrels = [
+            CulvertBarrel::circular(0.3)?,
+            CulvertBarrel::pipe_arch(1.8542, 1.397, 0.4572, 1.938_528)?,
+        ];
+        let error = TensorBarrelContext::<CpuRuntime>::new(client, &barrels).err();
+        assert!(matches!(
+            error,
+            Some(StructureError::InvalidInput { kind: StructureInputErrorKind::Definition, ref context, .. })
+                if context == "barrels[1]: shape=PipeArch,span_m=1.8542,rise_m=1.397: arc barrel geometry not yet available. Use a circular or box barrel"
+        ));
+        Ok(())
     }
 
     #[test]

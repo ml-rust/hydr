@@ -87,6 +87,20 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                 K::Definition,
                 "the code is for Circular barrels",
             ),
+            (
+                batch(vec![row(
+                    CulvertBarrel::pipe_arch(1.8542, 1.397, 0.4572, 1.938_528)?,
+                    CulvertInlet::explicit(
+                        CulvertInletForm::One,
+                        [0.0083, 2.0, 0.0379, 0.69],
+                        false,
+                    )?,
+                    0.01,
+                    9.81,
+                )]),
+                K::Definition,
+                "arc barrel geometry not yet available",
+            ),
         ],
         "falling-transition" => vec![
             (

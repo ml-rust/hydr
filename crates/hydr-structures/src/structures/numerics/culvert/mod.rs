@@ -3,6 +3,14 @@
 //! Every quantity is a solvr `Interval`. Callers open one `with_interval_arithmetic` call and
 //! pass its context to these functions, so no function here adds a probe or a host read.
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "barrel batches read the arc layout once they admit arc barrels"
+    )
+)]
+mod arcs;
 #[cfg(test)]
 mod certificate_rows;
 pub(crate) mod constants;
@@ -19,8 +27,8 @@ pub(crate) use roots::BarrelDepths;
 use crate::structures::{CulvertBarrel, StructureError};
 use numr::dtype::DType;
 use numr::ops::{
-    CompareOps, ConditionalOps, CorrectlyRoundedOps, NextRepresentableOps, ScalarOps, TensorOps,
-    TwoSumOps,
+    BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, NextRepresentableOps, ScalarOps,
+    TensorOps, TwoSumOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -114,6 +122,26 @@ where
     R: Runtime<DType = DType>,
     C: BarrelClient<R> + CertifiedBisectionAlgorithms<R> + CertifiedSimpsonAlgorithms<R>,
 {
+}
+
+/// Intersects `x` with `[low, high]`, collapsing an interval wholly outside to the nearer end.
+pub(crate) fn clip<R>(
+    a: &mut Arithmetic<'_, R>,
+    x: &Interval<R>,
+    low: f64,
+    high: f64,
+) -> ArithmeticResult<Interval<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    let c = a.client();
+    let like = x.lower();
+    let floor = Tensor::<R>::full_scalar(like.shape(), DType::F64, low, like.device())?;
+    let ceiling = Tensor::<R>::full_scalar(like.shape(), DType::F64, high, like.device())?;
+    let lower = c.minimum(&c.maximum(x.lower(), &floor)?, &ceiling)?;
+    let upper = c.maximum(&c.minimum(x.upper(), &ceiling)?, &floor)?;
+    a.bounds(&lower, &upper)
 }
 
 /// Takes `on` where `mask` is 1 and `off` where it is 0.

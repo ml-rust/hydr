@@ -627,6 +627,17 @@ Each constructor returns `StructureInputErrorKind::Definition` for these inputs:
 
 The message names the field, its value, and the corrective action.
 
+Four more constructors build barrels from tangent circular arcs. Every batch rejects these barrels with `StructureInputErrorKind::Definition`, because their geometry is not yet available. Use a circular or box barrel for queries.
+
+| Constructor | Shape | Rules |
+| --- | --- | --- |
+| `CulvertBarrel::horizontal_ellipse(span_m, rise_m, side_radius_m)` | Four-arc ellipse, wider than high | Span above rise. Side radius below half the rise. |
+| `CulvertBarrel::vertical_ellipse(span_m, rise_m, end_radius_m)` | Four-arc ellipse, higher than wide | Rise above span. End radius below half the span. |
+| `CulvertBarrel::pipe_arch(span_m, rise_m, corner_radius_m, bottom_radius_m)` | Bottom arc, two corner arcs, top arc | Corner radius below half the span. Bottom radius above half the span. Rise above the corner-centre height plus the corner radius. Rise above the corner centres at most half the span. |
+| `CulvertBarrel::arch(span_m, rise_m)` | One arc on a flat floor as wide as the span | Rise from a quarter of the span to the span. |
+
+The constructor derives the remaining radius from tangency: the invert and crown radius of a horizontal ellipse, the side radius of a vertical ellipse, the top radius of a pipe-arch, and the arc radius of an arch. These constructors also reject a radius whose cube, times 64, overflows F64. `given_radius_m()` returns the radii you supplied, in constructor order, and `None` for a circle, a box or an arch.
+
 `CulvertBarrelBatch::<R>::new(client, barrels)` uploads one row per barrel. Circle and box rows mix in one batch. It rejects an empty list. It also rejects a runtime without these F64 contracts:
 
 - IEEE basic arithmetic with nearest-even rounding and gradual underflow.

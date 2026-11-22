@@ -95,6 +95,27 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
         b: Some(end),
     };
     Ok(Some(match id {
+        "culvert-arc-barrel" => {
+            let explicit =
+                CulvertInlet::explicit(CulvertInletForm::One, [0.0083, 2.0, 0.0379, 0.69], false)?;
+            let law = CulvertParameters::new(
+                CulvertBarrel::pipe_arch(1.8542, 1.397, 0.4572, 1.938_528)?,
+                level(),
+                0.024,
+                1,
+                CulvertEnds {
+                    a: Some(CulvertEnd::new(explicit, 0.5)?),
+                    b: None,
+                },
+                9.81,
+                evidence(),
+            )?;
+            vec![(
+                with_culverts(element(law, DirectionPolicy::AtoBOnly)),
+                K::Definition,
+                "arc barrel geometry not yet available",
+            )]
+        }
         "invalid-culvert-definition" => vec![
             (
                 dropped(parameters(level(), 0, one)),
