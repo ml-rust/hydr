@@ -72,11 +72,11 @@ pub enum NormalDepthStatus {
     /// The root lies at or below the floor `D 2^-30`. The enclosure starts at 0.
     BelowFloor,
     /// The target lies near the top of the rising limb. A rising-limb root, when one exists,
-    /// lies in the enclosure. The enclosure ends at `s_K D` rounded up for a circle and at `D`
-    /// for a box.
+    /// lies in the enclosure. The enclosure ends at `s_K D` rounded up for a circle or an arc
+    /// barrel, with `s_K` the upper end of its conveyance peak enclosure, and at `D` for a box.
     NearCapacity,
-    /// The target exceeds the peak circle conveyance or the box crown limit. No free-surface
-    /// uniform flow exists and the row has no enclosure.
+    /// The target exceeds the peak conveyance of a circle or an arc barrel, or the box crown
+    /// limit. No free-surface uniform flow exists and the row has no enclosure.
     AboveCapacity,
     /// The slope is zero or adverse. No normal depth exists and the row has no enclosure.
     NonPositiveSlope,

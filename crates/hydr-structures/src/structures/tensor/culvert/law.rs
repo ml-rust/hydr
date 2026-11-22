@@ -4,9 +4,7 @@
 //! B-end inlet. A culvert without one end repeats its other end in that row, so admission
 //! never sees an undeclared inlet. The flap keeps those rows unused.
 
-use super::{
-    Bounds, TensorBarrelContext, TensorInletContext, TensorOutletContext, reject_arc_barrels,
-};
+use super::{Bounds, TensorBarrelContext, TensorInletContext, TensorOutletContext};
 use crate::structures::numerics::culvert::{inlet::anchors, outlet};
 use crate::structures::tensor::{
     TensorStructureContext, TensorStructureInput, TensorStructureResult,
@@ -172,8 +170,7 @@ impl<R: Runtime<DType = DType>> TensorCulvertLaw<R> {
         let barrels: Vec<CulvertBarrel> = rows.iter().map(|(inlet, _)| inlet.barrel).collect();
         let inlet_rows: Vec<_> = rows.iter().map(|(inlet, _)| *inlet).collect();
         let outlet_rows: Vec<_> = rows.iter().map(|(_, outlet)| *outlet).collect();
-        reject_arc_barrels(&barrels, "the culvert law").map_err(at)?;
-        let barrel = TensorBarrelContext::new(context.client.clone(), &barrels)?;
+        let barrel = TensorBarrelContext::new(context.client.clone(), &barrels).map_err(at)?;
         let unit = barrel.unit()?;
         let inlet = anchors::prepare(&barrels, &barrel, &unit, &inlet_rows).map_err(at)?;
         let outlet = outlet::prepare(&barrel, &outlet_rows).map_err(at)?;

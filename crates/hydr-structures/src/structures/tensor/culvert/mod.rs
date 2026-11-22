@@ -3,12 +3,14 @@
 mod arcs;
 mod certificates;
 mod context;
+mod frame;
 mod inlet;
 mod law;
 mod outlet;
 
 pub(crate) use arcs::ArcRows;
-pub(crate) use context::{Bounds, SeriesTensors, TensorBarrelContext, reject_arc_barrels};
+pub(crate) use context::{Bounds, SeriesTensors, TensorBarrelContext};
+pub(crate) use frame::BarrelFrame;
 pub(crate) use inlet::TensorInletContext;
 pub use law::CulvertHint;
 pub(crate) use law::{CulvertLaw, TensorCulvertLaw, TensorCulvertResult};

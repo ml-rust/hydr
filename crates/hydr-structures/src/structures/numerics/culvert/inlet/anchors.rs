@@ -138,10 +138,18 @@ where
 
     let rising = client.gt(&high[0], &low[1])?;
     let reached = client.mul(&form_one, &client.sub(&barrel.one, &valid)?)?;
+    // A limit discharge below the normal range leaves no represented unsubmerged discharge.
+    let represented = client.ge(
+        &unsubmerged_discharge[0],
+        &barrel.constant(f64::MIN_POSITIVE)?,
+    )?;
+    let small = client.sub(&barrel.one, &represented)?;
     let good = client.mul(&rising, &client.sub(&barrel.one, &reached)?)?;
+    let good = client.mul(&good, &represented)?;
     let bad = client.sub(&barrel.one, &good)?;
     if client.sum(&bad, &[0], false)?.item::<f64>()? != 0.0 {
-        return Err(reject(rows, &reached, [&low, &high])?);
+        let masks = [&small, &reached];
+        return Err(reject(rows, masks, &unsubmerged_discharge, [&low, &high])?);
     }
     Ok(TensorInletContext {
         form_one,
@@ -159,15 +167,20 @@ where
     })
 }
 
-/// Names the first rejected row. Reads the masks and anchors to the host.
+/// Names the first rejected row. Reads the masks, limit discharges and anchors to the host.
+///
+/// `small` marks rows whose limit discharge lies below the normal range, `reached` form-1 rows
+/// whose critical depth reaches the crown.
 fn reject<R>(
     rows: &[CulvertInletRow],
-    reached: &Tensor<R>,
+    [small, reached]: [&Tensor<R>; 2],
+    discharge: &Bounds<R>,
     [low, high]: [&Bounds<R>; 2],
 ) -> Result<StructureError, StructureError>
 where
     R: Runtime<DType = DType>,
 {
+    let small = small.try_to_vec::<f64>()?;
     let reached = reached.try_to_vec::<f64>()?;
     let read = |[lower, upper]: &Bounds<R>| -> Result<Vec<(f64, f64)>, StructureError> {
         Ok(lower
@@ -176,6 +189,7 @@ where
             .zip(upper.try_to_vec::<f64>()?)
             .collect())
     };
+    let discharge = read(discharge)?;
     let low = read(low)?;
     let high = read(high)?;
     for (index, row) in rows.iter().enumerate() {
@@ -190,6 +204,16 @@ where
             row.slope,
             row.gravity_m_per_s2
         );
+        if let (Some(&tiny), Some(&(q_lower, q_upper))) = (small.get(index), discharge.get(index))
+            && tiny != 0.0
+        {
+            return Ok(StructureError::definition(format!(
+                "{fields},span_m={:?},rise_m={:?}: the discharge at X = 3.5, [{q_lower:?}, {q_upper:?}] m^3/s, lies below the normal F64 range, so no represented discharge reaches the unsubmerged band. Supply a larger barrel",
+                row.barrel.span_m(),
+                row.barrel.rise_m()
+            ))
+            .at(index));
+        }
         if crown != 0.0 {
             return Ok(StructureError::definition(format!(
                 "{fields}: the critical depth at X = 3.5 is not below the crown, so the form-1 critical head is undefined. Supply a larger gravity or a form-2 inlet"

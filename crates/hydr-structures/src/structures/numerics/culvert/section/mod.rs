@@ -19,6 +19,7 @@
 
 mod arcs;
 mod circular;
+mod frame;
 mod full;
 mod range;
 mod rectangular;
@@ -61,8 +62,25 @@ pub(crate) struct SectionIntervals<R: Runtime<DType = DType>> {
 /// Encloses the geometry at the represented depths `depth` (`[m]`, metres).
 ///
 /// Rows with `depth >= D` are full. The caller checks that every depth is finite and nonnegative.
-/// Other rows reject the enclosing call at its completion check.
+/// Other rows reject the enclosing call at its completion check. A context with a frame runs
+/// in it and scales back, see [`frame`].
 pub(crate) fn at_depth<R>(
+    a: &mut Arithmetic<'_, R>,
+    barrel: &TensorBarrelContext<R>,
+    depth: &Tensor<R>,
+) -> ArithmeticResult<SectionIntervals<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    match &barrel.frame {
+        Some(rows) => frame::at_depth(a, barrel, rows, depth),
+        None => direct(a, barrel, depth),
+    }
+}
+
+/// [`at_depth`] evaluated on the rows of `barrel` as they are.
+fn direct<R>(
     a: &mut Arithmetic<'_, R>,
     barrel: &TensorBarrelContext<R>,
     depth: &Tensor<R>,
@@ -249,6 +267,69 @@ mod tests {
                 }
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn framed_rows_return_the_bits_of_the_metre_rows() -> Result<(), StructureError> {
+        // Rises outside [1, 2) take their frame. At these scales no metre product leaves the
+        // normal range, so the frame and the metre evaluation must agree bit for bit.
+        let culverts = [
+            CulvertBarrel::circular(0.3)?,
+            CulvertBarrel::circular(7.3)?,
+            CulvertBarrel::rectangular_box(2.0, 0.8)?,
+            CulvertBarrel::rectangular_box(0.5, 3.1)?,
+            CulvertBarrel::horizontal_ellipse(1.524, 0.9652, 0.419_475_92)?,
+            CulvertBarrel::vertical_ellipse(0.9652 * 4.0, 1.524 * 4.0, 0.419_475_92 * 4.0)?,
+            CulvertBarrel::pipe_arch(1.8542 / 4.0, 1.397 / 4.0, 0.4572 / 4.0, 1.938_528 / 4.0)?,
+            CulvertBarrel::arch(3.048 * 2.0, 1.6002 * 2.0)?,
+        ];
+        let fractions = [
+            0.0,
+            2f64.powi(-30),
+            1e-6,
+            0.03,
+            0.2,
+            0.5,
+            0.8,
+            0.999,
+            1.0,
+            1.5,
+        ];
+        let mut barrels = Vec::new();
+        let mut depths = Vec::new();
+        for culvert in culverts {
+            for fraction in fractions {
+                barrels.push(culvert);
+                depths.push(fraction * culvert.rise_m());
+            }
+        }
+        let device = CpuDevice::new();
+        let client = CpuRuntime::default_client(&device);
+        let framed = TensorBarrelContext::<CpuRuntime>::new(client.clone(), &barrels)?;
+        assert!(framed.frame.is_some());
+        let metre = TensorBarrelContext::<CpuRuntime>::rows(client.clone(), &barrels, None)?;
+        let depth = Tensor::<CpuRuntime>::from_slice(&depths, &[depths.len()], &device)?;
+        let (through_frame, as_metre) =
+            with_interval_arithmetic(&client, DType::F64, "frame", |a| {
+                let first = at_depth(a, &framed, &depth)?;
+                let second = direct(a, &metre, &depth)?;
+                Ok((first, second))
+            })?;
+        let bits = |e: Ends| -> Vec<Vec<u64>> {
+            e.iter()
+                .flat_map(|[l, u]| [l, u])
+                .map(|v| v.iter().map(|x| x.to_bits()).collect())
+                .collect()
+        };
+        assert_eq!(
+            bits(ends(&through_frame.geometry)?),
+            bits(ends(&as_metre.geometry)?)
+        );
+        assert_eq!(
+            through_frame.state.try_to_vec::<f64>()?,
+            as_metre.state.try_to_vec::<f64>()?
+        );
         Ok(())
     }
 

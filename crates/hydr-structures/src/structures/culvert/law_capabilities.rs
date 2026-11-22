@@ -71,11 +71,6 @@ static CULVERT: ComponentCapabilities = ComponentCapabilities {
             "A nonfinite invert, a zero barrel count, no culvert end, a negative entrance loss, or an end whose inlet or outlet row the queries reject, rejects.",
         ),
         unsupported(
-            "culvert-arc-barrel",
-            UnsupportedReason::RejectedByAdmission,
-            "StructureBatch::with_culverts rejects a culvert whose barrel is elliptical, pipe-arch or flat-floor arch, naming the element. Their inlet and outlet control are not yet available.",
-        ),
-        unsupported(
             "culvert-end-mismatch",
             UnsupportedReason::RejectedByAdmission,
             "A culvert must declare an end for each direction its policy admits and no other.",
@@ -105,6 +100,14 @@ static CULVERT: ComponentCapabilities = ComponentCapabilities {
         limit(
             "culvert-barrel-storage",
             "The law holds no water. Barrel storage is not represented, and proposals keep no state.",
+        ),
+        limit(
+            "culvert-floor-roughness",
+            "The floor of a flat-floor arch takes the culvert's Manning n. A natural bed with its own roughness, HDS-5 composite roughness, is not modelled.",
+        ),
+        limit(
+            "culvert-metre-products",
+            "Discharges, their squares and powers of the area are formed in metres. A barrel whose discharge at X = 3.5 lies below the normal F64 range rejects at admission. Where the outlet products leave F64, as at a rise near 2^300 m, the proposal rejects as Numerical.",
         ),
         limit(
             "culvert-level-zero",

@@ -93,7 +93,7 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                     vec![CulvertBarrel::circular(1.0)?, flat],
                 )),
                 K::Definition,
-                "the depth certificates scale the barrel to a unit rise, and the scaled barrel fails admission",
+                "the barrel context scales the barrel by a power of two to a rise in [1, 2), and the scaled barrel fails admission",
             )]
         }
         "empty-barrel-batch" => vec![(
@@ -167,6 +167,21 @@ fn culvert_barrel_declares_no_attachments_and_its_arithmetic() {
             A::FusedMulAdd,
             A::CorrectlyRoundedElementary,
         ]
+    );
+    let limits: Vec<&str> = capabilities.limits.iter().map(|limit| limit.id).collect();
+    for id in ["culvert-floor-roughness", "scaled-values-outside-f64"] {
+        assert!(limits.contains(&id), "{id} missing from {limits:?}");
+    }
+    let other = capabilities
+        .unsupported
+        .iter()
+        .find(|entry| entry.id == "other-barrel-shapes")
+        .map(|entry| entry.summary);
+    assert_eq!(
+        other,
+        Some(
+            "No corrugated metal box, long-span structural plate, true ellipse or tapered sections."
+        )
     );
 }
 

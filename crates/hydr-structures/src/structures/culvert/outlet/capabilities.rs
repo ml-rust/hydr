@@ -128,6 +128,10 @@ static CULVERT_OUTLET: ComponentCapabilities = ComponentCapabilities {
             "Next to a critical-depth limit the inlet depth moves with the square root of the profile length, so enclosures widen there.",
         ),
         limit(
+            "outlet-metre-products",
+            "The march forms squares of the discharge and powers of the area in metres. Where these leave F64, as at a rise near 2^-900 m or 2^300 m, the query rejects as Numerical.",
+        ),
+        limit(
             "jump-free-outlet",
             "A jump is located only when the subcritical profile is free at the outlet and friction falls with depth across the jump.",
         ),

@@ -95,27 +95,6 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
         b: Some(end),
     };
     Ok(Some(match id {
-        "culvert-arc-barrel" => {
-            let explicit =
-                CulvertInlet::explicit(CulvertInletForm::One, [0.0083, 2.0, 0.0379, 0.69], false)?;
-            let law = CulvertParameters::new(
-                CulvertBarrel::pipe_arch(1.8542, 1.397, 0.4572, 1.938_528)?,
-                level(),
-                0.024,
-                1,
-                CulvertEnds {
-                    a: Some(CulvertEnd::new(explicit, 0.5)?),
-                    b: None,
-                },
-                9.81,
-                evidence(),
-            )?;
-            vec![(
-                with_culverts(element(law, DirectionPolicy::AtoBOnly)),
-                K::Definition,
-                "the culvert law on arc barrels not yet available",
-            )]
-        }
         "invalid-culvert-definition" => vec![
             (
                 dropped(parameters(level(), 0, one)),
@@ -262,11 +241,21 @@ fn culvert_law_nests_its_queries_and_declares_their_arithmetic() {
             A::CorrectlyRoundedElementary,
         ]
     );
+    for id in [
+        "culvert-barrel-storage",
+        "culvert-floor-roughness",
+        "culvert-metre-products",
+    ] {
+        assert!(
+            capabilities.limits.iter().any(|limit| limit.id == id),
+            "{id}"
+        );
+    }
     assert!(
         capabilities
-            .limits
+            .unsupported
             .iter()
-            .any(|limit| limit.id == "culvert-barrel-storage")
+            .all(|entry| entry.id != "culvert-arc-barrel")
     );
 }
 

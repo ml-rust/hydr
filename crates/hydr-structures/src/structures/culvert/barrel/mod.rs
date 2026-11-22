@@ -1,8 +1,8 @@
 //! Closed-conduit barrel shapes and their admission.
 //!
 //! Elliptical, pipe-arch and flat-floor arch barrels are tangent circular arcs. Their
-//! constructors check the tangency rules of their dimensions. Barrel geometry, depth and outlet
-//! queries accept them. Inlet and law queries reject them.
+//! constructors check the tangency rules of their dimensions. Every barrel, inlet and outlet
+//! query and the culvert law accept them.
 
 mod arcs;
 mod enclosure;

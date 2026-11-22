@@ -1,4 +1,4 @@
-//! HDS-5 inlet control for circular and box culvert barrels.
+//! HDS-5 inlet control for culvert barrels of every shape.
 //!
 //! [`CulvertInlet`] holds an HDS-5 code or explicit coefficients and the mitered flag.
 //! [`CulvertInletBatch`] encloses the inlet-control headwater `HW_i(Q)` of each row: unsubmerged

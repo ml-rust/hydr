@@ -1,72 +1,23 @@
 //! Construction-time depth certificates of the arc rows of a barrel context.
 //!
-//! The certificates read unit-rise geometry. Each arc barrel is first scaled by a power of two
-//! to a rise in `[1, 2)`, so the scaled barrel is the same shape and no value underflows. Its
-//! layout divided by the scaled rise gives the unit-rise rows.
+//! The certificates read unit-rise geometry: each arc barrel's frame layout divided by its frame
+//! rise. The frame is the barrel scaled by a power of two to a rise in `[1, 2)`, so it is the
+//! same shape and no value underflows.
 //!
-//! A row fails when the scaled barrel overflows its admission checks, or when its cover finds
-//! no certified single conveyance peak below the crown. The context then rejects, naming the
-//! first failing row. One scalar host read counts the failing rows. The failing mask reaches
-//! the host only on rejection.
+//! A row fails when its cover finds no certified single conveyance peak below the crown. The
+//! context then rejects, naming the first failing row. One scalar host read counts the failing
+//! rows. The failing mask reaches the host only on rejection.
 
 use super::context::{Bounds, TensorBarrelContext};
 use crate::structures::numerics::culvert::BarrelClient;
 use crate::structures::numerics::culvert::certify::{self, ArcCertificates};
 use crate::structures::numerics::culvert::constants::CIRCLE_CRITICAL_TOP;
-use crate::structures::{CulvertBarrel, CulvertBarrelShape, StructureError};
+use crate::structures::{CulvertBarrel, StructureError};
 use numr::dtype::DType;
 use numr::ops::{ConditionalOps, IndexingOps, ReduceOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::with_interval_arithmetic;
-
-/// The barrel scaled by the power of two that takes its rise into `[1, 2)`.
-///
-/// Circles and boxes stay as they are. Rejects, naming `row`, an arc barrel whose scaled
-/// dimensions fail admission.
-pub(super) fn unit_barrel(
-    row: usize,
-    barrel: &CulvertBarrel,
-) -> Result<CulvertBarrel, StructureError> {
-    let shape = barrel.shape();
-    if !shape.arced() {
-        return Ok(*barrel);
-    }
-    // An admitted rise is normal, so its biased exponent gives the scale exactly.
-    let exponent = ((barrel.rise_m().to_bits() >> 52) & 0x7ff) as i32 - 1023;
-    let scale = 2f64.powi(-exponent);
-    let span = barrel.span_m() * scale;
-    let rise = barrel.rise_m() * scale;
-    let given: Vec<f64> = barrel
-        .given_radius_m()
-        .unwrap_or(&[])
-        .iter()
-        .map(|radius| radius * scale)
-        .collect();
-    let scaled = match (shape, given.as_slice()) {
-        (CulvertBarrelShape::HorizontalEllipse, &[side]) => {
-            CulvertBarrel::horizontal_ellipse(span, rise, side)
-        }
-        (CulvertBarrelShape::VerticalEllipse, &[end]) => {
-            CulvertBarrel::vertical_ellipse(span, rise, end)
-        }
-        (CulvertBarrelShape::PipeArch, &[corner, bottom]) => {
-            CulvertBarrel::pipe_arch(span, rise, corner, bottom)
-        }
-        (CulvertBarrelShape::Arch, &[]) => CulvertBarrel::arch(span, rise),
-        _ => Err(StructureError::definition(
-            "an arc barrel lost its given radii",
-        )),
-    };
-    scaled.map_err(|error| {
-        StructureError::definition(format!(
-            "shape={shape:?},span_m={:?},rise_m={:?}: the depth certificates scale the barrel to a unit rise, and the scaled barrel fails admission ({error}). Use dimensions closer in size",
-            barrel.span_m(),
-            barrel.rise_m()
-        ))
-        .at(row)
-    })
-}
 
 impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
     /// Certifies the arc rows and writes their depth domains, slope floors and peak bounds.
@@ -239,17 +190,37 @@ mod tests {
     }
 
     #[test]
-    fn unit_barrels_keep_the_shape_at_a_rise_in_one_to_two() -> Result<(), StructureError> {
-        let tiny = 2f64.powi(-400);
-        let barrel =
-            CulvertBarrel::pipe_arch(1.8542 * tiny, 1.397 * tiny, 0.4572 * tiny, 1.938_528 * tiny)?;
-        let unit = unit_barrel(0, &barrel)?;
-        assert!((1.0..2.0).contains(&unit.rise_m()));
-        let ratio = unit.rise_m() / barrel.rise_m();
-        assert_eq!(ratio, 2f64.powi(ratio.log2().round() as i32));
-        assert_eq!(unit.span_m(), barrel.span_m() * ratio);
-        let circle = CulvertBarrel::circular(tiny)?;
-        assert_eq!(unit_barrel(0, &circle)?.rise_m(), tiny);
+    fn certificates_do_not_change_with_the_scale_of_the_barrel() -> Result<(), StructureError> {
+        let shapes = |s: f64| -> Result<Vec<CulvertBarrel>, StructureError> {
+            Ok(vec![
+                CulvertBarrel::horizontal_ellipse(1.524 * s, 0.9652 * s, 0.419_475_92 * s)?,
+                CulvertBarrel::vertical_ellipse(0.9652 * s, 1.524 * s, 0.419_475_92 * s)?,
+                CulvertBarrel::pipe_arch(1.8542 * s, 1.397 * s, 0.4572 * s, 1.938_528 * s)?,
+                CulvertBarrel::arch(3.048 * s, 1.6002 * s)?,
+            ])
+        };
+        let bits = |context: &TensorBarrelContext<Cpu>| -> Result<Vec<Vec<u64>>, StructureError> {
+            let [peak_lower, peak_upper] = &context.conveyance_peak;
+            let [log_lower, log_upper] = &context.log_peak;
+            [
+                &context.critical_top,
+                &context.critical_slope,
+                &context.normal_top,
+                &context.normal_slope,
+                peak_lower,
+                peak_upper,
+                log_lower,
+                log_upper,
+            ]
+            .into_iter()
+            .map(|t| Ok(t.try_to_vec::<f64>()?.iter().map(|v| v.to_bits()).collect()))
+            .collect()
+        };
+        let unit = TensorBarrelContext::<Cpu>::new(client(), &shapes(1.0)?)?;
+        for power in [-900, 300] {
+            let scaled = TensorBarrelContext::<Cpu>::new(client(), &shapes(2f64.powi(power))?)?;
+            assert_eq!(bits(&scaled)?, bits(&unit)?, "2^{power}");
+        }
         Ok(())
     }
 }

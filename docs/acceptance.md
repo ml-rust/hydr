@@ -741,7 +741,7 @@ An impervious subcatchment without depression storage drains into a closed pond,
 
 ## Culvert barrel checks
 
-[Culvert barrel cases](../tests/culvert_barrels.rs) compare circular and box barrel enclosures against independent 100-digit references. The references are frozen before any kernel runs. Read the [barrel guide](structures.md#culvert-barrel-geometry) for inputs, statuses, and limits.
+[Culvert barrel cases](../tests/culvert_barrels.rs) compare circular and box barrel enclosures against independent 100-digit references. [Arc barrel cases](../tests/culvert_shapes.rs) do the same for ellipses, pipe-arches, and flat-floor arches, for geometry, depth, inlet control, and outlet control. The references are frozen before any kernel runs. Read the [barrel guide](structures.md#culvert-barrel-geometry) for inputs, statuses, and limits.
 
 | Check | Required result |
 | --- | --- |
@@ -750,8 +750,10 @@ An impervious subcatchment without depression storage drains into a closed pond,
 | Critical and normal depth | Statuses match the reference class of the exact root. Every promised enclosure contains it. |
 | Monotonicity | No certified reversal of geometry with depth, or of critical and normal depth with discharge |
 | Layouts | Every lane at widths 1, 31, 32, 33, 64, and 65 equals its single-row result bit for bit |
+| Arc inlet codes | HDS-5 codes 30 to 47 equal the coefficient table bit for bit. Every 100-digit arc inlet row lies inside its enclosure within `2e-11` relative. |
+| Scale | An arc barrel scaled by `2^-900` or `2^300` keeps its certificates and its geometry, scaled, bit for bit |
 
-These checks establish geometry and depth enclosures only. They establish no culvert discharge, inlet or outlet control, or measured-event accuracy.
+The barrel cases establish geometry and depth enclosures only. They establish no culvert discharge, inlet or outlet control, or measured-event accuracy.
 
 ## Culvert law checks
 
@@ -760,7 +762,7 @@ These checks establish geometry and depth enclosures only. They establish no cul
 | Check | Required result |
 | --- | --- |
 | Reference rows | Each row's reference headwater returns its reference discharge within `1e-6` relative, under the control the row exercises |
-| Round trip | `Q(HW(Q))` returns `Q` within `1e-6` relative on mild, adverse, and level barrels |
+| Round trip | `Q(HW(Q))` returns `Q` within `1e-6` relative on mild, adverse, and level barrels of every shape |
 | Control selection | Inlet-governed, outlet-governed, and tied lanes report their control |
 | Direction and zero flow | Reversal, one-end blocking, equal heads, dry donors, free outfalls, and zero-discharge headwaters give their declared results |
 | Transitions | Discharge stays continuous at both inlet anchors and where the outlet turns full |

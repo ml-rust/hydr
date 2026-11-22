@@ -70,7 +70,7 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "arc-barrel-certificate",
             UnsupportedReason::RejectedByAdmission,
-            "Batch construction certifies the depth slope floors and the conveyance peak of each elliptical, pipe-arch and flat-floor arch barrel. It rejects, naming the row, a barrel whose dimensions scaled to a unit rise fail admission, or whose conveyance has no certified single peak below the crown.",
+            "Batch construction certifies the depth slope floors and the conveyance peak of each elliptical, pipe-arch and flat-floor arch barrel. It rejects, naming the row, a barrel whose dimensions scaled by a power of two to a rise in [1, 2) fail admission, or whose conveyance has no certified single peak below the crown.",
         ),
         unsupported(
             "empty-barrel-batch",
@@ -114,9 +114,19 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
             summary: "A depth at or above the crown returns the full-barrel constants; pressure flow and full-barrel friction stay with the caller.",
             doc: CULVERT_BARREL_DOC,
         },
+        Limit {
+            id: "culvert-floor-roughness",
+            summary: "The floor of a flat-floor arch takes the barrel's Manning n. A natural bed with its own roughness, HDS-5 composite roughness, is not modelled.",
+            doc: CULVERT_BARREL_DOC,
+        },
+        Limit {
+            id: "scaled-values-outside-f64",
+            summary: "Geometry runs in each barrel's frame, scaled by a power of two to a rise in [1, 2), and scales back exactly. A metre area or moment outside the F64 range, as at a rise near 2^-900 m, rounds outward.",
+            doc: CULVERT_BARREL_DOC,
+        },
     ],
     summary: Summary {
-        equations: "circular, box and tangent-arc closed-conduit geometry, and on circular and box barrels critical depth Q^2 T = g A^3 and Manning normal depth on the rising conveyance limb",
+        equations: "circular, box and tangent-arc closed-conduit geometry, critical depth Q^2 T = g A^3 and Manning normal depth on the rising conveyance limb",
         method: "F64 interval enclosures with correctly rounded acos and log, arc bands from each wall's chord and circular segment, and certified bisection in s = y/D",
         assessment: "independent 100-digit references lie inside every enclosure; CPU and CUDA bounds match bit for bit on circular and box barrels",
     },

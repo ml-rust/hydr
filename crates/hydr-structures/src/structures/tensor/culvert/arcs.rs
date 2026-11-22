@@ -4,13 +4,14 @@
 //! so the arc branches run on every row and `where_cond` selects.
 
 use super::context::Bounds;
+use super::frame::BarrelFrame;
 use crate::structures::numerics::culvert::arcs::{self, ArcBand, ArcInputs};
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
-use solvr::common::arithmetic::ArithmeticResult;
+use solvr::common::arithmetic::{ArithmeticResult, Interval};
 
 /// Halving steps of the shallow seam search, largest first.
 const SEAM_STEPS: [i32; 10] = [512, 256, 128, 64, 32, 16, 8, 4, 2, 1];
@@ -47,6 +48,10 @@ pub(crate) struct ArcRows<R: Runtime<DType = DType>> {
     /// Floor chord `B` on arch rows, zero on other rows.
     pub(crate) floor_width: Tensor<R>,
 }
+
+/// One exact power-of-two step applied to an interval.
+type IntervalStep<'s, R> =
+    dyn Fn(&mut Arithmetic<'_, R>, &Interval<R>) -> ArithmeticResult<Interval<R>> + 's;
 
 impl<R: Runtime<DType = DType>> ArcRows<R> {
     /// Encloses the arc layout of every row of `inputs`.
@@ -154,10 +159,51 @@ impl<R: Runtime<DType = DType>> ArcRows<R> {
         R::Client: BarrelClient<R>,
     {
         let c = a.client();
+        // D 2^-j over D is the exact 2^-j, and each middle stays inside its band.
+        self.rescale(
+            a,
+            &|a: &mut Arithmetic<'_, R>, value: &Interval<R>| a.div_positive(value, rise),
+            &|value: &Tensor<R>| c.div(value, rise),
+        )
+    }
+
+    /// Frame rows back in metres: lengths times `2^e`, areas times `2^2e` and moments times
+    /// `2^3e`, each bound exact unless it leaves the normal F64 range, then rounded outward.
+    /// Angles and masks stay.
+    pub(crate) fn scaled(
+        &self,
+        a: &mut Arithmetic<'_, R>,
+        frame: &BarrelFrame<R>,
+    ) -> ArithmeticResult<Self>
+    where
+        R::Client: BarrelClient<R>,
+    {
+        let c = a.client();
+        self.rescale(
+            a,
+            &|a: &mut Arithmetic<'_, R>, value: &Interval<R>| {
+                let [lower, upper] = frame.times([value.lower(), value.upper()], 1)?;
+                a.bounds(&lower, &upper)
+            },
+            &|value: &Tensor<R>| c.mul(value, &frame.scale),
+        )
+    }
+
+    /// The rows with every bound of length power `p` taken `p` times through `step`, and every
+    /// exact depth once through `exact`. Upper bounds stand for `widest_width` and `floor_width`.
+    fn rescale(
+        &self,
+        a: &mut Arithmetic<'_, R>,
+        step: &IntervalStep<'_, R>,
+        exact: &dyn Fn(&Tensor<R>) -> numr::error::Result<Tensor<R>>,
+    ) -> ArithmeticResult<Self>
+    where
+        R::Client: BarrelClient<R>,
+    {
         let mut scale = |[lower, upper]: &Bounds<R>, power: usize| -> ArithmeticResult<Bounds<R>> {
             let mut value = a.bounds(lower, upper)?;
             for _ in 0..power {
-                value = a.div_positive(&value, rise)?;
+                value = step(a, &value)?;
             }
             Ok([value.lower().clone(), value.upper().clone()])
         };
@@ -192,14 +238,13 @@ impl<R: Runtime<DType = DType>> ArcRows<R> {
         let floor = [self.floor_width.clone(), self.floor_width.clone()];
         let [_, floor_width] = scale(&floor, 1)?;
         let [m0, m1, m2] = &self.middles;
-        // D 2^-j over D is the exact 2^-j, and each middle stays inside its band.
         Ok(Self {
             arced: self.arced.clone(),
             floored: self.floored.clone(),
             bands,
             start_widths,
-            middles: [c.div(m0, rise)?, c.div(m1, rise)?, c.div(m2, rise)?],
-            shallow_top: c.div(&self.shallow_top, rise)?,
+            middles: [exact(m0)?, exact(m1)?, exact(m2)?],
+            shallow_top: exact(&self.shallow_top)?,
             bottom_diameter,
             full_area,
             full_perimeter,

@@ -1,4 +1,4 @@
-//! Closed-conduit culvert barrel geometry for circular and box barrels.
+//! Closed-conduit culvert barrels: circular, box, elliptical, pipe-arch and flat-floor arch.
 //!
 //! [`CulvertBarrelBatch`] encloses area, top width, wetted perimeter, hydraulic radius and
 //! hydrostatic moment at represented depths and over depth ranges. Each row is dry at `y = 0`,

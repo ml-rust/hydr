@@ -1,8 +1,8 @@
 //! Compact `[m]` barrel rows: shape masks, dimensions, series coefficients, arc layouts,
-//! depth certificates and full-state bounds.
+//! depth certificates, full-state bounds and each row's frame.
 
 use super::arcs::ArcRows;
-use super::certificates::unit_barrel;
+use super::frame::{BarrelFrame, framed_barrel};
 use crate::structures::numerics::culvert::arcs::ArcInputs;
 use crate::structures::numerics::culvert::certify::REFINEMENT_ROUNDS;
 use crate::structures::numerics::culvert::{BarrelClient, constants, section};
@@ -89,30 +89,14 @@ pub(crate) struct TensorBarrelContext<R: Runtime<DType = DType>> {
     pub(crate) full_area: Bounds<R>,
     pub(crate) full_perimeter: Bounds<R>,
     pub(crate) full_radius: Bounds<R>,
-    /// Arc layouts, with a harmless arc barrel on circle and box rows. `None` when no row is an
-    /// arc barrel, so circle and box queries skip the arc branch.
+    /// Arc layouts in metres, with a harmless arc barrel on circle and box rows. `None` when no
+    /// row is an arc barrel, so circle and box queries skip the arc branch. Each is its frame
+    /// layout times exact powers of two.
     pub(crate) arcs: Option<ArcRows<R>>,
     /// The arc layouts in units of the rise, read by the depth residuals and certificates.
     pub(crate) unit_arcs: Option<ArcRows<R>>,
-}
-
-/// Rejects the first arc barrel of `barrels` for `query`, which arc rows do not serve yet.
-///
-/// The error names the barrel's row as its element.
-pub(crate) fn reject_arc_barrels(
-    barrels: &[CulvertBarrel],
-    query: &str,
-) -> Result<(), StructureError> {
-    match barrels.iter().enumerate().find(|(_, b)| b.shape().arced()) {
-        None => Ok(()),
-        Some((index, barrel)) => Err(StructureError::definition(format!(
-            "shape={:?},span_m={:?},rise_m={:?}: {query} on arc barrels not yet available. Use a circular or box barrel",
-            barrel.shape(),
-            barrel.span_m(),
-            barrel.rise_m()
-        ))
-        .at(index)),
-    }
+    /// Each row's frame, where point geometry runs. `None` when every row is its own frame.
+    pub(crate) frame: Option<Box<BarrelFrame<R>>>,
 }
 
 impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
@@ -223,15 +207,52 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
                 .as_ref()
                 .map(|arcs| arcs.select(&take))
                 .transpose()?,
+            frame: self
+                .frame
+                .as_ref()
+                .map(|frame| frame.select(rows).map(Box::new))
+                .transpose()?,
         })
     }
 
     /// Uploads the rows of an admitted runtime, encloses the full-state constants and
     /// certifies the arc rows with `rounds` refinement rounds.
+    ///
+    /// Rows whose rise lies outside `[1, 2)` also get their frame, where point geometry runs.
     pub(super) fn build(
         client: R::Client,
         barrels: &[CulvertBarrel],
         rounds: usize,
+    ) -> Result<Self, StructureError>
+    where
+        R::Client: BarrelClient<R>,
+    {
+        let framed = barrels
+            .iter()
+            .enumerate()
+            .map(|(row, b)| framed_barrel(row, b))
+            .collect::<Result<Vec<_>, _>>()?;
+        let frame = if framed.as_slice() == barrels {
+            None
+        } else {
+            Some(Box::new(BarrelFrame::new(
+                client.clone(),
+                barrels,
+                &framed,
+            )?))
+        };
+        Self::rows(client, barrels, frame)?.certify_arcs(barrels, rounds)
+    }
+
+    /// Uploads the rows and encloses the full-state constants, without depth certificates.
+    ///
+    /// With a frame, the arc layouts are the frame layouts times exact powers of two, so no
+    /// metre product underflows or overflows on the way. Without one, the rows are their own
+    /// frame.
+    pub(crate) fn rows(
+        client: R::Client,
+        barrels: &[CulvertBarrel],
+        frame: Option<Box<BarrelFrame<R>>>,
     ) -> Result<Self, StructureError>
     where
         R::Client: BarrelClient<R>,
@@ -273,43 +294,46 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
         let conveyance_peak = [certified([peak_lower, 1.0])?, certified([peak_upper, 1.0])?];
         let log_peak = [certified([log_lower, 0.0])?, certified([log_upper, 0.0])?];
         let series = SeriesTensors::constant(m, &device)?;
-        let inputs = if barrels.iter().any(|b| b.shape().arced()) {
-            let scaled = barrels
-                .iter()
-                .enumerate()
-                .map(|(row, b)| unit_barrel(row, b))
-                .collect::<Result<Vec<_>, _>>()?;
-            let unit_rise = scaled.iter().map(CulvertBarrel::rise_m).collect::<Vec<_>>();
-            let unit_span = scaled.iter().map(CulvertBarrel::span_m).collect::<Vec<_>>();
-            Some((
-                ArcInputs::<R>::new(barrels, &device)?,
-                ArcInputs::<R>::new(&scaled, &device)?,
-                Tensor::<R>::from_slice(&unit_span, &[m], &device)?,
-                Tensor::<R>::from_slice(&unit_rise, &[m], &device)?,
-            ))
-        } else {
-            None
+        let any_arc = barrels.iter().any(|b| b.shape().arced());
+        let inputs = match &frame {
+            None if any_arc => Some(ArcInputs::<R>::new(barrels, &device)?),
+            _ => None,
         };
+        let framed_arcs = frame
+            .as_ref()
+            .and_then(|frame| frame.context.arcs.as_ref().map(|rows| (frame, rows)));
         let (closed, arcs) = with_interval_arithmetic(
             &client,
             DType::F64,
             "culvert barrel full-state constants",
             |a| {
                 let closed = section::full_constants(a, &circular, &span, &rise)?;
-                let arcs = match &inputs {
-                    Some((inputs, scaled, unit_span, unit_rise)) => {
-                        let rows = ArcRows::build(a, inputs, &arc_rows, &span, &rise)?;
-                        let unit = ArcRows::build(a, scaled, &arc_rows, unit_span, unit_rise)?;
-                        Some((rows, unit.unit(a, unit_rise)?))
+                let arcs = match (&framed_arcs, &inputs) {
+                    (Some((frame, rows)), _) => Some(rows.scaled(a, frame)?),
+                    (None, Some(inputs)) => {
+                        Some(ArcRows::build(a, inputs, &arc_rows, &span, &rise)?)
                     }
-                    None => None,
+                    (None, None) => None,
                 };
-                Ok((closed, arcs))
+                let unit = match (&arcs, &framed_arcs) {
+                    (Some(rows), None) => Some(rows.unit(a, &rise)?),
+                    _ => None,
+                };
+                Ok((closed, (arcs, unit)))
             },
         )?;
-        let (arcs, unit_arcs) = match arcs {
-            Some((rows, unit)) => (Some(rows), Some(unit)),
-            None => (None, None),
+        let (arcs, unit_arcs) = match (arcs, framed_arcs) {
+            ((Some(rows), _), Some((frame, _))) => {
+                let unit = frame
+                    .context
+                    .unit_arcs
+                    .as_ref()
+                    .map(|unit| unit.select(&|value| Ok(value.clone())))
+                    .transpose()?;
+                (Some(rows), unit)
+            }
+            ((rows, unit), None) => (rows, unit),
+            ((None, _), Some(_)) => (None, None),
         };
         let merge = |closed: Bounds<R>,
                      arc: fn(&ArcRows<R>) -> &Bounds<R>|
@@ -328,7 +352,7 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
         let full_area = merge(area, |arcs| &arcs.full_area)?;
         let full_perimeter = merge(perimeter, |arcs| &arcs.full_perimeter)?;
         let full_radius = merge(radius, |arcs| &arcs.full_radius)?;
-        let context = Self {
+        Ok(Self {
             zero: Tensor::<R>::zeros(&[m], DType::F64, &device)?,
             one: Tensor::<R>::ones(&[m], DType::F64, &device)?,
             client,
@@ -352,8 +376,8 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             full_radius,
             arcs,
             unit_arcs,
-        };
-        context.certify_arcs(barrels, rounds)
+            frame,
+        })
     }
 
     /// Barrel count `m`.
@@ -431,14 +455,6 @@ mod tests {
         assert_eq!(picked_arcs.floor_width.try_to_vec::<f64>()?, [3.048, 0.0]);
         let circles = TensorBarrelContext::<CpuRuntime>::new(client, &barrels[..1])?;
         assert!(circles.arcs.is_none());
-
-        let error = reject_arc_barrels(&barrels, "inlet control").err();
-        assert!(matches!(
-            error,
-            Some(StructureError::InvalidInput { element: Some(1), kind: StructureInputErrorKind::Definition, ref context })
-                if context == "shape=PipeArch,span_m=1.8542,rise_m=1.397: inlet control on arc barrels not yet available. Use a circular or box barrel"
-        ));
-        assert!(reject_arc_barrels(&barrels[..1], "inlet control").is_ok());
         Ok(())
     }
 

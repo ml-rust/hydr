@@ -1,6 +1,6 @@
 //! HDS-5 inlet-control definitions: equation form, coefficients and the mitered flag.
 
-use super::codes::CODES;
+use super::codes::{Unadmitted, lookup};
 use crate::structures::{CulvertBarrelShape, StructureError};
 
 /// Unsubmerged HDS-5 inlet-control equation, with `X = Ku Q / (A D^0.5)` in foot units.
@@ -29,19 +29,32 @@ pub struct CulvertInlet {
 }
 
 impl CulvertInlet {
-    /// Admits the HDS-5 Table A.1 inlet `code`, numbered as in SWMM `culvert.c`.
+    /// Admits the HDS-5 Table A.1 or A.2 inlet `code`, numbered as in SWMM `culvert.c`.
     ///
-    /// Codes 1 to 8 are circular and 9 to 26 concrete box inlets. Code 5 is mitered.
-    /// Rejects every other code.
+    /// | Codes | Barrel shape |
+    /// | --- | --- |
+    /// | 1 to 8 | circular, code 5 mitered |
+    /// | 9 to 26 | concrete box |
+    /// | 30 to 32 | horizontal ellipse |
+    /// | 33 to 35 | vertical ellipse |
+    /// | 36 to 44 | pipe-arch, code 37 mitered |
+    /// | 45 to 47 | flat-floor arch, code 46 mitered |
+    ///
+    /// Rejects codes 27 to 29 (corrugated metal box, which no barrel shape models), codes 48 to
+    /// 57 (tapered inlets, which need throat and face geometry) and every other code.
     pub fn hds5(code: u8) -> Result<Self, StructureError> {
-        let entry = usize::from(code)
-            .checked_sub(1)
-            .and_then(|index| CODES.get(index))
-            .ok_or_else(|| {
-                StructureError::definition(format!(
-                    "inlet code={code}: supply an HDS-5 code from 1 to 26 for a circular or box barrel, or explicit coefficients"
-                ))
-            })?;
+        let entry = lookup(code).map_err(|reason| {
+            let action = "an HDS-5 code from 1 to 26 or 30 to 47 for the barrel shape, or explicit coefficients";
+            StructureError::definition(match reason {
+                Unadmitted::MetalBox => format!(
+                    "inlet code={code}: HDS-5 codes 27 to 29 are corrugated metal box inlets, and no barrel shape models a corrugated metal box. Supply {action}"
+                ),
+                Unadmitted::Tapered => format!(
+                    "inlet code={code}: HDS-5 codes 48 to 57 are tapered inlets, which need throat and face geometry. Supply {action}"
+                ),
+                Unadmitted::Unknown => format!("inlet code={code}: supply {action}"),
+            })
+        })?;
         Ok(Self {
             code: Some(code),
             shape: Some(entry.shape),
@@ -152,10 +165,31 @@ mod tests {
         assert_eq!(boxed.form(), CulvertInletForm::Two);
         assert_eq!(boxed.barrel_shape(), Some(CulvertBarrelShape::Box));
         assert_eq!(boxed.code(), Some(26));
-        let unmitered = (1..=26).filter(|&code| code != 5);
+        let unmitered = (1..=26)
+            .chain(30..=47)
+            .filter(|&code| ![5, 37, 46].contains(&code));
         for code in unmitered {
             assert!(!CulvertInlet::hds5(code)?.mitered(), "code {code}");
         }
+        let shapes = [
+            (30..=32, CulvertBarrelShape::HorizontalEllipse),
+            (33..=35, CulvertBarrelShape::VerticalEllipse),
+            (36..=44, CulvertBarrelShape::PipeArch),
+            (45..=47, CulvertBarrelShape::Arch),
+        ];
+        for (codes, shape) in shapes {
+            for code in codes {
+                let inlet = CulvertInlet::hds5(code)?;
+                assert_eq!(inlet.barrel_shape(), Some(shape), "code {code}");
+                assert_eq!(inlet.form(), CulvertInletForm::One, "code {code}");
+                assert_eq!(inlet.code(), Some(code));
+            }
+        }
+        for code in [37, 46] {
+            assert!(CulvertInlet::hds5(code)?.mitered(), "code {code}");
+        }
+        // Table A.2 Y of chart 34 scale 3, not the 0.53 of section A.3.1.
+        assert_eq!(CulvertInlet::hds5(38)?.coefficients()[3], 0.57);
         Ok(())
     }
 
@@ -164,11 +198,27 @@ mod tests {
         let cases = [
             (
                 CulvertInlet::hds5(0),
-                "inlet code=0: supply an HDS-5 code from 1 to 26",
+                "inlet code=0: supply an HDS-5 code from 1 to 26 or 30 to 47 for the barrel shape",
+            ),
+            (
+                CulvertInlet::hds5(58),
+                "inlet code=58: supply an HDS-5 code from 1 to 26 or 30 to 47",
             ),
             (
                 CulvertInlet::hds5(27),
-                "inlet code=27: supply an HDS-5 code from 1 to 26",
+                "inlet code=27: HDS-5 codes 27 to 29 are corrugated metal box inlets",
+            ),
+            (
+                CulvertInlet::hds5(29),
+                "no barrel shape models a corrugated metal box. Supply an HDS-5 code from 1 to 26 or 30 to 47",
+            ),
+            (
+                CulvertInlet::hds5(48),
+                "inlet code=48: HDS-5 codes 48 to 57 are tapered inlets, which need throat and face geometry",
+            ),
+            (
+                CulvertInlet::hds5(57),
+                "inlet code=57: HDS-5 codes 48 to 57 are tapered inlets",
             ),
             (
                 CulvertInlet::explicit(CulvertInletForm::One, [0.0, 2.0, 0.04, 0.7], false),

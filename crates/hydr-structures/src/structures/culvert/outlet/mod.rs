@@ -1,4 +1,4 @@
-//! Outlet control for circular and box culvert barrels.
+//! Outlet control for culvert barrels of every shape.
 //!
 //! [`CulvertOutletRow`] holds a barrel, its length, Manning `n`, entrance loss, slope and gravity.
 //! [`CulvertOutletBatch`] encloses the outlet-control headwater `HW_o(Q, TW)` of each row from a

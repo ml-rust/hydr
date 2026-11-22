@@ -4,9 +4,7 @@ use super::{CulvertInletHeadwater, CulvertInletRow};
 use crate::structures::culvert::input::check_discharges;
 use crate::structures::numerics::culvert::RowNames;
 use crate::structures::numerics::culvert::inlet::{anchors, evaluate};
-use crate::structures::tensor::culvert::{
-    TensorBarrelContext, TensorInletContext, reject_arc_barrels,
-};
+use crate::structures::tensor::culvert::{TensorBarrelContext, TensorInletContext};
 use crate::structures::{CulvertBarrel, StructureError};
 use numr::dtype::DType;
 use numr::ops::{
@@ -45,9 +43,10 @@ impl<R: Runtime<DType = DType>> CulvertInletBatch<R> {
     ///
     /// Rejects an empty row list, a nonfinite slope, a nonfinite or nonpositive gravity, and a
     /// coded inlet on a barrel of another shape. Rejects a row whose submerged headwater at
-    /// `X = 4` does not certifiably exceed its unsubmerged headwater at `X = 3.5`, and a form-1
-    /// row whose critical depth at `X = 3.5` is not below the crown. Each rejection names the
-    /// row and its inlet. Rejects a runtime without the barrel batch's F64 contracts.
+    /// `X = 4` does not certifiably exceed its unsubmerged headwater at `X = 3.5`, a form-1 row
+    /// whose critical depth at `X = 3.5` is not below the crown, and a row whose discharge at
+    /// `X = 3.5` lies below the normal F64 range. Each rejection names the row and its inlet.
+    /// Rejects a runtime without the barrel batch's F64 contracts.
     pub fn new(client: R::Client, rows: Vec<CulvertInletRow>) -> Result<Self, StructureError>
     where
         R::Client: TensorOps<R>
@@ -68,7 +67,6 @@ impl<R: Runtime<DType = DType>> CulvertInletBatch<R> {
             row.check().map_err(|error| error.at(index))?;
         }
         let barrels: Arc<[CulvertBarrel]> = rows.iter().map(|row| row.barrel).collect();
-        reject_arc_barrels(&barrels, "inlet control")?;
         let barrel = TensorBarrelContext::new(client, &barrels)?;
         let unit = barrel.unit()?;
         let inlet = anchors::prepare(&barrels, &barrel, &unit, &rows)?;

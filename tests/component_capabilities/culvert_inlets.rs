@@ -43,9 +43,19 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
     Ok(Some(match id {
         "unadmitted-inlet-definition" => vec![
             (
-                dropped(CulvertInlet::hds5(40)),
+                dropped(CulvertInlet::hds5(0)),
                 K::Definition,
-                "supply an HDS-5 code from 1 to 26",
+                "supply an HDS-5 code from 1 to 26 or 30 to 47",
+            ),
+            (
+                dropped(CulvertInlet::hds5(28)),
+                K::Definition,
+                "HDS-5 codes 27 to 29 are corrugated metal box inlets",
+            ),
+            (
+                dropped(CulvertInlet::hds5(50)),
+                K::Definition,
+                "HDS-5 codes 48 to 57 are tapered inlets",
             ),
             (
                 dropped(CulvertInlet::explicit(
@@ -89,19 +99,33 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
             ),
             (
                 batch(vec![row(
-                    CulvertBarrel::pipe_arch(1.8542, 1.397, 0.4572, 1.938_528)?,
-                    CulvertInlet::explicit(
-                        CulvertInletForm::One,
-                        [0.0083, 2.0, 0.0379, 0.69],
-                        false,
-                    )?,
+                    CulvertBarrel::arch(3.048, 1.6002)?,
+                    CulvertInlet::hds5(36)?,
                     0.01,
                     9.81,
                 )]),
                 K::Definition,
-                "inlet control on arc barrels not yet available",
+                "barrel_shape=Arch: the code is for PipeArch barrels",
             ),
         ],
+        "unrepresentable-inlet-discharge" => {
+            let tiny = 2f64.powi(-900);
+            vec![(
+                batch(vec![row(
+                    CulvertBarrel::pipe_arch(
+                        1.8542 * tiny,
+                        1.397 * tiny,
+                        0.4572 * tiny,
+                        1.938_528 * tiny,
+                    )?,
+                    CulvertInlet::hds5(36)?,
+                    0.01,
+                    9.81,
+                )]),
+                K::Definition,
+                "lies below the normal F64 range",
+            )]
+        }
         "falling-transition" => vec![
             (
                 batch(vec![row(

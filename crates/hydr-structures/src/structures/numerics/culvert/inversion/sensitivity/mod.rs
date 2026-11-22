@@ -288,6 +288,38 @@ mod tests {
     }
 
     #[test]
+    fn mild_arc_barrels_bound_holds_over_a_head_grid() -> TestResult {
+        // Fall 0.12 m over 60 m. The heads span free and full barrels, both flow directions and
+        // both controls on a horizontal ellipse, a pipe-arch and a flat-floor arch.
+        for (barrel, code) in [
+            (
+                CulvertBarrel::horizontal_ellipse(1.524, 0.9652, 0.419_475_92)?,
+                30,
+            ),
+            (
+                CulvertBarrel::pipe_arch(1.8542, 1.397, 0.4572, 1.938_528)?,
+                36,
+            ),
+            (CulvertBarrel::arch(3.048, 1.6002)?, 45),
+        ] {
+            let rise = barrel.rise_m();
+            let spec = Spec {
+                barrel,
+                length_m: 60.0,
+                manning_n: 0.024,
+                inverts: [0.12, 0.0],
+            };
+            let cases = pairs(
+                &grid(0.3, rise + 0.6, 2),
+                &grid(0.02, rise + 0.4, 2),
+                &[0.0, 0.12, rise, rise + 0.12],
+            );
+            assert!(certified(spec, CulvertInlet::hds5(code)?, &cases)? > cases.len() / 4);
+        }
+        Ok(())
+    }
+
+    #[test]
     fn steep_box_bound_holds_where_the_barrel_primes() -> TestResult {
         // A free outfall below the 1.5 m crown. The donor heads span critical depth at the crown
         // and the priming discharge, where the free-surface friction at the crown passes the

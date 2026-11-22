@@ -33,3 +33,6 @@ mod sweep;
 
 #[path = "culvert_laws/capacity.rs"]
 mod capacity;
+
+#[path = "culvert_laws/arcs.rs"]
+mod arcs;

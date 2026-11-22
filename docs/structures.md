@@ -627,7 +627,7 @@ Each constructor returns `StructureInputErrorKind::Definition` for these inputs:
 
 The message names the field, its value, and the corrective action.
 
-Four more constructors build barrels from tangent circular arcs. `geometry`, `geometry_over`, `full_geometry`, `critical_depth`, `normal_depth` and `CulvertOutletBatch` accept them. `CulvertInletBatch` and `StructureBatch::with_culverts` reject them with `StructureInputErrorKind::Definition`, naming the row. Use a circular or box barrel for those.
+Four more constructors build barrels from tangent circular arcs. Every barrel query, `CulvertInletBatch`, `CulvertOutletBatch` and the [culvert law](#culvert-structure-law) accept them.
 
 | Constructor | Shape | Rules |
 | --- | --- | --- |
@@ -637,6 +637,15 @@ Four more constructors build barrels from tangent circular arcs. `geometry`, `ge
 | `CulvertBarrel::arch(span_m, rise_m)` | One arc on a flat floor as wide as the span | Rise from a quarter of the span to the span. |
 
 The constructor derives the remaining radius from tangency: the invert and crown radius of a horizontal ellipse, the side radius of a vertical ellipse, the top radius of a pipe-arch, and the arc radius of an arch. These constructors also reject a radius whose cube, times 64, overflows F64. `given_radius_m()` returns the radii you supplied, in constructor order, and `None` for a circle, a box or an arch.
+
+| Shape | Derived radius |
+| --- | --- |
+| Horizontal ellipse | `R = r_c + (x_c^2 + e^2) / (2 e)`, with `x_c = B/2 - r_c` and `e = D/2 - r_c` |
+| Vertical ellipse | `r_c = r + (f^2 + e^2) / (2 f)`, with `f = B/2 - r` and `e = D/2 - r` |
+| Pipe-arch | `r_t = r_c + (x_c^2 + g^2) / (2 g)`, with `g = D - y_c - r_c`, `y_c = r_b - h` and `h^2 = (r_b - B/2) (r_b + B/2 - 2 r_c)` |
+| Flat-floor arch | `r = (B^2/4 + D^2) / (2 D)` |
+
+The floor of a flat-floor arch is wetted at every depth above zero and takes the barrel's Manning `n`. Hydr ships no size table. Take the radii from the manufacturer drawing.
 
 `CulvertBarrelBatch::<R>::new(client, barrels)` uploads one row per barrel. Rows of every shape mix in one batch. It rejects an empty list. It also rejects a runtime without these F64 contracts:
 
@@ -701,7 +710,7 @@ The normal depth is the root on the rising limb of the conveyance `K = A^(5/3) /
 
 Circle conveyance peaks at `0.9381812 D`, above the full-barrel conveyance, then falls to the crown. Arc barrel conveyance also peaks below the crown. Box conveyance rises to its open-section limit at the crown. That limit exceeds the full-barrel conveyance.
 
-`CulvertBarrelBatch::new` certifies each ellipse, pipe-arch and flat-floor arch once. The certificate bounds the slope of both depth residuals and encloses the conveyance peak. Construction rejects, naming the row, a barrel without a certificate: its dimensions scaled to a unit rise fail admission, or its conveyance has no certified single peak below the crown.
+`CulvertBarrelBatch::new` certifies each ellipse, pipe-arch and flat-floor arch once. The certificate bounds the slope of both depth residuals and encloses the conveyance peak. Construction rejects, naming the row, a barrel without a certificate: its dimensions scaled by a power of two to a rise in `[1, 2)` fail admission, or its conveyance has no certified single peak below the crown.
 
 | `NormalDepthStatus` | Enclosure |
 | --- | --- |
@@ -713,6 +722,14 @@ Circle conveyance peaks at `0.9381812 D`, above the full-barrel conveyance, then
 | `NonPositiveSlope` | Zero or adverse slope, whatever the discharge. No enclosure. |
 
 A row without an enclosure projects `depth_m: None`. Its tensors hold NaN.
+
+### Scale a barrel
+
+Construction scales each barrel by the power of two that takes its rise into `[1, 2)`. A box whose scaled span would leave the normal F64 range keeps its metre dimensions. Arc layouts, depth certificates and point geometry run at that scale, then scale back exactly. So a barrel and its power-of-two multiples share their certificates bit for bit. Their geometry agrees bit for bit once lengths scale by `2^k`, areas by `2^2k` and moments by `2^3k`.
+
+- A metre area or moment outside the F64 range rounds outward. At a rise near `2^-900` m the area bounds are `[0, 2^-1074]`.
+- Depth targets take logs of metre discharges and dimensions. Their enclosures at other scales meet the scaled enclosures but are not bit-equal.
+- Discharges of a free-surface section scale with `D^(5/2)`. Below a rise near `2^-430` m every represented discharge lies above the critical-depth range.
 
 ### Handle query rejection
 
@@ -741,6 +758,8 @@ Independent 100-digit references are frozen before any kernel runs.
 | [Admission](../tests/culvert_barrels/admission.rs) | Each rejection names its row, value, and action |
 | [Arc barrels](../tests/culvert_shapes/geometry.rs) | Twelve ellipses, pipe-arches and arches at frozen depths, junctions and seams included. Every reference lies inside its enclosure within a frozen width. [Sweeps](../tests/culvert_shapes/sweeps.rs) show no certified reversal, `dA/dy = T` and `dM/dy = A`, and ranges that hold their ends and references. [Layouts](../tests/culvert_shapes/layouts.rs) of widths 1, 33 and 65 mix arc, circle and box rows bit for bit. |
 | [Arc barrel depths](../tests/culvert_shapes/depths.rs) | Critical and normal statuses match the reference class of independent roots, and every promised enclosure contains the root. [Depth laws](../tests/culvert_shapes/depth_laws.rs) show no certified reversal in discharge, roughness or slope, the same depth fraction for barrels scaled by `2^-300`, and unchanged circle and box rows beside arc rows. |
+| [Scaled arc barrels](../tests/culvert_shapes/scales.rs) | Each arc shape at `2^-900`, `1` and `2^300`: geometry and full geometry equal the unit barrel's scaled bit for bit. At `2^300` critical, normal and inlet enclosures meet the scaled unit enclosures. At `2^-900` zero discharge is dry and a represented discharge lies above the crown. |
+| Frame unit tests | Circles, boxes and arc barrels outside `[1, 2)` return the bits of a metre evaluation. Certificates at `2^-900` and `2^300` equal the unit barrel's bit for bit. |
 
 ```sh
 cargo test --test culvert_barrels
@@ -758,11 +777,12 @@ cargo test --test culvert_shapes
 - Queries hold no state and advance no storage. No snapshot exists.
 - Full-barrel pressure flow and full-barrel friction stay with the caller.
 - CUDA parity covers circular and box barrels only.
-- No outlet control, barrel profile, or culvert discharge. [`CulvertInletBatch`](#culvert-inlet-control) gives inlet-control headwater.
+- The floor of a flat-floor arch takes the barrel's Manning `n`. A natural bed with its own roughness, HDS-5 composite roughness, is not modelled.
+- Barrel queries give no discharge. [`CulvertInletBatch`](#culvert-inlet-control), [`CulvertOutletBatch`](#culvert-outlet-control) and the [culvert law](#culvert-structure-law) give control headwaters and discharge.
 
 ## Culvert inlet control
 
-`hydr::structures::CulvertInletBatch` encloses the inlet-control headwater `HW_i(Q)` of circular and box culverts. It follows FHWA HDS-5 (2012) Appendix A. It computes no outlet control and no discharge from a head.
+`hydr::structures::CulvertInletBatch` encloses the inlet-control headwater `HW_i(Q)` of culverts of every barrel shape. It follows FHWA HDS-5 (2012) Appendix A. It computes no outlet control and no discharge from a head.
 
 Read capabilities with `culvert_inlet_capabilities()`.
 
@@ -770,8 +790,30 @@ Read capabilities with `culvert_inlet_capabilities()`.
 
 | Constructor | Inlet |
 | --- | --- |
-| `CulvertInlet::hds5(code)` | HDS-5 Table A.1 code, numbered as in SWMM `culvert.c`. Codes 1 to 8 are circular, 9 to 26 concrete box. Code 5 is mitered. |
+| `CulvertInlet::hds5(code)` | HDS-5 Table A.1 or A.2 code, numbered as in SWMM `culvert.c` |
 | `CulvertInlet::explicit(form, [k, m, c, y], mitered)` | Explicit coefficients for any barrel shape |
+
+| Codes | Barrel shape | Form | Mitered |
+| --- | --- | --- | --- |
+| 1 to 8 | `Circular` | 1 | Code 5 |
+| 9 to 11 | `Box`, concrete | 1 | None |
+| 12 to 26 | `Box`, concrete | 2 | None |
+| 30 to 32 | `HorizontalEllipse`, concrete | 1 | None |
+| 33 to 35 | `VerticalEllipse`, concrete | 1 | None |
+| 36 to 44 | `PipeArch`, corrugated metal | 1 | Code 37 |
+| 45 to 47 | `Arch`, corrugated metal | 1 | Code 46 |
+
+`barrel_shape()` returns the shape a code requires. A code admits on any barrel of its shape. The 18 in and 31 in corner radii in the HDS-5 chart labels of codes 36 to 44 are not checked.
+
+HDS-5 prints two values for chart 34 scale 3, code 38: `Y = 0.53` in section A.3.1 and `Y = 0.57` in Table A.2. Code 38 takes `0.57`, as SWMM does.
+
+These codes return `StructureInputErrorKind::Definition` with the reason:
+
+| Codes | Reason |
+| --- | --- |
+| 27 to 29 | Corrugated metal box inlets. No barrel shape models a corrugated metal box. |
+| 48 to 57 | Tapered inlets. They need throat and face geometry. |
+| 0, 58 and above | Not an HDS-5 code |
 
 `CulvertInletForm::One` and `Two` select the unsubmerged equation. `K`, `M` and `c` must be finite and positive, and `Y` finite. Any other input returns `StructureInputErrorKind::Definition` with the value and the action.
 
@@ -792,7 +834,9 @@ The runtime needs the same F64 contracts as `CulvertBarrelBatch`.
 
 `headwater(discharge_m3_per_s)` takes an F64 `[m]` tensor of per-barrel discharges. It returns lower and upper headwater in metres above the inlet invert. The exact headwater lies inside each pair. `project()` copies the rows to the host.
 
-With `X = Ku Q / (A D^0.5)` and `Ku = 0.3048^(-1/2)`, `X` equals its value in foot units. HDS-5's US coefficients and limits then apply to SI inputs unchanged.
+With `X = Ku Q / (A D^0.5)` and `Ku = 0.3048^(-1/2)`, `X` equals its value in foot units. HDS-5's US coefficients and limits then apply to SI inputs unchanged. For every shape `A` is the full area and `D` the rise.
+
+The form-1 critical depth `dc` and the area and top width at it come from the [barrel geometry](#read-critical-depth) of the shape. `Hc` rises with `dc` on every shape, so the critical-depth enclosure gives the `Hc` enclosure.
 
 | `InletRegime` | Band | Headwater |
 | --- | --- | --- |
@@ -812,6 +856,7 @@ The batch admits a row only when its headwater strictly rises with discharge. Ea
 | Empty row list, nonfinite slope, nonpositive gravity, or a code for another barrel shape | `Definition` | Correct the named row |
 | Headwater falls across the transition | `Definition` | Supply other coefficients or a smaller slope |
 | Form-1 critical depth at `X = 3.5` reaches the crown | `Definition` | Raise the gravity or use a form-2 inlet |
+| Discharge at `X = 3.5` below the normal F64 range, as for a rise near `2^-900` m | `Definition` | Supply a larger barrel |
 | Negative or nonfinite discharge, or a tensor of another shape, dtype, or device | `OperatingPoint` or `NonfiniteInput` | Correct the named row |
 
 Each message names the row, the code or coefficients, the slope, and the gravity.
@@ -826,9 +871,12 @@ Each message names the row, the code or coefficients, the slope, and the gravity
 | [Sweeps](../tests/culvert_inlets/sweep.rs) | Headwater strictly rises over each band. Enclosures within 16 F64 steps of each limit stay within `1e-12` of each other. |
 | [Layouts](../tests/culvert_inlets/layouts.rs) | Widths 1, 31, 32, 33, 64, and 65. Every lane equals its single-row result bit for bit. |
 | [Admission](../tests/culvert_inlets/admission.rs) | Each rejection names its row, value, and action |
+| [Arc codes](../tests/culvert_shapes/inlets.rs) | Codes 30 to 47 equal the HDS-5 coefficient table bit for bit, with their shape and mitered flag. Rejected codes name their reason. A code on another shape names both shapes. |
+| [Arc reference rows](../tests/culvert_shapes/inlets.rs) | Every 100-digit row of codes 30 to 47 on two ellipses, two pipe-arches and an arch, at three slopes and across the transition, lies inside its enclosure within `2e-11` relative. The limit anchors lie within `2e-11` of the rows beside each limit. |
 
 ```sh
 cargo test --test culvert_inlets
+cargo test --test culvert_shapes inlets
 ```
 
 A [CUDA check](../tests/runtime_backends/culvert_inlets.rs) compares every reference row and layout width with CPU bit for bit. WGPU rejects for lack of F64, without CPU fallback.
@@ -837,11 +885,12 @@ A [CUDA check](../tests/runtime_backends/culvert_inlets.rs) compares every refer
 
 - At zero discharge, a form-1 row returns `D Ks S`, the value of its equation, not zero.
 - The slope term takes the signed slope as given. HDS-5 drops slope adjustments when the exit invert lies more than `D/2` above the entrance. Keep adverse slopes within that range.
-- HDS-5 codes 27 to 57 reject: corrugated metal boxes, ellipses, arches, pipe arches, and tapered inlets. Use explicit coefficients for a box or circle.
+- HDS-5 codes 27 to 29 and 48 to 57 reject. Supply explicit coefficients from the manufacturer or from HDS-5 for those inlets.
+- CUDA parity covers circular and box barrels only.
 
 ## Culvert outlet control
 
-`hydr::structures::CulvertOutletBatch` encloses the outlet-control headwater `HW_o(Q, TW)` of circular and box culverts. It marches the water surface up the barrel from the outlet. It also locates a hydraulic jump in a steep barrel. It computes no inlet control and no discharge from a head.
+`hydr::structures::CulvertOutletBatch` encloses the outlet-control headwater `HW_o(Q, TW)` of culverts of every barrel shape. It marches the water surface up the barrel from the outlet. It also locates a hydraulic jump in a steep barrel. It computes no inlet control and no discharge from a head.
 
 Read capabilities with `culvert_outlet_capabilities()`.
 
@@ -888,11 +937,11 @@ Full-barrel friction is `Sf_full = n^2 V^2 / R^(4/3)`. This is the HDS-5 loss of
 
 Zero and adverse slopes have no normal depth. Their profiles rise to the crown. HDS-5's `ho = max(TW, (dc + D)/2)` approximation is not used.
 
-Solvr certified Simpson integrates the profile in a smooth coordinate: the half angle `phi` of a circle and `y/D` of a box. Order-4 Taylor jets bound the fourth derivative on each panel. The lanes are graded toward both ends of the profile. Solvr certified bisection then finds the depth where the profile covers the barrel.
+Solvr certified Simpson integrates the profile in a smooth coordinate: the half angle `phi` of a circle, `y/D` of a box, and the wall normal angle `psi` of an arc barrel. No panel crosses an arc junction, where the wall radius changes. Order-4 Taylor jets bound the fourth derivative on each panel. The lanes are graded toward both ends of the profile. Solvr certified bisection then finds the depth where the profile covers the barrel.
 
 The flow area of an inlet depth enclosure comes from the area at each end of the enclosure, since the area rises with depth. At a small depth this keeps the area positive, so a tiny discharge still resolves.
 
-Near a circle's conveyance peak capacity, `S - Sf` nearly vanishes at the peak depth `0.9381812 D`. `Sf` falls with depth up to that peak and rises past it. So each jet takes its lower bound of `|S - Sf|` from the panel ends and, where the panel may hold the peak, from `Sf` at the peak. A profile node whose margin still lies within rounding of zero ends the certified distances. A profile that has not covered the barrel by then holds a hull, as the limits below state.
+Near a circle's conveyance peak capacity, `S - Sf` nearly vanishes at the peak depth `0.9381812 D`. `Sf` falls with depth up to that peak and rises past it. So each jet takes its lower bound of `|S - Sf|` from the panel ends and, where the panel may hold the peak, from `Sf` at the peak. A profile node whose margin still lies within rounding of zero ends the certified distances. A profile that has not covered the barrel by then holds a hull, as the limits below state. An arc barrel takes its certified conveyance peak enclosure `[s_N, s_F]` in place of the circle peak and bounds friction over it as a whole.
 
 ### Read a jump
 
@@ -926,9 +975,12 @@ The supercritical profile starts at critical depth at the inlet. Along a profile
 | [Crown sweeps](../tests/culvert_outlets/crown.rs) | A steep box resolves through its critical capacity and its headwater never falls. It is continuous at the capacity and where a full outlet head reaches the crown at the inlet. It steps up by `(Sf_full - S) L` where it primes, and every discharge next to that step resolves. |
 | [Layouts](../tests/culvert_outlets/layouts.rs) | Widths 1, 33, and 65, one past each of 32 and 64 lanes. Every lane equals its single-row result bit for bit. |
 | [Admission](../tests/culvert_outlets/admission.rs) | Each rejection names its row, value, and action |
+| [Arc barrels](../tests/culvert_shapes/outlets.rs) | On a horizontal and a vertical ellipse, a pipe-arch and an arch: independent full-barrel rows lie within `2^-40` relative, and mild, steep, adverse, drowned and near-crown profile rows within `1e-9` relative, with jump positions within `1e-6 L`. Headwater is continuous where the tailwater crosses critical depth, a junction depth or the crown, and never falls as discharge or tailwater rises. Layouts mix arc, circle and box rows bit for bit. |
+| [Scaled arc barrels](../tests/culvert_shapes/scales.rs) | At `2^-60` and `2^60`, with lengths, discharges and `n` scaled alike, every headwater enclosure meets the scaled unit enclosure. At `2^-900` and `2^300` the query rejects as `Numerical`. |
 
 ```sh
 cargo test --test culvert_outlets
+cargo test --test culvert_shapes outlets
 ```
 
 A [CUDA check](../tests/runtime_backends/culvert_outlets.rs) compares every reference row and layout width with CPU bit for bit. WGPU rejects for lack of F64, without CPU fallback.
@@ -944,10 +996,11 @@ A [CUDA check](../tests/runtime_backends/culvert_outlets.rs) compares every refe
 - A row with `yc = D` and a full outlet segment has no located jump.
 - A jump is located only when the subcritical profile is free at the outlet and friction falls with depth across the jump.
 - Barrel storage is not represented. Queries hold no state.
+- The march squares the discharge and raises the area to powers in metres. Where these leave F64, as at a rise near `2^-900` m or `2^300` m, the query rejects as `Numerical`. Model such a barrel at a scale near metres.
 
 ## Culvert structure law
 
-`StructureLaw::Culvert(CulvertParameters)` gives the discharge of identical parallel circular or box barrels from the heads at both ends. The headwater is `HW(Q) = max(HW_i(Q), HW_o(Q, TW))` of [inlet control](#culvert-inlet-control) and [outlet control](#culvert-outlet-control). The discharge inverts that curve at the supplied heads.
+`StructureLaw::Culvert(CulvertParameters)` gives the discharge of identical parallel barrels of any shape from the heads at both ends. The headwater is `HW(Q) = max(HW_i(Q), HW_o(Q, TW))` of [inlet control](#culvert-inlet-control) and [outlet control](#culvert-outlet-control). The discharge inverts that curve at the supplied heads.
 
 Read capabilities with `culvert_capabilities()`.
 
@@ -1050,6 +1103,8 @@ A tie takes the larger of both controls. The bound is capped at `2^256` per metr
 | Nonfinite invert, zero barrel count, no end, negative `ke`, an inlet code for another barrel shape, or an adverse fall above `D/2` | `Definition` | Correct the named field |
 | Ends that do not match the direction policy | `Definition` | Declare one end per admitted direction |
 | Inlet headwater that falls across its transition | `Definition` | Supply coefficients whose submerged headwater at `X = 4` exceeds the unsubmerged headwater at `X = 3.5` |
+| Inlet discharge at `X = 3.5` below the normal F64 range | `Definition` | Supply a larger barrel |
+| Arc barrel without a depth certificate | `Definition` | Change the dimensions named in the message |
 | Culvert in `StructureBatch::new` | `Definition` | Build with `StructureBatch::with_culverts` |
 | Dry end with its bed above its invert | `UnsupportedRegime` | Supply the bed at or below the invert, or a wet stage |
 | Outlet headwater unresolved near the inlet discharge | `Numerical` | A march comparison is not certified below the crown, at a start friction equal to the slope or a full-barrel head equal to the crown at the inlet. Move the heads off that point. |
@@ -1063,7 +1118,8 @@ A tie takes the larger of both controls. The bound is capped at `2^256` per metr
 | [Heads](../tests/culvert_laws/heads.rs) | Reversed heads negate the discharge with the B-end inlet. One-end reversal, equal heads, and dry donors give exact zero. Free outfalls agree bit for bit. Zero-discharge headwaters give exact zero. |
 | [Sweeps](../tests/culvert_laws/sweep.rs) | Discharge rises across the inlet bands and stays continuous at both anchors. It stays continuous where the outlet turns full. |
 | [Peak capacity](../tests/culvert_laws/capacity.rs) | On a circle run through its conveyance peak capacity at two tailwaters, `Q(HW(Q))` returns `Q` within `1e-6` under outlet control. Discharge rises with the donor head across that range. |
-| Sensitivity unit tests | The bound holds against a centred difference on inlet and drowned lanes, and over head grids on mild, adverse, zero-slope, steep drowned, and priming barrels. No flowing lane takes the cap. |
+| Sensitivity unit tests | The bound holds against a centred difference on inlet and drowned lanes, and over head grids on mild, adverse, zero-slope, steep drowned, and priming barrels, and on mild horizontal ellipse, pipe-arch and arch barrels. No flowing lane takes the cap. |
+| [Arc barrels](../tests/culvert_laws/arcs.rs) | On each arc shape, `Q(HW(Q))` returns `Q` within `1e-6` on mild, adverse and short barrels, and the regime names the larger control. Reversed heads negate the discharge bit for bit. Equal heads and dry donors give exact zero. Free outfalls agree bit for bit. At `2^-60` and `2^60`, with lengths, heads and `n` scaled alike, the discharge equals the scaled unit discharge within `1e-6` with the same regime. At `2^300` the proposal rejects as `Numerical`. At `2^-900` the batch rejects, naming the element. |
 | [Layouts](../tests/culvert_laws/layouts.rs) | Widths 1, 33, and 65 with weirs. Every lane equals its single-lane result bit for bit. |
 
 ```sh
@@ -1079,6 +1135,9 @@ A [CUDA check](../tests/runtime_backends/culvert_laws.rs) compares every layout 
 - A shallow profile whose depth enclosure gives no certified positive area at a small angle takes the sensitivity cap.
 - Every flowing lane runs one outlet march. A lane the inlet does not certainly govern adds one outlet march per bisection round. An outlet-controlled lane that is not a drowned full barrel adds one coarse march for its head sensitivity.
 - No blockage, sediment, or debris is represented.
+- The floor of a flat-floor arch takes the culvert's Manning `n`. A natural bed with its own roughness, HDS-5 composite roughness, is not modelled.
+- Discharges, their squares and powers of the area form in metres. Where the outlet products leave F64, as at a rise near `2^300` m, the proposal rejects as `Numerical`. Model such a culvert at a scale near metres.
+- CUDA parity covers circular and box barrels only.
 
 ## Read head sensitivity
 

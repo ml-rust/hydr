@@ -60,17 +60,22 @@ static CULVERT_INLET: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "unadmitted-inlet-definition",
             UnsupportedReason::RejectedByAdmission,
-            "An HDS-5 code outside 1 to 26 rejects. So do explicit coefficients with a nonfinite or nonpositive K, M or c, or a nonfinite Y.",
+            "An HDS-5 code outside 1 to 26 and 30 to 47 rejects, each message naming the reason. So do explicit coefficients with a nonfinite or nonpositive K, M or c, or a nonfinite Y.",
         ),
         unsupported(
             "invalid-inlet-row",
             UnsupportedReason::RejectedByAdmission,
-            "An empty row list, a nonfinite slope, a nonfinite or nonpositive gravity, a coded inlet on a barrel of another shape, or an elliptical, pipe-arch or flat-floor arch barrel rejects.",
+            "An empty row list, a nonfinite slope, a nonfinite or nonpositive gravity, or a coded inlet on a barrel of another shape rejects.",
         ),
         unsupported(
             "falling-transition",
             UnsupportedReason::RejectedByAdmission,
             "A row whose submerged headwater at X = 4 does not certifiably exceed its unsubmerged headwater at X = 3.5 rejects. So does a form-1 row whose critical depth at X = 3.5 is not below the crown.",
+        ),
+        unsupported(
+            "unrepresentable-inlet-discharge",
+            UnsupportedReason::RejectedByAdmission,
+            "A row whose discharge at X = 3.5 lies below the normal F64 range rejects, as for a barrel with a rise near 2^-900 m.",
         ),
         unsupported(
             "invalid-query-input",
@@ -80,7 +85,7 @@ static CULVERT_INLET: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "other-inlet-codes",
             UnsupportedReason::OutsideModel,
-            "HDS-5 codes 27 to 57: corrugated metal boxes, ellipses, arches, pipe arches and tapered inlets.",
+            "HDS-5 codes 27 to 29, corrugated metal boxes, and 48 to 57, tapered inlets.",
         ),
         unsupported(
             "culvert-discharge",
@@ -107,6 +112,11 @@ static CULVERT_INLET: ComponentCapabilities = ComponentCapabilities {
         Limit {
             id: "form-one-zero-discharge",
             summary: "At zero discharge a form-1 row returns D Ks S, the value of its equation, not zero.",
+            doc: CULVERT_INLET_DOC,
+        },
+        Limit {
+            id: "shape-class-codes",
+            summary: "A code admits on any barrel of its shape class. The 18 in and 31 in corner radii in the HDS-5 chart labels of codes 36 to 44 are not checked.",
             doc: CULVERT_INLET_DOC,
         },
     ],

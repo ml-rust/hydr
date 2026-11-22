@@ -1,12 +1,12 @@
 //! Critical head `Hc = dc + A(dc) / (2 T(dc))` from a critical-depth enclosure.
 //!
-//! `h(y) = y + A(y) / (2 T(y))` rises in `y`. A box has `h = 3y/2`. For a circle below the
-//! middle, `T` is concave with `T(0) = 0`, so `T' <= T/y` and `A <= y T`. That gives
-//! `d(A/T)/dy = 1 - A T' / T^2 >= 0`. Above the middle `T' < 0`. So `Hc` lies in
-//! `[h(lower), h(upper)]` of the depth enclosure.
+//! `h(y) = y + A(y) / (2 T(y))` rises in `y`. A box has `h = 3y/2`. Circle and arc sections
+//! are convex. Below the widest depth `T` is concave and rising with `T(0) >= 0`, so
+//! `T' <= T/y` and `A <= y T`. That gives `d(A/T)/dy = 1 - A T' / T^2 >= 0`. Above the widest
+//! depth `T' < 0`. So `Hc` lies in `[h(lower), h(upper)]` of the depth enclosure.
 //!
-//! Circle rows read `a(s)` and `t(s)` of a unit-diameter circle at `s = y/D`, so tiny rises never
-//! underflow the area. `h(0) = 0`.
+//! Circle and arc rows read `a(s)` and `t(s)` of the unit-rise section at `s = y/D`, so tiny
+//! rises never underflow the area. `h(0) = 0`.
 
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, BarrelDepths, section};
 use crate::structures::tensor::codes;
@@ -84,16 +84,17 @@ where
     let c = a.client();
     let half = barrel.constant(0.5)?;
     let wet = c.gt(s, &barrel.zero)?;
-    let circle_rows = c.mul(&wet, &barrel.circular)?;
-    let fraction = c.where_cond(&circle_rows, s, &half)?;
+    let curved = c.sub(&barrel.one, &barrel.boxed)?;
+    let curved_rows = c.mul(&wet, &curved)?;
+    let fraction = c.where_cond(&curved_rows, s, &half)?;
     let geometry = section::at_depth(a, unit, &fraction)?.geometry;
     let two = a.point(&barrel.constant(2.0)?)?;
     let width = a.mul(&two, &geometry.top_width)?;
     let depth = a.div_positive_interval(&geometry.area, &width)?;
     let point = a.point(&fraction)?;
-    let circle = a.add(&point, &depth)?;
+    let section_head = a.add(&point, &depth)?;
     let box_fraction = a.point(s)?;
     let three_halves = a.point(&barrel.constant(1.5)?)?;
     let rectangle = a.mul(&three_halves, &box_fraction)?;
-    super::super::choose(a, &barrel.circular, &circle, &rectangle)
+    super::super::choose(a, &curved, &section_head, &rectangle)
 }

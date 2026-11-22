@@ -1,4 +1,4 @@
-//! Certified HDS-5 inlet-control headwater `HW_i(Q)` for circle and box barrels.
+//! Certified HDS-5 inlet-control headwater `HW_i(Q)` for barrels of every shape.
 //!
 //! `X = Ku Q / (A D^0.5)`, with the exact SI conversion `Ku = 0.3048^(-1/2)`. `X` then equals
 //! its value in foot units, so HDS-5's US limits and coefficients apply unchanged.
