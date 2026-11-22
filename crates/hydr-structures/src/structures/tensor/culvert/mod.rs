@@ -1,6 +1,7 @@
 //! Per-barrel tensors built once for barrel geometry, inlet control and outlet control.
 
 mod arcs;
+mod certificates;
 mod context;
 mod inlet;
 mod law;

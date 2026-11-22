@@ -9,10 +9,11 @@
 //! | `f(floor)` holds a positive value and a nonpositive lower end | `BelowFloor` | `[0, floor - f(floor).lower / kappa]` |
 //! | `f(floor) <= 0 <= f(top)` | `Solved` | from the solver |
 //! | `f(floor) <= 0`, `f(top)` holds a negative value and a nonnegative upper end | `AtCrown` | `[top - f(top).upper / kappa, 1]` |
-//! | `f(top).upper < 0` | `AboveCrown` | circle `[top, 1]`, box none |
+//! | `f(top).upper < 0` | `AboveCrown` | circle and arc `[top, 1]`, box none |
 //!
 //! The solved class matches the solver's own bracket test, so every solved row is bracketed.
-//! A circle root always lies in `(0, 1)`. Above `top` it lies within `2^-53 D` of the crown.
+//! A circle or arc barrel closes its crown, so `A^3 / T` grows without bound and a root always
+//! lies in `(0, 1)`. Above `top` it lies within `2^-53 D` of the crown.
 //! A box root exists only for `Q <= sqrt(g) B D^(3/2)`. An `AtCrown` box row holds the root
 //! when one exists.
 
@@ -30,7 +31,8 @@ use solvr::common::arithmetic::ArithmeticResult;
 
 /// Classifies every row from the residual at both domain ends.
 ///
-/// Every row has an enclosure except box rows above the crown.
+/// Every row has an enclosure except box rows above the crown. `top` and `kappa` are the row's
+/// critical domain top and slope floor, certified per row on arc rows.
 pub(super) fn classify<R>(
     a: &mut Arithmetic<'_, R>,
     barrel: &TensorBarrelContext<R>,

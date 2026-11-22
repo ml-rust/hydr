@@ -1,12 +1,14 @@
-//! Compact `[m]` barrel rows: shape masks, dimensions, series coefficients, arc layouts and
-//! full-state bounds.
+//! Compact `[m]` barrel rows: shape masks, dimensions, series coefficients, arc layouts,
+//! depth certificates and full-state bounds.
 
 use super::arcs::ArcRows;
+use super::certificates::unit_barrel;
 use crate::structures::numerics::culvert::arcs::ArcInputs;
+use crate::structures::numerics::culvert::certify::REFINEMENT_ROUNDS;
 use crate::structures::numerics::culvert::{BarrelClient, constants, section};
 use crate::structures::{CulvertBarrel, CulvertBarrelShape, StructureError};
 use numr::dtype::DType;
-use numr::ops::{ConditionalOps, IndexingOps};
+use numr::ops::{BinaryOps, ConditionalOps, IndexingOps};
 use numr::runtime::{Runtime, RuntimeClient, SquareRootContract};
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::with_interval_arithmetic;
@@ -67,22 +69,31 @@ pub(crate) struct TensorBarrelContext<R: Runtime<DType = DType>> {
     /// `D / 32`, exact. Harmless shallow operand on other lanes.
     pub(crate) shallow_operand: Tensor<R>,
     pub(crate) series: SeriesTensors<R>,
-    /// Upper end of the critical-depth domain in `s = y/D`: `1 - 2^-53` circle, `1` box.
-    /// NaN on arc rows, which hold no depth certificate yet.
+    /// Upper end of the critical-depth domain in `s = y/D`: `1 - 2^-53` circle and arc, `1` box.
     pub(crate) critical_top: Tensor<R>,
-    /// Lower bound of `d r_c / ds` on the critical domain: `5.4` circle, `3` box, NaN arc.
+    /// Lower bound of `d r_c / ds` on the critical domain: `5.4` circle, `3` box, the
+    /// certified `kappa_c` arc.
     pub(crate) critical_slope: Tensor<R>,
-    /// Upper end of the normal-depth domain in `s = y/D`: `s_N = 0.93818` circle, `1` box,
-    /// NaN arc.
+    /// Upper end of the normal-depth domain in `s = y/D`: `s_N = 0.93818` circle, `1` box, the
+    /// certified rising-limb top arc.
     pub(crate) normal_top: Tensor<R>,
-    /// Lower bound of `d r_n / ds` on the normal domain: `5.42e-5` circle, `3` box, NaN arc.
+    /// Lower bound of `d r_n / ds` on the normal domain: `5.42e-5` circle, `3` box, the
+    /// certified `kappa_n` arc.
     pub(crate) normal_slope: Tensor<R>,
+    /// Enclosure in `s` of the conveyance peak: the frozen circle bounds, `[1, 1]` for a box,
+    /// whose conveyance rises to the crown, and the certified `[s_N, s_F]` arc.
+    pub(crate) conveyance_peak: Bounds<R>,
+    /// Enclosure of `ln k_max`, the log peak conveyance `a^(5/3) / p^(2/3)` in unit geometry:
+    /// the frozen circle bounds and the certified arc bounds. Zero on box rows, which never read it.
+    pub(crate) log_peak: Bounds<R>,
     pub(crate) full_area: Bounds<R>,
     pub(crate) full_perimeter: Bounds<R>,
     pub(crate) full_radius: Bounds<R>,
     /// Arc layouts, with a harmless arc barrel on circle and box rows. `None` when no row is an
     /// arc barrel, so circle and box queries skip the arc branch.
     pub(crate) arcs: Option<ArcRows<R>>,
+    /// The arc layouts in units of the rise, read by the depth residuals and certificates.
+    pub(crate) unit_arcs: Option<ArcRows<R>>,
 }
 
 /// Rejects the first arc barrel of `barrels` for `query`, which arc rows do not serve yet.
@@ -128,19 +139,39 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
                 R::name()
             )));
         }
-        Self::build(client, barrels)
+        Self::build(client, barrels, REFINEMENT_ROUNDS)
     }
 
-    /// A context of unit-diameter circles with this context's width and client.
+    /// A context of unit-rise rows with this context's width and client: unit-diameter circles
+    /// on circle and box rows, and each arc barrel's layout in units of its rise.
     ///
-    /// The critical and normal residuals read circle geometry in `s = y/D` from it, so tiny rises never
+    /// The critical and normal residuals read geometry in `s = y/D` from it, so tiny rises never
     /// underflow the area.
-    pub(crate) fn unit_circles(&self) -> Result<Self, StructureError>
+    pub(crate) fn unit(&self) -> Result<Self, StructureError>
     where
         R::Client: BarrelClient<R>,
     {
-        let unit = CulvertBarrel::circular(1.0)?;
-        Self::build(self.client.clone(), &vec![unit; self.width()])
+        let circle = CulvertBarrel::circular(1.0)?;
+        let mut unit = Self::build(self.client.clone(), &vec![circle; self.width()], 0)?;
+        let Some(arcs) = &self.unit_arcs else {
+            return Ok(unit);
+        };
+        let c = &self.client;
+        let arced = &arcs.arced;
+        let merge = |[lower, upper]: &Bounds<R>,
+                     [arc_lower, arc_upper]: &Bounds<R>|
+         -> numr::error::Result<Bounds<R>> {
+            Ok([
+                c.where_cond(arced, arc_lower, lower)?,
+                c.where_cond(arced, arc_upper, upper)?,
+            ])
+        };
+        unit.circular = c.sub(&unit.one, arced)?;
+        unit.full_area = merge(&unit.full_area, &arcs.full_area)?;
+        unit.full_perimeter = merge(&unit.full_perimeter, &arcs.full_perimeter)?;
+        unit.full_radius = merge(&unit.full_radius, &arcs.full_radius)?;
+        unit.arcs = Some(arcs.select(&|value| Ok(value.clone()))?);
+        Ok(unit)
     }
 
     /// Gathers the rows at the I64 indices `rows`, in their order. Indices may repeat.
@@ -177,6 +208,8 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             critical_slope: take(&self.critical_slope)?,
             normal_top: take(&self.normal_top)?,
             normal_slope: take(&self.normal_slope)?,
+            conveyance_peak: pair(&self.conveyance_peak)?,
+            log_peak: pair(&self.log_peak)?,
             full_area: pair(&self.full_area)?,
             full_perimeter: pair(&self.full_perimeter)?,
             full_radius: pair(&self.full_radius)?,
@@ -185,11 +218,21 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
                 .as_ref()
                 .map(|arcs| arcs.select(&take))
                 .transpose()?,
+            unit_arcs: self
+                .unit_arcs
+                .as_ref()
+                .map(|arcs| arcs.select(&take))
+                .transpose()?,
         })
     }
 
-    /// Uploads the rows of an admitted runtime and encloses the full-state constants.
-    fn build(client: R::Client, barrels: &[CulvertBarrel]) -> Result<Self, StructureError>
+    /// Uploads the rows of an admitted runtime, encloses the full-state constants and
+    /// certifies the arc rows with `rounds` refinement rounds.
+    pub(super) fn build(
+        client: R::Client,
+        barrels: &[CulvertBarrel],
+        rounds: usize,
+    ) -> Result<Self, StructureError>
     where
         R::Client: BarrelClient<R>,
     {
@@ -209,7 +252,7 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
         let half_rise = column(&|b| b.rise_m() * 0.5)?;
         let shallow_top = column(&|b| b.rise_m() * 0.0625)?;
         let shallow_operand = column(&|b| b.rise_m() * 0.03125)?;
-        // Circle value, box value. Arc rows hold NaN until their certificates exist.
+        // Circle value, box value. Arc rows hold NaN until their certificates fill them.
         let certified = |[on_circle, on_box]: [f64; 2]| {
             column(&|b| match b.shape() {
                 CulvertBarrelShape::Circular => on_circle,
@@ -225,9 +268,25 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
         let normal_top = certified([constants::RISING_LIMB_TOP, 1.0])?;
         let normal_slope =
             certified([constants::CIRCLE_NORMAL_SLOPE, constants::BOX_NORMAL_SLOPE])?;
+        let [peak_lower, peak_upper] = constants::CONVEYANCE_PEAK.map(f64::from_bits);
+        let [log_lower, log_upper] = constants::LOG_PEAK_CONVEYANCE.map(f64::from_bits);
+        let conveyance_peak = [certified([peak_lower, 1.0])?, certified([peak_upper, 1.0])?];
+        let log_peak = [certified([log_lower, 0.0])?, certified([log_upper, 0.0])?];
         let series = SeriesTensors::constant(m, &device)?;
         let inputs = if barrels.iter().any(|b| b.shape().arced()) {
-            Some(ArcInputs::<R>::new(barrels, &device)?)
+            let scaled = barrels
+                .iter()
+                .enumerate()
+                .map(|(row, b)| unit_barrel(row, b))
+                .collect::<Result<Vec<_>, _>>()?;
+            let unit_rise = scaled.iter().map(CulvertBarrel::rise_m).collect::<Vec<_>>();
+            let unit_span = scaled.iter().map(CulvertBarrel::span_m).collect::<Vec<_>>();
+            Some((
+                ArcInputs::<R>::new(barrels, &device)?,
+                ArcInputs::<R>::new(&scaled, &device)?,
+                Tensor::<R>::from_slice(&unit_span, &[m], &device)?,
+                Tensor::<R>::from_slice(&unit_rise, &[m], &device)?,
+            ))
         } else {
             None
         };
@@ -238,12 +297,20 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             |a| {
                 let closed = section::full_constants(a, &circular, &span, &rise)?;
                 let arcs = match &inputs {
-                    Some(inputs) => Some(ArcRows::build(a, inputs, &arc_rows, &span, &rise)?),
+                    Some((inputs, scaled, unit_span, unit_rise)) => {
+                        let rows = ArcRows::build(a, inputs, &arc_rows, &span, &rise)?;
+                        let unit = ArcRows::build(a, scaled, &arc_rows, unit_span, unit_rise)?;
+                        Some((rows, unit.unit(a, unit_rise)?))
+                    }
                     None => None,
                 };
                 Ok((closed, arcs))
             },
         )?;
+        let (arcs, unit_arcs) = match arcs {
+            Some((rows, unit)) => (Some(rows), Some(unit)),
+            None => (None, None),
+        };
         let merge = |closed: Bounds<R>,
                      arc: fn(&ArcRows<R>) -> &Bounds<R>|
          -> numr::error::Result<Bounds<R>> {
@@ -261,7 +328,7 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
         let full_area = merge(area, |arcs| &arcs.full_area)?;
         let full_perimeter = merge(perimeter, |arcs| &arcs.full_perimeter)?;
         let full_radius = merge(radius, |arcs| &arcs.full_radius)?;
-        Ok(Self {
+        let context = Self {
             zero: Tensor::<R>::zeros(&[m], DType::F64, &device)?,
             one: Tensor::<R>::ones(&[m], DType::F64, &device)?,
             client,
@@ -278,11 +345,15 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             critical_slope,
             normal_top,
             normal_slope,
+            conveyance_peak,
+            log_peak,
             full_area,
             full_perimeter,
             full_radius,
             arcs,
-        })
+            unit_arcs,
+        };
+        context.certify_arcs(barrels, rounds)
     }
 
     /// Barrel count `m`.
@@ -300,6 +371,7 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
 mod tests {
     use super::*;
     use crate::structures::StructureInputErrorKind;
+    use crate::structures::numerics::culvert::constants::CIRCLE_CRITICAL_TOP;
     use numr::runtime::cpu::{CpuDevice, CpuRuntime};
 
     #[test]
@@ -315,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn arc_rows_join_the_context_and_reject_depth_queries_by_row() -> Result<(), StructureError> {
+    fn arc_rows_join_the_context_with_certificates() -> Result<(), StructureError> {
         let device = CpuDevice::new();
         let client = CpuRuntime::default_client(&device);
         let barrels = [
@@ -336,7 +408,20 @@ mod tests {
             [0.0, 0.0, 0.0, 3.048]
         );
         let slopes = context.critical_slope.try_to_vec::<f64>()?;
-        assert!(slopes[1].is_nan() && slopes[3].is_nan() && slopes[0] == 5.4);
+        assert!(slopes[1] > 0.0 && slopes[3] > 0.0 && slopes[0] == 5.4 && slopes[2] == 3.0);
+        let tops = context.critical_top.try_to_vec::<f64>()?;
+        assert_eq!(
+            tops,
+            [
+                CIRCLE_CRITICAL_TOP,
+                CIRCLE_CRITICAL_TOP,
+                1.0,
+                CIRCLE_CRITICAL_TOP
+            ]
+        );
+        let unit = context.unit()?;
+        assert_eq!(unit.circular.try_to_vec::<f64>()?, [1.0, 0.0, 1.0, 0.0]);
+        assert!(unit.unit_arcs.is_none() && unit.arcs.is_some());
         let rows = Tensor::<CpuRuntime>::from_slice(&[3i64, 2], &[2], &device)?;
         let picked = context.select(&rows)?;
         let picked_arcs = picked
@@ -347,13 +432,13 @@ mod tests {
         let circles = TensorBarrelContext::<CpuRuntime>::new(client, &barrels[..1])?;
         assert!(circles.arcs.is_none());
 
-        let error = reject_arc_barrels(&barrels, "critical depth").err();
+        let error = reject_arc_barrels(&barrels, "inlet control").err();
         assert!(matches!(
             error,
             Some(StructureError::InvalidInput { element: Some(1), kind: StructureInputErrorKind::Definition, ref context })
-                if context == "shape=PipeArch,span_m=1.8542,rise_m=1.397: critical depth on arc barrels not yet available. Use a circular or box barrel"
+                if context == "shape=PipeArch,span_m=1.8542,rise_m=1.397: inlet control on arc barrels not yet available. Use a circular or box barrel"
         ));
-        assert!(reject_arc_barrels(&barrels[..1], "critical depth").is_ok());
+        assert!(reject_arc_barrels(&barrels[..1], "inlet control").is_ok());
         Ok(())
     }
 

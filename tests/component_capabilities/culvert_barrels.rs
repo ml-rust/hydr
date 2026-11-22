@@ -84,26 +84,17 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                 "a flat-floor arch needs a rise of at least a quarter of the span",
             ),
         ],
-        "arc-barrel-depths" => {
-            let arch = CulvertBarrelBatch::<Runtime>::new(
-                client(),
-                vec![
-                    CulvertBarrel::circular(1.0)?,
-                    CulvertBarrel::arch(3.048, 1.6002)?,
-                ],
-            )?;
-            vec![
-                (
-                    dropped(arch.critical_depth(&flows, 9.81)),
-                    K::Definition,
-                    "critical depth on arc barrels not yet available",
-                ),
-                (
-                    dropped(arch.normal_depth(&flows, &roughness, &slopes)),
-                    K::Definition,
-                    "normal depth on arc barrels not yet available",
-                ),
-            ]
+        "arc-barrel-certificate" => {
+            // Admitted in metres, but its invert radius over the rise has a cube past F64.
+            let flat = CulvertBarrel::horizontal_ellipse(2e-5, 1e-100, 2.5e-101)?;
+            vec![(
+                dropped(CulvertBarrelBatch::<Runtime>::new(
+                    client(),
+                    vec![CulvertBarrel::circular(1.0)?, flat],
+                )),
+                K::Definition,
+                "the depth certificates scale the barrel to a unit rise, and the scaled barrel fails admission",
+            )]
         }
         "empty-barrel-batch" => vec![(
             dropped(CulvertBarrelBatch::<Runtime>::new(client(), Vec::new())),

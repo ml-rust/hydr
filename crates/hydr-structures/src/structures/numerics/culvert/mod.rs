@@ -7,6 +7,7 @@ pub(crate) mod arcs;
 #[cfg(test)]
 mod certificate_rows;
 pub(crate) mod constants;
+pub(crate) mod certify;
 pub(crate) mod critical;
 pub(crate) mod inlet;
 mod inversion;

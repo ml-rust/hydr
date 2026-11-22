@@ -70,7 +70,7 @@ impl<R: Runtime<DType = DType>> CulvertInletBatch<R> {
         let barrels: Arc<[CulvertBarrel]> = rows.iter().map(|row| row.barrel).collect();
         reject_arc_barrels(&barrels, "inlet control")?;
         let barrel = TensorBarrelContext::new(client, &barrels)?;
-        let unit = barrel.unit_circles()?;
+        let unit = barrel.unit()?;
         let inlet = anchors::prepare(&barrels, &barrel, &unit, &rows)?;
         Ok(Self {
             rows: rows.into(),

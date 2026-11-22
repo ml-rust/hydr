@@ -174,7 +174,7 @@ impl<R: Runtime<DType = DType>> TensorCulvertLaw<R> {
         let outlet_rows: Vec<_> = rows.iter().map(|(_, outlet)| *outlet).collect();
         reject_arc_barrels(&barrels, "the culvert law").map_err(at)?;
         let barrel = TensorBarrelContext::new(context.client.clone(), &barrels)?;
-        let unit = barrel.unit_circles()?;
+        let unit = barrel.unit()?;
         let inlet = anchors::prepare(&barrels, &barrel, &unit, &inlet_rows).map_err(at)?;
         let outlet = outlet::prepare(&barrel, &outlet_rows).map_err(at)?;
         let device = &context.device;

@@ -144,6 +144,73 @@ impl<R: Runtime<DType = DType>> ArcRows<R> {
         })
     }
 
+    /// The same rows in units of the rise `rise`: lengths over `D`, areas over `D^2`, moments
+    /// over `D^3`, each bound rounded outward. Angles and masks stay.
+    ///
+    /// Build `self` from barrels scaled by a power of two to a rise in `[1, 2)`, so no value
+    /// underflows and the scaled section is the barrel's own shape.
+    pub(crate) fn unit(&self, a: &mut Arithmetic<'_, R>, rise: &Tensor<R>) -> ArithmeticResult<Self>
+    where
+        R::Client: BarrelClient<R>,
+    {
+        let c = a.client();
+        let mut scale = |[lower, upper]: &Bounds<R>, power: usize| -> ArithmeticResult<Bounds<R>> {
+            let mut value = a.bounds(lower, upper)?;
+            for _ in 0..power {
+                value = a.div_positive(&value, rise)?;
+            }
+            Ok([value.lower().clone(), value.upper().clone()])
+        };
+        let mut band = |b: &ArcBand<R>| -> ArithmeticResult<ArcBand<R>> {
+            Ok(ArcBand {
+                centre_x: scale(&b.centre_x, 1)?,
+                centre_y: scale(&b.centre_y, 1)?,
+                radius: scale(&b.radius, 1)?,
+                start_angle: b.start_angle.clone(),
+                start_sin: b.start_sin.clone(),
+                start_cos: b.start_cos.clone(),
+                start_depth: scale(&b.start_depth, 1)?,
+                start_area: scale(&b.start_area, 2)?,
+                start_perimeter: scale(&b.start_perimeter, 1)?,
+                start_moment: scale(&b.start_moment, 3)?,
+                circle_low: scale(&b.circle_low, 1)?,
+                circle_high: scale(&b.circle_high, 1)?,
+            })
+        };
+        let [bottom, corner, top] = &self.bands;
+        let bands = [band(bottom)?, band(corner)?, band(top)?];
+        let [w0, w1, w2] = &self.start_widths;
+        let start_widths = [scale(w0, 1)?, scale(w1, 1)?, scale(w2, 1)?];
+        let bottom_diameter = scale(&self.bottom_diameter, 1)?;
+        let full_area = scale(&self.full_area, 2)?;
+        let full_perimeter = scale(&self.full_perimeter, 1)?;
+        let full_radius = scale(&self.full_radius, 1)?;
+        let full_moment = scale(&self.full_moment, 3)?;
+        let widest_depth = scale(&self.widest_depth, 1)?;
+        let widest = [self.widest_width.clone(), self.widest_width.clone()];
+        let [_, widest_width] = scale(&widest, 1)?;
+        let floor = [self.floor_width.clone(), self.floor_width.clone()];
+        let [_, floor_width] = scale(&floor, 1)?;
+        let [m0, m1, m2] = &self.middles;
+        // D 2^-j over D is the exact 2^-j, and each middle stays inside its band.
+        Ok(Self {
+            arced: self.arced.clone(),
+            floored: self.floored.clone(),
+            bands,
+            start_widths,
+            middles: [c.div(m0, rise)?, c.div(m1, rise)?, c.div(m2, rise)?],
+            shallow_top: c.div(&self.shallow_top, rise)?,
+            bottom_diameter,
+            full_area,
+            full_perimeter,
+            full_radius,
+            full_moment,
+            widest_depth,
+            widest_width,
+            floor_width,
+        })
+    }
+
     /// Gathers rows through `take`, in its order.
     pub(crate) fn select(
         &self,

@@ -68,7 +68,7 @@ impl<R: Runtime<DType = DType>> CulvertOutletBatch<R> {
         let barrels: Arc<[CulvertBarrel]> = rows.iter().map(|row| row.barrel).collect();
         reject_arc_barrels(&barrels, "outlet control")?;
         let barrel = TensorBarrelContext::new(client, &barrels)?;
-        let unit = barrel.unit_circles()?;
+        let unit = barrel.unit()?;
         let outlet = outlet::prepare(&barrel, &rows)?;
         Ok(Self {
             rows: rows.into(),

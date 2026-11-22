@@ -2,7 +2,7 @@
 //!
 //! `r_n = 3 ln K - 3 ln(Q n / sqrt(S))` with the conveyance `K = A^(5/3) / P^(2/3)`.
 //!
-//! - A circle reads `A = D^2 a(s)` and `P = D p(s)` from unit-diameter geometry, so
+//! - A circle and an arc barrel read `A = D^2 a(s)` and `P = D p(s)` from unit-rise geometry, so
 //!   `r_n = 5 ln a(s) - 2 ln p(s) - (3 ln Q + 3 ln n - 1.5 ln S - 8 ln D)`.
 //! - A box has `A = B D s` and `P = B + 2 D s`, so
 //!   `r_n = 5 ln s - 2 ln(B + 2 D s) - (3 ln Q + 3 ln n - 1.5 ln S - 5 ln B - 5 ln D)`.
@@ -18,7 +18,7 @@ use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval};
 
-/// Encloses the row target `3 ln Q + 3 ln n - 1.5 ln S` minus `8 ln D` (circle) or
+/// Encloses the row target `3 ln Q + 3 ln n - 1.5 ln S` minus `8 ln D` (circle and arc) or
 /// `5 ln B + 5 ln D` (box).
 ///
 /// `discharge`, `roughness` and `slope` are `[m]` tensors. Rows with zero discharge take a unit
@@ -61,14 +61,14 @@ where
     let circle = a.mul(&eight, &ln_d)?;
     let both = a.add(&ln_b, &ln_d)?;
     let rectangle = a.mul(&five, &both)?;
-    let scale = choose(a, &barrel.circular, &circle, &rectangle)?;
+    let scale = choose(a, &barrel.boxed, &rectangle, &circle)?;
     a.sub(&flow, &scale)
 }
 
 /// Encloses `r_n` at the depth fractions `fraction` (`[m]`) against the stored row `target`.
 ///
-/// `unit` holds unit-diameter circles of the same width. Every fraction must lie in
-/// `[2^-30, 0.93818]` on circle rows and in `[2^-30, 1]` on box rows. Other fractions
+/// `unit` holds the unit-rise rows of the same width. Every fraction must lie in
+/// `[2^-30, s_N]` on circle and arc rows and in `[2^-30, 1]` on box rows. Other fractions
 /// reject the enclosing call at its completion check, or leave the rising limb.
 pub(crate) fn residual<R>(
     a: &mut Arithmetic<'_, R>,
@@ -87,7 +87,7 @@ where
     let five = a.point(&barrel.constant(5.0)?)?;
 
     // Each shape runs on every row. The other shape's rows take the harmless fraction 1/2.
-    let circle_fraction = c.where_cond(&barrel.circular, fraction, &half)?;
+    let circle_fraction = c.where_cond(&barrel.boxed, &half, fraction)?;
     let geometry = section::at_depth(a, unit, &circle_fraction)?.geometry;
     let ln_area = a.log_positive(&geometry.area)?;
     let ln_perimeter = a.log_positive(&geometry.perimeter)?;
@@ -108,7 +108,7 @@ where
     let perimeter_term = a.mul(&two, &ln_perimeter)?;
     let rectangle = a.sub(&area_term, &perimeter_term)?;
 
-    let shape = choose(a, &barrel.circular, &circle, &rectangle)?;
+    let shape = choose(a, &barrel.boxed, &rectangle, &circle)?;
     a.sub(&shape, target)
 }
 
@@ -129,7 +129,7 @@ mod tests {
         let device = CpuDevice::new();
         let client = CpuRuntime::default_client(&device);
         let barrel = TensorBarrelContext::<CpuRuntime>::new(client.clone(), &barrels)?;
-        let unit = barrel.unit_circles()?;
+        let unit = barrel.unit()?;
         let discharge = Tensor::<CpuRuntime>::from_slice(discharges, &[discharges.len()], &device)?;
         let roughness = barrel.constant(0.013)?;
         let slope = barrel.constant(slope)?;

@@ -1,5 +1,5 @@
-//! Tangent-arc barrels: frozen independent references, construction, geometry and depth
-//! rejection.
+//! Tangent-arc barrels: frozen independent references, construction, geometry, critical depth
+//! and normal depth.
 
 #[allow(dead_code)]
 #[path = "support/runtime.rs"]
@@ -7,6 +7,9 @@ mod runtime;
 
 #[path = "culvert_shapes/reference_rows.rs"]
 mod reference_rows;
+
+#[path = "culvert_shapes/depth_rows.rs"]
+mod depth_rows;
 
 #[path = "culvert_shapes/geometry.rs"]
 mod geometry;
@@ -17,8 +20,14 @@ mod sweeps;
 #[path = "culvert_shapes/layouts.rs"]
 mod layouts;
 
+#[path = "culvert_shapes/depths.rs"]
+mod depths;
+
+#[path = "culvert_shapes/depth_laws.rs"]
+mod depth_laws;
+
 use hydr::structures::{
-    CulvertBarrel, CulvertBarrelBatch, CulvertBarrelShape, StructureError, StructureInputErrorKind,
+    CriticalDepthStatus, CulvertBarrel, CulvertBarrelBatch, CulvertBarrelShape, NormalDepthStatus,
 };
 use reference_rows::{BARRELS, Barrel, GEOMETRY_SHA256, ROWS, Shape, State};
 use runtime::{Runtime, client};
@@ -132,43 +141,30 @@ fn evidence_barrels_construct_and_report_their_inputs() -> TestResult {
     Ok(())
 }
 
-/// Requires a definition rejection of row 1 naming `query`.
-fn rejects_row_one<T>(result: Result<T, StructureError>, query: &str) -> TestResult {
-    match result {
-        Err(StructureError::InvalidInput {
-            element: Some(1),
-            kind: StructureInputErrorKind::Definition,
-            context,
-        }) => {
-            let ending =
-                format!("{query} on arc barrels not yet available. Use a circular or box barrel");
-            if context.starts_with("shape=") && context.ends_with(&ending) {
-                Ok(())
-            } else {
-                Err(format!("unexpected message {context}").into())
-            }
-        }
-        Err(other) => Err(format!("{query}: {other:?}").into()),
-        Ok(_) => Err(format!("{query} admitted an arc barrel").into()),
-    }
-}
-
 #[test]
-fn depth_queries_reject_arc_barrels_until_their_certificates_exist() -> TestResult {
+fn depth_queries_answer_arc_rows_with_typed_outcomes() -> TestResult {
     let device = numr::runtime::RuntimeClient::device(&client()).clone();
     let column =
         |values: &[f64]| numr::tensor::Tensor::<Runtime>::from_slice(values, &[2], &device);
     for entry in BARRELS {
         let barrels = vec![CulvertBarrel::circular(1.0)?, barrel(entry)?];
         let batch = CulvertBarrelBatch::<Runtime>::new(client(), barrels)?;
+        let rows = batch
+            .critical_depth(&column(&[0.5, 0.0])?, 9.81)?
+            .project()?;
+        assert_eq!(rows[1].status, CriticalDepthStatus::Dry, "{}", entry.name);
         let flows = column(&[0.5, 0.5])?;
-        rejects_row_one(batch.critical_depth(&flows, 9.81), "critical depth")?;
         let roughness = column(&[0.013, 0.013])?;
-        let slopes = column(&[0.01, 0.01])?;
-        rejects_row_one(
-            batch.normal_depth(&flows, &roughness, &slopes),
-            "normal depth",
-        )?;
+        let rows = batch
+            .normal_depth(&flows, &roughness, &column(&[0.01, 0.0])?)?
+            .project()?;
+        assert_eq!(
+            rows[1].status,
+            NormalDepthStatus::NonPositiveSlope,
+            "{}",
+            entry.name
+        );
+        assert_eq!(rows[1].depth_m, None, "{}", entry.name);
     }
     Ok(())
 }

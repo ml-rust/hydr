@@ -68,9 +68,9 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
             "An elliptical, pipe-arch or flat-floor arch barrel whose dimensions break its tangent-arc rules rejects at construction. Each message names the rule, the values and the dimension to change.",
         ),
         unsupported(
-            "arc-barrel-depths",
+            "arc-barrel-certificate",
             UnsupportedReason::RejectedByAdmission,
-            "Critical and normal depth on a batch holding an elliptical, pipe-arch or flat-floor arch barrel reject, naming the row. Their depth certificates are not yet available. Geometry queries accept every shape.",
+            "Batch construction certifies the depth slope floors and the conveyance peak of each elliptical, pipe-arch and flat-floor arch barrel. It rejects, naming the row, a barrel whose dimensions scaled to a unit rise fail admission, or whose conveyance has no certified single peak below the crown.",
         ),
         unsupported(
             "empty-barrel-batch",

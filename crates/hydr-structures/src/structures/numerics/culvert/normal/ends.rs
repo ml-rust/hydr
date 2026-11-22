@@ -1,7 +1,8 @@
 //! End classification of the normal domain `[2^-30, top]` in `s = y/D`, before any solver call.
 //!
-//! `top` is `s_N = 0.93818` for a circle and the crown `1` for a box. `f` is the residual
-//! enclosure, `kappa` the row slope floor and `s_K` the circle conveyance peak.
+//! `top` is `s_N`: `0.93818` for a circle, the crown `1` for a box and the certified
+//! rising-limb top for an arc barrel. `f` is the residual enclosure, `kappa` the row slope
+//! floor and `s_K` the upper bound of the row's conveyance peak enclosure, `1` for a box.
 //!
 //! | Rows | Status | Enclosure in `s` |
 //! | --- | --- | --- |
@@ -10,17 +11,16 @@
 //! | `f(floor).lower > 0` | `BelowFloor` | `[0, floor]` |
 //! | `f(floor)` holds a positive value and a nonpositive lower end | `BelowFloor` | `[0, floor - f(floor).lower / kappa]` |
 //! | `f(floor) <= 0 <= f(top)` | `Solved` | from the solver |
-//! | `f(floor) <= 0`, `f(top)` holds a negative value and a nonnegative upper end | `NearCapacity` | circle `[top - f(top).upper / kappa, s_K]`, box `[top - f(top).upper / kappa, 1]` |
-//! | `f(top).upper < 0`, circle target not above `3 ln K_max` | `NearCapacity` | `[s_N, s_K]` |
-//! | `f(top).upper < 0`, box, or circle target above `3 ln K_max` | `AboveCapacity` | none |
+//! | `f(floor) <= 0`, `f(top)` holds a negative value and a nonnegative upper end | `NearCapacity` | `[top - f(top).upper / kappa, s_K]` |
+//! | `f(top).upper < 0`, circle or arc target not above `3 ln K_max` | `NearCapacity` | `[s_N, s_K]` |
+//! | `f(top).upper < 0`, box, or circle or arc target above `3 ln K_max` | `AboveCapacity` | none |
 //!
 //! A `NearCapacity` row holds its rising-limb root in the enclosure when the root exists.
-//! A circle has one up to the peak `K_max`. A box has one up to the crown limit `K(D^-)`.
+//! A circle or arc barrel has one up to the peak `K_max`. A box has one up to the crown limit
+//! `K(D^-)`. `ln K_max` holds a row's log peak enclosure.
 
 use super::residual::{residual, target};
-use crate::structures::numerics::culvert::constants::{
-    CONVEYANCE_PEAK, CRITICAL_FLOOR, LOG_PEAK_CONVEYANCE,
-};
+use crate::structures::numerics::culvert::constants::CRITICAL_FLOOR;
 use crate::structures::numerics::culvert::roots::{self, Ends, Signs};
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient};
 use crate::structures::tensor::codes;
@@ -73,10 +73,9 @@ where
         &barrel.normal_slope,
     )?;
 
-    // 3 ln k_max - target encloses the circle residual at the conveyance peak.
-    let [log_lower, log_upper] =
-        LOG_PEAK_CONVEYANCE.map(|bits| barrel.constant(f64::from_bits(bits)));
-    let log_peak = a.bounds(&log_lower?, &log_upper?)?;
+    // 3 ln k_max - target encloses the circle and arc residual at the conveyance peak.
+    let [log_lower, log_upper] = &barrel.log_peak;
+    let log_peak = a.bounds(log_lower, log_upper)?;
     let three = a.point(&barrel.constant(3.0)?)?;
     let thrice_peak = a.mul(&three, &log_peak)?;
     let at_peak = a.sub(&thrice_peak, &row_target)?;
@@ -86,15 +85,15 @@ where
     let below_peak = c.sub(&above, &above_capacity)?;
     let near_capacity = c.add(&near_top, &below_peak)?;
 
-    // A rising-limb root above s_N lies below the peak. A box root lies at or below the crown.
-    let peak = barrel.constant(f64::from_bits(CONVEYANCE_PEAK[1]))?;
-    let capacity_top = c.where_cond(&barrel.circular, &peak, one)?;
+    // A rising-limb root above s_N lies below the peak. A box root lies at or below the crown,
+    // which is the box peak bound.
+    let capacity_top = &barrel.conveyance_peak[1];
 
     let mut lower = zero.clone();
     let mut upper = c.where_cond(&below, &floor, zero)?;
     upper = c.where_cond(&straddle, &past, &upper)?;
     lower = c.where_cond(&near_top, &start, &lower)?;
-    upper = c.where_cond(&near_capacity, &capacity_top, &upper)?;
+    upper = c.where_cond(&near_capacity, capacity_top, &upper)?;
     lower = c.where_cond(&below_peak, top, &lower)?;
     lower = c.where_cond(&solved, &floor, &lower)?;
     upper = c.where_cond(&solved, top, &upper)?;

@@ -1,7 +1,7 @@
 //! Critical-depth residual `r_c = 3 ln A - ln T - (2 ln Q - ln g)` in `s = y/D`.
 //!
-//! - A circle reads `A = D^2 a(s)` and `T = D t(s)` from unit-diameter geometry, so
-//!   `r_c = 3 ln a(s) - ln t(s) - (2 ln Q - ln g - 5 ln D)`.
+//! - A circle and an arc barrel read `A = D^2 a(s)` and `T = D t(s)` from unit-rise geometry,
+//!   so `r_c = 3 ln a(s) - ln t(s) - (2 ln Q - ln g - 5 ln D)`.
 //! - A box has `A^3 / T = B^2 D^3 s^3`, so `r_c = 3 ln s - (2 ln Q - ln g - 2 ln B - 3 ln D)`.
 //!
 //! Both rise in `s`. The bracketed term is the row target, fixed per query.
@@ -15,7 +15,8 @@ use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval};
 
-/// Encloses the row target `2 ln Q - ln g - 5 ln D` (circle) or `- 2 ln B - 3 ln D` (box).
+/// Encloses the row target `2 ln Q - ln g - 5 ln D` (circle and arc) or `- 2 ln B - 3 ln D`
+/// (box).
 ///
 /// `discharge` and `gravity` are `[m]` tensors. Rows with zero discharge take a unit discharge,
 /// so the caller must classify them before reading the target.
@@ -49,14 +50,14 @@ where
     let twice_b = a.mul(&two, &ln_b)?;
     let thrice_d = a.mul(&three, &ln_d)?;
     let rectangle = a.add(&twice_b, &thrice_d)?;
-    let scale = choose(a, &barrel.circular, &circle, &rectangle)?;
+    let scale = choose(a, &barrel.boxed, &rectangle, &circle)?;
     a.sub(&flow, &scale)
 }
 
 /// Encloses `r_c` at the depth fractions `fraction` (`[m]`) against the stored row `target`.
 ///
-/// `unit` holds unit-diameter circles of the same width. Every fraction must lie in
-/// `[2^-30, 1 - 2^-53]` on circle rows and in `[2^-30, 1]` on box rows. Other fractions
+/// `unit` holds the unit-rise rows of the same width. Every fraction must lie in
+/// `[2^-30, 1 - 2^-53]` on circle and arc rows and in `[2^-30, 1]` on box rows. Other fractions
 /// reject the enclosing call at its completion check.
 pub(crate) fn residual<R>(
     a: &mut Arithmetic<'_, R>,
@@ -74,7 +75,7 @@ where
     let three = a.point(&barrel.constant(3.0)?)?;
 
     // Each shape runs on every row. The other shape's rows take the harmless fraction 1/2.
-    let circle_fraction = c.where_cond(&barrel.circular, fraction, &half)?;
+    let circle_fraction = c.where_cond(&barrel.boxed, &half, fraction)?;
     let geometry = section::at_depth(a, unit, &circle_fraction)?.geometry;
     let ln_area = a.log_positive(&geometry.area)?;
     let ln_top = a.log_positive(&geometry.top_width)?;
@@ -86,7 +87,7 @@ where
     let ln_s = a.log_positive(&s)?;
     let rectangle = a.mul(&three, &ln_s)?;
 
-    let shape = choose(a, &barrel.circular, &circle, &rectangle)?;
+    let shape = choose(a, &barrel.boxed, &rectangle, &circle)?;
     a.sub(&shape, target)
 }
 
@@ -106,7 +107,7 @@ mod tests {
         let device = CpuDevice::new();
         let client = CpuRuntime::default_client(&device);
         let barrel = TensorBarrelContext::<CpuRuntime>::new(client.clone(), &barrels)?;
-        let unit = barrel.unit_circles()?;
+        let unit = barrel.unit()?;
         let discharge = Tensor::<CpuRuntime>::from_slice(discharges, &[discharges.len()], &device)?;
         let gravity = barrel.constant(9.81)?;
         let floor = barrel.constant(CRITICAL_FLOOR)?;

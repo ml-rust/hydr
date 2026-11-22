@@ -608,7 +608,7 @@ cargo run --example gate_trajectories_reference
 
 ## Culvert barrel geometry
 
-`hydr::structures::CulvertBarrelBatch` encloses the geometry of closed barrels: circles, boxes, ellipses, pipe-arches and flat-floor arches. It also encloses the critical depth and Manning normal depth of circular and box barrels. It computes no culvert discharge.
+`hydr::structures::CulvertBarrelBatch` encloses the geometry of closed barrels: circles, boxes, ellipses, pipe-arches and flat-floor arches. It also encloses the critical depth and Manning normal depth of every shape. It computes no culvert discharge.
 
 Read capabilities with `culvert_barrel_capabilities()`. It returns a `ComponentCapabilities` declaration: arithmetic, runtimes, unsupported uses, and limits.
 
@@ -685,7 +685,7 @@ Each row also carries a `BarrelState`:
 
 ### Read critical depth
 
-The search domain is `[D 2^-30, top]`. `top` is `D (1 - 2^-53)` for a circle and `D` for a box. A circle has one critical depth below the crown for every `Q > 0`. A box has one only for `Q <= sqrt(g) B D^(3/2)`.
+The search domain is `[D 2^-30, top]`. `top` is `D (1 - 2^-53)` for a circle or an arc barrel and `D` for a box. A circle or an arc barrel has one critical depth below the crown for every `Q > 0`. A box has one only for `Q <= sqrt(g) B D^(3/2)`.
 
 | `CriticalDepthStatus` | Enclosure |
 | --- | --- |
@@ -693,13 +693,15 @@ The search domain is `[D 2^-30, top]`. `top` is `D (1 - 2^-53)` for a circle and
 | `Solved` | Certified root inside the domain |
 | `BelowFloor` | The root lies at or below `D 2^-30`. The enclosure starts at 0. |
 | `AtCrown` | The residual at the domain top contains zero. The enclosure ends at `D`. A box root lies in it only when `Q` stays within the box limit. |
-| `AboveCrown` | A circle root lies in `[D (1 - 2^-53), D]`. A box has no free-surface critical depth and no enclosure. |
+| `AboveCrown` | A circle or arc root lies in `[D (1 - 2^-53), D]`. A box has no free-surface critical depth and no enclosure. |
 
 ### Read normal depth
 
-The normal depth is the root on the rising limb of the conveyance `K = A^(5/3) / P^(2/3)`. The search domain is `[D 2^-30, top]`, with `top = 0.93818 D` for a circle and `D` for a box.
+The normal depth is the root on the rising limb of the conveyance `K = A^(5/3) / P^(2/3)`. The search domain is `[D 2^-30, top]`, with `top = 0.93818 D` for a circle, `D` for a box, and the certified rising-limb top for an arc barrel.
 
-Circle conveyance peaks at `0.9381812 D`, above the full-barrel conveyance, then falls to the crown. Box conveyance rises to its open-section limit at the crown. That limit exceeds the full-barrel conveyance.
+Circle conveyance peaks at `0.9381812 D`, above the full-barrel conveyance, then falls to the crown. Arc barrel conveyance also peaks below the crown. Box conveyance rises to its open-section limit at the crown. That limit exceeds the full-barrel conveyance.
+
+`CulvertBarrelBatch::new` certifies each ellipse, pipe-arch and flat-floor arch once. The certificate bounds the slope of both depth residuals and encloses the conveyance peak. Construction rejects, naming the row, a barrel without a certificate: its dimensions scaled to a unit rise fail admission, or its conveyance has no certified single peak below the crown.
 
 | `NormalDepthStatus` | Enclosure |
 | --- | --- |
@@ -707,7 +709,7 @@ Circle conveyance peaks at `0.9381812 D`, above the full-barrel conveyance, then
 | `Solved` | Certified root inside the domain |
 | `BelowFloor` | The root lies at or below `D 2^-30`. The enclosure starts at 0. |
 | `NearCapacity` | The target lies near the top of the rising limb. A rising-limb root, when one exists, lies in the enclosure. |
-| `AboveCapacity` | The target exceeds the peak circle conveyance or the box crown limit. No enclosure. |
+| `AboveCapacity` | The target exceeds the peak circle or arc conveyance, or the box crown limit. No enclosure. |
 | `NonPositiveSlope` | Zero or adverse slope, whatever the discharge. No enclosure. |
 
 A row without an enclosure projects `depth_m: None`. Its tensors hold NaN.
@@ -738,6 +740,7 @@ Independent 100-digit references are frozen before any kernel runs.
 | [Layouts](../tests/culvert_barrels/layouts.rs) | Widths 1, 31, 32, 33, 64, and 65 mix circle and box rows. Every lane of every query equals its single-row result bit for bit. |
 | [Admission](../tests/culvert_barrels/admission.rs) | Each rejection names its row, value, and action |
 | [Arc barrels](../tests/culvert_shapes/geometry.rs) | Twelve ellipses, pipe-arches and arches at frozen depths, junctions and seams included. Every reference lies inside its enclosure within a frozen width. [Sweeps](../tests/culvert_shapes/sweeps.rs) show no certified reversal, `dA/dy = T` and `dM/dy = A`, and ranges that hold their ends and references. [Layouts](../tests/culvert_shapes/layouts.rs) of widths 1, 33 and 65 mix arc, circle and box rows bit for bit. |
+| [Arc barrel depths](../tests/culvert_shapes/depths.rs) | Critical and normal statuses match the reference class of independent roots, and every promised enclosure contains the root. [Depth laws](../tests/culvert_shapes/depth_laws.rs) show no certified reversal in discharge, roughness or slope, the same depth fraction for barrels scaled by `2^-300`, and unchanged circle and box rows beside arc rows. |
 
 ```sh
 cargo test --test culvert_barrels
@@ -754,7 +757,6 @@ cargo test --test culvert_shapes
 
 - Queries hold no state and advance no storage. No snapshot exists.
 - Full-barrel pressure flow and full-barrel friction stay with the caller.
-- Critical and normal depth cover circular and box barrels only.
 - CUDA parity covers circular and box barrels only.
 - No outlet control, barrel profile, or culvert discharge. [`CulvertInletBatch`](#culvert-inlet-control) gives inlet-control headwater.
 
