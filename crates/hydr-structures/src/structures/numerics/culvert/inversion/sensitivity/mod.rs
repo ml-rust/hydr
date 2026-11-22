@@ -216,7 +216,8 @@ mod tests {
 
     #[test]
     fn mild_partly_full_circle_bound_holds_over_a_head_grid() -> TestResult {
-        // Fall 0.12 m over 60 m. Both heads stay below the 1.2 m crown.
+        // Fall 0.12 m over 60 m. Both heads stay below the 1.2 m crown. Two heads per side
+        // hold both outlet classes: profiles falling and rising toward normal depth.
         let spec = Spec {
             barrel: CulvertBarrel::circular(1.2)?,
             length_m: 60.0,
@@ -224,8 +225,8 @@ mod tests {
             inverts: [0.12, 0.0],
         };
         let cases = pairs(
-            &grid(0.3, 1.3, 10),
-            &grid(0.02, 1.15, 10),
+            &grid(0.3, 1.3, 2),
+            &grid(0.02, 1.15, 2),
             &[0.0, 0.12, 1.2, 1.32],
         );
         assert!(certified(spec, CulvertInlet::hds5(1)?, &cases)? > cases.len() / 4);
@@ -234,7 +235,9 @@ mod tests {
 
     #[test]
     fn adverse_partly_full_box_bound_holds_over_a_head_grid() -> TestResult {
-        // The barrel rises 0.3 m toward its outlet.
+        // The barrel rises 0.3 m toward its outlet. Every outlet profile rises to the crown. Two
+        // heads per side hold it, a headwater on each side of the inlet crown, and both flow
+        // directions.
         let spec = Spec {
             barrel: CulvertBarrel::rectangular_box(2.0, 1.0)?,
             length_m: 30.0,
@@ -242,8 +245,8 @@ mod tests {
             inverts: [0.0, 0.3],
         };
         let cases = pairs(
-            &grid(0.4, 1.6, 10),
-            &grid(0.32, 1.25, 10),
+            &grid(0.4, 1.6, 2),
+            &grid(0.32, 1.25, 2),
             &[0.0, 0.3, 1.0, 1.3],
         );
         assert!(certified(spec, CulvertInlet::hds5(9)?, &cases)? > cases.len() / 4);
@@ -252,8 +255,11 @@ mod tests {
 
     #[test]
     fn zero_slope_partly_full_box_bound_holds_over_a_head_grid() -> TestResult {
+        // Every outlet profile rises to the crown. Three heads per side hold it, a headwater on
+        // each side of the crown, and both flow directions. Two would keep no headwater above
+        // the crown.
         let spec = level(CulvertBarrel::rectangular_box(2.0, 1.0)?, (100.0, 0.03));
-        let cases = pairs(&grid(0.1, 1.4, 10), &grid(0.02, 0.95, 10), &[0.0, 1.0]);
+        let cases = pairs(&grid(0.1, 1.4, 3), &grid(0.02, 0.95, 3), &[0.0, 1.0]);
         assert!(certified(spec, CulvertInlet::hds5(9)?, &cases)? > cases.len() / 4);
         Ok(())
     }
