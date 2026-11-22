@@ -119,6 +119,26 @@ where
         Ok(inputs)
     }
 
+    /// Reservation inputs of setup reach `reach`: the caller `lateral` inputs, then zero
+    /// exchange inputs of a linked reach, then zero runoff inputs.
+    ///
+    /// A reservation takes every coordinator inflow as zero. `zeros` holds `[L]` zeros.
+    pub fn reservation_inputs(
+        &self,
+        reach: usize,
+        lateral: &[ChannelTensorLateralInput<R>],
+        zeros: &Tensor<R>,
+    ) -> Result<Vec<ChannelTensorLateralInput<R>>, SurfaceChannelError> {
+        let mut inputs = lateral.to_vec();
+        if let Some(linked) = self.linked.iter().position(|entry| entry.reach == reach) {
+            inputs.extend(self.exchange_inputs(linked, zeros, zeros, zeros)?);
+        }
+        if let Some(runoff) = &self.runoff {
+            inputs.extend(runoff.laterals(reach, |_| Ok(runoff.zero.clone()))?);
+        }
+        Ok(inputs)
+    }
+
     /// Builds the start operands from the accepted children and the bound forcing.
     ///
     /// `pools` holds the accepted pool child with its bound trial forcing. `operations` holds the
@@ -146,7 +166,6 @@ where
                 source,
             }
         };
-        let linked_of = |reach: usize| self.linked.iter().position(|r| r.reach == reach);
         for &reach in &self.reach_order {
             if self.is_ported(reach) || self.is_pool_ended(reach) {
                 continue;
@@ -157,10 +176,7 @@ where
                     "an unported reach lacks a caller endpoint policy".into(),
                 ));
             };
-            let mut inputs = bound.lateral.clone();
-            if let Some(linked) = linked_of(reach) {
-                inputs.extend(self.exchange_inputs(linked, &zeros, &zeros, &zeros)?);
-            }
+            let inputs = self.reservation_inputs(reach, &bound.lateral, &zeros)?;
             let child = &reaches[reach];
             let bound_forcing = child
                 .bind_coupling_tensor(time, end, Some(left), Some(right), &inputs)

@@ -10,6 +10,7 @@ use super::bindings::channel_cells;
 use super::pool_ends::PoolEndTopology;
 use super::pools::{LinkSides, PoolParts, PoolTopology};
 use super::ports::PortTopology;
+use super::runoff::{RunoffTopology, runoff_pool_bindings};
 use super::slot_plan::SlotPlan;
 use super::structures::{LinkLaw, LinkOperations};
 use super::table::{TableEnd, table};
@@ -131,6 +132,8 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub pools: Option<PoolTopology<R>>,
     /// Pool-end operands, or `None` without pool ends.
     pub pool_ends: Option<PoolEndTopology<R>>,
+    /// Runoff delivery operands, or `None` without delivery lanes.
+    pub runoff: Option<RunoffTopology<R>>,
 }
 
 impl<R: Runtime<DType = DType>> Context<R>
@@ -405,6 +408,7 @@ where
                     &definition.pool_ends,
                 ),
                 surface_count + slot_count,
+                runoff_pool_bindings(definition),
             )?),
             (None, None) => None,
             _ => {
@@ -488,6 +492,7 @@ where
                 .map(|l| (l.bindings.0.to_string(), l.bindings.1.to_string()))
                 .collect(),
             pools: pool_topology,
+            runoff: RunoffTopology::new(&client, definition)?,
             client,
         })
     }

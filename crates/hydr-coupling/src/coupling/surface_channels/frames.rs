@@ -9,6 +9,7 @@ use super::operating::OperatingChildren;
 use super::pool_ends::PoolEndCounters;
 use super::pools::PoolChild;
 use super::ports::{PortCounters, PortTopology};
+use super::runoff::RunoffCounters;
 use super::snapshot::SurfaceChannelCounterData;
 use super::state::LinkCounters;
 use super::{SurfaceChannelDefinition, SurfaceChannelInitialState, SurfaceChannelOperatingData};
@@ -473,5 +474,10 @@ fn import_counters<R: Runtime<DType = DType>>(
         roundoff_bound_m3: tensor(2)?,
         ports,
         pool_ends,
+        runoff: context
+            .runoff
+            .as_ref()
+            .map(|topology| RunoffCounters::zero(&context.client, topology))
+            .transpose()?,
     })
 }

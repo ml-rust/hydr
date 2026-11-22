@@ -132,20 +132,42 @@ where
 
     /// Pool operands of the attempt ending at `end`, the `steps`-th accepted interval.
     ///
-    /// Post-source water plus external inflow above a top curve knot rejects with
-    /// `pool-capacity-exceeded`. No link exchange fixes it, so no shorter interval retries it.
+    /// `native` holds the runoff interval volume of every runoff pool binding exactly when the
+    /// pools have them. External inflow includes them. Post-source water plus external inflow
+    /// above a top curve knot rejects with `pool-capacity-exceeded`. No link exchange fixes it,
+    /// so no shorter interval retries it.
     pub fn pool_attempt(
         &self,
-        child: &PoolChild<R>,
-        start: &PoolStart<R>,
+        (child, start): (&PoolChild<R>, &PoolStart<R>),
         end: f64,
         steps: usize,
+        native: Option<&Tensor<R>>,
     ) -> Result<PoolAttempt<R>, SurfaceChannelError> {
         let topology = self.pool_topology()?;
         let dt = end - child.batch.time();
+        let mixed = match (native, topology.inflows.native_count()) {
+            (None, 0) => None,
+            (Some(volumes), count) if count > 0 => Some(
+                topology
+                    .inflows
+                    .with_native_volumes(&self.client, &start.inflows, volumes)
+                    .map_err(inflow_error)?,
+            ),
+            _ => {
+                return Err(SurfaceChannelError::Numerical(
+                    "runoff pool volumes differ from the runoff pool bindings".into(),
+                ));
+            }
+        };
         let external = topology
             .inflows
-            .prepare(&self.client, &start.inflows, &child.external, dt, steps)
+            .prepare(
+                &self.client,
+                mixed.as_ref().unwrap_or(&start.inflows),
+                &child.external,
+                dt,
+                steps,
+            )
             .map_err(inflow_error)?;
         if let Some(sources) = &start.sources {
             self.check_source_capacity(child, sources, &external.incoming, dt)?;

@@ -1,4 +1,5 @@
-//! Native runoff attached to the coordinator: declarations, admission, and the runoff child.
+//! Native runoff attached to the coordinator: declarations, admission, the runoff child, and
+//! its delivery into reaches and pools.
 //!
 //! The coordinator compiles one support plan from the runoff setup against the surface domain
 //! and open faces. The plan selects the active modelled sources and suppresses rain over their
@@ -9,26 +10,50 @@
 //! receives one synthesized inflow binding per lane. Both use the reserved prefix
 //! `runoff-attachment:`.
 //!
-//! Construction builds the runoff child at the common epoch. A trial on a setup with runoff
-//! admits its forcing, then rejects, since stepping is not attached yet.
+//! Construction builds the runoff child at the common epoch. Each attempt trials the child from
+//! its accepted state to the attempt end, after the surface step limits and before the pools
+//! and the link fixed point. Runoff volumes stay fixed across the fixed point. Reaches take
+//! them as interval-volume inflows with zero velocity. Pools take them as native interval
+//! volumes beside the caller inflows. A surface-cell destination rejects at every trial.
 
+mod accounting;
 mod admission;
+mod attempt;
 mod bindings;
 mod child;
+mod counters;
 mod definition;
+mod delivery;
 mod forcing;
+mod report;
+mod tailwater;
 mod targets;
+mod topology;
 mod writers;
 
 #[cfg(test)]
+mod basin;
+#[cfg(test)]
+mod rain_rows;
+#[cfg(test)]
 mod scenario;
 
+pub(super) use accounting::RunoffTerms;
 pub(super) use admission::{CheckedRunoff, check_runoff};
-pub(super) use bindings::{RUNOFF_ATTACHMENT_BINDING_PREFIX, append_lateral_bindings};
+pub(super) use attempt::RunoffAttempt;
+pub(super) use bindings::{
+    RUNOFF_ATTACHMENT_BINDING_PREFIX, append_lateral_bindings, runoff_pool_bindings,
+};
 pub(super) use child::build_child;
+pub(super) use counters::RunoffCounters;
 pub use definition::{
     SurfaceChannelFreeOutlet, SurfaceChannelRunoff, SurfaceChannelRunoffDestination,
     SurfaceChannelRunoffOutlet, SurfaceChannelRunoffShare,
 };
-pub(super) use forcing::{admit_forcing, check_schedule, stepping_not_attached};
+pub(super) use delivery::{
+    RunoffStart, pool_receipts, runoff_delivery, runoff_end, runoff_start, with_runoff,
+};
+pub(super) use forcing::check_schedule;
+pub(super) use report::RunoffStep;
+pub(super) use topology::RunoffTopology;
 pub(super) use writers::check_caller_pool_inflows;

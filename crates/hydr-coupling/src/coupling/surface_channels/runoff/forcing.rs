@@ -1,6 +1,6 @@
 //! Admission of the runoff records and pool rain of one coordinator forcing interval.
 
-use super::admission::plan_error;
+use super::admission::{RunoffTarget, plan_error};
 use crate::coupling::surface_channels::{
     SurfaceChannelDefinition, SurfaceChannelError, SurfaceChannelForcingInterval,
 };
@@ -55,17 +55,37 @@ pub(in super::super) fn check_schedule(
     }
 }
 
-/// The rejection of a trial on a setup with runoff.
-pub(in super::super) fn stepping_not_attached() -> SurfaceChannelError {
-    SurfaceChannelError::input(
-        "runoff-attachment: a coordinator with setup.runoff builds and admits forcing but cannot step yet: remove setup.runoff to step",
-    )
+/// Rejects a trial whose runoff drains into surface cells, which cannot step yet.
+pub(in super::super) fn check_steppable(
+    definition: &SurfaceChannelDefinition,
+) -> Result<(), SurfaceChannelError> {
+    let Some(runoff) = &definition.runoff else {
+        return Ok(());
+    };
+    let outlets = definition
+        .setup()
+        .runoff
+        .as_ref()
+        .map_or(&[][..], |setup| setup.outlets.as_slice());
+    for lane in &runoff.lanes {
+        if let RunoffTarget::Surface { cell } = lane.target {
+            let id = outlets
+                .get(lane.outlet)
+                .map_or("", |o| o.outlet_id.as_str());
+            return Err(SurfaceChannelError::input(format!(
+                "runoff-attachment: runoff outlet={id:?} drains into surface cell={cell}, which cannot step yet: route the outlet into a reach or a pool"
+            )));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::SurfaceChannelRunoffDestination;
     use super::super::scenario::{
-        POND, SOURCE, build, forcing, input_message, parts, pond_parts, record, rejection, starts,
+        POND, SOURCE, build, forcing, input_message, outlet, parts, pond_parts, record, rejection,
+        share, starts,
     };
     use crate::channel::ChannelLateralInput;
     use crate::coupling::surface_channels::structures::scenario::{Batch, TestResult, client};
@@ -91,12 +111,22 @@ mod tests {
     }
 
     #[test]
-    fn an_admitted_runoff_trial_rejects_until_stepping_attaches() -> TestResult {
-        let batch = build(parts()?)?;
+    fn a_surface_cell_destination_rejects_at_every_trial() -> TestResult {
+        let (mut setup, initial) = parts()?;
+        if let Some(runoff) = setup.runoff.as_mut() {
+            runoff.outlets = vec![outlet(SurfaceChannelRunoffDestination::SurfaceCells {
+                cells: vec![share(0, 1.0)],
+            })];
+        }
+        let batch = build((setup, initial))?;
         let message = input_message(
             batch.trial_to(0.5, &forcing(&batch, 0.5, vec![record(0.0, 0.5, 1e-5)])),
         )?;
         starts(&message, "runoff-attachment");
+        assert!(message.contains("surface cell=0"), "{message}");
+        let reach = build(parts()?)?;
+        let next = reach.trial_to(0.5, &forcing(&reach, 0.5, vec![record(0.0, 0.5, 1e-5)]))?;
+        assert_eq!(next.runoff_transfers().len(), 1);
         Ok(())
     }
 
@@ -208,10 +238,7 @@ mod tests {
         assert!(message.contains(POND), "{message}");
         let mut dry = wet;
         dry.pool_sources = sources(0.0);
-        starts(
-            &input_message(batch.trial_to(0.5, &dry))?,
-            "runoff-attachment",
-        );
+        batch.trial_to(0.5, &dry)?;
         Ok(())
     }
 }

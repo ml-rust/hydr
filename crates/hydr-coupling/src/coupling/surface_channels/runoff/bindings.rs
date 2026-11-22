@@ -2,12 +2,24 @@
 
 use super::admission::{CheckedRunoff, RunoffTarget};
 use crate::channel::{ChannelLateralBinding, ChannelLateralDirection, ChannelReachDefinition};
+use crate::coupling::level_pools::CoupledPoolInflowBinding;
+use crate::coupling::surface_channels::SurfaceChannelDefinition;
 use crate::runoff::Subarea;
 
 /// Binding identity prefix reserved for coordinator runoff delivery.
 ///
 /// Caller lateral bindings, caller lateral inputs, and caller pool inflow bindings reject it.
 pub(in super::super) const RUNOFF_ATTACHMENT_BINDING_PREFIX: &str = "runoff-attachment:";
+
+/// Synthesized runoff pool inflow bindings of `definition`, in delivery-lane order.
+pub(in super::super) fn runoff_pool_bindings(
+    definition: &SurfaceChannelDefinition,
+) -> &[CoupledPoolInflowBinding] {
+    definition
+        .runoff
+        .as_ref()
+        .map_or(&[][..], |runoff| &runoff.pool_bindings)
+}
 
 /// Pool inflow boundary identity of one lane of `outlet_id`.
 pub(super) fn pool_binding_id(outlet_id: &str, subarea: Subarea) -> String {

@@ -99,12 +99,15 @@ where
                 .then(|| binding.reach_bits(topology, reach))
         };
         let complete_reach = |reach: usize,
-                              inputs: &[ChannelTensorLateralInput<R>]|
+                              mut inputs: Vec<ChannelTensorLateralInput<R>>|
          -> Result<ChannelReach<R>, SurfaceChannelError> {
+            if let Some(runoff) = attempt.runoff_laterals.get(reach) {
+                inputs.extend(runoff.iter().cloned());
+            }
             let child = &accepted.reaches[reach];
             let reservation = reserved.reservation(start, attempt, reach)?;
             let forcing = child
-                .bind_coupling_reserved(reservation, attempt.end, inputs)
+                .bind_coupling_reserved(reservation, attempt.end, &inputs)
                 .map_err(|source| SurfaceChannelError::Channel {
                     reach_id: reach_ids[reach].to_string(),
                     source,
@@ -131,7 +134,7 @@ where
                     &to_a,
                     &attempt.surface_velocity,
                 )?);
-                complete_reach(entry.reach, &inputs)
+                complete_reach(entry.reach, inputs)
             })?;
             linked.push(next);
         }
@@ -141,7 +144,7 @@ where
                 for (offset, &reach) in topology.ended.iter().enumerate() {
                     let key = TrialKey::from_bits(head_bits(reach).unwrap_or_default());
                     let next = trials.reach(self.linked.len() + offset, &key, || {
-                        complete_reach(reach, &start.forcing.reaches[reach].lateral)
+                        complete_reach(reach, start.forcing.reaches[reach].lateral.clone())
                     })?;
                     ended.push(next);
                 }

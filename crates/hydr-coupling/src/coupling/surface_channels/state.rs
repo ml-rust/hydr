@@ -5,7 +5,9 @@ use super::operating::{OperatingChildren, StepOperation};
 use super::pool_ends::{PoolEndCounters, PoolEndInterval};
 use super::pools::PoolChild;
 use super::ports::{PortCounters, PortInterval};
+use super::runoff::{RunoffCounters, RunoffStep};
 use crate::channel::ChannelReach;
+use crate::runoff::SubcatchmentBatch;
 use crate::solver::Solver;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
@@ -23,6 +25,8 @@ pub(super) struct LinkCounters<R: Runtime<DType = DType>> {
     pub ports: PortCounters,
     /// Lifetime pool-end volumes in pool-end identity order. Empty without pool ends.
     pub pool_ends: PoolEndCounters,
+    /// Lifetime runoff delivery counters, or `None` without runoff.
+    pub runoff: Option<RunoffCounters<R>>,
 }
 
 /// Host scalars of one accepted interval's accounting.
@@ -51,6 +55,8 @@ pub(super) struct PreviousFrame<R: Runtime<DType = DType>> {
     pub pools: Option<PoolChild<R>>,
     /// Accepted operating children, or `None` without them.
     pub operating: Option<OperatingChildren<R>>,
+    /// Accepted runoff child, or `None` without runoff.
+    pub runoff: Option<SubcatchmentBatch<R>>,
 }
 
 /// Receipt of the last accepted interval. Link tensors are `[L]` in identity order.
@@ -81,4 +87,6 @@ pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub pool_ends: PoolEndInterval,
     /// Interval operation of the operating children, or `None` without them.
     pub operation: Option<Arc<StepOperation<R>>>,
+    /// Runoff delivery of the interval, or `None` without runoff.
+    pub runoff: Option<RunoffStep>,
 }

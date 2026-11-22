@@ -22,9 +22,10 @@ use super::link_law::LawAt;
 use super::memo::TrialMemo;
 use super::pools::{PoolAttempt, PoolChild, charge};
 use super::ports::PortBinding;
+use super::runoff::RunoffAttempt;
 use super::start::Start;
 use super::structures::LinkOperations;
-use crate::channel::ChannelReach;
+use crate::channel::{ChannelReach, ChannelTensorLateralInput};
 use crate::coupling::links::culvert_roots::CulvertRoots;
 use crate::solver::Solver;
 use crate::storage::LevelPoolBatch;
@@ -82,6 +83,8 @@ pub(super) struct Attempt<R: Runtime<DType = DType>> {
     pub operations: Arc<LinkOperations<R>>,
     /// Culvert roots of the attempt's latest law evaluation.
     pub culvert_roots: CulvertRoots<R>,
+    /// Runoff inflow inputs of every setup reach, fixed for the attempt. Empty without runoff.
+    pub runoff_laterals: Vec<Vec<ChannelTensorLateralInput<R>>>,
 }
 
 /// Kept child trials of one attempt.
@@ -128,13 +131,15 @@ where
     /// Channel slots reserve native face outflow over the duration and caller withdrawals.
     /// A ported reach's face outflow includes its port export. Pools offer their post-source
     /// water. `pools` holds the accepted pool child and the accepted-step count after the attempt.
-    /// `operations` holds the link laws under the attempt's operations.
+    /// `operations` holds the link laws under the attempt's operations. `runoff` holds the
+    /// attempt's runoff delivery, which pools and reaches receive.
     pub fn attempt(
         &self,
         start: &Start<R>,
         (stage, operations): (SurfaceCouplingStage<R>, Arc<LinkOperations<R>>),
         ports: PortBinding<R>,
         pools: Option<(&PoolChild<R>, usize)>,
+        runoff: Option<&RunoffAttempt<R>>,
     ) -> Result<Attempt<R>, SurfaceChannelError> {
         let c = &self.client;
         let dt = stage.dt();
@@ -171,7 +176,8 @@ where
         let slot_reserve = [withdrawal, margin];
         let pools = match (pools, &start.pools) {
             (Some((child, steps)), Some(pool_start)) => {
-                Some(self.pool_attempt(child, pool_start, stage.end(), steps)?)
+                let native = runoff.and_then(|runoff| runoff.pool_volumes.as_ref());
+                Some(self.pool_attempt((child, pool_start), stage.end(), steps, native)?)
             }
             (None, None) => None,
             _ => {
@@ -205,6 +211,7 @@ where
             pools,
             operations,
             culvert_roots: CulvertRoots::new(start.law.as_ref()),
+            runoff_laterals: runoff.map_or_else(Vec::new, |runoff| runoff.laterals.clone()),
         })
     }
 

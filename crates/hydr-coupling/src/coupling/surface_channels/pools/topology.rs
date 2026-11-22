@@ -7,7 +7,7 @@ use super::super::structures::LinkLaw;
 use super::CheckedPools;
 use super::child::{inflow_error, pool_error};
 use super::fns::{PoolFns, PoolParts};
-use crate::coupling::level_pools::InflowContext;
+use crate::coupling::level_pools::{CoupledPoolInflowBinding, InflowContext};
 use crate::coupling::links::LinkError;
 use crate::coupling::links::cuts::{CutAttachment, CutCover, cut_cover};
 use crate::coupling::links::pool_ends;
@@ -95,13 +95,15 @@ where
 {
     /// Operands of `pools` with the child `parts`, the link table, and the pool ends.
     ///
-    /// Pool groups start at `offset`.
+    /// Pool groups start at `offset`. `native` holds the runoff inflow bindings the coordinator
+    /// supplies, after the caller bindings.
     pub fn new(
         client: &R::Client,
         pools: &CheckedPools,
         parts: &PoolParts<R>,
         (links, owned_ends): (LinkSides<'_>, &[CheckedPoolEnd]),
         offset: usize,
+        native: &[CoupledPoolInflowBinding],
     ) -> Result<Self, SurfaceChannelError> {
         let LinkSides {
             ids,
@@ -185,8 +187,8 @@ where
                 sign: floats(&attachment_sign)?,
             })
         };
-        let inflows =
-            InflowContext::new(client, elements, &pools.declared.inflows).map_err(inflow_error)?;
+        let inflows = InflowContext::with_native(client, elements, &pools.declared.inflows, native)
+            .map_err(inflow_error)?;
         Ok(Self {
             ids: pools.ids.clone(),
             plans: parts.plans.clone(),

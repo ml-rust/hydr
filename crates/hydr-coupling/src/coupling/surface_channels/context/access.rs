@@ -5,6 +5,7 @@ use crate::channel::ChannelEnd;
 use crate::coupling::surface_channels::SurfaceChannelError;
 use crate::coupling::surface_channels::pool_ends::PoolEndCounters;
 use crate::coupling::surface_channels::ports::{PortCounters, end_slot};
+use crate::coupling::surface_channels::runoff::RunoffCounters;
 use crate::coupling::surface_channels::state::LinkCounters;
 use crate::numerics::water_transfers::WaterTransferError;
 use numr::dtype::DType;
@@ -21,6 +22,11 @@ impl<R: Runtime<DType = DType>> Context<R> {
             roundoff_bound_m3: zero,
             ports: self.zero_port_counters(),
             pool_ends: PoolEndCounters::zero(self.pool_end_count()),
+            runoff: self
+                .runoff
+                .as_ref()
+                .map(|topology| RunoffCounters::zero(&self.client, topology))
+                .transpose()?,
         })
     }
 

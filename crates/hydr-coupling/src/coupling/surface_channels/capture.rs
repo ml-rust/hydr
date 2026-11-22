@@ -126,6 +126,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
                 counters: self.previous.counters.clone(),
                 pools: self.previous.pools.clone(),
                 operating: self.previous.operating.clone(),
+                runoff: self.previous.runoff.clone(),
             },
             forcing: self.forcing.clone(),
             start_s: self.start_s,
@@ -147,6 +148,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
             ports: self.ports.clone(),
             pool_ends: self.pool_ends.clone(),
             operation: self.operation.clone(),
+            runoff: self.runoff.clone(),
         }
     }
 }

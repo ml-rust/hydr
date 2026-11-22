@@ -99,4 +99,32 @@ where
             roundoff_bound_m3: charge(client, self.boundary_reduction, &state.bound)?,
         })
     }
+
+    /// Lifetime totals of the native bindings only. Zero without native bindings.
+    pub(crate) fn native_summary(
+        &self,
+        client: &R::Client,
+        state: &InflowState<R>,
+    ) -> Result<InflowCumulativeSummary, CoupledLevelPoolError> {
+        if self.native == 0 {
+            return Ok(InflowCumulativeSummary::default());
+        }
+        let caller = self.caller_count();
+        let volume = state.volume.narrow(0, caller, self.native)?.contiguous()?;
+        let bound = state.bound.narrow(0, caller, self.native)?.contiguous()?;
+        let (volume_m3, reduction_bound_m3) = totals(client, self.native_reduction, &volume)?;
+        Ok(InflowCumulativeSummary {
+            volume_m3,
+            reduction_bound_m3,
+            roundoff_bound_m3: charge(client, self.native_reduction, &bound)?,
+        })
+    }
+
+    /// Original interval volumes of the native bindings in `step`, `[native count]`.
+    pub(crate) fn native_volumes(
+        &self,
+        step: &super::InflowStep<R>,
+    ) -> Result<Tensor<R>, CoupledLevelPoolError> {
+        Ok(step.volumes.narrow(0, self.caller_count(), self.native)?)
+    }
 }

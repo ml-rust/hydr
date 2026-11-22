@@ -1,7 +1,8 @@
-//! Common surface/channel trials: duration control, retries, and the owned candidate.
+//! Common surface/channel trials: duration control, retries, and every attempt.
 
 use super::accounting::{PoolInflowStep, within};
 use super::batch::SurfaceChannelBatch;
+use super::candidate::SurfaceChannelTrial;
 use super::completion::advanced;
 use super::evaluate::Accepted;
 use super::forcing::BoundForcing;
@@ -11,10 +12,12 @@ use super::outcome::LinkOutcome;
 use super::pool_ends::PoolEndInterval;
 use super::pools::PoolChild;
 use super::retry::{recompute, shortening};
-use super::runoff::{admit_forcing, stepping_not_attached};
+use super::runoff::{
+    RunoffStart, pool_receipts, runoff_delivery, runoff_end, runoff_start, with_runoff,
+};
 use super::start::Start;
 use super::state::{PreviousFrame, StoredStep};
-use super::{SurfaceChannelError, SurfaceChannelForcingInterval, SurfaceChannelStepDiagnostics};
+use super::{SurfaceChannelError, SurfaceChannelForcingInterval};
 use crate::channel::{ChannelError, ChannelReach};
 use hydr_solver::internal::CouplingPreparation;
 use numr::dtype::DType;
@@ -35,34 +38,13 @@ use std::sync::Arc;
 /// Fraction of the smallest step limit a shortened attempt uses.
 pub(super) const LIMIT_SAFETY: f64 = 0.95;
 
-/// Complete candidate of one common interval. Dropping it rejects every child together.
-#[derive(Debug)]
-pub struct SurfaceChannelTrial<R: Runtime<DType = DType>> {
-    pub(super) next: SurfaceChannelBatch<R>,
-}
-
-impl<R: Runtime<DType = DType>> SurfaceChannelTrial<R> {
-    /// Actual common endpoint after duration limits and recalculation, in seconds.
-    pub fn time(&self) -> f64 {
-        self.next.time()
-    }
-
-    /// Accepts the surface, every reach, and the link counters together.
-    pub fn into_next(self) -> SurfaceChannelBatch<R> {
-        self.next
-    }
-
-    /// Projects the candidate's common interval receipt.
-    ///
-    /// # Errors
-    /// Returns runtime transfer errors and [`SurfaceChannelError::Numerical`] for a candidate
-    /// without its receipt or with an unknown weir regime code.
-    pub fn diagnostics(&self) -> Result<SurfaceChannelStepDiagnostics, SurfaceChannelError> {
-        self.next.last_step()?.ok_or_else(|| {
-            SurfaceChannelError::Numerical("candidate lacks its common interval receipt".into())
-        })
-    }
-}
+/// Accepted-start operands, stall cell, operation, and runoff start of one attempt.
+type AttemptOperands<'a, R> = (
+    &'a Start<R>,
+    &'a Cell<Option<Stall>>,
+    AttemptOperation<R>,
+    Option<&'a RunoffStart>,
+);
 
 impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R>
 where
@@ -138,9 +120,7 @@ where
         if let Some(pool_start) = &pool_start {
             bound.requires_exact_span |= pool_start.inflows.has_interval_volumes();
         }
-        if admit_forcing(&self.definition, forcing)?.is_some() {
-            return Err(stepping_not_attached());
-        }
+        let runoff = runoff_start(self, forcing, &reach_ids)?;
         let intervals = self.surface.coupling_forcing().intervals();
         let surface_end = intervals
             .get(intervals.partition_point(|interval| interval.end <= start))
@@ -199,7 +179,7 @@ where
                 end,
                 requested,
                 retries,
-                (&operands, &stalled, operation),
+                (&operands, &stalled, operation, runoff.as_ref()),
                 &reach_ids,
                 forcing,
             );
@@ -256,12 +236,14 @@ where
     }
 
     /// Calculates one complete candidate ending at `end` under `operation`.
+    ///
+    /// Runoff runs once, after the step limits pass and before the pools and the fixed point.
     fn attempt(
         &self,
         end: f64,
         requested: f64,
         retries: usize,
-        (operands, stalled, operation): (&Start<R>, &Cell<Option<Stall>>, AttemptOperation<R>),
+        (operands, stalled, operation, runoff_start): AttemptOperands<'_, R>,
         reach_ids: &[&str],
         forcing: &SurfaceChannelForcingInterval,
     ) -> Result<Self, SurfaceChannelError> {
@@ -305,6 +287,8 @@ where
                 ),
             });
         }
+        let runoff = runoff_delivery(self, runoff_start, end)?;
+        let mut pool_received = None;
         let dt = stage.dt();
         let steps = self.accepted_steps + 1;
         let mut slots: Vec<Option<ChannelReach<R>>> =
@@ -317,7 +301,9 @@ where
         } else {
             let pool_child = self.pools.as_ref().map(|child| (child, steps));
             let links = Arc::clone(&operation.operations);
-            let attempt = context.attempt(operands, (stage, links), ports, pool_child)?;
+            let attempt =
+                context.attempt(operands, (stage, links), ports, pool_child, runoff.as_ref())?;
+            pool_received = pool_receipts(self, &attempt)?;
             let accepted = Accepted {
                 surface: &self.surface,
                 reaches: &self.reaches,
@@ -381,8 +367,9 @@ where
         for &index in &context.unlinked {
             let reach = &self.reaches[index];
             let bound = &operands.forcing.reaches[index];
+            let inputs = with_runoff(&bound.lateral, runoff.as_ref(), index);
             let forcing = reach
-                .bind_coupling_reserved(ports.reservation(operands, index)?, end, &bound.lateral)
+                .bind_coupling_reserved(ports.reservation(operands, index)?, end, &inputs)
                 .map_err(|source| SurfaceChannelError::Channel {
                     reach_id: reach_ids[index].to_string(),
                     source,
@@ -419,12 +406,25 @@ where
                 "candidate children disagree on end={end} or accepted step {steps}"
             )));
         }
+        let runoff_step = runoff_end(
+            self,
+            (runoff_start, runoff.as_ref()),
+            (&reaches, pools.as_ref()),
+            pool_received.as_ref(),
+            reach_ids,
+            end,
+        )?;
         let interval = context.port_interval(&ports, dt, &self.counters.ports)?;
         let pool_ends = outcome.pool_ends;
         context.check_end_pairing(&reaches, reach_ids, &pool_ends.volume_m3)?;
         let exchange = outcome.exchange;
-        let counters =
-            context.advance_counters(&self.counters, &exchange.signed, (&interval, &pool_ends))?;
+        let counters = context.advance_counters(
+            &self.counters,
+            &exchange.signed,
+            (&interval, &pool_ends),
+            runoff.as_ref(),
+        )?;
+        let next_runoff = runoff.map_or_else(|| self.runoff.clone(), |r| Some(r.next));
         let totals = context.step_totals(
             config,
             (
@@ -434,8 +434,14 @@ where
             &exchange,
             (&self.counters, &counters, &interval),
             (pool_inflow, &pool_ends),
+            [self.runoff.as_ref(), next_runoff.as_ref()],
         )?;
-        let balance = context.balance(config, (&surface, &reaches, pools.as_ref()), &counters)?;
+        let balance = context.balance(
+            config,
+            (&surface, &reaches, pools.as_ref()),
+            &counters,
+            next_runoff.as_ref(),
+        )?;
         if !within(balance.residual_m3, balance.bound_m3) {
             return Err(SurfaceChannelError::Numerical(format!(
                 "lifetime composite water residual={}, bound={}: inspect child accounting",
@@ -450,6 +456,7 @@ where
                 counters: self.counters.clone(),
                 pools: self.pools.clone(),
                 operating: self.operating.clone(),
+                runoff: self.runoff.clone(),
             },
             forcing: forcing.clone(),
             start_s: start,
@@ -471,6 +478,7 @@ where
             ports: interval,
             pool_ends,
             operation,
+            runoff: runoff_step,
         };
         Ok(Self {
             definition: Arc::clone(&self.definition),
@@ -484,7 +492,7 @@ where
             last: Some(Arc::new(step)),
             pools,
             operating,
-            runoff: self.runoff.clone(),
+            runoff: next_runoff,
         })
     }
 }

@@ -130,6 +130,7 @@ mod tests {
             (*stage, std::sync::Arc::clone(&context.operations)),
             ports,
             None,
+            None,
         )?;
         let available = attempt
             .available

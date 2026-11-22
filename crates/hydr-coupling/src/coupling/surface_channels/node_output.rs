@@ -1,5 +1,7 @@
 //! Host projections of structure links, pool ends, and pools over accepted intervals.
 
+use super::SurfaceChannelNode;
+use crate::runoff::Subarea;
 use crate::structures::{
     ControlLatch, GateActuatorPosition, PumpResponseModel, StructureOperatingPoint, StructureRegime,
 };
@@ -142,4 +144,40 @@ pub struct SurfaceChannelPoolStep {
     pub incoming_m3: f64,
     /// Native outgoing volume over the interval: link and pool-end water, in cubic metres.
     pub outgoing_m3: f64,
+}
+
+/// Runoff delivered through one delivery lane over one common interval.
+#[doc(hidden)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct SurfaceChannelRunoffTransfer {
+    /// Exact outlet identity.
+    pub outlet_id: String,
+    /// Subarea lane of the outlet's definition.
+    pub subarea: Subarea,
+    /// Receiving coordinator node.
+    pub target: SurfaceChannelNode,
+    /// Interval volume the runoff child exported and the receiver took, in cubic metres.
+    pub volume_m3: f64,
+    /// Receiving stage at the accepted start, in metres.
+    pub start_stage_m: f64,
+    /// Receiving stage at the accepted end, in metres.
+    pub end_stage_m: f64,
+    /// Free-outlet invert, in metres.
+    pub invert_elevation_m: f64,
+}
+
+/// Lifetime runoff delivered through one delivery lane.
+#[doc(hidden)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct SurfaceChannelRunoffLedger {
+    /// Exact outlet identity.
+    pub outlet_id: String,
+    /// Subarea lane of the outlet's definition.
+    pub subarea: Subarea,
+    /// Receiving coordinator node.
+    pub target: SurfaceChannelNode,
+    /// Accumulated delivered volume, in cubic metres.
+    pub delivered_volume_m3: f64,
+    /// Conservative rounding envelope of the counter, in cubic metres.
+    pub roundoff_bound_m3: f64,
 }

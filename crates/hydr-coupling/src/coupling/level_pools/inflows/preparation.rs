@@ -77,13 +77,13 @@ where
         self.check_state(client, state, steps_before)?;
         self.check_tensor(client, &inputs.values)?;
         let zero = Tensor::<R>::zeros(&[], DType::F64, client.device())?;
-        let rate_values = if inputs.has_interval_volumes() {
+        let rate_values = if inputs.masked {
             client.where_cond(&inputs.rate_mask, &inputs.values, &zero)?
         } else {
             inputs.values.clone()
         };
         let rate_volumes = client.mul_scalar(&rate_values, dt_s)?;
-        let volumes = if inputs.has_interval_volumes() {
+        let volumes = if inputs.masked {
             client.where_cond(&inputs.rate_mask, &rate_volumes, &inputs.values)?
         } else {
             rate_volumes

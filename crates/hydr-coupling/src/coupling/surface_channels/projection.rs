@@ -177,6 +177,7 @@ where
             &self.definition.setup().config,
             (&self.surface, &self.reaches, self.pools.as_ref()),
             &self.counters,
+            self.runoff.as_ref(),
         )
     }
 }

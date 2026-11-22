@@ -66,5 +66,6 @@ pub use surface_channels::{
 #[doc(hidden)]
 pub use surface_channels::{
     SurfaceChannelFreeOutlet, SurfaceChannelRunoff, SurfaceChannelRunoffDestination,
-    SurfaceChannelRunoffOutlet, SurfaceChannelRunoffShare,
+    SurfaceChannelRunoffLedger, SurfaceChannelRunoffOutlet, SurfaceChannelRunoffShare,
+    SurfaceChannelRunoffTransfer,
 };

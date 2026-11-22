@@ -40,9 +40,11 @@
 //! [`surface_channel_capabilities`] returns the declared scope.
 
 mod accounting;
+mod advance;
 mod bank_links;
 mod batch;
 mod bindings;
+mod candidate;
 mod capabilities;
 mod capture;
 mod completion;
@@ -85,6 +87,7 @@ mod trial;
 mod validation;
 
 pub use batch::SurfaceChannelBatch;
+pub use candidate::SurfaceChannelTrial;
 pub use capabilities::surface_channel_capabilities;
 pub use definition::{
     SURFACE_CHANNEL_PORT_WIDTH_TOLERANCE, SURFACE_CHANNEL_TANGENT_TOLERANCE, SurfaceChannelConfig,
@@ -97,6 +100,8 @@ pub use node_output::{
     SurfaceChannelOperationReceipt, SurfaceChannelPoolEndLedger, SurfaceChannelPoolEndTransfer,
     SurfaceChannelPoolStep, SurfaceChannelStructureLedger, SurfaceChannelStructureTransfer,
 };
+#[doc(hidden)]
+pub use node_output::{SurfaceChannelRunoffLedger, SurfaceChannelRunoffTransfer};
 pub use operating::{
     SurfaceChannelActuators, SurfaceChannelControlledGates, SurfaceChannelControlledPumps,
     SurfaceChannelControls, SurfaceChannelOperating, SurfaceChannelOperatingData,
@@ -122,5 +127,4 @@ pub use structures::{
     StructureScenario, SurfaceChannelAttachment, SurfaceChannelNode, SurfaceChannelOperationOwner,
     SurfaceChannelStructure,
 };
-pub use trial::SurfaceChannelTrial;
 pub use validation::SurfaceChannelDefinition;

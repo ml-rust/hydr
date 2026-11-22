@@ -334,10 +334,7 @@ where
             };
             let left = policy(ChannelEnd::Left)?;
             let right = policy(ChannelEnd::Right)?;
-            let mut inputs = bound.lateral.clone();
-            if let Some(linked) = self.linked.iter().position(|entry| entry.reach == reach) {
-                inputs.extend(self.exchange_inputs(linked, &zeros, &zeros, &zeros)?);
-            }
+            let inputs = self.reservation_inputs(reach, &bound.lateral, &zeros)?;
             let child = &reaches[reach];
             let forcing = child
                 .bind_coupling_tensor(start.time, stage.end(), Some(left), Some(right), &inputs)

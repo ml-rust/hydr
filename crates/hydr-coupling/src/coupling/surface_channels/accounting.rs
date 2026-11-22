@@ -1,18 +1,19 @@
-//! Paired exchange checks, composite water balance, and lifetime link and port counters.
+//! Paired exchange checks and the composite water balance.
 
-use super::context::{Context, Ops, transfer_error};
+use super::context::{Context, Ops};
 use super::exchange::Exchange;
 use super::pool_ends::{PoolEndCounters, PoolEndInterval};
 use super::pools::{PoolChild, inflow_error, pool_error};
 use super::ports::{PortCounters, PortInterval};
+use super::runoff::RunoffTerms;
 use super::state::{LinkCounters, StepTotals};
 use super::{SurfaceChannelConfig, SurfaceChannelError, SurfaceChannelWaterBalance};
 use crate::channel::ChannelReach;
-use crate::numerics::water_transfers::upward_add;
+use crate::runoff::SubcatchmentBatch;
 use crate::solver::Solver;
 use numr::dtype::DType;
 use numr::ops::{
-    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ShapeOps, TwoSumOps, UnaryOps,
+    BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ShapeOps, UnaryOps,
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -91,12 +92,14 @@ where
     /// `exchange` holds the lifetime channel link totals. `ports` and `ends` hold the lifetime
     /// port and pool-end volumes, which the reach boundary totals hold. Pools join with their
     /// storage, local sources, and external inflow ledgers. Their native counters hold link and
-    /// pool-end water, so they stay out of the external terms.
+    /// pool-end water, so they stay out of the external terms. `runoff` joins the runoff child,
+    /// and its delivered water leaves the receivers' external inflow.
     fn terms(
         &self,
         (surface, reaches, pools): Children<'_, R>,
         exchange: (f64, f64),
         (ports, ends): (&PortCounters, &PoolEndCounters),
+        runoff: Option<&RunoffTerms>,
     ) -> Result<Terms, SurfaceChannelError> {
         let s = surface.ledger();
         let mut terms = Terms {
@@ -180,6 +183,15 @@ where
             terms.magnitude += 2.0 * (into_reaches + out_of_reaches);
             terms.child_residual += bound;
         }
+        if let Some(r) = runoff {
+            terms.initial += r.initial;
+            terms.storage += r.storage;
+            terms.external_in += r.rain - r.delivered;
+            terms.external_out += r.losses;
+            terms.adjustment += r.adjustment;
+            terms.child_residual += r.bound;
+            terms.magnitude += r.magnitude;
+        }
         Ok(terms)
     }
 
@@ -208,19 +220,24 @@ where
     }
 
     /// Composite lifetime balance. Exchange stays inside and appears only in its totals.
+    ///
+    /// `runoff` holds the runoff child. Delivered runoff stays inside.
     pub fn balance(
         &self,
         config: &SurfaceChannelConfig,
         children: Children<'_, R>,
         counters: &LinkCounters<R>,
+        runoff: Option<&SubcatchmentBatch<R>>,
     ) -> Result<SurfaceChannelWaterBalance, SurfaceChannelError> {
-        let (surface, reaches, _) = children;
+        let (surface, reaches, pools) = children;
         let (channel_in, channel_out, channel_bound) = self.channel_lifetime(reaches)?;
         let ports = &counters.ports;
+        let runoff = self.runoff_terms(runoff.zip(counters.runoff.as_ref()), reaches, pools)?;
         let terms = self.terms(
             children,
             (channel_in, channel_out),
             (ports, &counters.pool_ends),
+            runoff.as_ref(),
         )?;
         let s = surface.ledger();
         let residual = (terms.storage - terms.initial)
@@ -279,6 +296,7 @@ where
         exchange: &Exchange<R>,
         counters: (&LinkCounters<R>, &LinkCounters<R>, &PortInterval),
         (pool_inflow, ends): (PoolInflowStep, &PoolEndInterval),
+        runoff: [Option<&SubcatchmentBatch<R>>; 2],
     ) -> Result<StepTotals, SurfaceChannelError> {
         let (counters_before, counters_after, port_step) = counters;
         let (ports_before, ports_after) = (&counters_before.ports, &counters_after.ports);
@@ -379,15 +397,28 @@ where
         }
         let (old_in, old_out, _) = self.channel_lifetime(before.1)?;
         let (new_in, new_out, _) = self.channel_lifetime(after.1)?;
+        let [runoff_before, runoff_after] = runoff;
+        let old_runoff = self.runoff_terms(
+            runoff_before.zip(counters_before.runoff.as_ref()),
+            before.1,
+            before.2,
+        )?;
+        let new_runoff = self.runoff_terms(
+            runoff_after.zip(counters_after.runoff.as_ref()),
+            after.1,
+            after.2,
+        )?;
         let old = self.terms(
             before,
             (old_in, old_out),
             (ports_before, &counters_before.pool_ends),
+            old_runoff.as_ref(),
         )?;
         let new = self.terms(
             after,
             (new_in, new_out),
             (ports_after, &counters_after.pool_ends),
+            new_runoff.as_ref(),
         )?;
         let external = (new.external_in - old.external_in) - (new.external_out - old.external_out)
             + (new.adjustment - old.adjustment);
@@ -407,6 +438,9 @@ where
                 .sum::<f64>();
         if after.2.is_some() {
             child += old.pool_bound + new.pool_bound;
+        }
+        if let (Some(old_runoff), Some(new_runoff)) = (old_runoff, new_runoff) {
+            child += old_runoff.bound + new_runoff.bound;
         }
         let mut mass_bound = config.mass_absolute_m3
             + config.mass_relative * scale
@@ -434,32 +468,6 @@ where
             paired_bound_m3: paired_bound,
             mass_residual_m3: mass_residual,
             mass_bound_m3: mass_bound,
-        })
-    }
-
-    /// Adds one interval's directional link and port volumes with error-free addition bounds.
-    pub fn advance_counters(
-        &self,
-        counters: &LinkCounters<R>,
-        signed: &Tensor<R>,
-        (ports, ends): (&PortInterval, &PoolEndInterval),
-    ) -> Result<LinkCounters<R>, SurfaceChannelError> {
-        let c = &self.client;
-        let zero = self.scalar(0.0)?;
-        let to_channel = c.where_cond(&c.gt(signed, &zero)?, signed, &zero)?;
-        let to_surface = c.where_cond(&c.lt(signed, &zero)?, &c.neg(signed)?, &zero)?;
-        let (forward, forward_low) = c.two_sum(&counters.to_channel_m3, &to_channel)?;
-        let (backward, backward_low) = c.two_sum(&counters.to_surface_m3, &to_surface)?;
-        let low =
-            upward_add(c, &c.abs(&forward_low)?, &c.abs(&backward_low)?).map_err(transfer_error)?;
-        let roundoff_bound_m3 =
-            upward_add(c, &counters.roundoff_bound_m3, &low).map_err(transfer_error)?;
-        Ok(LinkCounters {
-            to_channel_m3: forward,
-            to_surface_m3: backward,
-            roundoff_bound_m3,
-            ports: counters.ports.advance(ports)?,
-            pool_ends: counters.pool_ends.advance(ends)?,
         })
     }
 }
