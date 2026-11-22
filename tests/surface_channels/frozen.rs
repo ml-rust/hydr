@@ -39,6 +39,9 @@
 //! Runoff restart fields, runoff transfers, and runoff balance totals bump the contract to `10`.
 //! The schema stays `8`. Each case maps its text back to the format before runoff reports and
 //! reproduces the contract `9` digest, so no accepted bit moves.
+//!
+//! Runoff into surface cells bumps the contract to `11`. The schema stays `8`. Neither case
+//! holds runoff, so each maps its text back to contract `10` and reproduces that digest.
 
 use crate::fixture::Result;
 use crate::restoration::{network, state};
@@ -198,20 +201,40 @@ fn before_runoff_reports(text: &str) -> String {
     .replace(", runoff_storage_m3: 0.0, runoff_delivered_m3: 0.0", "")
 }
 
+/// The text in the format before runoff into surface cells.
+///
+/// That format names contract `10`. A case without runoff changes no other field, so this
+/// text reproduces the contract `10` digest bit for bit.
+fn before_surface_runoff(text: &str) -> String {
+    text.replace(
+        "hydr-surface-channel-numr-cpu-11",
+        "hydr-surface-channel-numr-cpu-10",
+    )
+}
+
 /// Fails unless `batch` matches the frozen `expected` digest, its text in the format before
+/// surface runoff matches the `celled` digest of contract `10`, its text in the format before
 /// runoff reports matches the `unreported` digest of contract `9`, its text in the format
 /// before runoff matches the `unattached` digest of schema `7`, its text in the format before
 /// warm culvert root searches matches the `cold` digest of contract `8`, and its text in the
 /// format before culverts matches the `uncoupled` digest of schema `6`.
 fn check_current(
     batch: &Batch,
-    [expected, unreported, unattached, cold, uncoupled]: [u64; 5],
+    [expected, celled, unreported, unattached, cold, uncoupled]: [u64; 6],
 ) -> Result {
     let text = state(batch)?;
     let actual = digest(&text);
     if actual != expected {
         return Err(format!(
             "state digest={actual:#018x}, frozen={expected:#018x}: an accepted bit changed"
+        )
+        .into());
+    }
+    let text = before_surface_runoff(&text);
+    let uncelled = digest(&text);
+    if uncelled != celled {
+        return Err(format!(
+            "digest before surface runoff={uncelled:#018x}, frozen={celled:#018x}: a field other than the contract identity changed"
         )
         .into());
     }
@@ -254,7 +277,7 @@ fn check_current(
 /// its text in the format before ports matches the `earlier` digest of that format.
 fn check_earlier(batch: &Batch, probed: u64, current: u64, earlier: u64) -> Result {
     let text = before_root_probe(&before_culverts(&before_culvert_roots(&before_runoff(
-        &before_runoff_reports(&state(batch)?),
+        &before_runoff_reports(&before_surface_runoff(&state(batch)?)),
     ))));
     let unprobed = digest(&text);
     if unprobed != probed {
@@ -304,6 +327,9 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
     //
     // The digest under contract `9` was 0x0067_7624_eaa1_05ab. Only the contract identity and
     // the empty runoff report fields differ.
+    //
+    // The digest under contract `10` was 0xb12b_e0a2_7fe0_64b2. Only the contract identity
+    // differs.
     let mut batch = network().build()?;
     for target in [0.25, 0.5, 0.75, 1.0] {
         batch = step(&batch, target)?;
@@ -316,6 +342,7 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
     check_current(
         &batch,
         [
+            0x8fcb_d6a0_2974_076b,
             0xb12b_e0a2_7fe0_64b2,
             0x0067_7624_eaa1_05ab,
             0xd23e_fe25_5262_7b60,
@@ -350,9 +377,13 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
     //
     // The digest under contract `9` was 0xbc3d_6695_a90a_4510. Only the contract identity and
     // the empty runoff report fields differ.
+    //
+    // The digest under contract `10` was 0xf5e4_4c35_e68d_2a65. Only the contract identity
+    // differs.
     check_current(
         &flood(CertifiedRootProbe::SlackSecant)?,
         [
+            0x1f01_27b4_850f_2fae,
             0xf5e4_4c35_e68d_2a65,
             0xbc3d_6695_a90a_4510,
             0xd6c2_0242_bcfc_f029,

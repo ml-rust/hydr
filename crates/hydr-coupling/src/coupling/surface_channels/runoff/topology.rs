@@ -1,11 +1,13 @@
 //! Static delivery operands: lane gathers, normalized weights, and receiving bindings.
 
 use super::admission::RunoffTarget;
+use super::surface::SurfaceRunoff;
 use crate::channel::{ChannelTensorLateralInput, ChannelTensorWaterAmount};
 use crate::coupling::surface_channels::{
     SurfaceChannelDefinition, SurfaceChannelError, SurfaceChannelNode,
 };
 use crate::runoff::Subarea;
+use crate::solver::Solver;
 use numr::dtype::DType;
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
@@ -46,17 +48,21 @@ pub(in super::super) struct RunoffTopology<R: Runtime<DType = DType>> {
     pub subareas: Vec<Subarea>,
     /// Free-outlet invert of every delivery lane, in metres.
     pub inverts: Vec<f64>,
+    /// Surface delivery operands, or `None` without a surface target.
+    pub surface: Option<SurfaceRunoff<R>>,
     /// Zero volume and velocity operand, `[1]`.
     pub zero: Tensor<R>,
 }
 
 impl<R: Runtime<DType = DType>> RunoffTopology<R> {
-    /// Delivery operands of `definition` on `client`, or `None` without active runoff.
+    /// Delivery operands of `definition` on `client` over `surface`, or `None` without active
+    /// runoff.
     ///
     /// Active runoff without a potential subarea holds no delivery lane.
     pub fn new(
         client: &R::Client,
         definition: &SurfaceChannelDefinition,
+        surface: &Solver<R>,
     ) -> Result<Option<Self>, SurfaceChannelError> {
         let Some(runoff) = &definition.runoff else {
             return Ok(None);
@@ -144,7 +150,10 @@ impl<R: Runtime<DType = DType>> RunoffTopology<R> {
                 }
             })
             .collect();
+        let targets: Vec<RunoffTarget> = runoff.lanes.iter().map(|lane| lane.target).collect();
+        let surface = SurfaceRunoff::new(client, surface, definition.surface_cells(), &targets)?;
         Ok(Some(Self {
+            surface,
             nodes,
             outlets: runoff
                 .lanes
@@ -171,7 +180,7 @@ impl<R: Runtime<DType = DType>> RunoffTopology<R> {
                 Some(indices(&pool_lanes)?)
             },
             pool_lanes,
-            targets: runoff.lanes.iter().map(|lane| lane.target).collect(),
+            targets,
             inverts,
             zero: Tensor::<R>::zeros(&[1], DType::F64, device)?,
         }))

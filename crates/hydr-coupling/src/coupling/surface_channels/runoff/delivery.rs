@@ -2,7 +2,7 @@
 //! checks at the candidate end.
 
 use super::attempt::RunoffAttempt;
-use super::forcing::{admit_forcing, check_steppable};
+use super::forcing::admit_forcing;
 use super::report::RunoffStep;
 use super::tailwater::Sample;
 use crate::channel::{ChannelReach, ChannelTensorLateralInput};
@@ -13,6 +13,7 @@ use crate::coupling::surface_channels::{
     SurfaceChannelBatch, SurfaceChannelError, SurfaceChannelForcingInterval,
 };
 use crate::runoff::AdmittedRates;
+use crate::solver::Solver;
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
@@ -31,9 +32,8 @@ pub(in super::super) struct RunoffStart {
 /// Returns `None` without active runoff.
 ///
 /// # Errors
-/// Returns every runoff forcing rejection, `runoff-attachment` for a surface-cell destination,
-/// and `runoff-outlet-submerged` for a receiving stage above its invert. Each is
-/// [`SurfaceChannelError::Input`].
+/// Returns every runoff forcing rejection and `runoff-outlet-submerged` for a receiving stage
+/// above its invert. Each is [`SurfaceChannelError::Input`].
 pub(in super::super) fn runoff_start<R: Runtime<DType = DType>>(
     batch: &SurfaceChannelBatch<R>,
     forcing: &SurfaceChannelForcingInterval,
@@ -45,14 +45,13 @@ where
     let Some(rates) = admit_forcing(&batch.definition, forcing)? else {
         return Ok(None);
     };
-    check_steppable(&batch.definition)?;
     if batch.context.runoff.is_none() {
         return Ok(None);
     }
     let pools = batch.pools.as_ref().map(|pools| &pools.batch);
     let start_stage_m = batch
         .context
-        .receiving_stages(&batch.reaches, pools, reach_ids)?;
+        .receiving_stages((&batch.surface, &batch.reaches, pools), reach_ids)?;
     batch
         .context
         .check_tailwater(&start_stage_m, batch.time_s, Sample::Start)?;
@@ -85,12 +84,13 @@ where
 /// Checks the candidate end of a runoff attempt of `batch` and returns its interval receipt.
 ///
 /// Each receiving stage must lie at or below its invert at `end`, and each receiving binding
-/// must hold its delivered volume in every bit. `reaches` holds the candidate reaches in setup
-/// order. `pool_received` holds the original volume of every runoff pool binding.
+/// must hold its delivered volume in every bit. `surface` holds the candidate surface and
+/// `reaches` the candidate reaches in setup order. `pool_received` holds the original volume
+/// of every runoff pool binding. The surface pairing check covers the surface lanes.
 pub(in super::super) fn runoff_end<R: Runtime<DType = DType>>(
     batch: &SurfaceChannelBatch<R>,
     (start, attempt): (Option<&RunoffStart>, Option<&RunoffAttempt<R>>),
-    (reaches, pools): (&[ChannelReach<R>], Option<&PoolChild<R>>),
+    (surface, reaches, pools): (&Solver<R>, &[ChannelReach<R>], Option<&PoolChild<R>>),
     pool_received: Option<&Tensor<R>>,
     reach_ids: &[&str],
     end: f64,
@@ -109,7 +109,7 @@ where
     }
     let context = &batch.context;
     let pools = pools.map(|pools| &pools.batch);
-    let end_stage_m = context.receiving_stages(reaches, pools, reach_ids)?;
+    let end_stage_m = context.receiving_stages((surface, reaches, pools), reach_ids)?;
     context.check_tailwater(&end_stage_m, end, Sample::End)?;
     context.check_runoff_delivery(attempt, reaches, pool_received)?;
     Ok(Some(RunoffStep {
@@ -225,6 +225,28 @@ mod tests {
             let ledgers = batch.runoff_ledgers()?;
             assert_eq!(ledgers[0].delivered_volume_m3.to_bits(), total.to_bits());
             assert!((pond_volume(&batch)? - total).abs() <= 4.0 * f64::EPSILON * total);
+            balanced(&batch)?;
+        }
+        Ok(())
+    }
+
+    /// Runoff alone couples a coordinator: no pond, no link, one reach cell receiving.
+    ///
+    /// Frozen criterion, fixed before the first run: over two intervals the reach binding holds
+    /// each delivered volume bit for bit, and every interval balances.
+    #[test]
+    fn a_reach_destination_steps_without_links() -> TestResult {
+        let mut basin = Basin::into(Receiver::Reach(vec![share(1, 1.0)]));
+        basin.pond = false;
+        let mut batch = basin.build()?;
+        assert_eq!(batch.context.link_count, 0);
+        for _ in 0..2 {
+            batch = advance(&batch, 0.25, 0.0)?;
+            let delivered: Vec<u64> = transfers(&batch)?
+                .iter()
+                .map(|transfer| transfer.volume_m3.to_bits())
+                .collect();
+            assert_eq!(received(&batch)?, delivered);
             balanced(&batch)?;
         }
         Ok(())

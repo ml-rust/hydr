@@ -1,7 +1,8 @@
 //! Native runoff of the surface/channel coordinator on configured runtime clients.
 //!
-//! Frozen criterion, fixed before the first run: the runoff case runs into the pond and into
-//! the reach cell, on the CPU client and on the CUDA client, over the same intervals. After
+//! Frozen criterion, fixed before the first run: the runoff case runs into the pond, into the
+//! reach cell, and into the surface cell, on the CPU client and on the CUDA client, over the
+//! same intervals. After
 //! every accepted interval, the text of every child state is equal between the two runs. Equal
 //! text means equal bits, signed zero included. No difference is allowed, in any float. The
 //! text holds:
@@ -16,7 +17,7 @@
 
 use super::{Result, runtime};
 use crate::pools_fixture::REACH;
-use crate::runoff_fixture::{Receiver, forcing, parts};
+use crate::runoff_fixture::{RECEIVERS, forcing, parts};
 
 /// Requested duration of every interval, in s.
 const DT: f64 = 0.25;
@@ -82,8 +83,8 @@ macro_rules! runoff_execution {
 }
 
 #[test]
-fn selected_cpu_client_executes_surface_channel_runoff_into_pools_and_reaches() -> Result {
-    for receiver in [Receiver::Pool, Receiver::Reach] {
+fn selected_cpu_client_executes_surface_channel_runoff_into_every_destination() -> Result {
+    for receiver in RECEIVERS {
         let states = runoff_execution!(runtime::Runtime, runtime::client(), receiver);
         assert_eq!(states.len(), INTERVALS);
     }
@@ -92,9 +93,9 @@ fn selected_cpu_client_executes_surface_channel_runoff_into_pools_and_reaches() 
 
 #[cfg(feature = "cuda")]
 #[test]
-fn selected_cuda_client_matches_cpu_surface_channel_runoff_into_pools_and_reaches() -> Result {
+fn selected_cuda_client_matches_cpu_surface_channel_runoff_into_every_destination() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    for receiver in [Receiver::Pool, Receiver::Reach] {
+    for receiver in RECEIVERS {
         let cpu = runoff_execution!(runtime::Runtime, runtime::client(), receiver);
         let cuda = runoff_execution!(CudaRuntime, CudaClient::new(CudaDevice::new(0))?, receiver);
         assert_eq!(cpu.len(), cuda.len(), "accepted interval count");
@@ -109,6 +110,7 @@ fn selected_cuda_client_matches_cpu_surface_channel_runoff_into_pools_and_reache
 #[cfg(feature = "wgpu")]
 #[test]
 fn selected_wgpu_rejects_surface_channel_runoff_f64_without_fallback() -> Result {
+    use crate::runoff_fixture::Receiver;
     use hydr::coupling::{SurfaceChannelBatch, SurfaceChannelError};
     use numr::runtime::wgpu::WgpuRuntime;
     let (setup, initial) = parts(Receiver::Pool)?;

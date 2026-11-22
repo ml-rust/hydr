@@ -82,8 +82,8 @@ impl SurfaceChannelDefinition {
     /// Returns [`SurfaceChannelError::Input`] for any rule below:
     /// - config tolerances, durations, or work limits fail [`super::SurfaceChannelConfig::check`]
     /// - evidence or identity text is empty or holds control characters
-    /// - no reaches, no links, ports, structures, or pool ends, or a repeated reach or link
-    ///   identity
+    /// - no reaches, no links, ports, structures, pool ends, or native runoff, or a repeated
+    ///   reach or link identity
     /// - a repeated `(surface_cell, reach_id, channel_cell)` triple
     /// - a surface cell outside the grid or inactive
     /// - an unknown reach identity or a channel cell out of range
@@ -191,7 +191,7 @@ impl SurfaceChannelDefinition {
         let resolved = check_links(
             &setup,
             &reach_index,
-            structures.is_empty() && pools.ends.is_empty(),
+            structures.is_empty() && pools.ends.is_empty() && setup.runoff.is_none(),
         )?;
         let ports = check_ports(&setup, &reach_index)?;
         let taken: BTreeSet<&str> = setup

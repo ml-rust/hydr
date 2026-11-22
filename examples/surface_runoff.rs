@@ -1,8 +1,9 @@
 //! Native runoff attached to the surface/channel coordinator.
 //!
-//! Two impervious subcatchments own the two surface cells, so the plan suppresses their rain.
-//! The north outlet drains into the middle cell of a walled reach. The south outlet drains into
-//! a pond. A weir joins the pond to the surface, but the pond never reaches its crest. The run
+//! Three impervious subcatchments own the three surface cells, so the plan suppresses their
+//! rain. The north outlet drains into the middle cell of a walled reach. The south outlet drains
+//! into a pond. The east outlet drains into surface cell 0, which no link or structure touches.
+//! A weir joins the pond to surface cell 1, but the pond never reaches its crest. The run
 //! prints each interval's runoff transfers and the composite balance, then resumes from a
 //! checkpoint package.
 
@@ -48,7 +49,7 @@ type Error = Box<dyn std::error::Error>;
 const DATUM: &str = "Example datum";
 /// Plan area of every surface cell, reach cell, subcatchment, and the pond, in m².
 const AREA: f64 = 4.0;
-/// Rain on both subcatchments, in m/s.
+/// Rain on every subcatchment, in m/s.
 const RAIN: f64 = 2e-5;
 
 /// One impervious subcatchment without depression storage.
@@ -111,7 +112,8 @@ fn outlet(name: &str, destination: SurfaceChannelRunoffDestination) -> SurfaceCh
     }
 }
 
-/// Runoff of both subcatchments: north into reach cell 1, south into the pond.
+/// Runoff of every subcatchment: north into reach cell 1, south into the pond, east into
+/// surface cell 0.
 fn runoff() -> Result<SurfaceChannelRunoff, Error> {
     let atom = |id: &str| SupportAtom {
         id: id.into(),
@@ -121,15 +123,24 @@ fn runoff() -> Result<SurfaceChannelRunoff, Error> {
         support: SupportPlanInput {
             partition: PartitionAssertion {
                 identity: "example-partition".into(),
-                covered_support: "both surface cells and the pond".into(),
+                covered_support: "every surface cell and the pond".into(),
                 provenance: "Complete disjoint synthetic partition".into(),
                 complete_disjoint: true,
             },
             surface_input_identity: "surface-input".into(),
-            atoms: vec![atom("north"), atom("south"), atom("pond-surface")],
-            contributions: vec![source("north"), source("south")],
+            atoms: vec![
+                atom("north"),
+                atom("south"),
+                atom("east"),
+                atom("pond-surface"),
+            ],
+            contributions: vec![source("north"), source("south"), source("east")],
             replacements: Vec::new(),
-            surface_cells: vec![owned_cell(0, "north"), owned_cell(1, "south")],
+            surface_cells: vec![
+                owned_cell(0, "north"),
+                owned_cell(1, "south"),
+                owned_cell(2, "east"),
+            ],
             boundaries: Vec::new(),
             pool_rain: vec![PoolRainSupport {
                 pool_id: "pond".into(),
@@ -137,7 +148,11 @@ fn runoff() -> Result<SurfaceChannelRunoff, Error> {
                 rain: CellRainAssignment::Direct,
             }],
         },
-        definitions: vec![definition("north-model")?, definition("south-model")?],
+        definitions: vec![
+            definition("east-model")?,
+            definition("north-model")?,
+            definition("south-model")?,
+        ],
         config: SubcatchmentConfig::default(),
         outlets: vec![
             outlet(
@@ -154,6 +169,15 @@ fn runoff() -> Result<SurfaceChannelRunoff, Error> {
                 "south",
                 SurfaceChannelRunoffDestination::Pool {
                     pool_id: "pond".into(),
+                },
+            ),
+            outlet(
+                "east",
+                SurfaceChannelRunoffDestination::SurfaceCells {
+                    cells: vec![SurfaceChannelRunoffShare {
+                        index: 0,
+                        weight: 1.0,
+                    }],
                 },
             ),
         ],
@@ -199,14 +223,14 @@ fn spill() -> Result<SurfaceChannelStructure, Error> {
     })
 }
 
-/// Setup and original state: a dry 2×1 surface, a still reach at 5 cm, an empty pond, and
+/// Setup and original state: a dry 3×1 surface, a still reach at 5 cm, an empty pond, and
 /// 1 cm of runoff on each subcatchment.
 fn parts() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState), Error> {
     let domain = Domain::new(
-        CartesianGrid::new(2, 1, 2.0, 2.0)?,
-        vec![0.0, 0.0],
-        vec![0.0, 0.0],
-        vec![true, true],
+        CartesianGrid::new(3, 1, 2.0, 2.0)?,
+        vec![0.0; 3],
+        vec![0.0; 3],
+        vec![true; 3],
         SpatialReference::new("Example projected CRS".into(), DATUM.into(), [0.0; 2])?,
     )?;
     let boundaries = BoundaryConditions::impermeable_walls();
@@ -216,9 +240,9 @@ fn parts() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState), Error> {
         vec![ForcingInterval {
             start: 0.0,
             end: 1000.0,
-            rain: vec![0.0, 0.0],
-            potential_evaporation: vec![0.0, 0.0],
-            withdrawal: vec![0.0, 0.0],
+            rain: vec![0.0; 3],
+            potential_evaporation: vec![0.0; 3],
+            withdrawal: vec![0.0; 3],
             boundaries: Vec::new(),
         }],
     )?;
@@ -229,7 +253,7 @@ fn parts() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState), Error> {
         qx: 0.0,
         qy: 0.0,
     };
-    let flow = FlowState::new(&domain, vec![dry, dry])?;
+    let flow = FlowState::new(&domain, vec![dry; 3])?;
     let cell = |index: usize| RectangularChannelCell {
         id: format!("cell-{index}"),
         length_m: 2.0,
@@ -317,12 +341,12 @@ fn parts() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState), Error> {
             },
         )],
         pools: vec![LevelPoolState { volume_m3: 0.0 }],
-        runoff: vec![wet, wet],
+        runoff: vec![wet; 3],
     };
     Ok((setup, initial))
 }
 
-/// Forcing over `[start, end]` with walls at both reach ends and rain on both subcatchments.
+/// Forcing over `[start, end]` with walls at both reach ends and rain on every subcatchment.
 fn forcing(start: f64, end: f64) -> SurfaceChannelForcingInterval {
     let record = |name: &str| SubcatchmentContributionInput {
         contribution_id: format!("{name}-source"),
@@ -346,7 +370,7 @@ fn forcing(start: f64, end: f64) -> SurfaceChannelForcingInterval {
         }],
         pool_sources: None,
         pool_inflows: Vec::new(),
-        runoff: vec![record("north"), record("south")],
+        runoff: vec![record("north"), record("south"), record("east")],
     }
 }
 

@@ -63,12 +63,11 @@ where
             &c.add_scalar(margin, 1.0)?,
         )?;
         let remaining = c.maximum(&c.sub(&kept, &reserved)?, &self.scalar(0.0)?)?;
+        // Runoff-only exchange lanes donate nothing.
+        let surface = self.link_lanes(stage.available_volume_m3())?;
         Ok(match pools {
-            Some(pools) => c.cat(
-                &[stage.available_volume_m3(), &remaining, &pools.available],
-                0,
-            )?,
-            None => c.cat(&[stage.available_volume_m3(), &remaining], 0)?,
+            Some(pools) => c.cat(&[&surface, &remaining, &pools.available], 0)?,
+            None => c.cat(&[&surface, &remaining], 0)?,
         })
     }
 

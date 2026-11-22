@@ -2,7 +2,7 @@
 //! restart from a package taken mid-run.
 
 use crate::pools_fixture::{Batch, Result};
-use crate::runoff_fixture::{OUTLET, Receiver, forcing, parts};
+use crate::runoff_fixture::{OUTLET, RECEIVERS, Receiver, forcing, parts};
 use hydr::coupling::{SurfaceChannelNode, SurfaceChannelSnapshotData};
 
 /// Requested interval, in s.
@@ -41,7 +41,7 @@ fn state(batch: &Batch) -> Result<String> {
 ///   within four ulps, and it closes.
 #[test]
 fn runoff_reports_its_transfers_ledgers_and_balance_totals() -> Result {
-    for receiver in [Receiver::Pool, Receiver::Reach] {
+    for receiver in RECEIVERS {
         let (setup, initial) = parts(receiver)?;
         let mut batch = Batch::new(crate::runtime::client(), setup, initial)?;
         let mut total = 0.0_f64;
@@ -54,8 +54,14 @@ fn runoff_reports_its_transfers_ledgers_and_balance_totals() -> Result {
             };
             assert_eq!(transfer.outlet_id, OUTLET);
             assert!(transfer.volume_m3 > 0.0, "{transfer:?}");
-            let pool = matches!(transfer.target, SurfaceChannelNode::Pool(_));
-            assert_eq!(pool, receiver == Receiver::Pool, "{transfer:?}");
+            let matched = match transfer.target {
+                SurfaceChannelNode::Pool(_) => receiver == Receiver::Pool,
+                SurfaceChannelNode::ChannelCell { .. } => receiver == Receiver::Reach,
+                SurfaceChannelNode::SurfaceCell(_) => {
+                    matches!(receiver, Receiver::Surface | Receiver::UnlinkedSurface)
+                }
+            };
+            assert!(matched, "{receiver:?}: {transfer:?}");
             total += transfer.volume_m3;
             let ledgers = batch.runoff_ledgers()?;
             let [ledger] = ledgers.as_slice() else {
@@ -84,7 +90,7 @@ fn runoff_reports_its_transfers_ledgers_and_balance_totals() -> Result {
 /// from `resume` give state text equal to the uninterrupted run after every interval.
 #[test]
 fn a_package_taken_mid_run_imports_and_resumes_bit_for_bit() -> Result {
-    for receiver in [Receiver::Pool, Receiver::Reach] {
+    for receiver in RECEIVERS {
         let build = || -> Result<Batch> {
             let (setup, initial) = parts(receiver)?;
             Ok(Batch::new(crate::runtime::client(), setup, initial)?)

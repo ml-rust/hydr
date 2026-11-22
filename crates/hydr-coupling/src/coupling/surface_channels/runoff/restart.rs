@@ -114,11 +114,15 @@ mod tests {
         Ok((batch, states))
     }
 
-    /// The pond and a reach cell, each receiving the outlet.
-    fn basins() -> [Basin; 2] {
+    /// The pond, a reach cell, and a span over both surface cells of a basin without the pond,
+    /// each receiving the outlet.
+    fn basins() -> [Basin; 3] {
+        let mut cells = Basin::into(Receiver::Surface(vec![share(0, 1.0), share(1, 3.0)]));
+        cells.pond = false;
         [
             Basin::into(Receiver::Pool),
             Basin::into(Receiver::Reach(vec![share(1, 1.0)])),
+            cells,
         ]
     }
 
@@ -133,9 +137,9 @@ mod tests {
 
     /// Three intervals, then a trusted snapshot and a package taken mid-run.
     ///
-    /// Frozen criteria, fixed before the first run: for the pond and the reach cell, three
-    /// more intervals from `restore`, `import_snapshot`, and `resume` give state text equal to
-    /// the uninterrupted run after every interval. Equal text means equal bits.
+    /// Frozen criteria, fixed before the first run: for every basin, three more intervals from
+    /// `restore`, `import_snapshot`, and `resume` give state text equal to the uninterrupted
+    /// run after every interval. Equal text means equal bits.
     #[test]
     fn restore_import_and_resume_continue_bit_for_bit() -> TestResult {
         for basin in basins() {

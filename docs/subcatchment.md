@@ -8,7 +8,7 @@ This component infers no GIS ownership. On its own it attaches runoff to no hydr
 cargo run --example subcatchment
 ```
 
-To send free outlet volumes into storage pools, use the [runoff-to-pool coordinator](runoff-pools.md). To send them into reach cells and coordinator pools beside the 2D surface, [attach native runoff](surface-channels.md#attach-native-runoff) to the surface/channel coordinator. Neither drains runoff into surface cells.
+To send free outlet volumes into storage pools, use the [runoff-to-pool coordinator](runoff-pools.md). To send them into surface cells, reach cells, and coordinator pools, [attach native runoff](surface-channels.md#attach-native-runoff) to the surface/channel coordinator.
 
 Read capabilities with `subcatchment_capabilities()`. It returns a `ComponentCapabilities` declaration: runtimes, the outlet endpoint, sources, the routing option, nested and parent components, unsupported uses, and limits.
 
@@ -246,6 +246,6 @@ The tools freeze physical inputs, norms, reference controls, and source hashes b
 
 This standalone component excludes:
 
-- Inter-catchment graphs, and runoff into surface cells.
+- Inter-catchment graphs.
 - Groundwater, LID, snow, and water quality.
 - Tailwater feedback.

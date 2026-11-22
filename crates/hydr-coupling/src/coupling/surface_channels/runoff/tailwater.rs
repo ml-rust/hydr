@@ -8,10 +8,19 @@ use super::admission::RunoffTarget;
 use crate::channel::ChannelReach;
 use crate::coupling::surface_channels::SurfaceChannelError;
 use crate::coupling::surface_channels::context::{Context, Ops};
+use crate::solver::Solver;
 use crate::storage::LevelPoolBatch;
 use numr::dtype::DType;
 use numr::ops::ShapeOps;
 use numr::runtime::Runtime;
+
+/// Receiving children of one stage sample: the surface, every reach in setup order, and the
+/// pool child.
+pub(in super::super) type Receivers<'a, R> = (
+    &'a Solver<R>,
+    &'a [ChannelReach<R>],
+    Option<&'a LevelPoolBatch<R>>,
+);
 
 /// Where a receiving stage sample lies.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,11 +37,11 @@ where
 {
     /// Receiving stage of every delivery lane, in metres.
     ///
-    /// `reaches` holds every reach in setup order and `pools` the pool child.
+    /// `surface` holds the surface child, `reaches` every reach in setup order, and `pools` the
+    /// pool child. A surface cell's stage is its bed plus its depth.
     pub fn receiving_stages(
         &self,
-        reaches: &[ChannelReach<R>],
-        pools: Option<&LevelPoolBatch<R>>,
+        (surface, reaches, pools): Receivers<'_, R>,
         reach_ids: &[&str],
     ) -> Result<Vec<f64>, SurfaceChannelError> {
         let topology = self.runoff_topology()?;
@@ -40,6 +49,16 @@ where
         let mut positions = vec![usize::MAX; lanes];
         let mut parts = Vec::new();
         let mut offset = 0;
+        if let Some(cells) = &topology.surface {
+            let (stage, _) = surface.coupling_cell_stages(&cells.links)?;
+            for (lane, exchange) in cells.lane_of.iter().enumerate() {
+                if let Some(exchange) = exchange {
+                    positions[lane] = offset + exchange;
+                }
+            }
+            offset += cells.lane_count();
+            parts.push(stage);
+        }
         for (reach, child) in reaches.iter().enumerate() {
             let receiving: Vec<(usize, usize)> = topology
                 .targets

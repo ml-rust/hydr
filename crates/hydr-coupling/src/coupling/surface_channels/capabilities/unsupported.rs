@@ -182,12 +182,6 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
         SURFACE_CHANNELS_DOC,
     ),
     unsupported(
-        "runoff-attachment",
-        UnsupportedReason::NotAttached,
-        "No runoff drains into surface cells. Construction checks the cells, but every trial rejects the outlet. Runoff drains into reach cells and pools.",
-        SURFACE_CHANNELS_DOC,
-    ),
-    unsupported(
         "unmapped-runoff-outlet",
         UnsupportedReason::RejectedByAdmission,
         "An active runoff outlet without a destination, or a destination for an unknown or replaced outlet, rejects.",

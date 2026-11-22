@@ -18,7 +18,6 @@ use crate::channel::{ChannelReach, ChannelTensorLateralInput};
 use crate::numerics::water_transfers::AggregationKind;
 use crate::solver::Solver;
 use hydr_channel::internal::ChannelCouplingTrial;
-use hydr_solver::internal::{CouplingCompletion, ExchangeSource};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ShapeOps, UnaryOps};
 use numr::runtime::Runtime;
@@ -192,10 +191,11 @@ where
         })
     }
 
-    /// Completes the surface interval with the lane totals of the limited link volumes.
+    /// Completes the surface interval with the lane totals of the limited link volumes and the
+    /// attempt's surface runoff.
     ///
     /// `to_a` holds each link's volume toward endpoint A. Only bank links, whose endpoint A is a
-    /// surface lane, carry velocity into the surface.
+    /// surface lane, carry velocity into the surface. Runoff carries none.
     fn complete_surface(
         &self,
         surface: &Solver<R>,
@@ -204,36 +204,33 @@ where
         exchange: &Exchange<R>,
         to_a: &Tensor<R>,
     ) -> Result<Solver<R>, SurfaceChannelError> {
-        let Some(links) = &self.links else {
-            return self.complete_alone(surface, &attempt.stage);
+        let link = match &self.links {
+            Some(_) => {
+                let c = &self.client;
+                let s = self.surface_count;
+                let momentum = |axis: usize| -> Result<Tensor<R>, SurfaceChannelError> {
+                    let momentum = c.mul(to_a, &reserved.channel_velocity[axis])?;
+                    Ok(self
+                        .lanes
+                        .aggregate(c, &momentum, AggregationKind::Momentum)
+                        .map_err(transfer_error)?
+                        .value)
+                };
+                Some([
+                    exchange.incoming.narrow(0, 0, s)?,
+                    exchange.outgoing.narrow(0, 0, s)?,
+                    momentum(0)?,
+                    momentum(1)?,
+                ])
+            }
+            None => None,
         };
-        let c = &self.client;
-        let s = self.surface_count;
-        let inflow = exchange.incoming.narrow(0, 0, s)?;
-        let withdrawal = exchange.outgoing.narrow(0, 0, s)?;
-        let zero = self.scalar(0.0)?;
-        let has = c.gt(&inflow, &zero)?;
-        let safe = c.where_cond(&has, &inflow, &self.scalar(1.0)?)?;
-        let velocity = |axis: usize| -> Result<Tensor<R>, SurfaceChannelError> {
-            let momentum = c.mul(to_a, &reserved.channel_velocity[axis])?;
-            let lane = self
-                .lanes
-                .aggregate(c, &momentum, AggregationKind::Momentum)
-                .map_err(transfer_error)?;
-            Ok(c.where_cond(&has, &c.div(&lane.value, &safe)?, &zero)?)
-        };
-        let source = ExchangeSource::new(
-            links,
-            inflow.contiguous()?,
-            withdrawal.contiguous()?,
-            [velocity(0)?, velocity(1)?],
-        )?;
-        match surface.coupling_complete(&attempt.stage, Some(&source))? {
-            CouplingCompletion::Accepted(next) => Ok(*next),
-            CouplingCompletion::Retry(reason) => Err(SurfaceChannelError::Numerical(format!(
-                "surface completion: {reason}. Shorten the common interval"
-            ))),
-        }
+        self.complete_exchange(
+            surface,
+            &attempt.stage,
+            link,
+            attempt.surface_runoff.as_ref(),
+        )
     }
 }
 

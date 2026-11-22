@@ -19,15 +19,16 @@ pub(super) struct Resolved<'a> {
 
 /// Checks every link. Returns the resolved links in ascending link-identity order.
 ///
-/// The links may be empty only beside a port or a structure link.
+/// The links may be empty only beside a port, a structure link, a pool end, or native runoff.
+/// `uncoupled` is true without the last three.
 pub(super) fn check_links<'a>(
     setup: &'a SurfaceChannelSetup,
     reach_index: &BTreeMap<&str, usize>,
-    no_structures: bool,
+    uncoupled: bool,
 ) -> Result<Vec<Resolved<'a>>, SurfaceChannelError> {
-    if setup.links.is_empty() && setup.ports.is_empty() && no_structures {
+    if setup.links.is_empty() && setup.ports.is_empty() && uncoupled {
         return Err(SurfaceChannelError::input(
-            "links is empty and ports is empty: supply at least one surface-channel link or port",
+            "links is empty and ports is empty: supply at least one surface-channel link or port, or native runoff",
         ));
     }
     let domain = &setup.surface.domain;

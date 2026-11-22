@@ -4,7 +4,7 @@ Use `hydr::runoff::SupportPlan` to declare who supplies rainfall/runoff and cons
 
 The application supplies GIS overlays, acquired data, and partition evidence. Hydr checks declared metadata without proving geometric disjointness.
 
-The plan composes no physical source by itself. To drain modelled runoff into reach cells and pools, pass the plan input to the surface/channel coordinator. See [attach native runoff](surface-channels.md#attach-native-runoff).
+The plan composes no physical source by itself. To drain modelled runoff into surface cells, reach cells, and pools, pass the plan input to the surface/channel coordinator. See [attach native runoff](surface-channels.md#attach-native-runoff).
 
 ## Try the example
 
@@ -184,5 +184,5 @@ Component snapshots acquire no unused support metadata. The surface/channel coor
 ## Unsupported uses
 
 - Persistence: Durable token serialization remains outside this component.
-- Coupling: Runoff into surface cells and tailwater feedback on outlets remain unsupported. The surface/channel coordinator drains modelled runoff into reach cells and pools only.
+- Coupling: Tailwater feedback on outlets remains unsupported. The surface/channel coordinator drains modelled runoff into surface cells, reach cells, and pools.
 - Data services: Provider frameworks and source aggregation remain outside this component.

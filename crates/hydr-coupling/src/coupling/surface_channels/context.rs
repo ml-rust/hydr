@@ -492,7 +492,7 @@ where
                 .map(|l| (l.bindings.0.to_string(), l.bindings.1.to_string()))
                 .collect(),
             pools: pool_topology,
-            runoff: RunoffTopology::new(&client, definition)?,
+            runoff: RunoffTopology::new(&client, definition, surface)?,
             client,
         })
     }

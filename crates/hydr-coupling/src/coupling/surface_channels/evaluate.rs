@@ -85,6 +85,9 @@ pub(super) struct Attempt<R: Runtime<DType = DType>> {
     pub culvert_roots: CulvertRoots<R>,
     /// Runoff inflow inputs of every setup reach, fixed for the attempt. Empty without runoff.
     pub runoff_laterals: Vec<Vec<ChannelTensorLateralInput<R>>>,
+    /// Runoff inflow of every surface exchange lane, `[S + R]`, fixed for the attempt. `None`
+    /// without surface runoff.
+    pub surface_runoff: Option<Tensor<R>>,
 }
 
 /// Kept child trials of one attempt.
@@ -190,10 +193,12 @@ where
             .as_ref()
             .map(|slots| self.donor_water(&stage, slots, dt, &slot_reserve, pools.as_ref()))
             .transpose()?;
+        // The stage covers the exchange lanes. Links read the link lanes only.
         let [ux, uy] = stage.velocity_xy();
         let zero = Tensor::<R>::zeros(&[1], DType::F64, device)?;
         let lane = |values: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
-            Ok(c.index_select(&c.cat(&[values, &zero], 0)?, 0, &self.lane_index)?)
+            let values = self.link_lanes(values)?;
+            Ok(c.index_select(&c.cat(&[&values, &zero], 0)?, 0, &self.lane_index)?)
         };
         let surface_velocity = c.add(
             &c.mul(&lane(ux)?, &self.tangent[0])?,
@@ -212,6 +217,7 @@ where
             operations,
             culvert_roots: CulvertRoots::new(start.law.as_ref()),
             runoff_laterals: runoff.map_or_else(Vec::new, |runoff| runoff.laterals.clone()),
+            surface_runoff: runoff.and_then(|runoff| runoff.surface.clone()),
         })
     }
 

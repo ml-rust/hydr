@@ -34,11 +34,9 @@ pub struct SurfaceChannelRunoffOutlet {
 pub enum SurfaceChannelRunoffDestination {
     /// Active surface cells by global row-major index.
     ///
-    /// Construction checks the targets, but no surface cell takes runoff yet. Every trial of a
-    /// coordinator with this destination returns [`SurfaceChannelError::Input`] naming
-    /// `runoff-attachment`.
-    ///
-    /// [`SurfaceChannelError::Input`]: crate::coupling::SurfaceChannelError::Input
+    /// Each cell takes its part after surface transport, with zero velocity. The surface
+    /// child's exchange ledger holds that part beside any link water. The coordinator's
+    /// surface exchange totals leave it out.
     SurfaceCells {
         /// Nonempty distinct cells with positive weights.
         cells: Vec<SurfaceChannelRunoffShare>,

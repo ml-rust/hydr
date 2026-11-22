@@ -290,12 +290,17 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         },
         Limit {
             id: "runoff-zero-momentum",
-            summary: "Runoff enters a reach with zero longitudinal velocity.",
+            summary: "Runoff enters a reach cell or a surface cell with zero velocity; on a surface cell with link inflow, the link momentum spreads over the link and runoff water together.",
+            doc: SURFACE_CHANNELS_DOC,
+        },
+        Limit {
+            id: "runoff-after-transport",
+            summary: "Runoff enters a surface cell after the surface transport of the interval; the interval's surface fluxes and step limits never see it.",
             doc: SURFACE_CHANNELS_DOC,
         },
         Limit {
             id: "runoff-span-rounding",
-            summary: "An outlet spread over several reach cells splits each lane volume by normalized weights; the parts sum to the lane within a rounding bound. One target keeps every bit.",
+            summary: "An outlet spread over several reach or surface cells splits each lane volume by normalized weights; the parts sum to the lane within a rounding bound. One target keeps every bit.",
             doc: SURFACE_CHANNELS_DOC,
         },
         Limit {
@@ -305,7 +310,7 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         },
     ],
     summary: Summary {
-        equations: "2D shallow-water surface, 1D channel reaches, and level pools exchanging water through suppressed rectangular bank weirs with Villemonte submergence, structure links (weirs, submerged orifices, hydrostatic gates, pumps, HDS-5 culverts) between surface cells, channel cells, and pools, pool ends at quiescent reservoir heads, water and normal momentum through reach-end ports under one hydrostatic HLL face flux, and nonlinear-reservoir subcatchment runoff into reach cells and pools through free outlets",
+        equations: "2D shallow-water surface, 1D channel reaches, and level pools exchanging water through suppressed rectangular bank weirs with Villemonte submergence, structure links (weirs, submerged orifices, hydrostatic gates, pumps, HDS-5 culverts) between surface cells, channel cells, and pools, pool ends at quiescent reservoir heads, water and normal momentum through reach-end ports under one hydrostatic HLL face flux, and nonlinear-reservoir subcatchment runoff into surface cells, reach cells, and pools through free outlets",
         method: "fixed-point iteration of end stages, signed link volumes, and pool-end volumes over one common interval, with a plan-area response step per update, midpoint-head law volumes, levelling, crest, suction, and culvert invert caps per link, one shared factor per donor over surface lanes, channel slots, and post-source pool water, an explicit HLL port flux from the accepted-start states per attempt, event-aligned intervals with per-interval operations from prescribed, actuated, and controlled-pump children and decision completion from the converged candidate, and nested child admission",
         assessment: "selected spill, reversal, donor-limit, retry, restart, pool, structure, control, and runoff cases; field accuracy remains unestablished",
     },

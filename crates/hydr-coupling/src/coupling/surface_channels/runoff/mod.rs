@@ -8,13 +8,15 @@
 //!
 //! A channel target receives one synthesized inflow binding per lane and cell. A pool target
 //! receives one synthesized inflow binding per lane. Both use the reserved prefix
-//! `runoff-attachment:`.
+//! `runoff-attachment:`. A surface target receives its lanes through the surface exchange
+//! lanes: the link cells, then every runoff-only cell.
 //!
 //! Construction builds the runoff child at the common epoch. Each attempt trials the child from
 //! its accepted state to the attempt end, after the surface step limits and before the pools
 //! and the link fixed point. Runoff volumes stay fixed across the fixed point. Reaches take
 //! them as interval-volume inflows with zero velocity. Pools take them as native interval
-//! volumes beside the caller inflows. A surface-cell destination rejects at every trial.
+//! volumes beside the caller inflows. Surface cells take them as exchange inflow after
+//! transport with zero velocity.
 
 mod accounting;
 mod admission;
@@ -27,6 +29,7 @@ mod delivery;
 mod forcing;
 mod report;
 mod restart;
+mod surface;
 mod tailwater;
 mod targets;
 mod topology;
@@ -35,13 +38,15 @@ mod writers;
 #[cfg(test)]
 mod basin;
 #[cfg(test)]
+mod cells;
+#[cfg(test)]
 mod rain_rows;
 #[cfg(test)]
 mod scenario;
 
 pub(super) use accounting::RunoffTerms;
 pub(super) use admission::{CheckedRunoff, check_runoff};
-pub(super) use attempt::RunoffAttempt;
+pub(super) use attempt::{RunoffAttempt, SurfaceRunoffStep};
 pub(super) use bindings::{
     RUNOFF_ATTACHMENT_BINDING_PREFIX, append_lateral_bindings, runoff_pool_bindings,
 };

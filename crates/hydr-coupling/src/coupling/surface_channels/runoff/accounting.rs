@@ -6,7 +6,8 @@
 //!
 //! In the composite balance the runoff child joins with its storage, rain, losses, and soil
 //! adjustment. Delivered runoff is an internal transfer: it leaves the receivers' external
-//! inflow totals.
+//! inflow totals. Surface runoff joins the surface exchange, which stays inside already. The
+//! surface lane counters stand for its lifetime receipts.
 
 use super::attempt::RunoffAttempt;
 use super::counters::RunoffCounters;
@@ -16,7 +17,7 @@ use crate::coupling::surface_channels::context::{Context, Ops};
 use crate::coupling::surface_channels::pools::{PoolChild, inflow_error};
 use crate::runoff::SubcatchmentBatch;
 use numr::dtype::DType;
-use numr::ops::{ReduceOps, ShapeOps};
+use numr::ops::{IndexingOps, ReduceOps, ShapeOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
@@ -34,8 +35,11 @@ pub(in super::super) struct RunoffTerms {
     pub losses: f64,
     /// Signed soil water adjustment.
     pub adjustment: f64,
-    /// Lifetime runoff the receivers recorded.
+    /// Lifetime runoff the receiving reaches and pools recorded.
     pub delivered: f64,
+    /// Lifetime runoff the lane counters hold for surface cells. The surface exchange totals
+    /// hold it beside the link water.
+    pub surface: f64,
     /// Runoff residual and rounding bounds, pairing bounds included.
     pub bound: f64,
     pub magnitude: f64,
@@ -192,7 +196,19 @@ where
         }
         let counted = self.sum(&counters.delivered_m3)?;
         let counted_bound = self.sum(&counters.roundoff_bound_m3)?;
-        let lanes = self.runoff_topology()?.lane_count() as f64;
+        let topology = self.runoff_topology()?;
+        // The surface keeps no per-lane ledger: its lane counters stand for its receipts, and
+        // each interval pairs them with the surface exchange.
+        let surface = match &topology.surface {
+            Some(cells) => {
+                let held = self
+                    .client
+                    .index_select(&counters.delivered_m3, 0, &cells.delivery)?;
+                self.sum(&held)?
+            }
+            None => 0.0,
+        };
+        let lanes = topology.lane_count() as f64;
         let width = (lanes + SUM_SLACK) * f64::EPSILON;
         let outlet = ledger.outlet_volume_m3;
         let export_bound = bounds.outlet_error_m3
@@ -204,10 +220,11 @@ where
                 "runoff lifetime pairing: outlet export={outlet}, lane counters={counted}, bound={export_bound}: the runoff child and the delivery counters disagree"
             )));
         }
-        let receipt_bound = delivered_bound + counted_bound + width * (delivered + counted);
-        if (delivered - counted).abs() > receipt_bound {
+        let received = delivered + surface;
+        let receipt_bound = delivered_bound + counted_bound + width * (received + counted);
+        if (received - counted).abs() > receipt_bound {
             return Err(SurfaceChannelError::Numerical(format!(
-                "runoff lifetime pairing: receivers={delivered}, lane counters={counted}, bound={receipt_bound}: the receivers and the delivery counters disagree"
+                "runoff lifetime pairing: receivers={delivered}, surface lanes={surface}, lane counters={counted}, bound={receipt_bound}: the receivers and the delivery counters disagree"
             )));
         }
         let losses = ledger.infiltration_volume_m3 + ledger.evaporation_volume_m3;
@@ -218,6 +235,7 @@ where
             losses,
             adjustment: ledger.soil_water_adjustment_volume_m3,
             delivered,
+            surface,
             bound: ledger.residual_m3.abs()
                 + bounds.combined_error_m3
                 + ledger.transfer_uncertainty_charge_m3
@@ -229,7 +247,7 @@ where
                 + losses
                 + ledger.soil_water_adjustment_volume_m3.abs()
                 + outlet
-                + 2.0 * delivered,
+                + 2.0 * received,
         }))
     }
 }
@@ -246,6 +264,7 @@ struct ReachRunoff<R: Runtime<DType = DType>> {
 mod tests {
     use super::super::basin::{
         Basin, CELL_AREA, Receiver, advance, alpha, balanced, pond_volume, reach_volume,
+        surface_volume,
     };
     use super::super::rain_rows::{ALPHA, FINEST_RELATIVE, RAIN, RAIN_SHA256, ROWS, STEPS};
     use super::super::scenario::share;
@@ -356,6 +375,20 @@ mod tests {
             .collect::<TestResult<Vec<_>>>()?;
         let basin = Basin::into(Receiver::Reach(vec![share(1, 1.0)]));
         refines(&basin, 0.0, reach_volume, &exact, 2e-3)
+    }
+
+    /// The same recession into surface cell 1 of a coordinator without links or pond.
+    ///
+    /// Frozen criteria, fixed before the first run: as for the pond, with the surface water as
+    /// the receiver.
+    #[test]
+    fn recession_into_a_surface_cell_converges_to_the_closed_form() -> TestResult {
+        let exact = (1..=4)
+            .map(|t| recession(f64::from(t)))
+            .collect::<TestResult<Vec<_>>>()?;
+        let mut basin = Basin::into(Receiver::Surface(vec![share(1, 1.0)]));
+        basin.pond = false;
+        refines(&basin, 0.0, surface_volume, &exact, 2e-3)
     }
 
     /// Constant rain on the dry subcatchment into the closed pond, against the 50-digit

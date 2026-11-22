@@ -5,7 +5,7 @@ use super::exchange::Exchange;
 use super::pool_ends::{PoolEndCounters, PoolEndInterval};
 use super::pools::{PoolChild, inflow_error, pool_error};
 use super::ports::{PortCounters, PortInterval};
-use super::runoff::RunoffTerms;
+use super::runoff::{RunoffTerms, SurfaceRunoffStep};
 use super::state::{LinkCounters, StepTotals};
 use super::{SurfaceChannelConfig, SurfaceChannelError, SurfaceChannelWaterBalance};
 use crate::channel::ChannelReach;
@@ -48,6 +48,9 @@ pub(super) struct PoolInflowStep {
     pub volume_m3: f64,
     pub bound_m3: f64,
 }
+
+/// Runoff children before and after one interval, then the interval's surface runoff.
+pub(super) type RunoffSteps<'a, R> = ([Option<&'a SubcatchmentBatch<R>>; 2], SurfaceRunoffStep);
 
 /// True when `|value| <= bound`. A NaN on either side fails.
 pub(super) fn within(value: f64, bound: f64) -> bool {
@@ -262,6 +265,10 @@ where
             surface_in -= ports.surface_m3[0];
             surface_out -= ports.surface_m3[1];
         }
+        // The surface exchange totals also hold surface runoff.
+        if let Some(r) = runoff.filter(|r| r.surface != 0.0) {
+            surface_in -= r.surface;
+        }
         Ok(SurfaceChannelWaterBalance {
             initial_storage_m3: terms.initial,
             storage_m3: terms.storage,
@@ -273,7 +280,7 @@ where
             channel_exchange_in_m3: channel_in,
             channel_exchange_out_m3: channel_out,
             runoff_storage_m3: runoff.map_or(0.0, |r| r.storage),
-            runoff_delivered_m3: runoff.map_or(0.0, |r| r.delivered),
+            runoff_delivered_m3: runoff.map_or(0.0, |r| r.delivered + r.surface),
             residual_m3: residual,
             bound_m3: bound,
         })
@@ -291,6 +298,10 @@ where
     /// `counters` holds the lifetime counters before and after the interval, then its port
     /// receipt. The pools' native net exchange adds every pool-end volume of `ends`. Pool-end
     /// water stays inside: it leaves the reach boundary totals.
+    ///
+    /// `runoff` holds the runoff child before and after the interval, then the interval's
+    /// surface runoff. The surface side removes that runoff first, and its summation bound
+    /// joins the paired bound.
     pub fn step_totals(
         &self,
         config: &SurfaceChannelConfig,
@@ -298,7 +309,7 @@ where
         exchange: &Exchange<R>,
         counters: (&LinkCounters<R>, &LinkCounters<R>, &PortInterval),
         (pool_inflow, ends): (PoolInflowStep, &PoolEndInterval),
-        runoff: [Option<&SubcatchmentBatch<R>>; 2],
+        (runoff, surface_runoff): RunoffSteps<'_, R>,
     ) -> Result<StepTotals, SurfaceChannelError> {
         let (counters_before, counters_after, port_step) = counters;
         let (ports_before, ports_after) = (&counters_before.ports, &counters_after.ports);
@@ -353,6 +364,9 @@ where
             surface_in -= port_step.surface_m3[0];
             surface_out -= port_step.surface_m3[1];
         }
+        if surface_runoff.volume_m3 != 0.0 {
+            surface_in -= surface_runoff.volume_m3;
+        }
         let pool_native = match after.2.and_then(|p| p.batch.coupling_native_interval()) {
             Some(native) => Some((
                 self.total(native.incoming_volume_m3)?,
@@ -360,9 +374,11 @@ where
             )),
             None => None,
         };
-        let width = (2 * (self.transfer_count() + self.group_count()) + 8) as f64;
+        let runoff_lanes = self.surface_runoff().map_or(0, |lanes| lanes.lane_count());
+        let width = (2 * (self.transfer_count() + self.group_count()) + 8 + runoff_lanes) as f64;
         let pool_magnitude = pool_native.map_or(0.0, |(into, out)| into + out);
         let paired_bound = exchange.aggregation_bound
+            + surface_runoff.bound_m3
             + width
                 * f64::EPSILON
                 * (magnitude
@@ -371,7 +387,8 @@ where
                     + s1.exchange_out_m3
                     + channel_in
                     + channel_out
-                    + pool_magnitude);
+                    + pool_magnitude
+                    + surface_runoff.volume_m3);
         let surface_gap = (surface_out - surface_in) - surface_net;
         let channel_gap = (channel_in - channel_out) - channel_net;
         if !within(surface_gap, paired_bound) || !within(channel_gap, paired_bound) {

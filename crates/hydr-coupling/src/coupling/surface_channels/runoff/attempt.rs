@@ -32,6 +32,21 @@ pub(in super::super) struct RunoffAttempt<R: Runtime<DType = DType>> {
     pub pool_volumes: Option<Tensor<R>>,
     /// Upward sum of every outlet entry's split bound, in m³. Zero without spans.
     pub split_bound_m3: f64,
+    /// Runoff inflow of every surface exchange lane, `[S + R]`, or `None` without surface
+    /// lanes.
+    pub surface: Option<Tensor<R>>,
+    /// Surface runoff of this interval: the delivered volume and the lane summation bound, in m³.
+    /// Both zero without surface lanes.
+    pub surface_step: SurfaceRunoffStep,
+}
+
+/// Runoff the surface takes over one interval, in m³.
+#[derive(Clone, Copy, Debug, Default)]
+pub(in super::super) struct SurfaceRunoffStep {
+    /// Delivered volume of every surface delivery lane, summed on the host.
+    pub volume_m3: f64,
+    /// Upper bound on the summation error of the exchange-lane sums.
+    pub bound_m3: f64,
 }
 
 /// Upper bound on `|Σ parts − O|` of an entry with `n` targets and export `o`, in m³.
@@ -100,6 +115,22 @@ where
             .as_ref()
             .map(|gather| c.index_select(&delivered, 0, gather))
             .transpose()?;
+        let (surface, surface_step) = match &topology.surface {
+            Some(lanes) => {
+                let volume_m3 = lanes
+                    .lane_of
+                    .iter()
+                    .zip(parts)
+                    .filter_map(|(lane, part)| lane.map(|_| part))
+                    .sum();
+                let step = SurfaceRunoffStep {
+                    volume_m3,
+                    bound_m3: lanes.sum_bound(parts),
+                };
+                (Some(lanes.lane_inflow(c, &delivered)?), step)
+            }
+            None => (None, SurfaceRunoffStep::default()),
+        };
         Ok(RunoffAttempt {
             next: trial.into_next(),
             delivered_m3: parts.to_vec(),
@@ -107,6 +138,8 @@ where
             laterals,
             pool_volumes,
             split_bound_m3,
+            surface,
+            surface_step,
         })
     }
 }

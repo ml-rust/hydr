@@ -30,7 +30,7 @@ use std::sync::Arc;
 /// Schema identity of the surface/channel snapshot package.
 pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-8";
 /// Numerical contract identity of the surface/channel snapshot package.
-pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-10";
+pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-11";
 
 /// Complete caller-owned continuation. Preserve every floating-point bit when encoding.
 ///

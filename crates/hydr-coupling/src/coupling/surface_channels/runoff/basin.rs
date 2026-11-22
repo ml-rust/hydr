@@ -2,8 +2,9 @@
 //!
 //! One impervious subcatchment without depression storage owns surface cell 0, so that cell's
 //! rain is suppressed. Surface cell 1 takes direct rain. The pond joins surface cell 1, or reach
-//! cell 2 in a linked case, through a weir whose crest the pond never reaches. The outlet
-//! drains into the pond or into cells of the reach.
+//! cell 2 in a linked case, through a weir whose crest the pond never reaches. A case can drop
+//! the pond, or add a bank weir between surface cell 1 and reach cell 1. The outlet drains into
+//! the pond, into cells of the reach, or into surface cells.
 
 use super::scenario::{OUTLET, POND, SOURCE, definition, outlet, record};
 use super::{
@@ -20,7 +21,7 @@ use crate::coupling::surface_channels::structures::scenario::{
 };
 use crate::coupling::surface_channels::{
     SurfaceChannelBatch, SurfaceChannelConfig, SurfaceChannelError, SurfaceChannelForcingInterval,
-    SurfaceChannelInitialState, SurfaceChannelNode, SurfaceChannelReach,
+    SurfaceChannelInitialState, SurfaceChannelLink, SurfaceChannelNode, SurfaceChannelReach,
     SurfaceChannelReachForcing, SurfaceChannelRunoffTransfer, SurfaceChannelSetup,
 };
 use crate::runoff::{
@@ -32,7 +33,7 @@ use crate::solver::{
     BoundaryConditions, ForcingInterval, ForcingSchedule, InitialState, SolverConfig, SolverSetup,
 };
 use crate::storage::{LevelPoolConfig, LevelPoolState};
-use crate::structures::{DirectionPolicy, StructureOperatingPoint};
+use crate::structures::{DirectionPolicy, StructureOperatingPoint, WeirApplicability};
 use hydr_core::grid::CartesianGrid;
 use hydr_core::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr_soil::soil::{LandModel, SoilState};
@@ -49,6 +50,8 @@ pub enum Receiver {
     Pool,
     /// Cells of the reach with their weights.
     Reach(Vec<SurfaceChannelRunoffShare>),
+    /// Surface cells with their weights.
+    Surface(Vec<SurfaceChannelRunoffShare>),
 }
 
 /// One basin case.
@@ -67,6 +70,14 @@ pub struct Basin {
     pub invert_m: f64,
     /// The pond weir opens onto reach cell 2 instead of surface cell 1.
     pub linked: bool,
+    /// The pond and its weir exist.
+    pub pond: bool,
+    /// A bank weir joins surface cell 1 and reach cell 1, crest at both beds.
+    pub bank: bool,
+    /// Initial depth of both surface cells, in m.
+    pub surface_depth_m: f64,
+    /// Initial x discharge of both surface cells, in m²/s.
+    pub surface_qx: f64,
     /// Longest common interval, in s.
     pub maximum_step_s: f64,
     /// Coordinator retry limit.
@@ -75,7 +86,7 @@ pub struct Basin {
 
 impl Basin {
     /// The default case draining into `receiver`: 1 cm of runoff, a still reach at 5 cm, an
-    /// empty pond, and an invert at 3 m. The reach CFL limit lies above 1 s.
+    /// empty pond, a dry surface, and an invert at 3 m. The reach CFL limit lies above 1 s.
     pub fn into(receiver: Receiver) -> Self {
         Self {
             receiver,
@@ -85,6 +96,10 @@ impl Basin {
             pond_m3: 0.0,
             invert_m: 3.0,
             linked: false,
+            pond: true,
+            bank: false,
+            surface_depth_m: 0.0,
+            surface_qx: 0.0,
             maximum_step_s: 1.0,
             retry_limit: 16,
         }
@@ -100,6 +115,9 @@ impl Basin {
                 reach_id: REACH.into(),
                 cells: cells.clone(),
             },
+            Receiver::Surface(cells) => SurfaceChannelRunoffDestination::SurfaceCells {
+                cells: cells.clone(),
+            },
         });
         declared.free_outlet.invert_elevation_m = self.invert_m;
         declared
@@ -111,6 +129,16 @@ impl Basin {
             id: id.into(),
             area_m2: CELL_AREA,
         };
+        let mut atoms = vec![atom("upstream"), atom("open")];
+        let mut pool_rain = Vec::new();
+        if self.pond {
+            atoms.push(atom("pond-surface"));
+            pool_rain.push(PoolRainSupport {
+                pool_id: POND.into(),
+                atoms: vec!["pond-surface".into()],
+                rain: CellRainAssignment::Direct,
+            });
+        }
         Ok(SurfaceChannelRunoff {
             support: SupportPlanInput {
                 partition: PartitionAssertion {
@@ -120,7 +148,7 @@ impl Basin {
                     complete_disjoint: true,
                 },
                 surface_input_identity: "surface-input".into(),
-                atoms: vec![atom("upstream"), atom("open"), atom("pond-surface")],
+                atoms,
                 contributions: vec![Contribution {
                     id: SOURCE.into(),
                     input_identity: "upstream-input".into(),
@@ -148,11 +176,7 @@ impl Basin {
                     },
                 ],
                 boundaries: Vec::new(),
-                pool_rain: vec![PoolRainSupport {
-                    pool_id: POND.into(),
-                    atoms: vec!["pond-surface".into()],
-                    rain: CellRainAssignment::Direct,
-                }],
+                pool_rain,
             },
             definitions: vec![definition(CELL_AREA)?],
             config: SubcatchmentConfig::default(),
@@ -185,12 +209,12 @@ impl Basin {
         )?;
         let land = LandModel::impervious(&domain);
         let soil = SoilState::initialized(&land)?;
-        let still = CellState {
-            h: 0.0,
-            qx: 0.0,
+        let water = CellState {
+            h: self.surface_depth_m,
+            qx: self.surface_qx,
             qy: 0.0,
         };
-        let flow = FlowState::new(&domain, vec![still, still])?;
+        let flow = FlowState::new(&domain, vec![water, water])?;
         let cell = |index: usize| RectangularChannelCell {
             id: format!("cell-{index}"),
             length_m: 2.0,
@@ -220,7 +244,7 @@ impl Basin {
                 id: REACH.into(),
                 definition: reach,
             }],
-            links: Vec::new(),
+            links: if self.bank { vec![bank()] } else { Vec::new() },
             ports: Vec::new(),
             pools: Vec::new(),
             pool_support: Vec::new(),
@@ -263,7 +287,11 @@ impl Basin {
             (receiving, 0.0),
         );
         let pools = declaration(vec![pond(POND, 0.0, CELL_AREA, 2.0)?], false, Vec::new());
-        let setup = nodes_setup(setup, pools, vec![spill]);
+        let setup = if self.pond {
+            nodes_setup(setup, pools, vec![spill])
+        } else {
+            setup
+        };
         let mut runoff = SubcatchmentState::initialized(&definition(CELL_AREA)?.parameters)?;
         runoff.depths_m[0] = self.depth_m;
         let initial = SurfaceChannelInitialState {
@@ -281,9 +309,13 @@ impl Basin {
                     longitudinal_momentum_m4_per_s: vec![self.reach_momentum; 3],
                 },
             )],
-            pools: vec![LevelPoolState {
-                volume_m3: self.pond_m3,
-            }],
+            pools: if self.pond {
+                vec![LevelPoolState {
+                    volume_m3: self.pond_m3,
+                }]
+            } else {
+                Vec::new()
+            },
             runoff: vec![runoff],
         };
         Ok((setup, initial))
@@ -293,6 +325,27 @@ impl Basin {
     pub fn build(&self) -> TestResult<Batch> {
         let (setup, initial) = self.parts()?;
         SurfaceChannelBatch::new(client(), setup, initial).map_err(Into::into)
+    }
+}
+
+/// Bank weir between surface cell 1 and reach cell 1 with its crest at both beds.
+fn bank() -> SurfaceChannelLink {
+    SurfaceChannelLink {
+        id: "bank".into(),
+        surface_cell: 1,
+        reach_id: REACH.into(),
+        channel_cell: 1,
+        crest_elevation_m: 0.0,
+        crest_length_m: 2.0,
+        weir_coefficient: 1.7,
+        applicability: WeirApplicability {
+            coefficient_provenance: "Declared bank coefficient".into(),
+            free_nappe_and_approach_assertion: "Suppressed crest with quiescent approach".into(),
+            submergence_correction_assertion: "Villemonte correction adopted".into(),
+            symmetric_reversal: true,
+        },
+        reach_tangent: [1.0, 0.0],
+        mapping_evidence: "Surface cell 1 borders reach cell 1".into(),
     }
 }
 
@@ -330,6 +383,12 @@ pub fn pond_volume(batch: &Batch) -> TestResult<f64> {
 pub fn reach_volume(batch: &Batch) -> TestResult<f64> {
     let reach = batch.reach(REACH).ok_or("the reach")?;
     Ok(reach.state()?.iter().map(|cell| cell.volume_m3).sum())
+}
+
+/// Accepted surface water, in m³.
+pub fn surface_volume(batch: &Batch) -> TestResult<f64> {
+    let state = batch.surface().state()?;
+    Ok(state.cells().iter().map(|cell| cell.h * CELL_AREA).sum())
 }
 
 /// Export of every subarea when the accepted runoff child of `batch` trials alone to `end`

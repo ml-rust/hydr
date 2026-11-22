@@ -112,12 +112,6 @@ static SUBCATCHMENT: ComponentCapabilities = ComponentCapabilities {
             SUBCATCHMENT_DOC,
         ),
         unsupported(
-            "surface-cell-runoff",
-            UnsupportedReason::NotAttached,
-            "No export drains into surface cells; the surface/channel coordinator delivers it into reach cells and pools only.",
-            "docs/surface-channels.md",
-        ),
-        unsupported(
             "gpu-numerical-qualification",
             UnsupportedReason::Unqualified,
             "CUDA runs execute, but only the CPU reference qualifies numerical accuracy.",

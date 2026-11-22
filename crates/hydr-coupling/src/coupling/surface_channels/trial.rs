@@ -8,12 +8,11 @@ use super::evaluate::Accepted;
 use super::forcing::BoundForcing;
 use super::iteration::Stall;
 use super::operating::AttemptOperation;
-use super::outcome::LinkOutcome;
-use super::pool_ends::PoolEndInterval;
-use super::pools::PoolChild;
+use super::outcome::{Converged, LinkOutcome};
 use super::retry::{recompute, shortening};
 use super::runoff::{
-    RunoffStart, pool_receipts, runoff_delivery, runoff_end, runoff_start, with_runoff,
+    RunoffStart, SurfaceRunoffStep, pool_receipts, runoff_delivery, runoff_end, runoff_start,
+    with_runoff,
 };
 use super::start::Start;
 use super::state::{PreviousFrame, StoredStep};
@@ -27,7 +26,6 @@ use numr::ops::{
     TwoSumOps, TypeConversionOps, UnaryOps,
 };
 use numr::runtime::Runtime;
-use numr::tensor::Tensor;
 use solvr::interpolate::Interp1dAlgorithms;
 use solvr::optimize::roots::{
     AndersonAlgorithms, BatchedBisectionAlgorithms, BatchedNewtonAlgorithms,
@@ -258,7 +256,7 @@ where
         let stage =
             match self
                 .surface
-                .coupling_prepare(end, retries, context.links.as_ref(), ghosts)?
+                .coupling_prepare(end, retries, context.exchange_links(), ghosts)?
             {
                 CouplingPreparation::Ready(stage) => *stage,
                 CouplingPreparation::SourceRetry(error)
@@ -296,7 +294,9 @@ where
         // Candidate end stages and wet masks at every node, for decision samples.
         let mut nodes = None;
         let (surface, outcome, ports) = if context.transfer_count() == 0 {
-            let surface = context.complete_alone(&self.surface, &stage)?;
+            // Without transfers the surface still takes its runoff through the exchange.
+            let lanes = runoff.as_ref().and_then(|runoff| runoff.surface.as_ref());
+            let surface = context.complete_exchange(&self.surface, &stage, None, lanes)?;
             (surface, LinkOutcome::empty(context)?, ports)
         } else {
             let pool_child = self.pools.as_ref().map(|child| (child, steps));
@@ -310,59 +310,16 @@ where
                 pools: self.pools.as_ref(),
             };
             let solved = context.solve(config, accepted, reach_ids, operands, &attempt, stalled)?;
-            let evaluation = solved.evaluation;
-            let (n, m) = (context.group_count(), context.transfer_count());
-            nodes = Some((
-                evaluation.packet.narrow(0, 0, n)?,
-                evaluation.packet.narrow(0, n + m, n)?,
-            ));
-            let pools = match (evaluation.pools, &attempt.pools) {
-                (Some(batch), Some(pool_attempt)) => {
-                    let summary = &pool_attempt.external.summary;
-                    Some((
-                        PoolChild {
-                            batch,
-                            external: pool_attempt.external.next.clone(),
-                        },
-                        PoolInflowStep {
-                            volume_m3: summary.volume_m3,
-                            bound_m3: summary.reduction_bound_m3 + summary.assembly_bound_m3,
-                        },
-                    ))
-                }
-                _ => None,
-            };
-            for (entry, next) in context.linked.iter().zip(evaluation.linked) {
+            let converged = Converged::new(context, solved, attempt.pools.as_ref())?;
+            nodes = Some(converged.nodes);
+            for (entry, next) in context.linked.iter().zip(converged.linked) {
                 slots[entry.reach] = Some(next);
             }
             let ended = context.pool_ends.as_ref().map_or(&[][..], |e| &e.ended);
-            for (&reach, next) in ended.iter().zip(evaluation.ended) {
+            for (&reach, next) in ended.iter().zip(converged.ended) {
                 slots[reach] = Some(next);
             }
-            let host = |values: Option<Tensor<R>>| -> Result<Vec<f64>, SurfaceChannelError> {
-                Ok(values
-                    .map(|v| v.try_to_vec::<f64>())
-                    .transpose()?
-                    .unwrap_or_default())
-            };
-            let pool_ends = PoolEndInterval {
-                volume_m3: host(evaluation.end_volume)?,
-                head_m: host(evaluation.end_heads)?,
-            };
-            let c = &context.client;
-            let outcome = LinkOutcome {
-                iterations: solved.iterations,
-                contraction: solved.contraction,
-                head_residual_m: solved.residuals.head_m,
-                transfer_residual_m3: solved.residuals.transfer_m3,
-                midpoint_surface_m: c.index_select(&evaluation.midpoint, 0, &context.link_a)?,
-                midpoint_channel_m: c.index_select(&evaluation.midpoint, 0, &context.link_b)?,
-                regime: evaluation.regime,
-                exchange: evaluation.exchange,
-                pools,
-                pool_ends,
-            };
-            (evaluation.surface, outcome, attempt.ports)
+            (converged.surface, converged.outcome, attempt.ports)
         };
         for &index in &context.unlinked {
             let reach = &self.reaches[index];
@@ -409,7 +366,7 @@ where
         let runoff_step = runoff_end(
             self,
             (runoff_start, runoff.as_ref()),
-            (&reaches, pools.as_ref()),
+            (&surface, &reaches, pools.as_ref()),
             pool_received.as_ref(),
             reach_ids,
             end,
@@ -424,6 +381,9 @@ where
             (&interval, &pool_ends),
             runoff.as_ref(),
         )?;
+        let surface_runoff = runoff
+            .as_ref()
+            .map_or_else(SurfaceRunoffStep::default, |r| r.surface_step);
         let next_runoff = runoff.map_or_else(|| self.runoff.clone(), |r| Some(r.next));
         let totals = context.step_totals(
             config,
@@ -434,7 +394,7 @@ where
             &exchange,
             (&self.counters, &counters, &interval),
             (pool_inflow, &pool_ends),
-            [self.runoff.as_ref(), next_runoff.as_ref()],
+            ([self.runoff.as_ref(), next_runoff.as_ref()], surface_runoff),
         )?;
         let balance = context.balance(
             config,

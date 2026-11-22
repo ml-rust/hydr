@@ -2,15 +2,12 @@
 
 use crate::surface_channel_support::pools_fixture::{Batch, Result, inflow_binding};
 use crate::surface_channel_support::runoff_fixture::{
-    OUTLET, POND, Receiver, SOURCE, forcing, outlet, parts,
+    OUTLET, POND, RECEIVERS, Receiver, SOURCE, forcing, outlet, parts,
 };
 use crate::surface_channels_fixture::{Outcome, construction_outcome, trial_outcome};
 use crate::surface_channels_variants::Variant;
-use hydr::capability::{BoundaryKind, ComponentId, EndpointId, UnsupportedReason};
-use hydr::coupling::{
-    SurfaceChannelRunoffDestination, SurfaceChannelRunoffShare, SurfaceChannelSetup,
-    surface_channel_capabilities,
-};
+use hydr::capability::{BoundaryKind, ComponentId, EndpointId};
+use hydr::coupling::{SurfaceChannelNode, SurfaceChannelSetup, surface_channel_capabilities};
 use hydr::solver::{ForcingInterval, ForcingSchedule};
 
 /// Requested duration of every one-interval case, in s.
@@ -117,11 +114,11 @@ pub fn rejection_cases(id: &str) -> Option<Vec<Rejection>> {
     })
 }
 
-/// The runoff endpoint delivers water into both admitted destinations.
+/// The runoff endpoint delivers water into every admitted destination.
 ///
 /// Frozen criteria, fixed before the first run: the outlet endpoint admits only the no-feedback
-/// runoff outlet, one interval into the pond and one into the reach cell each deliver positive
-/// runoff, and the subcatchment nests and attaches here.
+/// runoff outlet, one interval into the pond, one into the reach cell, and one into the surface
+/// cell each deliver positive runoff, and the subcatchment nests and attaches here.
 #[test]
 fn surface_channels_deliver_runoff_through_the_declared_outlet() -> Result {
     let declared = surface_channel_capabilities();
@@ -131,7 +128,7 @@ fn surface_channels_deliver_runoff_through_the_declared_outlet() -> Result {
         .find(|endpoint| endpoint.id == EndpointId::Outlet)
         .ok_or("no outlet endpoint")?;
     assert_eq!(endpoint.admitted, [BoundaryKind::RunoffOutletNoFeedback]);
-    for receiver in [Receiver::Pool, Receiver::Reach] {
+    for receiver in RECEIVERS {
         let (setup, initial) = parts(receiver)?;
         let batch = Batch::new(crate::runtime::client(), setup, initial)?;
         let next = batch.trial_to(DT, &forcing(0.0, DT, 0.0))?.into_next();
@@ -148,27 +145,25 @@ fn surface_channels_deliver_runoff_through_the_declared_outlet() -> Result {
     Ok(())
 }
 
-/// Surface cells stay outside runoff delivery.
+/// Surface cells take runoff delivery.
 ///
-/// Frozen criteria, fixed before the first run: `runoff-attachment` is `NotAttached`, a
-/// surface-cell destination builds, and its first trial rejects as input naming the entry.
+/// Frozen criteria, fixed before the first run: no `runoff-attachment` entry remains, and one
+/// interval into a surface cell delivers positive runoff to that cell.
 #[test]
-fn surface_cell_runoff_stays_unattached() -> Result {
-    let entry = surface_channel_capabilities()
-        .unsupported_by_id("runoff-attachment")
-        .ok_or("`runoff-attachment` is undeclared")?;
-    assert_eq!(entry.reason, UnsupportedReason::NotAttached);
-    let cells = SurfaceChannelRunoffDestination::SurfaceCells {
-        cells: vec![SurfaceChannelRunoffShare {
-            index: 0,
-            weight: 1.0,
-        }],
+fn surface_cells_take_runoff_delivery() -> Result {
+    assert!(
+        surface_channel_capabilities()
+            .unsupported_by_id("runoff-attachment")
+            .is_none()
+    );
+    let (setup, initial) = parts(Receiver::Surface)?;
+    let batch = Batch::new(crate::runtime::client(), setup, initial)?;
+    let next = batch.trial_to(DT, &forcing(0.0, DT, 0.0))?.into_next();
+    let step = next.last_step()?.ok_or("an accepted interval")?;
+    let [transfer] = step.runoff.as_slice() else {
+        return Err("one delivery lane".into());
     };
-    let (variant, reason) = trial(Receiver::Pool, |s| {
-        runoff(s, |r| r.outlets[0].destination = cells);
-    })?
-    .ok_or("a surface-cell destination stepped")?;
-    assert_eq!(variant, Variant::Input, "{reason}");
-    assert!(reason.starts_with("runoff-attachment"), "{reason}");
+    assert_eq!(transfer.target, SurfaceChannelNode::SurfaceCell(0));
+    assert!(transfer.volume_m3 > 0.0, "{transfer:?}");
     Ok(())
 }

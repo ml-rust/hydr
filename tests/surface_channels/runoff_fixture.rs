@@ -3,8 +3,9 @@
 //! The tanks of `pools_fixture` gain one pond and one impervious subcatchment without
 //! depression storage. The pond joins the surface cell through a weir whose crest its water
 //! never reaches. The subcatchment owns the surface cell's support, so that cell's rain is
-//! suppressed. The pond takes direct rain over its own atom. The outlet drains into the pond or
-//! into the reach cell.
+//! suppressed. The pond takes direct rain over its own atom. The outlet drains into the pond,
+//! the reach cell, or the surface cell. A surface cell case without the pond and its spill
+//! leaves the coordinator coupled by runoff alone.
 
 use super::pools_fixture::{
     AREA, Case, INFLOW, REACH, Result, WITHDRAWAL, manual, pond, pool, structure, surface, weir_law,
@@ -42,7 +43,21 @@ pub enum Receiver {
     Pool,
     /// The reach cell.
     Reach,
+    /// The surface cell, which the spill links to the pond.
+    Surface,
+    /// The surface cell of the tanks without the pond and its spill. The cell is a runoff-only
+    /// lane, and runoff alone couples the coordinator.
+    UnlinkedSurface,
 }
+
+/// Every receiving node: the pond, the reach cell, and the surface cell with and without a
+/// link.
+pub const RECEIVERS: [Receiver; 4] = [
+    Receiver::Pool,
+    Receiver::Reach,
+    Receiver::Surface,
+    Receiver::UnlinkedSurface,
+];
 
 /// The impervious subcatchment over `AREA` m².
 pub fn definition() -> Result<SubcatchmentDefinition> {
@@ -81,6 +96,14 @@ pub fn outlet(receiver: Receiver, invert: f64) -> SurfaceChannelRunoffOutlet {
                     weight: 1.0,
                 }],
             },
+            Receiver::Surface | Receiver::UnlinkedSurface => {
+                SurfaceChannelRunoffDestination::SurfaceCells {
+                    cells: vec![SurfaceChannelRunoffShare {
+                        index: 0,
+                        weight: 1.0,
+                    }],
+                }
+            }
         },
         free_outlet: SurfaceChannelFreeOutlet {
             invert_elevation_m: invert,
@@ -90,12 +113,14 @@ pub fn outlet(receiver: Receiver, invert: f64) -> SurfaceChannelRunoffOutlet {
 }
 
 /// Runoff whose source owns the surface cell, with direct rain on the pond.
+///
+/// Into `UnlinkedSurface` the plan holds no pond atom and no pool rain.
 pub fn runoff(receiver: Receiver) -> Result<SurfaceChannelRunoff> {
     let atom = |id: &str, area_m2| SupportAtom {
         id: id.into(),
         area_m2,
     };
-    Ok(SurfaceChannelRunoff {
+    let mut runoff = SurfaceChannelRunoff {
         support: SupportPlanInput {
             partition: PartitionAssertion {
                 identity: "tank-partition".into(),
@@ -134,22 +159,33 @@ pub fn runoff(receiver: Receiver) -> Result<SurfaceChannelRunoff> {
         definitions: vec![definition()?],
         config: SubcatchmentConfig::default(),
         outlets: vec![outlet(receiver, 3.0)],
-    })
+    };
+    if receiver == Receiver::UnlinkedSurface {
+        let support = &mut runoff.support;
+        support.partition.covered_support = "the surface cell".into();
+        support.atoms.retain(|atom| atom.id != "pond-surface");
+        support.pool_rain.clear();
+    }
+    Ok(runoff)
 }
 
 /// The tanks with a dry surface cell, the reach at 0.5 m, an empty pond, and runoff into
 /// `receiver` from `DEPTH` of initial runoff.
+///
+/// Into `UnlinkedSurface` the tanks hold no pond and no spill.
 pub fn parts(receiver: Receiver) -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
     let mut case = Case::tanks(0.0, 0.5);
-    case.ponds = vec![(pond(POND, 0.0, AREA, 2.0)?, 0.0)];
-    case.structures = vec![structure(
-        "spill",
-        weir_law(1.0, 1.0)?,
-        DirectionPolicy::Bidirectional,
-        manual(StructureOperatingPoint::Passive),
-        (pool(POND), 0.0),
-        (surface(), 0.0),
-    )];
+    if receiver != Receiver::UnlinkedSurface {
+        case.ponds = vec![(pond(POND, 0.0, AREA, 2.0)?, 0.0)];
+        case.structures = vec![structure(
+            "spill",
+            weir_law(1.0, 1.0)?,
+            DirectionPolicy::Bidirectional,
+            manual(StructureOperatingPoint::Passive),
+            (pool(POND), 0.0),
+            (surface(), 0.0),
+        )];
+    }
     let (mut setup, mut initial) = case.parts()?;
     setup.runoff = Some(runoff(receiver)?);
     let mut state = SubcatchmentState::initialized(&definition()?.parameters)?;
