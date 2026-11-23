@@ -3,7 +3,7 @@
 use crate::runtime::{Runtime, client};
 use hydr::capability::{ArithmeticRequirement as A, UnsupportedReason};
 use hydr::structures::{
-    CulvertBarrel, CulvertBarrelBatch, StructureError, StructureInputErrorKind as K,
+    CulvertBarrel, CulvertBarrelBatch, CulvertFloor, StructureError, StructureInputErrorKind as K,
     culvert_barrel_capabilities,
 };
 use numr::runtime::RuntimeClient;
@@ -96,6 +96,67 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                 "the barrel context scales the barrel by a power of two to a rise in [1, 2), and the scaled barrel fails admission",
             )]
         }
+        "barrel-floor-domain" => {
+            let circle = CulvertBarrel::circular(1.2)?;
+            let floor = |sediment_depth_m: f64, roughness_ratio: f64| CulvertFloor {
+                sediment_depth_m,
+                roughness_ratio,
+            };
+            vec![
+                (
+                    dropped(circle.with_floor(floor(1.2, 2.5))),
+                    K::Definition,
+                    "the barrel is full. Declare StructureCondition::Closed",
+                ),
+                (
+                    dropped(circle.with_floor(floor(0.0, 2.5))),
+                    K::Definition,
+                    "a circular barrel has no floor",
+                ),
+                (
+                    dropped(circle.with_floor(floor(f64::NAN, 2.5))),
+                    K::Definition,
+                    "supply a finite sediment depth",
+                ),
+                (
+                    dropped(circle.with_floor(floor(0.3, -1.0))),
+                    K::Definition,
+                    "supply a finite positive bed-to-wall Manning n ratio",
+                ),
+                (
+                    dropped(
+                        CulvertBarrel::rectangular_box(2.0, 1.5)?.with_floor(floor(0.0, 1e250)),
+                    ),
+                    K::Definition,
+                    "ratio^(3/2) times the span leaves the F64 range",
+                ),
+            ]
+        }
+        "floored-barrel-queries" => {
+            let bed = CulvertFloor {
+                sediment_depth_m: 0.2,
+                roughness_ratio: 2.5,
+            };
+            let floored = CulvertBarrelBatch::new(
+                client(),
+                vec![
+                    CulvertBarrel::circular(1.0)?,
+                    CulvertBarrel::rectangular_box(2.0, 1.0)?.with_floor(bed)?,
+                ],
+            )?;
+            vec![
+                (
+                    dropped(floored.critical_depth(&flows, 9.81)),
+                    K::Definition,
+                    "critical depth of a barrel with a floor is not yet available",
+                ),
+                (
+                    dropped(floored.normal_depth(&flows, &roughness, &slopes)),
+                    K::Definition,
+                    "normal depth of a barrel with a floor is not yet available",
+                ),
+            ]
+        }
         "empty-barrel-batch" => vec![(
             dropped(CulvertBarrelBatch::<Runtime>::new(client(), Vec::new())),
             K::Definition,
@@ -169,7 +230,11 @@ fn culvert_barrel_declares_no_attachments_and_its_arithmetic() {
         ]
     );
     let limits: Vec<&str> = capabilities.limits.iter().map(|limit| limit.id).collect();
-    for id in ["culvert-floor-roughness", "scaled-values-outside-f64"] {
+    for id in [
+        "culvert-floor-roughness",
+        "uniform-flat-bed",
+        "scaled-values-outside-f64",
+    ] {
         assert!(limits.contains(&id), "{id} missing from {limits:?}");
     }
     let other = capabilities

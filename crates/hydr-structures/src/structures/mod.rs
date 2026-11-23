@@ -49,12 +49,13 @@ pub(crate) use culvert::CulvertSide;
 pub use culvert::{
     BarrelDepthStatus, BarrelState, CriticalDepthStatus, CulvertAlignment, CulvertBarrel,
     CulvertBarrelBatch, CulvertBarrelDepth, CulvertBarrelDepthRow, CulvertBarrelGeometry,
-    CulvertBarrelGeometryRow, CulvertBarrelShape, CulvertEnd, CulvertEnds, CulvertInlet,
-    CulvertInletBatch, CulvertInletForm, CulvertInletHeadwater, CulvertInletHeadwaterRow,
-    CulvertInletRow, CulvertOutletBatch, CulvertOutletHeadwater, CulvertOutletHeadwaterRow,
-    CulvertOutletJump, CulvertOutletJumpRow, CulvertOutletRow, CulvertParameters, InletRegime,
-    JumpStatus, NormalDepthStatus, OutletRegime, culvert_barrel_capabilities, culvert_capabilities,
-    culvert_inlet_capabilities, culvert_outlet_capabilities,
+    CulvertBarrelGeometryRow, CulvertBarrelShape, CulvertEnd, CulvertEnds, CulvertFloor,
+    CulvertInlet, CulvertInletBatch, CulvertInletForm, CulvertInletHeadwater,
+    CulvertInletHeadwaterRow, CulvertInletRow, CulvertOutletBatch, CulvertOutletHeadwater,
+    CulvertOutletHeadwaterRow, CulvertOutletJump, CulvertOutletJumpRow, CulvertOutletRow,
+    CulvertParameters, InletRegime, JumpStatus, NormalDepthStatus, OutletRegime,
+    culvert_barrel_capabilities, culvert_capabilities, culvert_inlet_capabilities,
+    culvert_outlet_capabilities,
 };
 pub use definition::{DirectionPolicy, FlowDirection, StructureElement, StructureLaw};
 pub use error::{StructureError, StructureInputErrorKind};

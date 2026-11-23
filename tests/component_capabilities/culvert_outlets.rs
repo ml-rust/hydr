@@ -3,7 +3,7 @@
 use crate::runtime::{Runtime, client};
 use hydr::capability::{ArithmeticRequirement as A, UnsupportedReason};
 use hydr::structures::{
-    CulvertBarrel, CulvertOutletBatch, CulvertOutletRow, StructureError,
+    CulvertBarrel, CulvertFloor, CulvertOutletBatch, CulvertOutletRow, StructureError,
     StructureInputErrorKind as K, culvert_outlet_capabilities,
 };
 use numr::runtime::RuntimeClient;
@@ -71,6 +71,17 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                 }]),
                 K::Definition,
                 "supply a finite barrel slope",
+            ),
+            (
+                batch(vec![CulvertOutletRow {
+                    barrel: circle.with_floor(CulvertFloor {
+                        sediment_depth_m: 0.2,
+                        roughness_ratio: 2.5,
+                    })?,
+                    ..good
+                }]),
+                K::Definition,
+                "outlet control of a barrel with a floor is not yet available",
             ),
         ],
         "adverse-beyond-range" => vec![(

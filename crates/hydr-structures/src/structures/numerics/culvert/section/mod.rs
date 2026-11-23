@@ -25,6 +25,7 @@ mod range;
 mod rectangular;
 mod shallow;
 
+pub(crate) use arcs::{Layers, band_at_depth, hull};
 pub(crate) use full::full_constants;
 pub(crate) use range::over_depth;
 pub(crate) use shallow::sums;

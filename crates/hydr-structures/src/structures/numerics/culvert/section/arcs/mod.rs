@@ -12,6 +12,8 @@
 
 mod band;
 
+pub(crate) use band::evaluate as band_at_depth;
+
 use super::{Quantities, shallow, top_width};
 use crate::structures::numerics::culvert::arcs::cap::Shared;
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient};
@@ -23,7 +25,7 @@ use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval};
 
 /// Each band's serving mask with its enclosures.
-type Layers<'q, R> = [(&'q Tensor<R>, &'q Quantities<R>); 3];
+pub(crate) type Layers<'q, R> = [(&'q Tensor<R>, &'q Quantities<R>); 3];
 
 /// Arc rows served by the band formulas and by the bottom-circle series, with their geometry.
 pub(super) struct ArcBranches<R: Runtime<DType = DType>> {
@@ -115,7 +117,7 @@ where
 /// Hull of the enclosures of every band that serves a row.
 ///
 /// Rows no band serves keep the last band's enclosure, which the caller does not select.
-fn hull<R>(
+pub(crate) fn hull<R>(
     a: &mut Arithmetic<'_, R>,
     layers: &Layers<'_, R>,
     pick: fn(&Quantities<R>) -> &Interval<R>,

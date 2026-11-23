@@ -44,7 +44,7 @@ where
 ///
 /// `start_width` is the width at the band start. The caller gives every other row a depth
 /// inside the band's circle with `r sin psi + r sin a > 0`.
-pub(super) fn evaluate<R>(
+pub(crate) fn evaluate<R>(
     a: &mut Arithmetic<'_, R>,
     shared: &Shared<'_, R>,
     band: &ArcBand<R>,

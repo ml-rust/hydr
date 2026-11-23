@@ -1,8 +1,18 @@
-//! Culvert sediment and face blockage: frozen independent references.
+//! Culvert sediment and face blockage: frozen independent references and open-section geometry.
+
+#[allow(dead_code)]
+#[path = "support/runtime.rs"]
+mod runtime;
 
 #[allow(dead_code)]
 #[path = "culvert_blockage/section_rows.rs"]
 mod section_rows;
+
+#[path = "culvert_blockage/sections.rs"]
+mod sections;
+
+#[path = "culvert_blockage/floor_lanes.rs"]
+mod floor_lanes;
 
 #[allow(dead_code)]
 #[path = "culvert_blockage/depth_rows.rs"]

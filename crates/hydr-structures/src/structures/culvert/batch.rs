@@ -6,7 +6,7 @@ use super::{
     NormalDepthStatus,
 };
 use crate::structures::StructureError;
-use crate::structures::numerics::culvert::{RowNames, critical, normal, section};
+use crate::structures::numerics::culvert::{RowNames, critical, floor, normal, section};
 use crate::structures::tensor::culvert::TensorBarrelContext;
 use numr::dtype::DType;
 use numr::ops::{
@@ -74,9 +74,11 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
         &self.barrels
     }
 
-    /// Encloses the geometry at one depth per barrel, in metres above the invert.
+    /// Encloses the geometry at one depth per barrel, in metres above the invert, or above the
+    /// bed of a barrel with a floor.
     ///
-    /// `depth_m` is an F64 `[m]` tensor on the batch device. A depth at or above the rise is full.
+    /// `depth_m` is an F64 `[m]` tensor on the batch device. A depth at or above the open rise is
+    /// full. A barrel with a floor reports the open section above its bed.
     /// Rejects a negative or nonfinite depth, naming its row.
     /// Returns `Numerical` when a bound overflows F64, as the full-state moment can for huge depths.
     pub fn geometry(&self, depth_m: &Tensor<R>) -> Result<CulvertBarrelGeometry<R>, StructureError>
@@ -96,16 +98,20 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             DType::F64,
             "culvert barrel geometry",
             |a| {
-                Ok(CulvertBarrelGeometry::from_section(&section::at_depth(
-                    a, context, depth_m,
-                )?))
+                let section = section::at_depth(a, context, depth_m)?;
+                let open = match &context.floor {
+                    Some(rows) => Some(floor::at_depth(a, context, rows, depth_m)?),
+                    None => None,
+                };
+                Ok(CulvertBarrelGeometry::combine(context, &section, open)?)
             },
         )?)
     }
 
     /// Encloses the geometry over every depth in `[lower_m, upper_m]` per barrel.
     ///
-    /// Each range lies inside the free-surface domain: `0 <= lower_m <= upper_m < D`.
+    /// Each range lies inside the free-surface domain: `0 <= lower_m <= upper_m < D`, with `D`
+    /// the open rise and depths from the bed above a floor.
     /// Rejects a range that reaches the crown. Split such a range at the crown.
     /// The hydraulic radius bound divides the area range by the perimeter range, so it widens
     /// with the range.
@@ -131,15 +137,20 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             "culvert barrel range geometry",
             |a| {
                 let section = section::over_depth(a, context, lower_m, upper_m)?;
-                Ok(CulvertBarrelGeometry::from_section(&section))
+                let open = match &context.floor {
+                    Some(rows) => Some(floor::over_depth(a, context, rows, lower_m, upper_m)?),
+                    None => None,
+                };
+                Ok(CulvertBarrelGeometry::combine(context, &section, open)?)
             },
         )?)
     }
 
-    /// Encloses the full-state geometry at the crown `y = D` of every barrel.
+    /// Encloses the full-state geometry at the crown `y = D` of every barrel, with `D` the open
+    /// rise above a floor.
     ///
     /// Area, perimeter and radius hold for every full depth. The moment is `A_full D / 2` for a
-    /// circle and a box, and the crown moment `M(D)` for an arc barrel.
+    /// circle and a box, and the crown moment `M(D)` for an arc barrel or a barrel with a floor.
     pub fn full_geometry(&self) -> Result<CulvertBarrelGeometry<R>, StructureError>
     where
         R::Client: TensorOps<R>
@@ -157,7 +168,11 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             "culvert barrel full geometry",
             |a| {
                 let section = section::at_depth(a, context, &context.rise)?;
-                Ok(CulvertBarrelGeometry::from_section(&section))
+                let open = match &context.floor {
+                    Some(rows) => Some(floor::at_depth(a, context, rows, &rows.top)?),
+                    None => None,
+                };
+                Ok(CulvertBarrelGeometry::combine(context, &section, open)?)
             },
         )?)
     }
@@ -166,6 +181,8 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
     ///
     /// `discharge_m3_per_s` is an F64 `[m]` tensor of per-barrel discharge magnitudes on the
     /// batch device. [`CriticalDepthStatus`] states what each row's enclosure holds.
+    /// Rejects a batch with a floored barrel, naming its row. Critical depth above a floor is
+    /// not yet available.
     /// Rejects a negative or nonfinite discharge, naming its row, and a nonfinite or nonpositive
     /// gravity.
     pub fn critical_depth(
@@ -184,6 +201,7 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             + CertifiedBisectionAlgorithms<R>,
     {
         let context = &*self.context;
+        self.without_floors("critical depth")?;
         check_gravity(gravity_m_per_s2)?;
         check_discharges(context, "discharge_m3_per_s", discharge_m3_per_s)?;
         let gravity = context.constant(gravity_m_per_s2)?;
@@ -205,6 +223,8 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
     /// the batch device. The normal depth is the root on the rising limb of the conveyance.
     /// [`NormalDepthStatus`] states what each row's enclosure holds. A zero or adverse slope
     /// reports `NonPositiveSlope` whatever the discharge.
+    /// Rejects a batch with a floored barrel, naming its row. Normal depth above a floor is not
+    /// yet available.
     /// Rejects a negative or nonfinite discharge, a nonpositive or nonfinite `n` and a nonfinite
     /// slope, naming the row.
     pub fn normal_depth(
@@ -224,6 +244,7 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             + CertifiedBisectionAlgorithms<R>,
     {
         let context = &*self.context;
+        self.without_floors("normal depth")?;
         check_manning(
             context,
             [
@@ -241,5 +262,13 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             slope,
         )?;
         Ok(CulvertBarrelDepth::from_depths(depths))
+    }
+
+    /// Rejects the batch from `query`, naming the first barrel with a floor.
+    fn without_floors(&self, query: &str) -> Result<(), StructureError> {
+        for (row, barrel) in self.barrels.iter().enumerate() {
+            barrel.without_floor(query).map_err(|error| error.at(row))?;
+        }
+        Ok(())
     }
 }

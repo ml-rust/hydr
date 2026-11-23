@@ -40,9 +40,9 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             if !culvert.shape().arced() {
                 continue;
             }
-            let found = owners
-                .iter()
-                .position(|&owner| barrels.get(owner) == Some(culvert));
+            let found = owners.iter().position(|&owner| {
+                barrels.get(owner).map(CulvertBarrel::base) == Some(culvert.base())
+            });
             let position = found.unwrap_or(owners.len());
             if found.is_none() {
                 owners.push(row);

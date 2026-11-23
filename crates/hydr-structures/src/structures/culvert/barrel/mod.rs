@@ -6,7 +6,10 @@
 
 mod arcs;
 mod enclosure;
+mod floor;
 mod frame;
+
+pub use floor::CulvertFloor;
 
 use crate::structures::StructureError;
 
@@ -47,6 +50,8 @@ pub struct CulvertBarrel {
     /// Given radii in constructor order. Only the first `given` entries are set.
     radii_m: [f64; 2],
     given: usize,
+    /// Sediment bed or open floor, if declared.
+    floor: Option<CulvertFloor>,
 }
 
 /// Dimensions scaled by this factor stay finite, so area, perimeter and moment never overflow.
@@ -96,6 +101,7 @@ impl CulvertBarrel {
             rise_m,
             radii_m,
             given: given.len().min(2),
+            floor: None,
         }
     }
 

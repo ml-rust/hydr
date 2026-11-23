@@ -1,19 +1,29 @@
 //! Certified barrel geometry tensors and their explicit host projection.
 
 use crate::structures::StructureError;
+use crate::structures::numerics::culvert::BarrelClient;
+use crate::structures::numerics::culvert::floor::FloorSection;
 use crate::structures::numerics::culvert::section::SectionIntervals;
 use crate::structures::tensor::codes;
+use crate::structures::tensor::culvert::TensorBarrelContext;
 use numr::dtype::DType;
+use numr::ops::ConditionalOps;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
+use solvr::common::arithmetic::Interval;
+
+/// Stored endpoints of `interval`.
+fn ends<R: Runtime<DType = DType>>(interval: &Interval<R>) -> [Tensor<R>; 2] {
+    [interval.lower().clone(), interval.upper().clone()]
+}
 
 /// Flow state of one barrel row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BarrelState {
     /// Depth zero. Every quantity is an exact zero, except `T = P = B` for a box and a
-    /// flat-floor arch.
+    /// flat-floor arch, and `T = P = b`, `P_n = rho^(3/2) b` above a floor.
     Dry,
-    /// Free surface below the crown, `0 < y < D`.
+    /// Free surface below the crown, `0 < y < D`, with `D` the open rise above a floor.
     Free,
     /// Full from the crown upward, `y >= D`. Depth above the crown is pressure head.
     Full,
@@ -27,6 +37,9 @@ pub struct CulvertBarrelGeometry<R: Runtime<DType = DType>> {
     area: [Tensor<R>; 2],
     top_width: [Tensor<R>; 2],
     perimeter: [Tensor<R>; 2],
+    wall: [Tensor<R>; 2],
+    floor: [Tensor<R>; 2],
+    weighted: [Tensor<R>; 2],
     radius: [Tensor<R>; 2],
     moment: [Tensor<R>; 2],
 }
@@ -40,29 +53,78 @@ pub struct CulvertBarrelGeometryRow {
     pub area_m2: (f64, f64),
     /// Free-surface width `T`, in metres. Zero in the full state.
     pub top_width_m: (f64, f64),
-    /// Wetted perimeter `P`, in metres.
+    /// Wetted perimeter `P`, in metres: walls and bed, `P_w + b`.
     pub wetted_perimeter_m: (f64, f64),
+    /// Wall perimeter `P_w`, in metres: `P` without the bed. Equal to `P` without a floor.
+    pub wall_perimeter_m: (f64, f64),
+    /// Wetted bed width `b`, in metres, at every depth of a barrel with a floor. Zero without one.
+    pub floor_width_m: (f64, f64),
+    /// Weighted perimeter `P_n = P_w + rho^(3/2) b`, in metres, with `rho` the bed-to-wall
+    /// Manning ratio. Manning friction with the wall `n` and `P_n` equals HDS-5 composite
+    /// roughness. Equal to `P` without a floor.
+    pub weighted_perimeter_m: (f64, f64),
     /// Hydraulic radius `A / P`, in metres.
     pub hydraulic_radius_m: (f64, f64),
     /// Hydrostatic moment `integral from 0 to y of (y - eta) T(eta) d eta`, in cubic metres.
     /// In the full state it is `A_full (y - D/2)` for a circle or a box, and `M(D) + A_full (y - D)`
-    /// for an arc barrel.
+    /// for an arc barrel or a barrel with a floor, with `D` its open rise.
     pub hydrostatic_moment_m3: (f64, f64),
 }
 
 impl<R: Runtime<DType = DType>> CulvertBarrelGeometry<R> {
-    pub(crate) fn from_section(section: &SectionIntervals<R>) -> Self {
+    /// Rows without a floor: the wall perimeter and the weighted perimeter are `P`.
+    pub(crate) fn from_section(section: &SectionIntervals<R>) -> numr::error::Result<Self> {
         let g = &section.geometry;
-        let ends =
-            |i: &solvr::common::arithmetic::Interval<R>| [i.lower().clone(), i.upper().clone()];
-        Self {
+        let like = g.area.lower();
+        let zero = Tensor::<R>::zeros(like.shape(), DType::F64, like.device())?;
+        let perimeter = ends(&g.perimeter);
+        Ok(Self {
             state: section.state.clone(),
             area: ends(&g.area),
             top_width: ends(&g.top_width),
-            perimeter: ends(&g.perimeter),
+            wall: perimeter.clone(),
+            floor: [zero.clone(), zero],
+            weighted: perimeter.clone(),
+            perimeter,
             radius: ends(&g.radius),
             moment: ends(&g.moment),
-        }
+        })
+    }
+
+    /// `section` on rows without a floor, and the open section `open` of the context's floored
+    /// rows.
+    pub(crate) fn combine(
+        context: &TensorBarrelContext<R>,
+        section: &SectionIntervals<R>,
+        open: Option<FloorSection<R>>,
+    ) -> numr::error::Result<Self>
+    where
+        R::Client: BarrelClient<R>,
+    {
+        let base = Self::from_section(section)?;
+        let (Some(open), Some(rows)) = (open, &context.floor) else {
+            return Ok(base);
+        };
+        let c = &context.client;
+        let floored = &rows.floored;
+        let g = &open.geometry;
+        let pick = |interval: &Interval<R>, [lower, upper]: &[Tensor<R>; 2]| {
+            Ok::<_, numr::error::Error>([
+                c.where_cond(floored, interval.lower(), lower)?,
+                c.where_cond(floored, interval.upper(), upper)?,
+            ])
+        };
+        Ok(Self {
+            state: c.where_cond(floored, &open.state, &base.state)?,
+            area: pick(&g.area, &base.area)?,
+            top_width: pick(&g.top_width, &base.top_width)?,
+            perimeter: pick(&g.perimeter, &base.perimeter)?,
+            wall: pick(&g.wall, &base.wall)?,
+            floor: pick(&g.bed, &base.floor)?,
+            weighted: pick(&g.weighted, &base.weighted)?,
+            radius: pick(&g.radius, &base.radius)?,
+            moment: pick(&g.moment, &base.moment)?,
+        })
     }
 
     /// Lower and upper flow area `A`, in square metres.
@@ -78,6 +140,21 @@ impl<R: Runtime<DType = DType>> CulvertBarrelGeometry<R> {
     /// Lower and upper wetted perimeter `P`, in metres.
     pub fn wetted_perimeter(&self) -> (&Tensor<R>, &Tensor<R>) {
         (&self.perimeter[0], &self.perimeter[1])
+    }
+
+    /// Lower and upper wall perimeter `P_w`, in metres.
+    pub fn wall_perimeter(&self) -> (&Tensor<R>, &Tensor<R>) {
+        (&self.wall[0], &self.wall[1])
+    }
+
+    /// Lower and upper wetted bed width `b`, in metres. Zero on rows without a floor.
+    pub fn floor_width(&self) -> (&Tensor<R>, &Tensor<R>) {
+        (&self.floor[0], &self.floor[1])
+    }
+
+    /// Lower and upper weighted perimeter `P_n = P_w + rho^(3/2) b`, in metres.
+    pub fn weighted_perimeter(&self) -> (&Tensor<R>, &Tensor<R>) {
+        (&self.weighted[0], &self.weighted[1])
     }
 
     /// Lower and upper hydraulic radius `A / P`, in metres.
@@ -101,6 +178,9 @@ impl<R: Runtime<DType = DType>> CulvertBarrelGeometry<R> {
         let area = pair(&self.area)?;
         let top_width = pair(&self.top_width)?;
         let perimeter = pair(&self.perimeter)?;
+        let wall = pair(&self.wall)?;
+        let floor = pair(&self.floor)?;
+        let weighted = pair(&self.weighted)?;
         let radius = pair(&self.radius)?;
         let moment = pair(&self.moment)?;
         states
@@ -124,6 +204,9 @@ impl<R: Runtime<DType = DType>> CulvertBarrelGeometry<R> {
                     area_m2: area[row],
                     top_width_m: top_width[row],
                     wetted_perimeter_m: perimeter[row],
+                    wall_perimeter_m: wall[row],
+                    floor_width_m: floor[row],
+                    weighted_perimeter_m: weighted[row],
                     hydraulic_radius_m: radius[row],
                     hydrostatic_moment_m3: moment[row],
                 })

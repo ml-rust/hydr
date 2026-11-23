@@ -21,10 +21,11 @@ pub struct CulvertOutletRow {
 }
 
 impl CulvertOutletRow {
-    /// Rejects a nonfinite or nonpositive length, roughness or gravity, a nonfinite or negative
-    /// entrance loss, a nonfinite slope, and an adverse barrel whose outlet invert sits more than
-    /// `D/2` above its inlet invert.
+    /// Rejects a barrel with a floor, a nonfinite or nonpositive length, roughness or gravity, a
+    /// nonfinite or negative entrance loss, a nonfinite slope, and an adverse barrel whose
+    /// outlet invert sits more than `D/2` above its inlet invert.
     pub(crate) fn check(&self) -> Result<(), StructureError> {
+        self.barrel.without_floor("outlet control")?;
         let fields = format!(
             "length_m={:?},manning_n={:?},entrance_loss={:?},slope={:?},gravity_m_per_s2={:?}",
             self.length_m, self.manning_n, self.entrance_loss, self.slope, self.gravity_m_per_s2

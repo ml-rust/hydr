@@ -73,6 +73,16 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
             "Batch construction certifies the depth slope floors and the conveyance peak of each elliptical, pipe-arch and flat-floor arch barrel. It rejects, naming the row, a barrel whose dimensions scaled by a power of two to a rise in [1, 2) fail admission, or whose conveyance has no certified single peak below the crown.",
         ),
         unsupported(
+            "barrel-floor-domain",
+            UnsupportedReason::RejectedByAdmission,
+            "A floor rejects when its sediment depth is nonfinite or negative, reaches the rise, which is a closed barrel, or is zero on a barrel without its own floor. So does a nonfinite or nonpositive bed-to-wall Manning ratio, a ratio whose 3/2 power times the span leaves F64, and an open rise whose 2^-30 fraction is subnormal.",
+        ),
+        unsupported(
+            "floored-barrel-queries",
+            UnsupportedReason::RejectedByAdmission,
+            "Critical and normal depth of a batch with a floored barrel reject, naming the row. Inlet-control rows, outlet-control rows and the culvert law reject a floored barrel.",
+        ),
+        unsupported(
             "empty-barrel-batch",
             UnsupportedReason::RejectedByAdmission,
             "A batch without barrels rejects.",
@@ -116,7 +126,12 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
         },
         Limit {
             id: "culvert-floor-roughness",
-            summary: "The floor of a flat-floor arch takes the barrel's Manning n. A natural bed with its own roughness, HDS-5 composite roughness, is not modelled.",
+            summary: "A floored barrel reports its bed width and the weighted perimeter P_w + rho^(3/2) b of HDS-5 eq. 3.8 with exponent 2/3, for one Manning n per material. Depth searches, inlet control, outlet control and the culvert law take no floor yet, and the floor of a flat-floor arch without one takes the barrel's Manning n.",
+            doc: CULVERT_BARREL_DOC,
+        },
+        Limit {
+            id: "uniform-flat-bed",
+            summary: "A floor is one flat bed at one depth along the whole barrel. Depths above a floor run up from the bed, and the open rise is D - h. The admitted depth is D - fl(D - h), within half an F64 step of D - h.",
             doc: CULVERT_BARREL_DOC,
         },
         Limit {
@@ -126,7 +141,7 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
         },
     ],
     summary: Summary {
-        equations: "circular, box and tangent-arc closed-conduit geometry, critical depth Q^2 T = g A^3 and Manning normal depth on the rising conveyance limb",
+        equations: "circular, box and tangent-arc closed-conduit geometry and their open sections above a flat bed, critical depth Q^2 T = g A^3 and Manning normal depth on the rising conveyance limb",
         method: "F64 interval enclosures with correctly rounded acos and log, arc bands from each wall's chord and circular segment, and certified bisection in s = y/D",
         assessment: "independent 100-digit references lie inside every enclosure; CPU and CUDA bounds match bit for bit on circular, box and tangent-arc barrels",
     },

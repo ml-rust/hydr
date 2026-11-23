@@ -2,7 +2,9 @@
 //! depth certificates, full-state bounds and each row's frame.
 
 use super::arcs::ArcRows;
+use super::floor::FloorRows;
 use super::frame::{BarrelFrame, framed_barrel};
+use super::series::SeriesTensors;
 use crate::structures::numerics::culvert::arcs::ArcInputs;
 use crate::structures::numerics::culvert::certify::REFINEMENT_ROUNDS;
 use crate::structures::numerics::culvert::{BarrelClient, constants, section};
@@ -15,35 +17,6 @@ use solvr::common::arithmetic::with_interval_arithmetic;
 
 /// Lower and upper endpoint tensors of one stored enclosure.
 pub(crate) type Bounds<R> = [Tensor<R>; 2];
-
-/// Coefficient bounds of the three shallow series, each `[m]` wide.
-pub(crate) struct SeriesTensors<R: Runtime<DType = DType>> {
-    pub(crate) asin: Vec<Bounds<R>>,
-    pub(crate) area: Vec<Bounds<R>>,
-    pub(crate) moment: Vec<Bounds<R>>,
-}
-
-impl<R: Runtime<DType = DType>> SeriesTensors<R> {
-    /// The certified series coefficient bounds, each `[m]` wide on `device`.
-    pub(crate) fn constant(m: usize, device: &R::Device) -> numr::error::Result<Self> {
-        let bounds = |table: &[[u64; 2]]| -> numr::error::Result<Vec<Bounds<R>>> {
-            table
-                .iter()
-                .map(|[lower, upper]| {
-                    Ok([
-                        Tensor::<R>::full_scalar(&[m], DType::F64, f64::from_bits(*lower), device)?,
-                        Tensor::<R>::full_scalar(&[m], DType::F64, f64::from_bits(*upper), device)?,
-                    ])
-                })
-                .collect()
-        };
-        Ok(Self {
-            asin: bounds(&constants::ASIN)?,
-            area: bounds(&constants::AREA)?,
-            moment: bounds(&constants::MOMENT)?,
-        })
-    }
-}
 
 /// One row per barrel. Circle, box and arc rows mix and the shape masks select per row.
 ///
@@ -97,6 +70,9 @@ pub(crate) struct TensorBarrelContext<R: Runtime<DType = DType>> {
     pub(crate) unit_arcs: Option<ArcRows<R>>,
     /// Each row's frame, where point geometry runs. `None` when every row is its own frame.
     pub(crate) frame: Option<Box<BarrelFrame<R>>>,
+    /// Open sections above each declared floor. `None` when no row has a floor. The fields
+    /// above describe the barrel without its floor.
+    pub(crate) floor: Option<Box<FloorRows<R>>>,
 }
 
 impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
@@ -211,6 +187,11 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
                 .frame
                 .as_ref()
                 .map(|frame| frame.select(rows).map(Box::new))
+                .transpose()?,
+            floor: self
+                .floor
+                .as_ref()
+                .map(|floor| floor.select(&take).map(Box::new))
                 .transpose()?,
         })
     }
@@ -352,7 +333,7 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
         let full_area = merge(area, |arcs| &arcs.full_area)?;
         let full_perimeter = merge(perimeter, |arcs| &arcs.full_perimeter)?;
         let full_radius = merge(radius, |arcs| &arcs.full_radius)?;
-        Ok(Self {
+        let mut context = Self {
             zero: Tensor::<R>::zeros(&[m], DType::F64, &device)?,
             one: Tensor::<R>::ones(&[m], DType::F64, &device)?,
             client,
@@ -377,7 +358,10 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             arcs,
             unit_arcs,
             frame,
-        })
+            floor: None,
+        };
+        context.floor = FloorRows::new(&context, barrels)?.map(Box::new);
+        Ok(context)
     }
 
     /// Barrel count `m`.

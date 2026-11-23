@@ -3,8 +3,8 @@
 use crate::runtime::{Runtime, client};
 use hydr::capability::{ArithmeticRequirement as A, UnsupportedReason};
 use hydr::structures::{
-    CulvertBarrel, CulvertInlet, CulvertInletBatch, CulvertInletForm, CulvertInletRow,
-    StructureError, StructureInputErrorKind as K, culvert_inlet_capabilities,
+    CulvertBarrel, CulvertFloor, CulvertInlet, CulvertInletBatch, CulvertInletForm,
+    CulvertInletRow, StructureError, StructureInputErrorKind as K, culvert_inlet_capabilities,
 };
 use numr::runtime::RuntimeClient;
 use numr::tensor::Tensor;
@@ -96,6 +96,19 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                 batch(vec![row(rectangle, coded, 0.01, 9.81)]),
                 K::Definition,
                 "the code is for Circular barrels",
+            ),
+            (
+                batch(vec![row(
+                    circle.with_floor(CulvertFloor {
+                        sediment_depth_m: 0.2,
+                        roughness_ratio: 2.5,
+                    })?,
+                    coded,
+                    0.01,
+                    9.81,
+                )]),
+                K::Definition,
+                "inlet control of a barrel with a floor is not yet available",
             ),
             (
                 batch(vec![row(

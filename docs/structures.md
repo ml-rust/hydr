@@ -689,6 +689,20 @@ The floor of a flat-floor arch is wetted at every depth above zero and takes the
 - Correctly rounded elementary functions.
 - Square roots rounded to nearest.
 
+### Declare a floor
+
+A floor is a flat bed at depth `h` above the invert, the same along the whole barrel. `barrel.with_floor(CulvertFloor { sediment_depth_m, roughness_ratio })` returns the barrel with that bed. `roughness_ratio` is `rho = n_bed / n_wall`.
+
+| Barrel | Admitted depth |
+| --- | --- |
+| Circle, ellipse, pipe-arch | `0 < h < D` |
+| Box, flat-floor arch | `0 <= h < D`. Depth zero gives the barrel's own floor another roughness. |
+
+- The queries then report the open section above the bed. Its rise is `open_rise_m() = D - h`, and every depth runs up from the bed.
+- `with_floor` stores the depth `D - fl(D - h)`, within half an F64 step of `h`, so `D - h` is exact. `floor()` returns it, and `base()` returns the barrel without its floor.
+- A depth at or above the rise rejects: declare `StructureCondition::Closed` instead. A zero depth on a barrel without its own floor, a nonfinite or nonpositive ratio, and an open rise below `2^-992` also reject with `Definition`.
+- `geometry`, `geometry_over` and `full_geometry` accept floored barrels. `critical_depth`, `normal_depth`, `CulvertInletBatch`, `CulvertOutletBatch` and `CulvertParameters` reject a floored barrel with `Definition`, naming the row. Use `base()` for those queries.
+
 ### Run a query
 
 Every query input is an F64 `[m]` tensor on the batch device, one value per barrel. Each value is in SI units.
@@ -713,7 +727,10 @@ A geometry row holds `(lower, upper)` pairs of these quantities:
 | --- | --- |
 | `area_m2` | Flow area `A` |
 | `top_width_m` | Free-surface width `T`. Zero in the full state. |
-| `wetted_perimeter_m` | Wetted perimeter `P` |
+| `wetted_perimeter_m` | Wetted perimeter `P`: walls and bed, `P_w + b` |
+| `wall_perimeter_m` | Wall perimeter `P_w`. Equal to `P` without a floor. |
+| `floor_width_m` | Bed width `b` at every depth above a floor. Zero without a floor. |
+| `weighted_perimeter_m` | `P_n = P_w + rho^(3/2) b`. Manning friction with the wall `n` and `P_n` equals HDS-5 eq. 3.8 composite roughness with exponent `2/3`. Equal to `P` without a floor. |
 | `hydraulic_radius_m` | `A / P` |
 | `hydrostatic_moment_m3` | Integral of `(y - eta) T(eta)` from the invert to `y`. In the full state it is `A_full (y - D/2)` for a circle or a box, and `M(D) + A_full (y - D)` for an arc barrel, with `M(D)` the moment at the crown. |
 
@@ -721,7 +738,7 @@ Each row also carries a `BarrelState`:
 
 | State | Depth | Meaning |
 | --- | --- | --- |
-| `Dry` | `y = 0` | Every quantity is an exact zero. A box and a flat-floor arch keep `T = P = B`. |
+| `Dry` | `y = 0` | Every quantity is an exact zero. A box and a flat-floor arch keep `T = P = B`. Above a floor, `T = P = b` and `P_n = rho^(3/2) b`. |
 | `Free` | `0 < y < D` | Free surface below the crown |
 | `Full` | `y >= D` | Full-barrel constants. Depth above the crown is pressure head. |
 
@@ -795,10 +812,12 @@ Independent 100-digit references are frozen before any kernel runs.
 | [Arc barrel depths](../tests/culvert_shapes/depths.rs) | Critical and normal statuses match the reference class of independent roots, and every promised enclosure contains the root. [Depth laws](../tests/culvert_shapes/depth_laws.rs) show no certified reversal in discharge, roughness or slope, the same depth fraction for barrels scaled by `2^-300`, and unchanged circle and box rows beside arc rows. |
 | [Scaled arc barrels](../tests/culvert_shapes/scales.rs) | Each arc shape at `2^-900`, `1` and `2^300`: geometry and full geometry equal the unit barrel's scaled bit for bit. At `2^300` critical, normal and inlet enclosures meet the scaled unit enclosures. At `2^-900` zero discharge is dry and a represented discharge lies above the crown. |
 | Frame unit tests | Circles, boxes and arc barrels outside `[1, 2)` return the bits of a metre evaluation. Certificates at `2^-900` and `2^300` equal the unit barrel's bit for bit. |
+| [Floored barrels](../tests/culvert_blockage/sections.rs) | Eighteen beds in every shape, from a thin bed to a sliver under the crown, junction beds included. Every reference lies inside its enclosure within a frozen width. `P` and `P_n` add the bed to the walls. Sweeps show no certified reversal of `A`, `P_w`, `P_n` or `M`. [Lanes](../tests/culvert_blockage/floor_lanes.rs) of widths 1, 33 and 65 equal their single-row bits, rows without a floor keep their bits beside floored rows, and ranges hold every point they span. |
 
 ```sh
 cargo test --test culvert_barrels
 cargo test --test culvert_shapes
+cargo test --test culvert_blockage
 ```
 
 | Runtime | Behavior |
@@ -811,7 +830,8 @@ cargo test --test culvert_shapes
 
 - Queries hold no state and advance no storage. No snapshot exists.
 - Full-barrel pressure flow and full-barrel friction stay with the caller.
-- The floor of a flat-floor arch takes the barrel's Manning `n`. A natural bed with its own roughness, HDS-5 composite roughness, is not modelled.
+- A floor reports its bed width and weighted perimeter. Depth searches, inlet control, outlet control and the culvert law take no floor yet. Without a floor, a flat-floor arch floor takes the barrel's Manning `n`.
+- A floor is one flat bed along the whole barrel. A local deposit at one end is not modelled.
 - Barrel queries give no discharge. [`CulvertInletBatch`](#culvert-inlet-control), [`CulvertOutletBatch`](#culvert-outlet-control) and the [culvert law](#culvert-structure-law) give control headwaters and discharge.
 
 ## Culvert inlet control

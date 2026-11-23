@@ -25,7 +25,7 @@ mod outlet;
 mod output;
 mod parameters;
 
-pub use barrel::{CulvertBarrel, CulvertBarrelShape};
+pub use barrel::{CulvertBarrel, CulvertBarrelShape, CulvertFloor};
 pub use batch::CulvertBarrelBatch;
 pub use capabilities::culvert_barrel_capabilities;
 pub use depth::{

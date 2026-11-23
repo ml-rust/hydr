@@ -194,6 +194,7 @@ fn nonnegative_value(name: &str, value: f64, what: &str) -> Result<(), Structure
 }
 
 /// Rejects a depth range that is not `0 <= lower <= upper < D`, naming the first such row.
+/// `D` is the open rise above a floor.
 pub(super) fn check_range<R>(
     barrels: &[CulvertBarrel],
     context: &TensorBarrelContext<R>,
@@ -207,9 +208,13 @@ where
     check_tensor(context, "lower_m", lower)?;
     check_tensor(context, "upper_m", upper)?;
     let c = &context.client;
-    // 0 <= lower <= upper < D also excludes NaN and infinite ends.
+    // 0 <= lower <= upper < D also excludes NaN and infinite ends. D is the open rise.
+    let top = context
+        .floor
+        .as_ref()
+        .map_or(&context.rise, |rows| &rows.top);
     let ordered = c.mul(&c.ge(lower, &context.zero)?, &c.le(lower, upper)?)?;
-    let good = c.mul(&ordered, &c.lt(upper, &context.rise)?)?;
+    let good = c.mul(&ordered, &c.lt(upper, top)?)?;
     if count_bad(context, &good)? == 0.0 {
         return Ok(());
     }
@@ -226,12 +231,17 @@ where
             )
             .at(row));
         }
-        let rise = barrel.rise_m();
+        let rise = barrel.open_rise_m();
         if high >= rise {
+            let name = if barrel.floor().is_some() {
+                "open_rise_m"
+            } else {
+                "rise_m"
+            };
             return Err(StructureError::input(
                 StructureInputErrorKind::OperatingPoint,
                 format!(
-                    "upper_m={high:?},rise_m={rise:?}: the range reaches the crown. Split it at the crown and use full_geometry above it"
+                    "upper_m={high:?},{name}={rise:?}: the range reaches the crown. Split it at the crown and use full_geometry above it"
                 ),
             )
             .at(row));

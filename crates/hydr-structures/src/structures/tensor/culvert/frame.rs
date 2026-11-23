@@ -11,7 +11,7 @@
 
 use super::context::{Bounds, TensorBarrelContext};
 use crate::structures::numerics::culvert::BarrelClient;
-use crate::structures::{CulvertBarrel, CulvertBarrelShape, StructureError};
+use crate::structures::{CulvertBarrel, CulvertBarrelShape, CulvertFloor, StructureError};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, NextRepresentableOps};
 use numr::runtime::Runtime;
@@ -123,7 +123,8 @@ pub(super) fn framed_barrel(
         (CulvertBarrelShape::Box, &[]) => {
             let exact =
                 span >= f64::MIN_POSITIVE && span.is_finite() && span / scale == barrel.span_m();
-            let framed = CulvertBarrel::rectangular_box(span, rise);
+            let framed = CulvertBarrel::rectangular_box(span, rise)
+                .and_then(|framed| floored(framed, barrel, scale));
             return Ok(framed.ok().filter(|_| exact).unwrap_or(*barrel));
         }
         (CulvertBarrelShape::HorizontalEllipse, &[side]) => {
@@ -138,7 +139,9 @@ pub(super) fn framed_barrel(
         (CulvertBarrelShape::Arch, &[]) => CulvertBarrel::arch(span, rise),
         _ => Err(StructureError::definition("a barrel lost its given radii")),
     };
-    scaled.map_err(|error| {
+    scaled
+        .and_then(|framed| floored(framed, barrel, scale))
+        .map_err(|error| {
         StructureError::definition(format!(
             "shape={shape:?},span_m={:?},rise_m={:?}: the barrel context scales the barrel by a power of two to a rise in [1, 2), and the scaled barrel fails admission ({error}). Use dimensions closer in size",
             barrel.span_m(),
@@ -146,6 +149,22 @@ pub(super) fn framed_barrel(
         ))
         .at(row)
     })
+}
+
+/// `framed` with the floor of `barrel` scaled by `scale`, exact because the framed rise is
+/// normal and every bed lies below it.
+fn floored(
+    framed: CulvertBarrel,
+    barrel: &CulvertBarrel,
+    scale: f64,
+) -> Result<CulvertBarrel, StructureError> {
+    match barrel.floor() {
+        Some(floor) => framed.with_floor(CulvertFloor {
+            sediment_depth_m: floor.sediment_depth_m * scale,
+            ..floor
+        }),
+        None => Ok(framed),
+    }
 }
 
 #[cfg(test)]
