@@ -58,6 +58,7 @@ pub fn build(
                         symmetric_reversal: true,
                     },
                 )?),
+                condition: StructureCondition::AsBuilt,
             })
         })
         .collect::<std::result::Result<Vec<_>, StructureError>>()?;

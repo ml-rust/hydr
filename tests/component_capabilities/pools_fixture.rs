@@ -19,9 +19,9 @@ use hydr::storage::{
 use hydr::structures::{
     CulvertAlignment, CulvertApplicability, CulvertBarrel, CulvertEnd, CulvertEnds, CulvertInlet,
     CulvertParameters, DirectionPolicy, GateApplicability, GateParameters, PumpApplicability,
-    PumpCurve, PumpCurveKnot, PumpParameters, PumpSpeedPolicy, StructureElement, StructureError,
-    StructureLaw, StructureOperatingPoint, StructureOperation, SuppressedRectangularWeirParameters,
-    WeirApplicability,
+    PumpCurve, PumpCurveKnot, PumpParameters, PumpSpeedPolicy, StructureCondition,
+    StructureElement, StructureError, StructureLaw, StructureOperatingPoint, StructureOperation,
+    SuppressedRectangularWeirParameters, WeirApplicability,
 };
 
 pub type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -226,6 +226,7 @@ pub fn coupled_system(
             datum: DATUM.into(),
             direction,
             law,
+            condition: StructureCondition::AsBuilt,
         }],
         vec![StructureOperation {
             structure_id: "structure".into(),

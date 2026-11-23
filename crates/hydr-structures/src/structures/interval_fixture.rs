@@ -42,6 +42,7 @@ pub(crate) fn gate(id: &str) -> TestResult<StructureElement> {
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 
@@ -79,6 +80,7 @@ pub(crate) fn pump(id: &str) -> TestResult<StructureElement> {
                 operating_envelope: text("Analytical fixture"),
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 

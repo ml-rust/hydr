@@ -755,6 +755,21 @@ An impervious subcatchment without depression storage drains into a closed pond,
 
 The barrel cases establish geometry and depth enclosures only. They establish no culvert discharge, inlet or outlet control, or measured-event accuracy.
 
+## Structure blockage checks
+
+[Blockage cases](../tests/structure_blockage.rs) check weir, orifice and gate conditions. Read the [blockage guide](structures.md#declare-a-blocked-or-closed-structure) for inputs and rejections.
+
+| Check | Required result |
+| --- | --- |
+| Zero blockage | `Blocked` at shares `0` and `-0.0` gives every output bit of `AsBuilt` over a dense head grid |
+| Monotone | Over 65 increasing shares, discharge never rises at any head pair |
+| Open share | Discharge at share `f` equals `(1 - f)` times the unblocked discharge within `1e-12` relative |
+| Closed | Unequal, reversed and equal heads and dry donors give `+0.0`, regime `Closed`, status `PhysicalZero`, no operands, zero sensitivity and zero held volume. `Closed` overrides a closed gate and flap blocking. |
+| Gate range | A manual opening, a trajectory knot, an actuator target and a control target above the blocked maximum opening reject. The blocked maximum itself admits. |
+| Rejections | Shares `1`, `1.5`, `-0.1` and NaN, a subnormal effective value, a mismatched law, pump `Blocked` and `Closed`, a culvert condition, and empty evidence each reject |
+| Packages | Actuator and control packages restore with a blocked gate. A package whose element condition differs rejects. |
+| Layouts | Every lane at widths 1, 31, 32, 33, 64 and 65, with as-built, blocked and closed lanes interleaved, equals its single-lane result bit for bit |
+
 ## Culvert law checks
 
 [Culvert law cases](../tests/culvert_laws.rs) invert independent 100-digit inlet and outlet corpus rows and the kernel's own control headwaters. Tolerances are frozen before any kernel runs. Read the [culvert guide](structures.md#culvert-structure-law) for inputs, regimes, and limits.
@@ -805,7 +820,7 @@ The CUDA tests of these components also run the same case on CPU and compare com
 | Components | CPU/CUDA comparison |
 | --- | --- |
 | Operating controls, controlled gates, controlled pumps | Every field matches bit for bit |
-| Structure laws | Free and submerged weir, orifice, and free, mixed and submerged gate outputs match bit for bit over a dense head grid of more than 700 lanes |
+| Structure laws | Free and submerged weir, orifice, and free, mixed and submerged gate outputs match bit for bit over a dense head grid of more than 700 lanes, with blocked and closed lanes among them |
 | Culvert barrels | Point, range, full-state, critical, and normal outputs match bit for bit over the reference rows and each layout width. Point geometry also matches over the dense sweep. Arc rows of every shape, mixed with circle and box rows, match for every query. |
 | Culvert inlets and outlets | Inlet headwater, outlet headwater, and jump outputs match bit for bit over the reference rows and each layout width. Arc rows of every shape match beside circle and box rows. They cover seven inlet codes from 30 to 47 and every outlet regime. |
 | Culvert laws | Regime, status, direction, discharge, and operands match bit for bit over the mixed circle, box, and arc lanes and each layout width |

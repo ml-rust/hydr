@@ -3,11 +3,12 @@
 use super::super::*;
 use super::compatibility::{as_definition, require};
 use super::receipt_bits::ReceiptBits;
+use crate::structures::StructureError;
+use crate::structures::blockage::effective::gate_opening_limit;
 use crate::structures::numerics::actuator as math;
 use crate::structures::tensor::actuator::{
     TensorActuatorContext, TensorActuatorState, import_values, record::TensorRecord,
 };
-use crate::structures::{StructureError, StructureLaw};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 use std::sync::Arc;
@@ -84,9 +85,9 @@ where
     for (i, receipt) in receipts.iter().enumerate() {
         let mut row = hold(c, i);
         if let Some(r) = receipt {
-            let maximum = match &c.structures.elements[c.slots[i]].law {
-                StructureLaw::HydrostaticRectangularGate(gate) => gate.maximum_opening_m(),
-                _ => {
+            let maximum = match gate_opening_limit(&c.structures.elements[c.slots[i]]) {
+                Some(maximum) => maximum,
+                None => {
                     return Err(StructureError::numerical(
                         "actuator context contains a non-gate",
                     ));

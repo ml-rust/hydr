@@ -104,6 +104,7 @@ fn pump_controllers_cannot_supply_gate_actuator_targets() -> Result {
                 operating_envelope: "Analytical command admission".into(),
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     };
     let context = StructureBatch::<crate::runtime::Runtime>::new(
         crate::runtime::client(),

@@ -3,7 +3,7 @@
 use super::*;
 use crate::structures::StructureElement;
 /// Schema identity of the gate actuator snapshot package.
-pub const GATE_ACTUATOR_SNAPSHOT_SCHEMA: &str = "hydr-gate-actuator-checkpoint-1";
+pub const GATE_ACTUATOR_SNAPSHOT_SCHEMA: &str = "hydr-gate-actuator-checkpoint-2";
 /// Numerical contract identity of the gate actuator snapshot package.
 pub const GATE_ACTUATOR_CONTRACT_VERSION: &str = "hydr-gate-actuator-numr-cpu-1";
 

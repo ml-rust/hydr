@@ -9,7 +9,7 @@ use hydr::structures::{
     ControlStageSignal, ControlledGateBatch, DirectionPolicy, GateActuatorAccuracy,
     GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule, GateApplicability,
     GateParameters, OperatingControlDefinition, SampledControlTiming, StructureBatch,
-    StructureElement, StructureLaw,
+    StructureCondition, StructureElement, StructureLaw,
 };
 
 const DATUM: &str = "synthetic common datum";
@@ -41,6 +41,7 @@ fn model() -> Result<ControlledGateBatch<crate::runtime::Runtime>, Box<dyn std::
                     symmetric_reversal: true,
                 },
             )?),
+            condition: StructureCondition::AsBuilt,
         }],
     )?;
     let decision_times = vec![1.0, 2.0, 3.0, 4.0];

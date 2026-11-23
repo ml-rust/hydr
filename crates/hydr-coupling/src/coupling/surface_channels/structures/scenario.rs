@@ -24,8 +24,8 @@ use crate::solver::{
 use crate::storage::LevelPoolConfig;
 use crate::structures::{
     DirectionPolicy, GateApplicability, GateParameters, OrificeApplicability, PumpApplicability,
-    PumpCurve, PumpCurveKnot, PumpFreeOutlet, PumpParameters, PumpSpeedPolicy, StructureElement,
-    StructureLaw, StructureOperatingPoint, SubmergedOrificeParameters,
+    PumpCurve, PumpCurveKnot, PumpFreeOutlet, PumpParameters, PumpSpeedPolicy, StructureCondition,
+    StructureElement, StructureLaw, StructureOperatingPoint, SubmergedOrificeParameters,
     SuppressedRectangularWeirParameters, WeirApplicability,
 };
 use hydr_core::grid::CartesianGrid;
@@ -179,6 +179,7 @@ pub fn structure(
             datum: DATUM.into(),
             direction,
             law,
+            condition: StructureCondition::AsBuilt,
         },
         endpoint_a: SurfaceChannelAttachment {
             node: a,

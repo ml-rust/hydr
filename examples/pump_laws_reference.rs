@@ -13,9 +13,9 @@ use fixtures::{Case, Expected};
 use hydr::structures::{
     DirectionPolicy, EndpointHead, HeadConvention, HeadSupport, HeldHeadInterval,
     PumpApplicability, PumpCurve, PumpCurveKnot, PumpParameters, PumpSpeedPolicy, StructureBatch,
-    StructureElement, StructureError, StructureHeads, StructureHydraulicOperands,
-    StructureInputErrorKind, StructureLaw, StructureOperatingPoint, StructureOperation,
-    StructureStatus,
+    StructureCondition, StructureElement, StructureError, StructureHeads,
+    StructureHydraulicOperands, StructureInputErrorKind, StructureLaw, StructureOperatingPoint,
+    StructureOperation, StructureStatus,
 };
 
 const DATUM: &str = "Analytical fixture datum";
@@ -81,6 +81,7 @@ fn observe(output: &mut impl Write, case: &Case) -> Result<(), Box<dyn std::erro
             datum: DATUM.into(),
             direction: DirectionPolicy::AtoBOnly,
             law: StructureLaw::Pump(parameters),
+            condition: StructureCondition::AsBuilt,
         }],
     )?;
     let heads = [StructureHeads {

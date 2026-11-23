@@ -8,9 +8,9 @@ use std::io::{self, Write};
 
 use hydr::structures::{
     DirectionPolicy, EndpointHead, HeadConvention, HeadSupport, HeldHeadInterval,
-    OrificeApplicability, StructureBatch, StructureElement, StructureError, StructureHeads,
-    StructureLaw, StructureStatus, SubmergedOrificeParameters, SuppressedRectangularWeirParameters,
-    WeirApplicability,
+    OrificeApplicability, StructureBatch, StructureCondition, StructureElement, StructureError,
+    StructureHeads, StructureLaw, StructureStatus, SubmergedOrificeParameters,
+    SuppressedRectangularWeirParameters, WeirApplicability,
 };
 
 const DATUM: &str = "Analytical fixture datum";
@@ -243,6 +243,7 @@ fn observe(output: &mut impl Write, case: &Case) -> Result<(), Box<dyn std::erro
             datum: DATUM.into(),
             direction: DirectionPolicy::Bidirectional,
             law,
+            condition: StructureCondition::AsBuilt,
         }],
     )?;
     let proposal = match batch.propose(&[StructureHeads {

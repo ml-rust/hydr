@@ -44,7 +44,10 @@ impl<R: Runtime<DType = DType>> TensorGateContext<R> {
             if let StructureLaw::HydrostaticRectangularGate(parameters) = &element.law {
                 mask[index] = 1.0;
                 sill[index] = parameters.sill_m();
-                width[index] = parameters.width_m();
+                width[index] = crate::structures::blockage::effective::gate_width(
+                    &element.condition,
+                    parameters,
+                );
                 coefficient[index] = parameters.discharge_coefficient();
                 gravity[index] = parameters.gravity_m_per_s2();
             }

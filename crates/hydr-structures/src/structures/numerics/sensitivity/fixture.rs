@@ -102,6 +102,7 @@ fn parts(
             datum: "analytical".into(),
             direction,
             law,
+            condition: crate::structures::StructureCondition::AsBuilt,
         });
         operations.push(StructureOperation {
             structure_id: format!("e{index}"),

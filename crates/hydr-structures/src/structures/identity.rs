@@ -1,6 +1,9 @@
 //! Exact original physical bits for complete structure-definition compatibility.
 
-use super::{CulvertEnd, CulvertParameters, PumpSpeedPolicy, StructureElement, StructureLaw};
+use super::{
+    BlockageFraction, CulvertEnd, CulvertParameters, PumpSpeedPolicy, StructureCondition,
+    StructureElement, StructureLaw,
+};
 
 #[doc(hidden)]
 #[inline]
@@ -13,7 +16,31 @@ pub fn same_elements(a: &[StructureElement], b: &[StructureElement]) -> bool {
                 && a.datum == b.datum
                 && a.direction == b.direction
                 && same_law(&a.law, &b.law)
+                && same_condition(&a.condition, &b.condition)
         })
+}
+fn same_condition(a: &StructureCondition, b: &StructureCondition) -> bool {
+    match (a, b) {
+        (StructureCondition::AsBuilt, StructureCondition::AsBuilt) => true,
+        (
+            StructureCondition::Closed { evidence: a },
+            StructureCondition::Closed { evidence: b },
+        ) => a == b,
+        (StructureCondition::Blocked(a), StructureCondition::Blocked(b)) => {
+            let shares = |blockage: &crate::structures::StructureBlockage| {
+                blockage
+                    .geometry()
+                    .fractions()
+                    .into_iter()
+                    .map(BlockageFraction::blocked_share)
+                    .collect::<Vec<_>>()
+            };
+            a.applicability_evidence() == b.applicability_evidence()
+                && std::mem::discriminant(a.geometry()) == std::mem::discriminant(b.geometry())
+                && bits(&shares(a), &shares(b))
+        }
+        _ => false,
+    }
 }
 fn same_law(a: &StructureLaw, b: &StructureLaw) -> bool {
     match (a, b) {
@@ -147,6 +174,47 @@ mod tests {
     use crate::structures::interval_fixture::{TestResult, pump};
     use crate::structures::{PumpFreeOutlet, StructureElement, StructureLaw};
 
+    fn blocked_gate(share: f64, evidence: &str) -> TestResult<StructureElement> {
+        use crate::structures::{BlockageFraction, StructureBlockage, StructureCondition};
+        let mut element = crate::structures::interval_fixture::gate("g")?;
+        element.condition = StructureCondition::Blocked(StructureBlockage::gate(
+            BlockageFraction::new(share)?,
+            BlockageFraction::NONE,
+            evidence.into(),
+        )?);
+        Ok(element)
+    }
+
+    #[test]
+    fn one_ulp_of_a_fraction_or_one_evidence_character_distinguishes_conditions() -> TestResult {
+        use crate::structures::StructureCondition;
+        let same = |a: &StructureElement, b: &StructureElement| {
+            same_elements(std::slice::from_ref(a), std::slice::from_ref(b))
+        };
+        let base = blocked_gate(0.25, "Survey")?;
+        assert!(same(&base, &blocked_gate(0.25, "Survey")?));
+        assert!(!same(&base, &blocked_gate(0.25_f64.next_up(), "Survey")?));
+        assert!(!same(&base, &blocked_gate(0.25, "Survey.")?));
+        assert!(same(
+            &blocked_gate(-0.0, "Survey")?,
+            &blocked_gate(0.0, "Survey")?
+        ));
+        let mut built = base.clone();
+        built.condition = StructureCondition::AsBuilt;
+        assert!(!same(&base, &built));
+        let closed = |evidence: &str| {
+            let mut element = built.clone();
+            element.condition = StructureCondition::Closed {
+                evidence: evidence.into(),
+            };
+            element
+        };
+        assert!(same(&closed("Record"), &closed("Record")));
+        assert!(!same(&closed("Record"), &closed("Record.")));
+        assert!(!same(&closed("Record"), &built));
+        Ok(())
+    }
+
     fn with_outlet(elevation_m: f64, evidence: &str) -> TestResult<StructureElement> {
         let mut element = pump("p")?;
         let StructureLaw::Pump(parameters) = element.law else {
@@ -193,6 +261,7 @@ mod tests {
                     barrel_condition_assertion: "Clean".into(),
                 },
             )?),
+            condition: crate::structures::StructureCondition::AsBuilt,
         })
     }
 
@@ -229,6 +298,7 @@ mod tests {
                     barrel_condition_assertion: "Clean".into(),
                 },
             )?),
+            condition: crate::structures::StructureCondition::AsBuilt,
         })
     }
 

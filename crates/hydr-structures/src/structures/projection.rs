@@ -208,6 +208,8 @@ fn regime(value: f64) -> Result<StructureRegime, StructureError> {
         Ok(StructureRegime::CulvertBelowInvert)
     } else if value == codes::CULVERT_UNDECLARED_END {
         Ok(StructureRegime::CulvertUndeclaredEnd)
+    } else if value == codes::CLOSED {
+        Ok(StructureRegime::Closed)
     } else {
         Err(StructureError::numerical(
             "invalid internal physical-regime code",

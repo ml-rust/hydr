@@ -46,6 +46,7 @@ pub fn element(id: &str, law: StructureLaw, direction: DirectionPolicy) -> Struc
         datum: "Analytical fixture datum".into(),
         direction,
         law,
+        condition: StructureCondition::AsBuilt,
     }
 }
 

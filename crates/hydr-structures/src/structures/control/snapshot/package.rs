@@ -9,7 +9,7 @@ use numr::dtype::DType;
 use numr::runtime::Runtime;
 
 /// Schema identity of the operating control snapshot package.
-pub const OPERATING_CONTROL_SNAPSHOT_SCHEMA: &str = "hydr-operating-control-checkpoint-1";
+pub const OPERATING_CONTROL_SNAPSHOT_SCHEMA: &str = "hydr-operating-control-checkpoint-2";
 /// Numerical contract identity of the operating control snapshot package.
 pub const OPERATING_CONTROL_CONTRACT_VERSION: &str = "hydr-operating-control-numr-cpu-1";
 

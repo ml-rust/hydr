@@ -35,6 +35,7 @@ fn element(id: &str, law: StructureLaw) -> StructureElement {
         datum: "Analytical point datum".into(),
         law,
         direction: DirectionPolicy::Bidirectional,
+        condition: StructureCondition::AsBuilt,
     }
 }
 

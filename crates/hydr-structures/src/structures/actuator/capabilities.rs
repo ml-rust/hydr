@@ -133,6 +133,11 @@ static GATE_ACTUATOR: ComponentCapabilities = ComponentCapabilities {
     ],
     limits: &[
         Limit {
+            id: "gate-blocked-range",
+            summary: "A blocked gate admits targets and positions up to its blocked maximum opening; a larger value rejects, never clamps.",
+            doc: ACTUATOR_DOC,
+        },
+        Limit {
             id: "ideal-directional-rates",
             summary: "Opening follows constant opening and closing rates within the gate range; a zero rate stalls that direction.",
             doc: ACTUATOR_DOC,

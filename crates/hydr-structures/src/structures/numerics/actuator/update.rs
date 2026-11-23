@@ -59,11 +59,11 @@ pub(crate) fn admit_update<R: Runtime<DType = DType>>(
             )
             .at(slot));
         }
-        let limit = match &ctx.structures.elements[slot].law {
-            crate::structures::StructureLaw::HydrostaticRectangularGate(gate) => {
-                gate.maximum_opening_m()
-            }
-            _ => {
+        let limit = match crate::structures::blockage::effective::gate_opening_limit(
+            &ctx.structures.elements[slot],
+        ) {
+            Some(limit) => limit,
+            None => {
                 return Err(StructureError::input(
                     StructureInputErrorKind::Identity,
                     "actuator lost its actual gate identity",

@@ -11,8 +11,9 @@ use hydr::coupling::{
 use hydr::storage::{LevelPoolCurve, LevelPoolElement, LevelPoolKnot, LevelPoolState};
 use hydr::structures::{
     CulvertAlignment, CulvertApplicability, CulvertBarrel, CulvertEnd, CulvertEnds, CulvertInlet,
-    CulvertParameters, DirectionPolicy, StructureElement, StructureLaw, StructureOperatingPoint,
-    StructureOperation, SuppressedRectangularWeirParameters, WeirApplicability,
+    CulvertParameters, DirectionPolicy, StructureCondition, StructureElement, StructureLaw,
+    StructureOperatingPoint, StructureOperation, SuppressedRectangularWeirParameters,
+    WeirApplicability,
 };
 
 /// Height of every pool curve above its origin at zero, in m.
@@ -86,6 +87,7 @@ pub fn culvert(
                 barrel_condition_assertion: "Clean synthetic concrete barrel".into(),
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 
@@ -109,6 +111,7 @@ pub fn road(id: &str, [a, b]: [&str; 2], crest: f64) -> Result<StructureElement>
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 

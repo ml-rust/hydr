@@ -22,6 +22,10 @@ use hydr::coupling::{
 };
 use hydr::forcing::WaterAmount;
 use hydr::storage::{LevelPoolConfig, LevelPoolSources, LevelPoolState};
+use hydr::structures::{
+    BlockageFraction, StructureBlockage, StructureCondition, StructureLaw, StructureOperatingPoint,
+    SuppressedRectangularWeirParameters, WeirApplicability,
+};
 
 /// Asserts that `outcome` admits its case.
 fn admitted(outcome: Outcome, case: &str) -> TestResult {
@@ -333,6 +337,56 @@ fn rejection_cases(
                 }
             }
             cases
+        }
+        (Kind::Coupled, "pump-blockage") => {
+            let [_, pump, ..] = laws()?;
+            let running = StructureOperatingPoint::PumpRunning { speed_ratio: 1.0 };
+            let blocked = StructureBlockage::weir(
+                BlockageFraction::new(0.5)?,
+                "Survey of the debris line".into(),
+            )?;
+            let mut cases = Vec::new();
+            for condition in [
+                StructureCondition::Blocked(blocked),
+                StructureCondition::Closed {
+                    evidence: "Inspection record".into(),
+                },
+            ] {
+                let (mut setup, initial) = coupled_system(pump.clone(), running, [4.0, 2.0])?;
+                setup.structures[0].condition = condition;
+                cases.push((
+                    coupled_outcome(setup, initial),
+                    Variant::Operation,
+                    "a pump curve has no geometry to block",
+                ));
+            }
+            cases
+        }
+        (Kind::Coupled, "blockage-fraction-domain") => {
+            // Half of the smallest positive normal crest length is subnormal.
+            let weir =
+                StructureLaw::SuppressedRectangularWeir(SuppressedRectangularWeirParameters::new(
+                    f64::MIN_POSITIVE,
+                    0.0,
+                    1.0,
+                    WeirApplicability {
+                        coefficient_provenance: "Synthetic numerical fixture".into(),
+                        free_nappe_and_approach_assertion: "Suppressed synthetic crest".into(),
+                        submergence_correction_assertion: "Villemonte correction adopted".into(),
+                        symmetric_reversal: true,
+                    },
+                )?);
+            let (mut setup, initial) =
+                coupled_system(weir, StructureOperatingPoint::Passive, [4.0, 2.0])?;
+            setup.structures[0].condition = StructureCondition::Blocked(StructureBlockage::weir(
+                BlockageFraction::new(0.5)?,
+                "Survey of the debris line".into(),
+            )?);
+            vec![(
+                coupled_outcome(setup, initial),
+                Variant::Operation,
+                "is not a positive normal F64",
+            )]
         }
         (Kind::ChannelPools, "dry-connections") => {
             let mut cases = Vec::new();

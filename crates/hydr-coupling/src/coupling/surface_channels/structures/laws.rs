@@ -245,7 +245,7 @@ impl LinkLaw {
 mod tests {
     use super::super::scenario::{culvert_law, gate_law, orifice_law, pump_law, weir_law};
     use super::*;
-    use crate::structures::{DirectionPolicy, StructureElement};
+    use crate::structures::{DirectionPolicy, StructureCondition, StructureElement};
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -257,6 +257,7 @@ mod tests {
             datum: "d".into(),
             direction,
             law,
+            condition: StructureCondition::AsBuilt,
         }
     }
 

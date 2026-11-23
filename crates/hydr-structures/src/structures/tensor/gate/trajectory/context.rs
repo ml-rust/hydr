@@ -66,10 +66,10 @@ impl<R: Runtime<DType = DType>> TensorTrajectoryContext<R> {
                 .trajectory
                 .accuracy()
                 .maximum_relative_opening_error;
-            if let crate::structures::StructureLaw::HydrostaticRectangularGate(parameters) =
-                &context.elements[slot].law
+            if let Some(limit) =
+                crate::structures::blockage::effective::gate_opening_limit(&context.elements[slot])
             {
-                maximum[slot] = parameters.maximum_opening_m();
+                maximum[slot] = limit;
             }
         }
         let mut groups = groups.into_values().collect::<Vec<_>>();

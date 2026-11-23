@@ -84,8 +84,8 @@ fn linear_pump_curve_advances_both_pools_with_one_volume() -> Result {
 fn held_gate_opening_matches_the_submerged_midpoint_quadratic() -> Result {
     use super::fixture::DATUM;
     use hydr::structures::{
-        DirectionPolicy, GateApplicability, GateParameters, StructureElement, StructureLaw,
-        StructureOperatingPoint, StructureOperation,
+        DirectionPolicy, GateApplicability, GateParameters, StructureCondition, StructureElement,
+        StructureLaw, StructureOperatingPoint, StructureOperation,
     };
 
     let gate = StructureElement {
@@ -112,6 +112,7 @@ fn held_gate_opening_matches_the_submerged_midpoint_quadratic() -> Result {
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     };
     let operation = StructureOperation {
         structure_id: "gate".into(),

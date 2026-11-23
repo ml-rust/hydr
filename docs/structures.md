@@ -129,6 +129,41 @@ Direction and regime use original supported heads. Rounded depth differences nev
 
 Only eligible, permitted branches evaluate derived hydraulic arithmetic. Blocked branches skip unused products and expose no invented operands.
 
+## Declare a blocked or closed structure
+
+The law holds the unblocked geometry. The element's `condition` field states its physical condition.
+
+| `StructureCondition` | Effect |
+| --- | --- |
+| `AsBuilt` | The law's geometry as declared |
+| `Blocked(StructureBlockage)` | A blocked share of the declared geometry |
+| `Closed { evidence }` | Exact zero discharge under every head |
+
+A `BlockageFraction` is the blocked share `f` of the declared opening. `BlockageFraction::new` admits a finite `0 <= f < 1` and turns `-0.0` into `+0.0`. A fully blocked structure is `Closed`, never `f = 1`.
+
+The law evaluates the effective value `x_e = fl(x · fl(1 - f))` of the base value `x`. At `f = 0` every output bit equals the `AsBuilt` output. Discharge never rises as `f` rises.
+
+| Law | Constructor | Effective geometry |
+| --- | --- | --- |
+| Weir | `StructureBlockage::weir(crest_length, evidence)` | Crest length `L_e` |
+| Orifice | `StructureBlockage::orifice(area, evidence)` | Opening area `A_e` |
+| Gate | `StructureBlockage::gate(width, opening_range, evidence)` | Width `B_e` and maximum opening `m_e` |
+
+A blocked gate admits openings up to `m_e`. A larger manual opening, trajectory knot, actuator target or position, or control target rejects. Hydr never clamps it.
+
+A `Closed` structure reports `discharge_m3_per_s = +0.0`, regime `Closed`, status `PhysicalZero`, no proposed direction, and no operands. `Closed` takes precedence over every other regime, including equal heads, a closed gate, and flap blocking. Head and support checks still run. A closed gate keeps its base opening range, so its operations stay admitted.
+
+`StructureBatch::geometry()` returns one `StructureGeometryReport` per element. It holds the condition kind, the base geometry, and the effective geometry. The effective geometry is `None` for a closed element.
+
+| Rejection | Fix |
+| --- | --- |
+| `f` outside `[0, 1)` or NaN | Supply a share below 1, or declare `Closed` |
+| Effective value not a positive normal F64 | Supply a smaller share or a larger base value |
+| Blockage of another law, such as a gate blockage on a weir | Use the constructor of the element's law |
+| `Blocked` or `Closed` on a pump | Declare `AsBuilt`. Stop the pump with `PumpStoppedIsolated`. |
+| `Blocked` or `Closed` on a culvert | Declare `AsBuilt`. Culvert blockage is not yet available. |
+| Empty or control-character evidence | Supply explicit evidence |
+
 ## Orifices and rectangular weirs
 
 ### Declare geometry and applicability
@@ -156,7 +191,7 @@ Nonempty declarations record the caller's physical claims. They establish no sit
 
 The rectangular correction excludes contracted, broad-crested, ogee, and other crest geometries.
 
-General partial-orifice models, complete culverts, and inferred blockage remain unsupported by these laws.
+General partial-orifice models, complete culverts, and inferred blockage remain unsupported by these laws. A declared blockage uses the [element condition](#declare-a-blocked-or-closed-structure).
 
 ### Numerical formulas
 

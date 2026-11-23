@@ -9,8 +9,8 @@ use hydr::structures::{
     ControlStageSignal, ControlledPumpBatch, DirectionPolicy, EndpointHead, HeadConvention,
     HeadSupport, OperatingControlDefinition, OperatingSourceBinding, OperatingSourceFrame,
     PumpApplicability, PumpCurve, PumpCurveKnot, PumpParameters, PumpResponseDefinition,
-    PumpResponseModel, PumpSpeedPolicy, SampledControlTiming, StructureBatch, StructureElement,
-    StructureHeads, StructureLaw,
+    PumpResponseModel, PumpSpeedPolicy, SampledControlTiming, StructureBatch, StructureCondition,
+    StructureElement, StructureHeads, StructureLaw,
 };
 
 const DATUM: &str = "synthetic common datum";
@@ -59,6 +59,7 @@ fn model() -> Result<
                     operating_envelope: "synthetic wet suction and receiving support".into(),
                 },
             )?),
+            condition: StructureCondition::AsBuilt,
         }],
     )?;
     let controls = structures.with_operating_controls(

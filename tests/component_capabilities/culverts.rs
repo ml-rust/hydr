@@ -5,8 +5,8 @@ use hydr::capability::{ArithmeticRequirement as A, ComponentId, UnsupportedReaso
 use hydr::structures::{
     CulvertAlignment, CulvertApplicability, CulvertBarrel, CulvertEnd, CulvertEnds, CulvertInlet,
     CulvertInletForm, CulvertParameters, DirectionPolicy, EndpointHead, HeadConvention,
-    HeadSupport, StructureBatch, StructureElement, StructureError, StructureHeads,
-    StructureInputErrorKind as K, StructureLaw, culvert_capabilities,
+    HeadSupport, StructureBatch, StructureCondition, StructureElement, StructureError,
+    StructureHeads, StructureInputErrorKind as K, StructureLaw, culvert_capabilities,
 };
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -57,6 +57,7 @@ fn element(law: CulvertParameters, direction: DirectionPolicy) -> StructureEleme
         datum: "datum".into(),
         direction,
         law: StructureLaw::Culvert(law),
+        condition: StructureCondition::AsBuilt,
     }
 }
 

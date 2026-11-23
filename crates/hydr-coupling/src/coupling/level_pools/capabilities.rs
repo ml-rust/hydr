@@ -101,6 +101,18 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
             COUPLED_DOC,
         ),
         unsupported(
+            "pump-blockage",
+            UnsupportedReason::RejectedByAdmission,
+            "A pump with a Blocked or Closed condition rejects; a pump curve has no geometry to block.",
+            COUPLED_DOC,
+        ),
+        unsupported(
+            "blockage-fraction-domain",
+            UnsupportedReason::RejectedByAdmission,
+            "A blocked share outside [0, 1), or an effective geometry value that is not a positive normal F64, rejects.",
+            COUPLED_DOC,
+        ),
+        unsupported(
             "external-withdrawals",
             UnsupportedReason::OutsideModel,
             "No external withdrawals or runoff feedback from receiving-pool levels.",
@@ -152,6 +164,11 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
         Limit {
             id: "structure-hydraulic-support",
             summary: "Running pumps need a wet donor and a wet receiver or a free outlet at or above a dry receiver's bed. Submerged orifices need water above the crown at both endpoints. A culvert donor at or below its invert gives nothing, and a dry receiver is a free outfall at its invert.",
+            doc: COUPLED_DOC,
+        },
+        Limit {
+            id: "gate-blocked-range",
+            summary: "A blocked gate admits openings up to its blocked maximum opening; a larger opening rejects, never clamps.",
             doc: COUPLED_DOC,
         },
         Limit {

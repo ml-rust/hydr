@@ -12,8 +12,10 @@ use numr::{
     runtime::{Runtime, RuntimeClient},
 };
 
+use crate::structures::blockage::effective;
 use crate::structures::{
-    DirectionPolicy, StructureElement, StructureError, StructureInputErrorKind, StructureLaw,
+    DirectionPolicy, StructureConditionKind, StructureElement, StructureError,
+    StructureInputErrorKind, StructureLaw,
 };
 use numr::tensor::Tensor;
 
@@ -38,6 +40,8 @@ pub(crate) struct TensorStructureContext<R: Runtime<DType = DType>> {
     pub log_weir_scale: Tensor<R>,
     pub log_gravity: Tensor<R>,
     pub log_two: Tensor<R>,
+    /// Closed-row mask, or `None` when no element is closed.
+    pub closed: Option<Tensor<R>>,
 }
 impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
     /// Checks every law except the culvert, which rejects.
@@ -93,6 +97,7 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
         }
         let mut ids = BTreeSet::new();
         let n = elements.len();
+        let mut closed = Vec::with_capacity(n);
         let (
             mut orifice,
             mut weir,
@@ -138,6 +143,12 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
                 )
                 .at(index));
             }
+            effective::check(e).map_err(|error| error.at(index))?;
+            closed.push(if e.condition.kind() == StructureConditionKind::Closed {
+                1.0
+            } else {
+                0.0
+            });
             let symmetric = match &e.law {
                 StructureLaw::Culvert(parameters) => {
                     if !culverts {
@@ -196,7 +207,7 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
                     crown.push(p.crown_m());
                     crest.push(0.0);
                     cd.push(p.discharge_coefficient());
-                    area.push(p.area_m2());
+                    area.push(effective::orifice_area(&e.condition, p));
                     cw.push(1.0);
                     length.push(1.0);
                     gravity.push(p.gravity_m_per_s2());
@@ -210,7 +221,7 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
                     cd.push(1.0);
                     area.push(1.0);
                     cw.push(p.discharge_coefficient());
-                    length.push(p.crest_length_m());
+                    length.push(effective::weir_crest_length(&e.condition, p));
                     gravity.push(1.0);
                     p.applicability().symmetric_reversal
                 }
@@ -259,6 +270,11 @@ impl<R: Runtime<DType = DType>> TensorStructureContext<R> {
         )?;
         let context = Self {
             culvert: None,
+            closed: if closed.contains(&1.0) {
+                Some(tensor(&closed)?)
+            } else {
+                None
+            },
             gate: super::gate::TensorGateContext::new(&elements, &client, &device)?,
             pump: super::pump::TensorPumpContext::new(&elements, &device)?,
             zero: tensor(&vec![0.0; n])?,

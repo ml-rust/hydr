@@ -245,6 +245,7 @@ mod tests {
                     symmetric_reversal: true,
                 },
             )?),
+            condition: StructureCondition::AsBuilt,
         };
         let batch = StructureBatch::<CpuRuntime>::new(
             CpuClient::new(CpuDevice::new())

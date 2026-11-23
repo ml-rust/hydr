@@ -87,6 +87,7 @@ pub fn build(
                             "Analytical covered endpoint heads and original speed policy only".into(),
                     },
                 )?),
+                condition: StructureCondition::AsBuilt,
             })
         })
         .collect::<std::result::Result<Vec<_>, StructureError>>()?;

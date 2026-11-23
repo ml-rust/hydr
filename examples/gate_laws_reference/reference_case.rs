@@ -31,6 +31,7 @@ pub fn definition(case: &GateReferenceCase, id: &str) -> Result<StructureElement
             case.gravity_m_per_s2,
             applicability(),
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 

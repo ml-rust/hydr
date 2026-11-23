@@ -1,9 +1,10 @@
 //! Immutable actual-gate binding and original finite-rate inputs.
 
+use crate::structures::blockage::effective::gate_opening_limit;
 use crate::structures::tensor::TensorStructureContext;
 use crate::structures::{
     GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule, StructureError,
-    StructureInputErrorKind, StructureLaw,
+    StructureInputErrorKind,
 };
 use numr::dtype::DType;
 use numr::runtime::{FloatArithmeticContract, FusedMulAddContract, Runtime};
@@ -101,9 +102,11 @@ impl<R: Runtime<DType = DType>> TensorActuatorContext<R> {
                 )
                 .at(slot));
             }
-            let limit = match &structures.elements[slot].law {
-                StructureLaw::HydrostaticRectangularGate(gate) => gate.maximum_opening_m(),
-                _ => return Err(identity("actuator requires an actual hydrostatic gate").at(slot)),
+            let limit = match gate_opening_limit(&structures.elements[slot]) {
+                Some(limit) => limit,
+                None => {
+                    return Err(identity("actuator requires an actual hydrostatic gate").at(slot));
+                }
             };
             if [
                 definition.opening_rate_m_per_s,

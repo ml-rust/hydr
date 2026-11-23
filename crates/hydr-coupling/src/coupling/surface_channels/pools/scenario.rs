@@ -25,8 +25,8 @@ use crate::storage::{
 };
 use crate::structures::{
     DirectionPolicy, PumpApplicability, PumpCurve, PumpCurveKnot, PumpParameters, PumpSpeedPolicy,
-    StructureElement, StructureLaw, StructureOperatingPoint, SuppressedRectangularWeirParameters,
-    WeirApplicability,
+    StructureCondition, StructureElement, StructureLaw, StructureOperatingPoint,
+    SuppressedRectangularWeirParameters, WeirApplicability,
 };
 
 /// Pump on a steep linear curve, `Q = 0.5 (1 - lift)` m³/s for lift in `[-1, 1]` m, with its
@@ -163,6 +163,7 @@ pub fn link(
             datum: DATUM.into(),
             direction,
             law,
+            condition: StructureCondition::AsBuilt,
         },
         endpoint_a: SurfaceChannelAttachment {
             node: a,

@@ -6,8 +6,9 @@ mod runtime;
 
 use hydr::structures::{
     DirectionPolicy, EndpointHead, HeadConvention, HeadSupport, HeldHeadInterval,
-    OrificeApplicability, StructureBatch, StructureElement, StructureHeads, StructureLaw,
-    SubmergedOrificeParameters, SuppressedRectangularWeirParameters, WeirApplicability,
+    OrificeApplicability, StructureBatch, StructureCondition, StructureElement, StructureHeads,
+    StructureLaw, SubmergedOrificeParameters, SuppressedRectangularWeirParameters,
+    WeirApplicability,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -34,6 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     symmetric_reversal: true,
                 },
             )?),
+            condition: StructureCondition::AsBuilt,
         },
         StructureElement {
             id: "crest".into(),
@@ -54,6 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     symmetric_reversal: true,
                 },
             )?),
+            condition: StructureCondition::AsBuilt,
         },
     ],
         )?;
@@ -91,6 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 operating_envelope:"known wet donor above stage zero and known wet receiver".into(),
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     }])?;
     let pump_proposal = pump.propose_with_operations(
         &[heads("pump", 2.0, 6.0)],

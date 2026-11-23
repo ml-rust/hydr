@@ -178,7 +178,7 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
     unsupported(
         "structure-geometry-events",
         UnsupportedReason::NotAttached,
-        "Sills, crests, areas, and blockage stay fixed over the run; no geometry event changes them.",
+        "Sills, crests, and areas stay fixed, and blockage stays fixed over the run; no geometry event changes them.",
         SURFACE_CHANNELS_DOC,
     ),
     unsupported(

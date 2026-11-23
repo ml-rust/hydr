@@ -7,7 +7,9 @@
 
 use super::SurfaceChannelDefinition;
 use super::structures::CheckedNode;
-use crate::structures::{DirectionPolicy, StructureElement, StructureLaw, StructureOperatingPoint};
+use crate::structures::{
+    DirectionPolicy, StructureCondition, StructureElement, StructureLaw, StructureOperatingPoint,
+};
 use std::collections::BTreeMap;
 
 /// One endpoint of a table link.
@@ -88,6 +90,7 @@ pub(super) fn table(definition: &SurfaceChannelDefinition) -> Vec<TableLink<'_>>
                     datum: datum.to_string(),
                     direction: DirectionPolicy::Bidirectional,
                     law: StructureLaw::SuppressedRectangularWeir(link.weir.clone()),
+                    condition: StructureCondition::AsBuilt,
                 },
                 operation: StructureOperatingPoint::Passive,
                 beds: None,

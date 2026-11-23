@@ -270,7 +270,7 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         },
         Limit {
             id: "blockage-as-scenario",
-            summary: "A blockage or condition is a fixed caller scenario with evidence; the law parameters hold its geometry.",
+            summary: "A blockage is a fixed caller scenario with evidence; the element's condition holds the blockage and the scenario names it.",
             doc: SURFACE_CHANNELS_DOC,
         },
         Limit {

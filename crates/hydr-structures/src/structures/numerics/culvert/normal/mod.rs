@@ -82,7 +82,13 @@ where
             stage: "culvert normal residual",
         },
         residual::residual,
-        |row| describe(names, [discharge, roughness, slope, &barrel.normal_top], row),
+        |row| {
+            describe(
+                names,
+                [discharge, roughness, slope, &barrel.normal_top],
+                row,
+            )
+        },
     )
 }
 

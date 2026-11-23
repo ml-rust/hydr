@@ -56,6 +56,7 @@ pub fn gate(
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 

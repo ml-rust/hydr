@@ -95,6 +95,7 @@ impl Culvert {
             datum: DATUM.into(),
             direction: self.direction(),
             law: self.law()?,
+            condition: hydr::structures::StructureCondition::AsBuilt,
         })
     }
 }

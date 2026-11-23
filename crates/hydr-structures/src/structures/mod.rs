@@ -3,6 +3,7 @@
 mod actuator;
 mod applicability;
 mod batch;
+pub(crate) mod blockage;
 mod control;
 pub(crate) mod coupling;
 mod culvert;
@@ -40,6 +41,10 @@ pub use actuator::{
 };
 pub use applicability::{CulvertApplicability, OrificeApplicability, WeirApplicability};
 pub use batch::StructureBatch;
+pub use blockage::{
+    BlockageFraction, BlockageGeometry, StructureBlockage, StructureCondition,
+    StructureConditionKind, StructureGeometry, StructureGeometryReport,
+};
 pub(crate) use culvert::CulvertSide;
 pub use culvert::{
     BarrelDepthStatus, BarrelState, CriticalDepthStatus, CulvertAlignment, CulvertBarrel,

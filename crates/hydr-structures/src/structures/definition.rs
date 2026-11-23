@@ -21,7 +21,7 @@ pub enum StructureLaw {
     /// Suppressed sharp-crested rectangular free/submerged overflow with adopted Villemonte correction.
     SuppressedRectangularWeir(SuppressedRectangularWeirParameters),
 }
-/// Explicit ideal direction policy, without inferred blockage or controls.
+/// Explicit ideal direction policy. Blockage lives in the element's condition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DirectionPolicy {
     /// Reversed flow requires explicit symmetric coefficient applicability.
@@ -52,8 +52,10 @@ pub struct StructureElement {
     pub datum: String,
     /// Explicit ideal flap or symmetric direction policy.
     pub direction: DirectionPolicy,
-    /// Complete concrete physical law.
+    /// Complete concrete physical law with its unblocked geometry.
     pub law: StructureLaw,
+    /// Physical condition of the declared geometry: as built, blocked, or closed.
+    pub condition: super::StructureCondition,
 }
 pub(crate) fn text(value: &str, field: &str) -> Result<(), StructureError> {
     if value.trim().is_empty() || value.chars().any(char::is_control) {

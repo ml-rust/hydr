@@ -32,7 +32,7 @@ fn rejects(changed: &OperatingControlSnapshotData, needles: &[&str]) -> Result {
 fn operating_control_package_carries_identity() -> Result {
     assert_eq!(
         OPERATING_CONTROL_SNAPSHOT_SCHEMA,
-        "hydr-operating-control-checkpoint-1"
+        "hydr-operating-control-checkpoint-2"
     );
     assert_eq!(
         OPERATING_CONTROL_CONTRACT_VERSION,
@@ -46,7 +46,11 @@ fn operating_control_package_carries_identity() -> Result {
 
 #[test]
 fn operating_control_import_rejects_foreign_schema() -> Result {
-    for found in ["hydr-operating-control-checkpoint-0", ""] {
+    for found in [
+        "hydr-operating-control-checkpoint-0",
+        "hydr-operating-control-checkpoint-1",
+        "",
+    ] {
         let mut changed = package()?;
         changed.schema = found.into();
         rejects(

@@ -126,7 +126,7 @@ pub(super) fn check<R: Runtime<DType = DType>>(
             .at(slot));
         }
         for command in [definition.low_command, definition.high_command] {
-            check_command(&context.elements[slot].law, command).map_err(|error| error.at(slot))?;
+            check_command(&context.elements[slot], command).map_err(|error| error.at(slot))?;
         }
         super::input::check_initial_static(definition, state, schedule.initial_time_s)
             .map_err(|error| error.at(slot))?;
@@ -134,8 +134,11 @@ pub(super) fn check<R: Runtime<DType = DType>>(
     }
     Ok(slots)
 }
-fn check_command(law: &StructureLaw, command: ControlCommand) -> Result<(), StructureError> {
-    let admitted = match (law, command) {
+fn check_command(
+    element: &crate::structures::StructureElement,
+    command: ControlCommand,
+) -> Result<(), StructureError> {
+    let admitted = match (&element.law, command) {
         (StructureLaw::Pump(_), ControlCommand::PumpStoppedIsolated) => true,
         (StructureLaw::Pump(parameters), ControlCommand::PumpRunning { speed_ratio }) => {
             let (lo, hi) = parameters.speed_policy().range();
@@ -145,7 +148,11 @@ fn check_command(law: &StructureLaw, command: ControlCommand) -> Result<(), Stru
             StructureLaw::HydrostaticRectangularGate(parameters),
             ControlCommand::GateTarget { opening_m },
         ) => {
-            opening_m.is_finite() && opening_m >= 0.0 && opening_m <= parameters.maximum_opening_m()
+            let maximum = crate::structures::blockage::effective::gate_maximum_opening(
+                &element.condition,
+                parameters,
+            );
+            opening_m.is_finite() && opening_m >= 0.0 && opening_m <= maximum
         }
         _ => false,
     };

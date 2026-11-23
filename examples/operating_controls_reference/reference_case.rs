@@ -60,6 +60,7 @@ fn pump_with_policy(
                     "Commands only. No physical response or hydraulic consumption claim".into(),
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 
@@ -91,6 +92,7 @@ pub fn gate(id: &str) -> std::result::Result<StructureElement, StructureError> {
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 

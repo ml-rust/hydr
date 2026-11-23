@@ -39,7 +39,7 @@ use hydr::storage::{
     LevelPoolConfig, LevelPoolCurve, LevelPoolElement, LevelPoolKnot, LevelPoolState,
 };
 use hydr::structures::{
-    DirectionPolicy, StructureElement, StructureLaw, StructureOperatingPoint,
+    DirectionPolicy, StructureCondition, StructureElement, StructureLaw, StructureOperatingPoint,
     SuppressedRectangularWeirParameters, WeirApplicability,
 };
 
@@ -212,6 +212,7 @@ fn spill() -> Result<SurfaceChannelStructure, Error> {
                     symmetric_reversal: true,
                 },
             )?),
+            condition: StructureCondition::AsBuilt,
         },
         endpoint_a: attachment(pond),
         endpoint_b: attachment(cell),

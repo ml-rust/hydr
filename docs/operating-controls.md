@@ -96,7 +96,7 @@ Caller-owned packages must preserve:
 | Initial antecedents and future decisions | Bounded final diagnostics |
 | Timing policy | Every original F64 bit, including signed zero |
 
-Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `OPERATING_CONTROL_SNAPSHOT_SCHEMA` and `OPERATING_CONTROL_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with a definition input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `OPERATING_CONTROL_SNAPSHOT_SCHEMA` and `OPERATING_CONTROL_CONTRACT_VERSION`. Schema `hydr-operating-control-checkpoint-1` predates the structure element condition and rejects. `restore_data` compares both before any other check and rejects a foreign value with a definition input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
 
 ### Check an imported package
 
@@ -133,6 +133,8 @@ Counter and index tensors stay within exact F64 integer capacity. Accepted inter
 ## Connect commands to devices
 
 Only admitted actual position can supply `StructureOperatingPoint::GateOpening`. A requested `GateTarget` cannot substitute for that position.
+
+A `GateTarget` above a blocked gate's blocked maximum opening rejects when the batch is built (`gate-blocked-range`). Hydr never clamps it.
 
 Use [controlled gates](controlled-gates.md) or [controlled pumps](controlled-pumps.md) for the supported response models. Exclusive device authority must apply before consuming commands.
 

@@ -138,6 +138,7 @@ pub fn pump(id: &str) -> Result<StructureElement> {
                     .into(),
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 
@@ -162,6 +163,7 @@ pub fn gate(id: &str) -> Result<StructureElement> {
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 

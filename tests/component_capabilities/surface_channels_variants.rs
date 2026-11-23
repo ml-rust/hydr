@@ -95,8 +95,8 @@ pub const PORT_REGIMES: [SurfaceChannelPortRegime; 6] = [
 ///
 /// A running pump at zero law volume sits at shutoff. A gate below its sill and a weir below
 /// its crest carry no water and claim no flow regime. A culvert claims inlet or outlet control.
-/// A tie between both controls, a donor below its invert, and a flap-blocked culvert claim
-/// none.
+/// A tie between both controls, a donor below its invert, a flap-blocked culvert, and a closed
+/// structure claim none.
 pub fn structure_regime(regime: StructureRegime, law_volume_m3: f64) -> Option<Regime> {
     Some(match regime {
         StructureRegime::SubmergedOrifice => Regime::SubmergedOrificeFlow,
@@ -116,12 +116,13 @@ pub fn structure_regime(regime: StructureRegime, law_volume_m3: f64) -> Option<R
         StructureRegime::CulvertOutletControl => Regime::CulvertOutletControl,
         StructureRegime::CulvertControlTie
         | StructureRegime::CulvertBelowInvert
-        | StructureRegime::CulvertUndeclaredEnd => return None,
+        | StructureRegime::CulvertUndeclaredEnd
+        | StructureRegime::Closed => return None,
     })
 }
 
 /// Every public structure regime.
-pub const STRUCTURE_REGIMES: [StructureRegime; 17] = [
+pub const STRUCTURE_REGIMES: [StructureRegime; 18] = [
     StructureRegime::GateClosed,
     StructureRegime::GateBelowSill,
     StructureRegime::FreeGateAperture,
@@ -139,6 +140,7 @@ pub const STRUCTURE_REGIMES: [StructureRegime; 17] = [
     StructureRegime::CulvertControlTie,
     StructureRegime::CulvertBelowInvert,
     StructureRegime::CulvertUndeclaredEnd,
+    StructureRegime::Closed,
 ];
 
 /// Nested reach of a linked geometry.

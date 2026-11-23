@@ -143,6 +143,12 @@ impl<R: Runtime<DType = DType>> CouplingStructures<R> {
         crate::structures::numerics::proposal(context, &input)
     }
 
+    /// Declared and effective geometry of every element, in element order.
+    #[doc(hidden)]
+    pub fn geometry(&self) -> Vec<super::StructureGeometryReport> {
+        self.batch.geometry()
+    }
+
     #[doc(hidden)]
     pub fn held_volumes(
         &self,
@@ -232,6 +238,7 @@ mod tests {
                 datum: "analytical".into(),
                 direction: DirectionPolicy::Bidirectional,
                 law: StructureLaw::HydrostaticRectangularGate(gate),
+                condition: crate::structures::StructureCondition::AsBuilt,
             },
             StructureElement {
                 id: "pump".into(),
@@ -240,6 +247,7 @@ mod tests {
                 datum: "analytical".into(),
                 direction: DirectionPolicy::AtoBOnly,
                 law: StructureLaw::Pump(pump),
+                condition: crate::structures::StructureCondition::AsBuilt,
             },
         ];
         Ok((

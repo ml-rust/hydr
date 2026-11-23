@@ -38,7 +38,8 @@ use hydr::storage::{
     LevelPoolSources, LevelPoolState,
 };
 use hydr::structures::{
-    DirectionPolicy, StructureElement, StructureLaw, StructureOperatingPoint, WeirApplicability,
+    DirectionPolicy, StructureCondition, StructureElement, StructureLaw, StructureOperatingPoint,
+    WeirApplicability,
 };
 
 pub type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -93,6 +94,7 @@ pub fn structure(
             datum: DATUM.into(),
             direction,
             law,
+            condition: StructureCondition::AsBuilt,
         },
         endpoint_a: SurfaceChannelAttachment {
             node: a,

@@ -27,6 +27,7 @@ fn exact_case() -> Result<(
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     };
     let (mut pools, initial) = coupled_pool_fixture::assemble(
         &[("a", 0.0), ("b", 0.0)],

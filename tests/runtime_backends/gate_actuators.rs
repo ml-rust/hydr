@@ -27,6 +27,7 @@ fn gates(width: usize) -> Result<Vec<StructureElement>> {
                         symmetric_reversal: true,
                     },
                 )?),
+                condition: StructureCondition::AsBuilt,
             })
         })
         .collect()

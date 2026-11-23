@@ -167,6 +167,7 @@ fn structure_regime(code: f64) -> Result<StructureRegime, SurfaceChannelError> {
         (15.0, StructureRegime::CulvertControlTie),
         (16.0, StructureRegime::CulvertBelowInvert),
         (17.0, StructureRegime::CulvertUndeclaredEnd),
+        (18.0, StructureRegime::Closed),
     ]
     .into_iter()
     .find(|(value, _)| value.to_bits() == code.to_bits())

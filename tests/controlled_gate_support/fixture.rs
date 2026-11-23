@@ -173,6 +173,7 @@ pub fn gate(lane: usize) -> Result<StructureElement> {
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 

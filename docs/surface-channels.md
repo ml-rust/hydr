@@ -334,7 +334,7 @@ A culvert between a channel cell and a pool joins a reach to a pool through a ba
 
 A donor at or below its invert gives no water. A one-end culvert whose heads drive flow into its undeclared end reports `CulvertUndeclaredEnd` and moves exact zero.
 
-A blockage is a fixed scenario with evidence. The coordinator infers no blockage. Capability limit `blockage-as-scenario` records this.
+A blockage is a fixed scenario with evidence. The element's `condition` holds the blockage, and the `StructureScenario` names it. See [structures](structures.md#declare-a-blocked-or-closed-structure). The coordinator infers no blockage. Capability limit `blockage-as-scenario` records this.
 
 ### Choose the operation owner
 
@@ -735,7 +735,7 @@ Construct a `restore` or `import_snapshot` destination with the same setup and o
 
 Pass `data.surface.setup.forcing.clone()` to `resume` for a plain restart.
 
-`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-8`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-11`). Import checks both first. A package of an earlier format rejects by identity: contract `hydr-surface-channel-numr-cpu-10` predates runoff into surface cells, contract `hydr-surface-channel-numr-cpu-9` predates the runoff package, runoff counters, runoff transfers, and runoff balance totals, schema `hydr-surface-channel-checkpoint-7` predates the runoff setup, original-state, and forcing fields, contract `hydr-surface-channel-numr-cpu-8` predates warm culvert root searches, schema `hydr-surface-channel-checkpoint-6` predates culvert structures, and schema `-5` or contract `hydr-surface-channel-numr-cpu-7` predates secant probes in surveyed roots. Capture a new package. Import checks every nested package identity, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
+`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-9`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-11`). Import checks both first. A package of an earlier format rejects by identity: schema `hydr-surface-channel-checkpoint-8` predates the structure element condition, contract `hydr-surface-channel-numr-cpu-10` predates runoff into surface cells, contract `hydr-surface-channel-numr-cpu-9` predates the runoff package, runoff counters, runoff transfers, and runoff balance totals, schema `hydr-surface-channel-checkpoint-7` predates the runoff setup, original-state, and forcing fields, contract `hydr-surface-channel-numr-cpu-8` predates warm culvert root searches, schema `hydr-surface-channel-checkpoint-6` predates culvert structures, and schema `-5` or contract `hydr-surface-channel-numr-cpu-7` predates secant probes in surveyed roots. Capture a new package. Import checks every nested package identity, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
 
 The replay includes decision completion. At a decision end, the recalculation samples the converged stages and completes each operating child, then compares the child packages.
 
@@ -791,7 +791,7 @@ Structure and pool limits:
 - `event-aligned-intervals`: Every interval ends at or before the next prescribed knot, actuator event, or control decision.
 - `pool-plan-area-bound`: A pool's cap and response bounds use its smallest segment plan area over the covered stage range.
 - `pool-end-reservoir-head`: A pool end takes the pool's temporal midpoint stage as its reservoir head.
-- `blockage-as-scenario`: A blockage is a fixed caller scenario with evidence.
+- `blockage-as-scenario`: A blockage is a fixed caller scenario with evidence. The element's condition holds it.
 - `culvert-invert-cap`: A draining culvert donor stops just above its invert. A cap ends its flow, never a rejection.
 - `culvert-sensitivity-step`: A culvert link's response step comes from its certified head sensitivity, without bisection.
 

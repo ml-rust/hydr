@@ -131,6 +131,7 @@ pub fn pumps(width: usize) -> Result<Vec<StructureElement>> {
                             .into(),
                     },
                 )?),
+                condition: StructureCondition::AsBuilt,
             })
         })
         .collect()
@@ -162,6 +163,7 @@ pub fn gates(width: usize) -> Result<Vec<StructureElement>> {
                         symmetric_reversal: true,
                     },
                 )?),
+                condition: StructureCondition::AsBuilt,
             })
         })
         .collect()

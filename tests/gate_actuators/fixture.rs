@@ -33,6 +33,7 @@ pub fn gate(id: &str, maximum: f64) -> Result<StructureElement> {
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 
@@ -219,6 +220,7 @@ pub fn mixed_context() -> Result<StructureBatch<crate::runtime::Runtime>> {
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     };
     Ok(StructureBatch::<crate::runtime::Runtime>::new(
         crate::runtime::client(),

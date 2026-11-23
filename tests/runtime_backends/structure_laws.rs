@@ -1,4 +1,5 @@
-//! Weir, orifice and gate discharge on configured runtime clients over a dense head grid.
+//! Weir, orifice and gate discharge on configured runtime clients over a dense head grid, with
+//! blocked and closed lanes among them.
 
 #[allow(dead_code)]
 #[path = "../gate_laws/fixture.rs"]
@@ -9,9 +10,9 @@ mod laws;
 
 use super::{Result, runtime};
 use hydr::structures::{
-    DirectionPolicy, GateParameters, StructureBatch, StructureElement, StructureHeads,
-    StructureHydraulicOperands, StructureLaw, StructureOperatingPoint, StructureOperation,
-    StructureRegime,
+    BlockageFraction, DirectionPolicy, GateParameters, StructureBatch, StructureBlockage,
+    StructureCondition, StructureElement, StructureHeads, StructureHydraulicOperands, StructureLaw,
+    StructureOperatingPoint, StructureOperation, StructureRegime,
 };
 
 /// Log discharge of the hydr regression input for correctly rounded `exp`.
@@ -96,6 +97,7 @@ fn dense_case() -> Result<Vec<Lane>> {
             ));
         }
     }
+    lanes.extend(conditioned_lanes(&lanes)?);
     let (coefficient, length) = REGRESSION_WEIR;
     lanes.push(lane(
         "weir-regression".into(),
@@ -104,6 +106,35 @@ fn dense_case() -> Result<Vec<Lane>> {
         -1.0,
     ));
     Ok(lanes)
+}
+
+/// Copies of every eighth lane, alternately blocked by a third and closed.
+fn conditioned_lanes(lanes: &[Lane]) -> Result<Vec<Lane>> {
+    let evidence = || "Analytical blockage fixture".to_string();
+    let share = BlockageFraction::new(1.0 / 3.0)?;
+    let mut conditioned = Vec::new();
+    for (index, source) in lanes.iter().enumerate().step_by(8) {
+        let condition = if index.is_multiple_of(16) {
+            StructureCondition::Closed {
+                evidence: evidence(),
+            }
+        } else {
+            StructureCondition::Blocked(match source.element.law {
+                StructureLaw::SuppressedRectangularWeir(_) => {
+                    StructureBlockage::weir(share, evidence())?
+                }
+                StructureLaw::SubmergedOrifice(_) => StructureBlockage::orifice(share, evidence())?,
+                _ => StructureBlockage::gate(share, BlockageFraction::NONE, evidence())?,
+            })
+        };
+        let id = format!("{}-conditioned", source.element.id);
+        let mut copy = lane(id.clone(), source.element.law.clone(), 0.0, 0.0);
+        copy.element.condition = condition;
+        copy.heads = source.heads.clone();
+        copy.heads.structure_id = id;
+        conditioned.push(copy);
+    }
+    Ok(conditioned)
 }
 
 /// Proposes the dense case on one client and returns every output.
@@ -133,6 +164,7 @@ fn selected_cpu_client_evaluates_structure_laws_across_dense_heads() -> Result {
         StructureRegime::FreeGateAperture,
         StructureRegime::MixedGateAperture,
         StructureRegime::SubmergedGateAperture,
+        StructureRegime::Closed,
     ] {
         assert!(regimes.contains(&regime), "no lane reaches {regime:?}");
     }

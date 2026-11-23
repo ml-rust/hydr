@@ -2,6 +2,7 @@
 use numr::{dtype::DType, runtime::Runtime};
 
 use super::TensorStructureContext;
+use crate::structures::blockage::effective::gate_maximum_opening;
 use crate::structures::{
     StructureError, StructureInputErrorKind, StructureLaw, StructureOperatingPoint,
     StructureOperation,
@@ -35,15 +36,12 @@ pub(super) fn check<R: Runtime<DType = DType>>(
             StructureLaw::HydrostaticRectangularGate(parameters),
             StructureOperatingPoint::GateOpening { opening_m },
         ) => {
-            if !opening_m.is_finite()
-                || opening_m < 0.0
-                || opening_m > parameters.maximum_opening_m()
-            {
+            let maximum = gate_maximum_opening(&element.condition, parameters);
+            if !opening_m.is_finite() || opening_m < 0.0 || opening_m > maximum {
                 return Err(StructureError::input(
                     StructureInputErrorKind::OperatingPoint,
                     format!(
-                "opening_m={opening_m},maximum_opening_m={}: supply a finite opening in the declared closed range",
-                parameters.maximum_opening_m()
+                        "opening_m={opening_m},maximum_opening_m={maximum}: supply a finite opening in the declared closed range. A blocked gate admits openings up to its blocked limit"
                     ),
                 )
                 .at(index));

@@ -40,6 +40,7 @@ fn weir(id: &str) -> TestResult<StructureElement> {
                 symmetric_reversal: true,
             },
         )?),
+        condition: hydr::structures::StructureCondition::AsBuilt,
     })
 }
 

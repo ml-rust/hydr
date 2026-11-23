@@ -32,7 +32,7 @@ fn rejects(changed: &GateActuatorSnapshotData, needles: &[&str]) -> Result {
 fn gate_actuator_package_carries_identity() -> Result {
     assert_eq!(
         GATE_ACTUATOR_SNAPSHOT_SCHEMA,
-        "hydr-gate-actuator-checkpoint-1"
+        "hydr-gate-actuator-checkpoint-2"
     );
     assert_eq!(
         GATE_ACTUATOR_CONTRACT_VERSION,
@@ -46,7 +46,11 @@ fn gate_actuator_package_carries_identity() -> Result {
 
 #[test]
 fn gate_actuator_import_rejects_foreign_schema() -> Result {
-    for found in ["hydr-gate-actuator-checkpoint-0", ""] {
+    for found in [
+        "hydr-gate-actuator-checkpoint-0",
+        "hydr-gate-actuator-checkpoint-1",
+        "",
+    ] {
         let mut changed = package()?;
         changed.schema = found.into();
         rejects(

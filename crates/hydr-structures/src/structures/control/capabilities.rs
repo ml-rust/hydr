@@ -149,6 +149,11 @@ static OPERATING_CONTROL: ComponentCapabilities = ComponentCapabilities {
     ],
     limits: &[
         Limit {
+            id: "gate-blocked-range",
+            summary: "A blocked gate admits target commands up to its blocked maximum opening; a larger command rejects, never clamps.",
+            doc: CONTROL_DOC,
+        },
+        Limit {
             id: "sampled-qualification",
             summary: "Qualification persists across supplied samples only, never across unobserved excursions.",
             doc: CONTROL_DOC,

@@ -3,9 +3,10 @@
 use super::super::*;
 use super::compatibility::{as_definition, require};
 use super::receipt_bits::ReceiptBits;
+use crate::structures::StructureError;
+use crate::structures::blockage::effective::gate_opening_limit;
 use crate::structures::numerics::actuator as math;
 use crate::structures::tensor::actuator::{TensorActuatorState, import_values};
-use crate::structures::{StructureError, StructureLaw};
 use numr::dtype::DType;
 use numr::runtime::Runtime;
 
@@ -84,9 +85,9 @@ where
     let initial = super::super::projection::states(&batch.context, &initial)?;
     for (i, s) in rows.iter().enumerate() {
         let slot = batch.context.slots[i];
-        let maximum = match &batch.elements()[slot].law {
-            StructureLaw::HydrostaticRectangularGate(g) => g.maximum_opening_m(),
-            _ => {
+        let maximum = match gate_opening_limit(&batch.elements()[slot]) {
+            Some(maximum) => maximum,
+            None => {
                 return Err(StructureError::numerical(
                     "actuator context contains a non-gate",
                 ));

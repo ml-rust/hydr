@@ -1,8 +1,8 @@
 use super::fixture::{DATUM, Result};
 use hydr::structures::{
     DirectionPolicy, PumpApplicability, PumpCurve, PumpCurveKnot, PumpParameters, PumpSpeedPolicy,
-    StructureElement, StructureLaw, StructureOperatingPoint, StructureOperation,
-    SuppressedRectangularWeirParameters, WeirApplicability,
+    StructureCondition, StructureElement, StructureLaw, StructureOperatingPoint,
+    StructureOperation, SuppressedRectangularWeirParameters, WeirApplicability,
 };
 
 pub fn weir(id: &str, a: &str, b: &str, crest: f64, coefficient: f64) -> Result<StructureElement> {
@@ -25,6 +25,7 @@ pub fn weir(id: &str, a: &str, b: &str, crest: f64, coefficient: f64) -> Result<
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 
@@ -70,6 +71,7 @@ pub fn pump_with_suction(
                         .into(),
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 

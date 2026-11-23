@@ -50,6 +50,10 @@ impl<R: Runtime<DType = DType>> StructureBatch<R> {
     pub fn elements(&self) -> &[StructureElement] {
         &self.context.elements
     }
+    /// Declared and effective geometry of every element, in element order.
+    pub fn geometry(&self) -> Vec<super::StructureGeometryReport> {
+        super::blockage::reports(&self.context.elements)
+    }
     /// Evaluate original supported heads without mutating definitions or earlier proposals.
     pub fn propose(&self, heads: &[StructureHeads]) -> Result<StructureProposal<R>, StructureError>
     where

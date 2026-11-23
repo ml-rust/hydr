@@ -6,8 +6,8 @@ use hydr::storage::{
     LevelPoolConfig, LevelPoolCurve, LevelPoolElement, LevelPoolKnot, LevelPoolState,
 };
 use hydr::structures::{
-    DirectionPolicy, OrificeApplicability, StructureElement, StructureLaw, StructureOperatingPoint,
-    StructureOperation, SubmergedOrificeParameters,
+    DirectionPolicy, OrificeApplicability, StructureCondition, StructureElement, StructureLaw,
+    StructureOperatingPoint, StructureOperation, SubmergedOrificeParameters,
 };
 
 pub type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -133,6 +133,7 @@ pub fn orifice_case(
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     };
     assemble(
         &[("a", 0.0), ("b", 0.0)],

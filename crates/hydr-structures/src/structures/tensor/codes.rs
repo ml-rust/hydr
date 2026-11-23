@@ -23,6 +23,7 @@ pub(crate) const CULVERT_OUTLET_CONTROL: f64 = 14.0;
 pub(crate) const CULVERT_CONTROL_TIE: f64 = 15.0;
 pub(crate) const CULVERT_BELOW_INVERT: f64 = 16.0;
 pub(crate) const CULVERT_UNDECLARED_END: f64 = 17.0;
+pub(crate) const CLOSED: f64 = 18.0;
 pub(crate) const BARREL_DRY: f64 = 0.0;
 pub(crate) const BARREL_FREE: f64 = 1.0;
 pub(crate) const BARREL_FULL: f64 = 2.0;

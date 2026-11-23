@@ -53,6 +53,8 @@ pub enum StructureRegime {
     CulvertBelowInvert,
     /// The heads drive flow into an end without a declared culvert inlet.
     CulvertUndeclaredEnd,
+    /// The element's condition closes the structure. Exact zero discharge under every head.
+    Closed,
 }
 /// Proposal status, without donor availability or transfer acceptance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

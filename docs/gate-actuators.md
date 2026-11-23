@@ -28,7 +28,7 @@ Each actuator binds one unique gate. The nonempty subset follows the complete or
 | --- | --- |
 | `GateActuatorDefinition` | Unique actuator/structure identities, rates, numerical policy, rate provenance, and ideal-response applicability |
 | Directional rates | Explicit finite nonnegative metres/second. Zero stalls that direction |
-| `GateActuatorInitialState` | Actual opening and target inside the bound gate range |
+| `GateActuatorInitialState` | Actual opening and target inside the bound gate range. A blocked gate's range ends at its blocked maximum opening (`gate-blocked-range`). |
 | `GateActuatorSchedule` | Finite nonnegative initial time strictly before the finite terminal horizon |
 | Target calendar | Original finite times, strictly increasing within `(initial_time_s,end_s]`. An empty calendar retains the initial target |
 | `GateActuatorAccuracy` | Explicit finite nonnegative opening and arrival-window allowances |
@@ -116,7 +116,7 @@ An earliest bound overlapping support with an unavailable upper rejects numerica
 
 Trusted restore checks the full bound context. Caller-owned encoding must preserve every original F64 bit, including signed zeros and repeated raw target packets.
 
-Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `GATE_ACTUATOR_SNAPSHOT_SCHEMA` and `GATE_ACTUATOR_CONTRACT_VERSION`. `restore_data` compares both before any other check and rejects a foreign value with a definition input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `GATE_ACTUATOR_SNAPSHOT_SCHEMA` and `GATE_ACTUATOR_CONTRACT_VERSION`. Schema `hydr-gate-actuator-checkpoint-1` predates the structure element condition and rejects. `restore_data` compares both before any other check and rejects a foreign value with a definition input error. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
 
 ### What import checks
 

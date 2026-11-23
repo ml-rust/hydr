@@ -10,9 +10,9 @@ use hydr::structures::{
     GateOpeningKnot, GateOpeningTrajectory, GateParameters, GateTargetUpdate,
     GateTrajectoryAccuracy, GateTrajectoryAssignment, HeadConvention, HeadSupport,
     OperatingSourceBinding, OperatingSourceFrame, OrificeApplicability, PumpApplicability,
-    PumpCurve, PumpCurveKnot, PumpParameters, PumpSpeedPolicy, StructureBatch, StructureElement,
-    StructureError, StructureHeads, StructureLaw, StructureOperatingPoint, StructureOperation,
-    SubmergedOrificeParameters,
+    PumpCurve, PumpCurveKnot, PumpParameters, PumpSpeedPolicy, StructureBatch, StructureCondition,
+    StructureElement, StructureError, StructureHeads, StructureLaw, StructureOperatingPoint,
+    StructureOperation, SubmergedOrificeParameters,
 };
 
 const DATUM: &str = "synthetic common datum";
@@ -25,6 +25,7 @@ fn element(id: &str, direction: DirectionPolicy, law: StructureLaw) -> Structure
         datum: DATUM.into(),
         direction,
         law,
+        condition: StructureCondition::AsBuilt,
     }
 }
 

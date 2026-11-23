@@ -2,6 +2,7 @@
 use numr::{dtype::DType, runtime::Runtime};
 
 use super::{GateOpeningTrajectory, GateTrajectoryEvent, GateTrajectorySupport};
+use crate::structures::blockage::effective::gate_opening_limit;
 use crate::structures::tensor::{
     TensorStructureContext, gate::trajectory::TensorTrajectoryContext,
 };
@@ -174,10 +175,10 @@ fn check_range<R: Runtime<DType = DType>>(
     assignment: &GateTrajectoryAssignment,
     slot: usize,
 ) -> Result<(), StructureError> {
-    if let StructureLaw::HydrostaticRectangularGate(parameters) = &context.elements[slot].law {
+    if let Some(maximum) = gate_opening_limit(&context.elements[slot]) {
         for (knot_index, knot) in assignment.trajectory.knots().iter().enumerate() {
-            if knot.opening_m > parameters.maximum_opening_m() {
-                return Err(StructureError::input(StructureInputErrorKind::Definition,format!("gate knot={knot_index},opening_m={},maximum={}: supply opening within actual gate range",knot.opening_m,parameters.maximum_opening_m())).at(slot));
+            if knot.opening_m > maximum {
+                return Err(StructureError::input(StructureInputErrorKind::Definition,format!("gate knot={knot_index},opening_m={},maximum={maximum}: supply opening within actual gate range. A blocked gate admits openings up to its blocked limit",knot.opening_m)).at(slot));
             }
         }
     }

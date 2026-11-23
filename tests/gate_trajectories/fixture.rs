@@ -102,6 +102,7 @@ fn element(id: &str, law: StructureLaw, direction: DirectionPolicy) -> Structure
         datum: "Analytical fixture datum".into(),
         law,
         direction,
+        condition: StructureCondition::AsBuilt,
     }
 }
 

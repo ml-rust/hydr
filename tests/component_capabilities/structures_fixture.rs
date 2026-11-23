@@ -5,10 +5,11 @@ use hydr::capability::ComponentCapabilities;
 use hydr::structures::{
     ControlSample, ControlledGateBatch, ControlledPumpBatch, DirectionPolicy, GateActuatorBatch,
     GateActuatorDefinition, GateActuatorInitialState, GateActuatorSchedule, GateTargetUpdate,
-    OperatingControlBatch, OrificeApplicability, StructureBatch, StructureElement, StructureError,
-    StructureInputErrorKind, StructureLaw, SubmergedOrificeParameters,
-    SuppressedRectangularWeirParameters, WeirApplicability, controlled_gate_capabilities,
-    controlled_pump_capabilities, gate_actuator_capabilities, operating_control_capabilities,
+    OperatingControlBatch, OrificeApplicability, StructureBatch, StructureCondition,
+    StructureElement, StructureError, StructureInputErrorKind, StructureLaw,
+    SubmergedOrificeParameters, SuppressedRectangularWeirParameters, WeirApplicability,
+    controlled_gate_capabilities, controlled_pump_capabilities, gate_actuator_capabilities,
+    operating_control_capabilities,
 };
 
 pub type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -204,6 +205,7 @@ pub fn weir(id: &str) -> Result<StructureElement, StructureError> {
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }
 
@@ -227,5 +229,6 @@ pub fn orifice(id: &str) -> Result<StructureElement, StructureError> {
                 symmetric_reversal: true,
             },
         )?),
+        condition: StructureCondition::AsBuilt,
     })
 }

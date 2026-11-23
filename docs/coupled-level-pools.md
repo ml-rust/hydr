@@ -42,6 +42,12 @@ Choose the matching operation from [structure laws](structures.md):
 
 Hydr supplies no implicit pump operation. The configured client selects the runtime used by the batch.
 
+Each structure element carries a [condition](structures.md#declare-a-blocked-or-closed-structure). These rules reject at construction:
+
+- `pump-blockage`: A pump with a `Blocked` or `Closed` condition rejects. Declare `AsBuilt` and stop the pump with `PumpStoppedIsolated`.
+- `blockage-fraction-domain`: A blocked share outside `[0, 1)`, or an effective geometry value that is not a positive normal F64, rejects. Supply a smaller share or a larger base value.
+- `gate-blocked-range`: A blocked gate opening above its blocked maximum opening rejects. Hydr never clamps it.
+
 ### Attach a culvert
 
 A [culvert](structures.md#culvert-structure-law) joins two pools as any other structure does. The client implements `CulvertClient`, which `new` requires. Construction builds the culvert rows once.
@@ -211,7 +217,7 @@ Preserve every checkpoint field and floating-point bit when encoding data. Compl
 
 Import recalculates the final interval's forcing. It checks transfers and accepted state before restoration.
 
-Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-coupled-level-pool-checkpoint-2`) and `COUPLED_LEVEL_POOL_CONTRACT_VERSION` (`hydr-coupled-level-pool-numr-cpu-2`). Schema `hydr-coupled-level-pool-checkpoint-1` predates culvert structures and rejects. `restore_data` compares both before any other check and rejects a foreign value with an input error. Next it checks the nested `pools` and `start.pools` level-pool packages. A nested error names its path, such as `start.pools`. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
+Every package carries `schema` and `contract` identity fields. `snapshot_data()` fills them from `COUPLED_LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-coupled-level-pool-checkpoint-3`) and `COUPLED_LEVEL_POOL_CONTRACT_VERSION` (`hydr-coupled-level-pool-numr-cpu-2`). Schema `hydr-coupled-level-pool-checkpoint-2` predates the structure element condition and rejects. Schema `hydr-coupled-level-pool-checkpoint-1` predates culvert structures and rejects. `restore_data` compares both before any other check and rejects a foreign value with an input error. Next it checks the nested `pools` and `start.pools` level-pool packages. A nested error names its path, such as `start.pools`. The error names the found and expected values. Capture a new package to recover. Packages without the identity fields are rejected.
 
 ## Unsupported uses and support limits
 
