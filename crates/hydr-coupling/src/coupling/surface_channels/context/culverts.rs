@@ -10,6 +10,7 @@ use numr::tensor::Tensor;
 ///
 /// A culvert donor stops at its invert stop, as a pump donor stops at its suction stop. Other
 /// links hold zeros.
+#[derive(Clone)]
 pub(in super::super) struct CulvertStops<R: Runtime<DType = DType>> {
     /// One at every culvert link, `[L]`.
     pub mask: Tensor<R>,

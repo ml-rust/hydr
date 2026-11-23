@@ -55,6 +55,7 @@ mod evaluate;
 mod exchange;
 mod forcing;
 mod frames;
+mod geometry;
 mod identity;
 mod iteration;
 mod level_cap;
@@ -96,6 +97,7 @@ pub use definition::{
 };
 pub use error::SurfaceChannelError;
 pub use forcing::{SurfaceChannelForcingInterval, SurfaceChannelReachForcing};
+pub use geometry::SurfaceChannelGeometryReceipt;
 pub use node_output::{
     SurfaceChannelOperationReceipt, SurfaceChannelPoolEndLedger, SurfaceChannelPoolEndTransfer,
     SurfaceChannelPoolStep, SurfaceChannelRunoffLedger, SurfaceChannelRunoffTransfer,

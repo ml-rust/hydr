@@ -16,7 +16,7 @@ pub(super) fn rejected(entry: &str, id: &str, detail: String) -> SurfaceChannelE
 ///
 /// A culvert's invert at each end sits at or above that end's attachment bed. A dry end then
 /// never stands above its invert, so it is a free outfall. A two-way culvert declares both ends.
-pub(super) fn check_law(
+pub(in super::super) fn check_law(
     structure: &SurfaceChannelStructure,
     beds: [f64; 2],
     gravity: f64,

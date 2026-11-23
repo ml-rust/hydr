@@ -18,6 +18,7 @@ pub(super) mod scenario;
 mod scenario_culverts;
 
 pub(super) use admission::check_structures;
+pub(super) use law_checks::check_law as check_law_for_geometry;
 pub(super) use laws::LinkLaw;
 pub(super) use operations::LinkOperations;
 

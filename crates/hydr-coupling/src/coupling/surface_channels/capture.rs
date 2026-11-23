@@ -149,6 +149,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
             ports: self.ports.clone(),
             pool_ends: self.pool_ends.clone(),
             operation: self.operation.clone(),
+            geometry: self.geometry.clone(),
             runoff: self.runoff.clone(),
         }
     }
@@ -229,6 +230,7 @@ where
             reaches: named(setup, reaches)?,
             pools: pool_data(context, self.pools.as_ref())?,
             operating: self.operating.as_ref().map(|o| o.data()).transpose()?,
+            geometry_epochs: super::geometry::epochs_at(&setup.geometry_schedules, self.time_s),
             runoff: runoff_data(self.runoff.as_ref())?,
             counters: counter_data(
                 (&self.counters, self.pools.as_ref()),

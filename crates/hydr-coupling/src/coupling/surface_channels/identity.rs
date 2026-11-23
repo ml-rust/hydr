@@ -81,6 +81,10 @@ pub(super) fn setup(a: &SurfaceChannelSetupData, b: &SurfaceChannelSetupData) ->
     require(same_value(&a.operating, &b.operating), || {
         "setup.operating".into()
     })?;
+    require(
+        same_value(&a.geometry_schedules, &b.geometry_schedules),
+        || "setup.geometry_schedules".into(),
+    )?;
     require(same_value(&a.runoff, &b.runoff), || "setup.runoff".into())
 }
 
@@ -212,6 +216,9 @@ pub(super) fn replayed(
     require(same_value(&found.pools, &given.pools), || "pools".into())?;
     require(same_value(&found.operating, &given.operating), || {
         "operating".into()
+    })?;
+    require(found.geometry_epochs == given.geometry_epochs, || {
+        "geometry_epochs".into()
     })?;
     require(same_value(&found.runoff, &given.runoff), || "runoff".into())?;
     counters("counters", &found.counters, &given.counters)?;
@@ -433,6 +440,9 @@ fn diagnostics(
     require(same_value(&a.pools, &b.pools), || format!("{path}.pools"))?;
     require(same_value(&a.runoff, &b.runoff), || {
         format!("{path}.runoff")
+    })?;
+    require(same_value(&a.geometry, &b.geometry), || {
+        format!("{path}.geometry")
     })
 }
 

@@ -10,6 +10,7 @@ mod culvert;
 pub(crate) mod definition;
 mod error;
 mod gate;
+mod geometry;
 mod heads;
 mod held;
 pub(crate) mod identity;
@@ -67,6 +68,11 @@ pub use gate::{
     GateOpeningTrajectory, GateParameters, GateTrajectoryAccuracy, GateTrajectoryAssignment,
     GateTrajectoryBatch, GateTrajectoryEvaluation, GateTrajectoryEvent, GateTrajectoryInterval,
     GateTrajectoryOutput, GateTrajectorySupport,
+};
+pub use geometry::{
+    DiscreteGeometryKnot, ScalarGeometryParameter, StructureGeometryKnot,
+    StructureGeometrySchedule, StructureGeometryTrack, active_geometry_epochs, check_schedules,
+    evaluate_element_interval, next_geometry_event_after, track_value_bits,
 };
 pub use heads::{EndpointHead, HeadConvention, HeadSupport, StructureHeads};
 pub use held::HeldHeadProposal;

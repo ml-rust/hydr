@@ -89,4 +89,6 @@ pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub operation: Option<Arc<StepOperation<R>>>,
     /// Runoff delivery of the interval, or `None` without runoff.
     pub runoff: Option<RunoffStep>,
+    /// Structure geometry receipts applied on this interval. Empty without schedules.
+    pub geometry: Vec<super::SurfaceChannelGeometryReceipt>,
 }

@@ -116,6 +116,7 @@ impl<R: Runtime<DType = DType>> StoredStep<R> {
             pool_ends,
             pools: context.pool_steps(pools)?,
             runoff: step.runoff_transfers(context),
+            geometry: step.geometry.clone(),
         })
     }
 }

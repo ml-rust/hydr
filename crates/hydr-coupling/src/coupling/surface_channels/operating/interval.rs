@@ -29,6 +29,8 @@ pub(in super::super) struct AttemptOperation<R: Runtime<DType = DType>> {
     pub operations: Arc<LinkOperations<R>>,
     /// Prepared children, or `None` without operating children.
     pub prepared: Option<PreparedOperation<R>>,
+    /// Geometry receipts applied at the start of this interval.
+    pub geometry: Vec<crate::coupling::surface_channels::SurfaceChannelGeometryReceipt>,
 }
 
 /// Children prepared to the attempt end without samples, and their interval operation.
@@ -79,6 +81,7 @@ impl<R: Runtime<DType = DType>> AttemptOperation<R> {
             end,
             operations: Arc::clone(&context.operations),
             prepared: None,
+            geometry: Vec::new(),
         }
     }
 }
@@ -228,6 +231,7 @@ where
                 pump,
                 interval,
             }),
+            geometry: Vec::new(),
         })
     }
 }

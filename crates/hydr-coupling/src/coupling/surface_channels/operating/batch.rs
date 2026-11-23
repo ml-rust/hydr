@@ -53,10 +53,17 @@ where
     ///
     /// No interval then contains an event. A retry only shortens it, so no retry crosses one.
     pub(in super::super) fn operating_end(&self, limited: f64) -> Result<f64, SurfaceChannelError> {
-        match &self.operating {
-            Some(children) => Ok(limited.min(children.next_event_after(self.time_s)?)),
-            None => Ok(limited),
+        let mut end = match &self.operating {
+            Some(children) => limited.min(children.next_event_after(self.time_s)?),
+            None => limited,
+        };
+        if let Some(event) = super::super::geometry::next_event(
+            &self.definition.setup().geometry_schedules,
+            self.time_s,
+        ) {
+            end = end.min(event);
         }
+        Ok(end)
     }
 
     /// Link laws and prepared operating children of the attempt ending at `end`.
@@ -64,10 +71,24 @@ where
         &self,
         end: f64,
     ) -> Result<AttemptOperation<R>, SurfaceChannelError> {
-        match &self.operating {
-            Some(children) => children.prepare(&self.context, self.time_s, end),
-            None => Ok(AttemptOperation::declared(&self.context, end)),
+        let mut attempt = match &self.operating {
+            Some(children) => children.prepare(&self.context, self.time_s, end)?,
+            None => AttemptOperation::declared(&self.context, end),
+        };
+        let schedules = &self.definition.setup().geometry_schedules;
+        if !schedules.is_empty() {
+            let points = attempt.operations.points.clone();
+            let (operations, geometry) = super::super::geometry::evaluate_interval(
+                &self.context,
+                schedules,
+                points,
+                self.time_s,
+                end,
+            )?;
+            attempt.operations = operations;
+            attempt.geometry = geometry;
         }
+        Ok(attempt)
     }
 
     /// Completes the operating children of `operation` at `end` from the candidate `nodes`:

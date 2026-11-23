@@ -135,7 +135,7 @@ where
         let mut end = self.operating_end(limited)?;
         if bound.requires_exact_span && end.to_bits() != requested.to_bits() {
             let reason = if end < limited {
-                "an operating event lies inside the integrated span"
+                "an operating or geometry event lies inside the integrated span"
             } else {
                 "maximum_step_s or the surface forcing interval ends before the integrated span"
             };
@@ -241,7 +241,7 @@ where
         end: f64,
         requested: f64,
         retries: usize,
-        (operands, stalled, operation, runoff_start): AttemptOperands<'_, R>,
+        (operands, stalled, mut operation, runoff_start): AttemptOperands<'_, R>,
         reach_ids: &[&str],
         forcing: &SurfaceChannelForcingInterval,
     ) -> Result<Self, SurfaceChannelError> {
@@ -408,6 +408,11 @@ where
                 balance.residual_m3, balance.bound_m3
             )));
         }
+        let mut geometry = std::mem::take(&mut operation.geometry);
+        for receipt in &mut geometry {
+            receipt.storage_before_m3 = totals.storage_before_m3;
+            receipt.storage_after_m3 = totals.storage_before_m3;
+        }
         let (operating, operation) = self.complete_operating(operation, end, nodes.as_ref())?;
         let step = StoredStep {
             previous: PreviousFrame {
@@ -438,6 +443,7 @@ where
             ports: interval,
             pool_ends,
             operation,
+            geometry,
             runoff: runoff_step,
         };
         Ok(Self {

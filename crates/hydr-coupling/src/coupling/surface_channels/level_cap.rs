@@ -7,6 +7,7 @@
 use super::SurfaceChannelError;
 use super::context::{Context, Ops};
 use super::levelling::Levelling;
+use super::structures::LinkOperations;
 use crate::coupling::links::LinkError;
 use crate::coupling::links::donors::split;
 use numr::dtype::DType;
@@ -77,7 +78,11 @@ where
     /// donor stands within the allowance above its invert `z_d`. A stopped link otherwise keeps
     /// a volume set by a stage gap that no shorter interval shrinks. That volume can sit below
     /// the resolution of the receiving storage, which then rejects every retry.
-    fn stopped(&self, sides: &Sides<R>) -> Result<Tensor<R>, SurfaceChannelError> {
+    fn stopped(
+        &self,
+        operations: &LinkOperations<R>,
+        sides: &Sides<R>,
+    ) -> Result<Tensor<R>, SurfaceChannelError> {
         let c = &self.client;
         let Sides {
             donor,
@@ -89,8 +94,8 @@ where
         let level = self.within(&c.sub(donor, floor)?, donor, floor)?;
         let below = self.within(&c.sub(receiver_cut, receiver)?, receiver_cut, receiver)?;
         let suction = self.within(&c.sub(donor, donor_cut)?, donor, donor_cut)?;
-        let mut passive = c.where_cond(&self.has_below, &c.mul(&below, &level)?, &level)?;
-        if let Some(culverts) = &self.culverts {
+        let mut passive = c.where_cond(&operations.has_below, &c.mul(&below, &level)?, &level)?;
+        if let Some(culverts) = &operations.culverts {
             let invert = c.maximum(&passive, &suction)?;
             passive = c.where_cond(&culverts.mask, &invert, &passive)?;
         }
@@ -104,6 +109,7 @@ where
     /// the shared factor where it lies below the link's own factor, and one elsewhere.
     pub fn level(
         &self,
+        operations: &LinkOperations<R>,
         weir: &Tensor<R>,
         levelling: &Levelling<R>,
     ) -> Result<(Tensor<R>, Tensor<R>), SurfaceChannelError> {
@@ -120,16 +126,16 @@ where
         let stage = &levelling.stage;
         let donor = pick(&at(stage, &self.link_a)?, &at(stage, &self.link_b)?)?;
         let receiver = pick(&at(stage, &self.link_b)?, &at(stage, &self.link_a)?)?;
-        let cut = pick(&self.cut[1], &self.cut[0])?;
+        let cut = pick(&operations.cut[1], &operations.cut[0])?;
         let floor = c.maximum(&receiver, &cut)?;
         let sides = Sides {
-            donor_cut: pick(&self.cut[0], &self.cut[1])?,
+            donor_cut: pick(&operations.cut[0], &operations.cut[1])?,
             receiver_cut: cut,
             donor,
             receiver,
             floor,
         };
-        let stopped = c.mul(&active, &self.stopped(&sides)?)?;
+        let stopped = c.mul(&active, &self.stopped(operations, &sides)?)?;
         // Stopped links move no water, so they join no donor or receiver total.
         let moving = c.where_cond(&stopped, &zero, weir)?;
         let (positive, negative) = split(c, &moving, &zero).map_err(LinkError::surface_channel)?;
@@ -155,8 +161,9 @@ where
             &c.div(&taken, &receiver_area)?,
         )?;
         let level = c.div(&c.sub(donor, floor)?, &response)?;
-        let mut passive = c.where_cond(&self.has_below, &c.maximum(&below, &level)?, &level)?;
-        if let Some(culverts) = &self.culverts {
+        let mut passive =
+            c.where_cond(&operations.has_below, &c.maximum(&below, &level)?, &level)?;
+        if let Some(culverts) = &operations.culverts {
             let stop = pick(&culverts.stop[0], &culverts.stop[1])?;
             let area = pick(&culverts.area[0], &culverts.area[1])?;
             let invert = c.div(&c.mul(&c.sub(donor, &stop)?, &area)?, &given)?;

@@ -208,6 +208,17 @@ impl SurfaceChannelDefinition {
         }
         let structures =
             check_structures(&setup, &reach_index, pools.as_ref(), &taken, structures)?;
+        let structure_beds: Vec<[f64; 2]> = setup
+            .structures
+            .iter()
+            .map(|s| [s.endpoint_a.bed_elevation_m, s.endpoint_b.bed_elevation_m])
+            .collect();
+        super::geometry::check_geometry_schedules(
+            &setup.structures,
+            &setup.geometry_schedules,
+            &structure_beds,
+            setup.surface.config.gravity,
+        )?;
         taken.extend(structures.iter().map(CheckedStructure::id));
         let pool_ends = match &pools {
             Some(checked) => check_pool_ends(

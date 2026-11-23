@@ -147,6 +147,7 @@ where
         )?;
         check_definitions(&self.definition, data)?;
         check_pool_epoch(&self.definition, data)?;
+        check_geometry_epochs(data)?;
         let (prefix, surface, reaches, nodes) = start_frame(data);
         let (surface, reaches) = Children::Destination(self).children(prefix, surface, reaches)?;
         let bases = (
@@ -282,6 +283,7 @@ where
         )?);
         check_definitions(&definition, data)?;
         check_pool_epoch(&definition, data)?;
+        check_geometry_epochs(data)?;
         let initial = &data.initial;
         if initial.surface.time.to_bits() != initial.time_s.to_bits() {
             return Err(rejected(
@@ -452,6 +454,19 @@ where
             identity::surface_epoch(path, &data.initial.surface, &data.surface.accepted),
             "differs from the accepted state of the zero-history surface package",
         )?;
+    }
+    Ok(())
+}
+
+/// Checks that `data.geometry_epochs` matches the active epochs of `data.setup.geometry_schedules`
+/// at `data.counters.time_s`.
+fn check_geometry_epochs(data: &SurfaceChannelSnapshotData) -> Result<(), SurfaceChannelError> {
+    let expected = super::geometry::epochs_at(&data.setup.geometry_schedules, data.counters.time_s);
+    if data.geometry_epochs != expected {
+        return Err(rejected(
+            "geometry_epochs",
+            "differs from the active geometry schedule epochs at counters.time_s",
+        ));
     }
     Ok(())
 }

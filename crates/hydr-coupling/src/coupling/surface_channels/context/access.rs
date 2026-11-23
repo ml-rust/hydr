@@ -1,12 +1,14 @@
 //! Read access to the static coordinator operands, zero counters, and the transfer error map.
 
-use super::Context;
+use super::culverts::CulvertStops;
+use super::{Context, NodeEnd};
 use crate::channel::ChannelEnd;
 use crate::coupling::surface_channels::SurfaceChannelError;
 use crate::coupling::surface_channels::pool_ends::PoolEndCounters;
 use crate::coupling::surface_channels::ports::{PortCounters, end_slot};
 use crate::coupling::surface_channels::runoff::RunoffCounters;
 use crate::coupling::surface_channels::state::LinkCounters;
+use crate::coupling::surface_channels::structures::LinkLaw;
 use crate::numerics::water_transfers::WaterTransferError;
 use numr::dtype::DType;
 use numr::runtime::{Runtime, RuntimeClient};
@@ -92,6 +94,28 @@ impl<R: Runtime<DType = DType>> Context<R> {
     /// True when a pool end owns either end of setup reach `reach`.
     pub fn is_pool_ended(&self, reach: usize) -> bool {
         self.pool_ends.as_ref().is_some_and(|ends| ends.owns(reach))
+    }
+
+    /// Invert stops for `laws` evaluated against this context's endpoint plan areas.
+    pub(in super::super) fn build_culvert_stops(
+        &self,
+        laws: &[LinkLaw],
+    ) -> Result<Option<CulvertStops<R>>, SurfaceChannelError> {
+        let side_area = |link: usize, side: usize, stage: f64| -> f64 {
+            match self.link_ends[link][side] {
+                NodeEnd::Surface(lane) => self.lane_area_m2.get(lane).copied().unwrap_or(0.0),
+                NodeEnd::Channel(slot) => self
+                    .slot_plans
+                    .get(slot)
+                    .map_or(0.0, |plan| plan.area(stage)),
+                NodeEnd::Pool(pool) => self
+                    .pools
+                    .as_ref()
+                    .and_then(|parts| parts.plans.get(pool))
+                    .map_or(0.0, |plan| plan.smallest(stage, plan.top())),
+            }
+        };
+        CulvertStops::new(laws, side_area, self.client.device())
     }
 }
 

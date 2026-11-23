@@ -59,7 +59,7 @@ where
         at: LawAt<'_, R>,
     ) -> Result<TensorStructureResult<R>, SurfaceChannelError> {
         let law = self.raw_weir(operations, (stage, wet), at)?;
-        self.level_weir(law, stage, level)
+        self.level_weir(operations, law, stage, level)
     }
 
     /// Law of every link under `operations` at group `stage` with support `wet`, before the
@@ -84,13 +84,19 @@ where
     /// at group `stage`.
     pub fn level_weir(
         &self,
+        operations: &LinkOperations<R>,
         law: TensorStructureResult<R>,
         stage: &Tensor<R>,
         level: &Tensor<R>,
     ) -> Result<TensorStructureResult<R>, SurfaceChannelError> {
         let c = &self.client;
         let gather = |index: &Tensor<R>| c.index_select(stage, 0, index);
-        self.level_law(law, [&gather(&self.link_a)?, &gather(&self.link_b)?], level)
+        self.level_law(
+            operations,
+            law,
+            [&gather(&self.link_a)?, &gather(&self.link_b)?],
+            level,
+        )
     }
 
     /// One where a link's endpoint stages in `stage`, `[S + C + P]`, differ by at most the head
@@ -143,7 +149,7 @@ where
             [wet_surface, wet_channel],
             at,
         )?;
-        self.level_law(law, [surface, channel], level)
+        self.level_law(operations, law, [surface, channel], level)
     }
 
     /// Law of every link under `operations` at its surface and channel `stages` and `wet` masks,
@@ -174,6 +180,7 @@ where
     /// A link in a submerged-type regime where `level` is one carries no water.
     fn level_law(
         &self,
+        operations: &LinkOperations<R>,
         mut law: TensorStructureResult<R>,
         [surface, channel]: [&Tensor<R>; 2],
         level: &Tensor<R>,
@@ -183,12 +190,15 @@ where
         for code in &SUBMERGED_CODES[1..] {
             submerged = c.maximum(&submerged, &c.eq(&law.regime, &self.scalar(*code)?)?)?;
         }
-        if self.culverts.is_some() {
+        if operations.culverts.is_some() {
             let mut flowing = c.eq(&law.regime, &self.scalar(CULVERT_CODES[0])?)?;
             for code in &CULVERT_CODES[1..] {
                 flowing = c.maximum(&flowing, &c.eq(&law.regime, &self.scalar(*code)?)?)?;
             }
-            let above = c.mul(&c.gt(surface, &self.cut[0])?, &c.gt(channel, &self.cut[1])?)?;
+            let above = c.mul(
+                &c.gt(surface, &operations.cut[0])?,
+                &c.gt(channel, &operations.cut[1])?,
+            )?;
             submerged = c.maximum(&submerged, &c.mul(&flowing, &above)?)?;
         }
         let level = c.mul(&submerged, level)?;

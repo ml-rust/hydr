@@ -258,7 +258,12 @@ where
             let first = Arc::ptr_eq(&start.operations, &attempt.operations)
                 && x.shares_storage_with(&start.initial);
             let law = match (&start.law, first) {
-                (Some(law), true) => self.level_weir(law.clone(), &midpoint, &levelling.level)?,
+                (Some(law), true) => self.level_weir(
+                    &attempt.operations,
+                    law.clone(),
+                    &midpoint,
+                    &levelling.level,
+                )?,
                 _ => {
                     let wet = c.maximum(&start.wet, &end_wet)?;
                     self.weir(
@@ -276,7 +281,7 @@ where
                 .map_err(|error| {
                     SurfaceChannelError::Numerical(format!("link volumes: {error}"))
                 })?;
-            let level = self.level(&proposed, levelling)?;
+            let level = self.level(&attempt.operations, &proposed, levelling)?;
             let exchange = self.exchange(proposed, level, &reserved.available)?;
             (Some(law), exchange)
         };
@@ -317,7 +322,13 @@ where
         let (regime, mut resolution) = match &law {
             Some(law) => (
                 law.regime.clone(),
-                self.resolution(law, &exchange.signed, &midpoint, levelling)?,
+                self.resolution(
+                    &attempt.operations,
+                    law,
+                    &exchange.signed,
+                    &midpoint,
+                    levelling,
+                )?,
             ),
             None => (
                 empty.clone(),

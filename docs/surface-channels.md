@@ -467,6 +467,19 @@ A dry signal node at a decision rejects without retry. The error names the contr
 
 A control or actuator admission error rejects without retry and names the child. Capability `continuous-control` records that controls decide at sampled times only.
 
+## Schedule structure geometry
+
+`SurfaceChannelSetup::geometry_schedules` attaches caller-owned `StructureGeometrySchedule` entries to declared structure links. Each schedule binds one `structure_id`, one `StructureGeometryTrack`, and non-empty `evidence`.
+
+| Track | Knot type | Evaluation over `[start, end]` |
+| --- | --- | --- |
+| `Scalar { parameter, knots }` | `StructureGeometryKnot` (piecewise-linear, optional `left != right` step) | Midpoint `(start + end) / 2` |
+| `CulvertSediment { knots, bed_manning_n }` | `StructureGeometryKnot` (piecewise-linear depth) | Midpoint `(start + end) / 2` |
+| `CulvertClosedBarrels { knots }` | `DiscreteGeometryKnot<u32>` (step) | Constant on `[start, end)` |
+| `Closed { knots }` | `DiscreteGeometryKnot<bool>` (step) | Constant on `[start, end)` |
+
+Every knot time joins the coordinator event set alongside operating events, so no accepted interval straddles a geometry knot. Geometry changes never alter stored water volume. Each interval records `SurfaceChannelGeometryReceipt` entries in `last_step()?.geometry` with `storage_before_m3 == storage_after_m3` bit for bit.
+
 ## Attach native runoff
 
 The coordinator can own one `SubcatchmentBatch`. Its outlets drain into surface cells, reach cells, and pools. Read [subcatchments](subcatchment.md) and [contributing support](contributing-support.md) first.
@@ -735,7 +748,7 @@ Construct a `restore` or `import_snapshot` destination with the same setup and o
 
 Pass `data.surface.setup.forcing.clone()` to `resume` for a plain restart.
 
-`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-9`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-11`). Import checks both first. A package of an earlier format rejects by identity: schema `hydr-surface-channel-checkpoint-8` predates the structure element condition, contract `hydr-surface-channel-numr-cpu-10` predates runoff into surface cells, contract `hydr-surface-channel-numr-cpu-9` predates the runoff package, runoff counters, runoff transfers, and runoff balance totals, schema `hydr-surface-channel-checkpoint-7` predates the runoff setup, original-state, and forcing fields, contract `hydr-surface-channel-numr-cpu-8` predates warm culvert root searches, schema `hydr-surface-channel-checkpoint-6` predates culvert structures, and schema `-5` or contract `hydr-surface-channel-numr-cpu-7` predates secant probes in surveyed roots. Capture a new package. Import checks every nested package identity, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
+`SurfaceChannelSnapshotData` carries `schema` (`SURFACE_CHANNEL_SNAPSHOT_SCHEMA`, `hydr-surface-channel-checkpoint-10`) and `contract` (`SURFACE_CHANNEL_CONTRACT_VERSION`, `hydr-surface-channel-numr-cpu-12`). Import checks both first. A package of an earlier format rejects by identity: schema `hydr-surface-channel-checkpoint-9` or contract `hydr-surface-channel-numr-cpu-11` predates structure geometry schedules, schema `hydr-surface-channel-checkpoint-8` predates the structure element condition, contract `hydr-surface-channel-numr-cpu-10` predates runoff into surface cells, contract `hydr-surface-channel-numr-cpu-9` predates the runoff package, runoff counters, runoff transfers, and runoff balance totals, schema `hydr-surface-channel-checkpoint-7` predates the runoff setup, original-state, and forcing fields, contract `hydr-surface-channel-numr-cpu-8` predates warm culvert root searches, schema `hydr-surface-channel-checkpoint-6` predates culvert structures, and schema `-5` or contract `hydr-surface-channel-numr-cpu-7` predates secant probes in surveyed roots. Capture a new package. Import checks every nested package identity, checks `geometry_epochs` against `setup.geometry_schedules` at `counters.time_s`, then recalculates the last interval and compares every bit. An error names the first differing field or the package path.
 
 The replay includes decision completion. At a decision end, the recalculation samples the converged stages and completes each operating child, then compares the child packages.
 
@@ -745,7 +758,9 @@ The package also holds these parts:
 
 | Field | Holds |
 | --- | --- |
-| `setup` | Pools, pool support, sources, inflows, `storage`, structures, pool ends, and the operating declaration |
+| `setup` | Pools, pool support, sources, inflows, `storage`, structures, pool ends, the operating declaration, and `geometry_schedules` |
+| `geometry_epochs` | Active epoch index of each structure geometry schedule at `counters.time_s` |
+| `last_interval.diagnostics.geometry` | Geometry schedule receipts of the last interval, each with `storage_before_m3 == storage_after_m3` |
 | `initial.pools` | The original volume of every pool |
 | `pools` | The accepted `LevelPoolSnapshotData` |
 | `operating` | The accepted `SurfaceChannelOperatingData` of every operating child |
@@ -777,7 +792,7 @@ Preserve every package field and floating-point value exactly. Follow the [persi
 | Subcatchment runoff into surface cells, reach cells, and pools through free outlets | Tailwater feedback on runoff, external runon, and routing between subcatchments |
 | Level pools with local rain, bottom loss, evaporation, and external inflow | Pool ports. A pool holds no momentum. |
 | Weirs, submerged orifices, gates, pumps, and HDS-5 culverts of every admitted barrel shape between surface cells, channel cells, and pools | Partial orifice flow, pump priming, net positive suction head, motor dynamics, and culvert barrel storage |
-| Fixed blockage scenarios with evidence | Blockage probability, inferred blockage, and geometry events over time |
+| Fixed blockage scenarios and caller-scheduled structure geometry (`geometry_schedules`) with evidence | Blockage probability, inferred blockage, and pool curve, surface bed, or channel section geometry epochs |
 | Pool ends at a quiescent reservoir head on rectangular, triangular, or surveyed reaches | Dry or critical pool ends |
 | Prescribed, actuated, and sampled-pump operation at sampled decisions | Continuous control feedback, minimum dwell, and native SWMM rules |
 

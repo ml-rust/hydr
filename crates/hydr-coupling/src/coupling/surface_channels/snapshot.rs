@@ -28,9 +28,9 @@ use numr::runtime::Runtime;
 use std::sync::Arc;
 
 /// Schema identity of the surface/channel snapshot package.
-pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-9";
+pub const SURFACE_CHANNEL_SNAPSHOT_SCHEMA: &str = "hydr-surface-channel-checkpoint-10";
 /// Numerical contract identity of the surface/channel snapshot package.
-pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-11";
+pub const SURFACE_CHANNEL_CONTRACT_VERSION: &str = "hydr-surface-channel-numr-cpu-12";
 
 /// Complete caller-owned continuation. Preserve every floating-point bit when encoding.
 ///
@@ -61,6 +61,8 @@ pub struct SurfaceChannelSnapshotData {
     /// Lifetime link, structure, port, pool-end, pool inflow, and runoff counters, accepted
     /// count, and common time.
     pub counters: SurfaceChannelCounterData,
+    /// Active geometry epoch per schedule at `counters.time_s`. Recomputed and checked at import.
+    pub geometry_epochs: Vec<usize>,
     /// Last common interval with its start frame, absent before the first accepted interval.
     pub last_interval: Option<SurfaceChannelIntervalSnapshotData>,
 }
@@ -92,6 +94,8 @@ pub struct SurfaceChannelSetupData {
     pub operating: Option<SurfaceChannelOperating>,
     /// Native runoff as declared, or `None` without it.
     pub runoff: Option<SurfaceChannelRunoff>,
+    /// Prescribed structure geometry schedules in declaration order.
+    pub geometry_schedules: Vec<crate::structures::StructureGeometrySchedule>,
     /// Evidence that surface cells, channel cells, and pools store no water twice.
     pub storage_exclusion_evidence: String,
     /// Explicit tolerances, duration limits, and work limits.
@@ -114,6 +118,7 @@ impl SurfaceChannelSetupData {
             pool_ends: setup.pool_ends.clone(),
             operating: setup.operating.clone(),
             runoff: setup.runoff.clone(),
+            geometry_schedules: setup.geometry_schedules.clone(),
             storage_exclusion_evidence: setup.storage_exclusion_evidence.clone(),
             config: setup.config.clone(),
         }
@@ -135,6 +140,7 @@ impl SurfaceChannelSetupData {
             pool_ends: self.pool_ends.clone(),
             operating: self.operating.clone(),
             runoff: self.runoff.clone(),
+            geometry_schedules: self.geometry_schedules.clone(),
             storage_exclusion_evidence: self.storage_exclusion_evidence.clone(),
             config: self.config.clone(),
         }

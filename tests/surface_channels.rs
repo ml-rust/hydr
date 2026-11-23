@@ -35,6 +35,8 @@ mod drain_rows;
 mod fixture;
 #[path = "surface_channels/frozen.rs"]
 mod frozen;
+#[path = "surface_channels/geometry_schedules.rs"]
+mod geometry_schedules;
 #[path = "surface_channels/identity.rs"]
 mod identity;
 #[path = "support/impervious.rs"]

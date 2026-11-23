@@ -76,18 +76,12 @@ pub(super) struct Context<R: Runtime<DType = DType>> {
     pub bed_a: Tensor<R>,
     /// Attachment bed of each link's endpoint B, `[L]`. A bank link uses the cell bed.
     pub bed_b: Tensor<R>,
-    /// Cutoff stage of each link's endpoint A and endpoint B, each `[L]`.
-    pub cut: [Tensor<R>; 2],
-    /// One where a link keeps free flow while its receiver stays at or below its cutoff, `[L]`.
-    pub has_below: Tensor<R>,
     /// One at every pump link, `[L]`.
     pub pump: Tensor<R>,
     /// Stage at which the suction cap stops each pump donor, `[L]`. Zero at passive links.
     pub suction_stop: Tensor<R>,
     /// Plan area of each pump donor at its suction stop, `[L]`. Zero at passive links.
     pub suction_area: Tensor<R>,
-    /// Invert stops of the culvert links, or `None` without a culvert.
-    pub culverts: Option<CulvertStops<R>>,
     /// Unit reach tangent of every bank link, `[L]` per axis. Zero at structure links, whose
     /// water enters either side without velocity.
     pub tangent: [Tensor<R>; 2],
@@ -328,22 +322,15 @@ where
             .map_err(transfer_error)?;
         let link_elements: Vec<StructureElement> =
             table.iter().map(|link| link.element.clone()).collect();
-        let operations = Arc::new(LinkOperations::declared(
+        let mut ops_inner = LinkOperations::declared(
             &client,
             &link_elements,
             table.iter().map(|link| link.operation).collect(),
             &beds,
             (setup.config.head_absolute_m, setup.config.head_relative),
-        )?);
-        let laws = &operations.laws;
+        )?;
         let cell_area = setup.surface.domain.grid().cell_area();
         let lane_area_m2 = vec![cell_area; surface_count];
-        let per_law = |value: &dyn Fn(usize, &LinkLaw) -> f64| -> Vec<f64> {
-            laws.iter()
-                .enumerate()
-                .map(|(link, law)| value(link, law))
-                .collect()
-        };
         let flag = |condition: bool| f64::from(u8::from(condition));
         let pool_tops: Vec<f64> = (0..pool_count)
             .map(|pool| {
@@ -361,13 +348,20 @@ where
                     .map_or(0.0, |plan| plan.smallest(stage, pool_tops[pool])),
             }
         };
-        let cut = |side: usize| per_law(&|_, law| law.cut[side]);
+        ops_inner.culverts = CulvertStops::new(&ops_inner.laws, side_area, &device)?;
+        let operations = Arc::new(ops_inner);
+        let laws = &operations.laws;
+        let per_law = |value: &dyn Fn(usize, &LinkLaw) -> f64| -> Vec<f64> {
+            laws.iter()
+                .enumerate()
+                .map(|(link, law)| value(link, law))
+                .collect()
+        };
         let stop = per_law(&|_, law| law.pump().map_or(0.0, |p| p.stop_m));
         let stop_area = per_law(&|link, law| {
             law.pump()
                 .map_or(0.0, |p| side_area(link, p.donor, p.stop_m))
         });
-        let culverts = CulvertStops::new(laws, side_area, &device)?;
         let tangent = |axis: usize| -> Vec<f64> { table.iter().map(|l| l.tangent[axis]).collect() };
         let ports = PortTopology::new(definition, surface)?;
         let channel_links: Vec<usize> = table
@@ -435,12 +429,9 @@ where
             lane_index: indices(&lane_index)?,
             bed_a: floats(&bed_a)?,
             bed_b: floats(&bed_b)?,
-            cut: [floats(&cut(0))?, floats(&cut(1))?],
-            has_below: floats(&per_law(&|_, law| flag(law.has_below())))?,
             pump: floats(&per_law(&|_, law| flag(!law.passive())))?,
             suction_stop: floats(&stop)?,
             suction_area: floats(&stop_area)?,
-            culverts,
             bank: table
                 .iter()
                 .enumerate()

@@ -156,6 +156,8 @@ pub struct SurfaceChannelStepDiagnostics {
     pub pools: Vec<SurfaceChannelPoolStep>,
     /// Runoff of every delivery lane, in delivery-lane order. Empty without runoff.
     pub runoff: Vec<SurfaceChannelRunoffTransfer>,
+    /// Structure geometry schedule receipts applied on this interval. Empty without schedules.
+    pub geometry: Vec<super::SurfaceChannelGeometryReceipt>,
 }
 
 /// Lifetime directional exchange through one link.

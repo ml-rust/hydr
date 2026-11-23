@@ -228,30 +228,55 @@ fn before_blockage(text: &str) -> String {
     .replace(", condition: AsBuilt }", " }")
 }
 
+/// The text in the format before structure geometry schedules.
+///
+/// That format names schema `9` and contract `11`. Its setup holds no `geometry_schedules`,
+/// its package holds no `geometry_epochs`, and its step diagnostics hold no `geometry` receipts.
+/// A case without geometry schedules changes no other field, so this text reproduces the
+/// schema `9` digest bit for bit.
+fn before_geometry_schedules(text: &str) -> String {
+    text.replace(
+        "hydr-surface-channel-checkpoint-10",
+        "hydr-surface-channel-checkpoint-9",
+    )
+    .replace(
+        "hydr-surface-channel-numr-cpu-12",
+        "hydr-surface-channel-numr-cpu-11",
+    )
+    .replace(", geometry_schedules: []", "")
+    .replace(", geometry_epochs: []", "")
+    .replace(", geometry: []", "")
+}
+
 /// Fails unless `batch` matches the frozen `expected` digest, its text in the format before
-/// structure conditions matches the `unconditioned` digest of schema `8`, its text in the format
-/// before surface runoff matches the `celled` digest of contract `10`, its text in the format before
-/// runoff reports matches the `unreported` digest of contract `9`, its text in the format
-/// before runoff matches the `unattached` digest of schema `7`, its text in the format before
-/// warm culvert root searches matches the `cold` digest of contract `8`, and its text in the
-/// format before culverts matches the `uncoupled` digest of schema `6`.
+/// structure geometry schedules matches `unscheduled` (schema `9`, contract `11`), and each
+/// earlier format reproduces its frozen digest.
 fn check_current(
     batch: &Batch,
     [
         expected,
+        unscheduled,
         unconditioned,
         celled,
         unreported,
         unattached,
         cold,
         uncoupled,
-    ]: [u64; 7],
+    ]: [u64; 8],
 ) -> Result {
     let text = state(batch)?;
     let actual = digest(&text);
     if actual != expected {
         return Err(format!(
             "state digest={actual:#018x}, frozen={expected:#018x}: an accepted bit changed"
+        )
+        .into());
+    }
+    let text = before_geometry_schedules(&text);
+    let plain = digest(&text);
+    if plain != unscheduled {
+        return Err(format!(
+            "digest before geometry schedules={plain:#018x}, frozen={unscheduled:#018x}: a field other than the identities and empty geometry schedule fields changed"
         )
         .into());
     }
@@ -310,7 +335,9 @@ fn check_current(
 /// its text in the format before ports matches the `earlier` digest of that format.
 fn check_earlier(batch: &Batch, probed: u64, current: u64, earlier: u64) -> Result {
     let text = before_root_probe(&before_culverts(&before_culvert_roots(&before_runoff(
-        &before_runoff_reports(&before_surface_runoff(&before_blockage(&state(batch)?))),
+        &before_runoff_reports(&before_surface_runoff(&before_blockage(
+            &before_geometry_schedules(&state(batch)?),
+        ))),
     ))));
     let unprobed = digest(&text);
     if unprobed != probed {
@@ -377,6 +404,7 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
     check_current(
         &batch,
         [
+            0x83fa_9750_3ab2_226d,
             0x47b3_41e0_99b9_461e,
             0x8fcb_d6a0_2974_076b,
             0xb12b_e0a2_7fe0_64b2,
@@ -421,6 +449,7 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
     check_current(
         &flood(CertifiedRootProbe::SlackSecant)?,
         [
+            0x3f11_41bd_1f95_3f66,
             0x574f_42de_1061_7391,
             0x1f01_27b4_850f_2fae,
             0xf5e4_4c35_e68d_2a65,

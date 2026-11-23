@@ -254,6 +254,7 @@ impl Basin {
             structures: Vec::new(),
             pool_ends: Vec::new(),
             operating: None,
+            geometry_schedules: Vec::new(),
             runoff: Some(self.runoff()?),
             storage_exclusion_evidence: "The reach and the pond lie outside the surface".into(),
             config: SurfaceChannelConfig {

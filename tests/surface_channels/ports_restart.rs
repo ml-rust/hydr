@@ -175,11 +175,11 @@ fn a_reversal_flag_replays_from_the_start_frame_counters() -> Result {
 fn earlier_package_identities_reject() -> Result {
     assert_eq!(
         SURFACE_CHANNEL_SNAPSHOT_SCHEMA,
-        "hydr-surface-channel-checkpoint-9"
+        "hydr-surface-channel-checkpoint-10"
     );
     assert_eq!(
         SURFACE_CHANNEL_CONTRACT_VERSION,
-        "hydr-surface-channel-numr-cpu-11"
+        "hydr-surface-channel-numr-cpu-12"
     );
     let data = package()?;
     for found in [
@@ -189,6 +189,7 @@ fn earlier_package_identities_reject() -> Result {
         "hydr-surface-channel-checkpoint-6",
         "hydr-surface-channel-checkpoint-7",
         "hydr-surface-channel-checkpoint-8",
+        "hydr-surface-channel-checkpoint-9",
     ] {
         let mut earlier = data.clone();
         earlier.schema = found.into();
@@ -209,6 +210,7 @@ fn earlier_package_identities_reject() -> Result {
         "hydr-surface-channel-numr-cpu-8",
         "hydr-surface-channel-numr-cpu-9",
         "hydr-surface-channel-numr-cpu-10",
+        "hydr-surface-channel-numr-cpu-11",
     ] {
         let mut earlier = data.clone();
         earlier.contract = found.into();

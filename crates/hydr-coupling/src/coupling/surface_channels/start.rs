@@ -216,7 +216,9 @@ where
             } else {
                 let law = self.raw_weir(operations, (&stage, &wet), LawAt::Start)?;
                 let level = self.level_heads(&stage)?;
-                let regime = self.level_weir(law.clone(), &stage, &level)?.regime;
+                let regime = self
+                    .level_weir(operations, law.clone(), &stage, &level)?
+                    .regime;
                 (regime, Some(law))
             };
             let initial = match &end_support {

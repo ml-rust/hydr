@@ -3,15 +3,17 @@
 
 use super::LinkLaw;
 use crate::coupling::surface_channels::SurfaceChannelError;
+use crate::coupling::surface_channels::context::CulvertStops;
 use crate::structures::{
     CulvertClient, StructureElement, StructureOperatingPoint, StructureOperation,
 };
 use hydr_structures::internal::CouplingStructures;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, ConditionalOps, IndexingOps, ReduceOps, TypeConversionOps, UnaryOps};
-use numr::runtime::Runtime;
+use numr::runtime::{Runtime, RuntimeClient};
+use numr::tensor::Tensor;
 
-/// Link laws, their classes, and their operations, every list in link table order.
+/// Link laws, their classes, cutoffs, stops, and operations, every list in link table order.
 pub(in super::super) struct LinkOperations<R: Runtime<DType = DType>> {
     /// Law tensors of every link, or `None` without links.
     structures: Option<CouplingStructures<R>>,
@@ -19,6 +21,12 @@ pub(in super::super) struct LinkOperations<R: Runtime<DType = DType>> {
     pub laws: Vec<LinkLaw>,
     /// Operation of every link.
     pub points: Vec<StructureOperatingPoint>,
+    /// Cutoff stage of each link's endpoint A and B, each `[L]`.
+    pub cut: [Tensor<R>; 2],
+    /// One where a link keeps free flow while its receiver stays at or below its cutoff, `[L]`.
+    pub has_below: Tensor<R>,
+    /// Invert/bed stops of the culvert links, or `None` without a culvert.
+    pub culverts: Option<CulvertStops<R>>,
 }
 
 impl<R: Runtime<DType = DType>> LinkOperations<R> {
@@ -40,12 +48,22 @@ impl<R: Runtime<DType = DType>> LinkOperations<R> {
     where
         R::Client: CulvertClient<R>,
     {
-        let laws = elements
+        let laws: Vec<LinkLaw> = elements
             .iter()
             .zip(&points)
             .zip(beds)
             .map(|((element, &point), &beds)| LinkLaw::new(element, point, beds, allowance))
             .collect();
+        let device = client.device();
+        let floats = |values: &[f64]| Tensor::<R>::from_slice(values, &[values.len()], device);
+        let cut_a: Vec<f64> = laws.iter().map(|law| law.cut[0]).collect();
+        let cut_b: Vec<f64> = laws.iter().map(|law| law.cut[1]).collect();
+        let below: Vec<f64> = laws
+            .iter()
+            .map(|law| f64::from(u8::from(law.has_below())))
+            .collect();
+        let cut = [floats(&cut_a)?, floats(&cut_b)?];
+        let has_below = floats(&below)?;
         let structures = if elements.is_empty() {
             None
         } else {
@@ -68,6 +86,9 @@ impl<R: Runtime<DType = DType>> LinkOperations<R> {
             structures,
             laws,
             points,
+            cut,
+            has_below,
+            culverts: None,
         })
     }
 
@@ -120,6 +141,9 @@ impl<R: Runtime<DType = DType>> LinkOperations<R> {
             structures,
             laws,
             points,
+            cut: [self.cut[0].clone(), self.cut[1].clone()],
+            has_below: self.has_below.clone(),
+            culverts: self.culverts.clone(),
         })
     }
 

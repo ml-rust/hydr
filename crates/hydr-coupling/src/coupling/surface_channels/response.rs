@@ -26,6 +26,7 @@ use super::evaluate::{Attempt, Evaluation};
 use super::levelling::Levelling;
 use super::link_law::LawAt;
 use super::start::Start;
+use super::structures::LinkOperations;
 use crate::numerics::water_transfers::AggregationKind;
 use hydr_structures::internal::TensorStructureResult;
 use numr::dtype::DType;
@@ -168,7 +169,7 @@ where
         let one = self.scalar(1.0)?;
         // Culvert links take the sensitivity step below. Their ends count as dry in every
         // bisection round, so no round evaluates a culvert law.
-        let (modelled, round_wet) = match &self.culverts {
+        let (modelled, round_wet) = match &operations.culverts {
             Some(culverts) => {
                 let open = c.sub(&one, &culverts.mask)?;
                 (
@@ -187,12 +188,12 @@ where
         let modelled = &modelled;
         let (proposal, proposed_law) = kept(&accepted, [&wet_a, &wet_b])?;
         // With every link a culvert, no bisection bracket opens.
-        let mut volume = if self.culverts.as_ref().is_some_and(|k| k.every) {
+        let mut volume = if operations.culverts.as_ref().is_some_and(|k| k.every) {
             accepted.clone()
         } else {
             self.bisect(&accepted, &proposal, modelled, &residual)?
         };
-        if let Some(culverts) = &self.culverts {
+        if let Some(culverts) = &operations.culverts {
             let stepped = self.sensitivity_step(
                 &accepted,
                 &proposal,
@@ -312,6 +313,7 @@ where
     /// budget below this part, so the residual check adds it to each allowance.
     pub fn resolution(
         &self,
+        operations: &LinkOperations<R>,
         law: &TensorStructureResult<R>,
         signed: &Tensor<R>,
         midpoint: &Tensor<R>,
@@ -319,7 +321,7 @@ where
     ) -> Result<[Tensor<R>; 2], SurfaceChannelError> {
         let c = &self.client;
         let mut slope = law.head_sensitivity.clone();
-        if self.culverts.is_some() {
+        if operations.culverts.is_some() {
             // A culvert lane at the cap holds no known sensitivity, so it adds no allowance.
             let capped = c.ge(&slope, &self.scalar(SENSITIVITY_CAP)?)?;
             slope = c.where_cond(&capped, &self.scalar(0.0)?, &slope)?;

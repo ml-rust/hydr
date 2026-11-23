@@ -4,6 +4,7 @@ use super::context::{Context, Ops};
 use super::evaluate::{Accepted, Attempt, Evaluation, Trials};
 use super::link_law::LawAt;
 use super::start::Start;
+use super::structures::LinkOperations;
 use super::{SurfaceChannelConfig, SurfaceChannelError};
 use numr::algorithm::correctly_rounded;
 use numr::dtype::DType;
@@ -261,7 +262,7 @@ where
             return Err(SurfaceChannelError::Input(message.clone()));
         }
         if self.link_count > 0 {
-            self.check_crossing(config, &evaluation)?;
+            self.check_crossing(config, &attempt.operations, &evaluation)?;
         }
         if let Some(pools) = &attempt.pools {
             let n = self.group_count();
@@ -337,6 +338,7 @@ where
     fn check_crossing(
         &self,
         config: &SurfaceChannelConfig,
+        operations: &LinkOperations<R>,
         evaluation: &Evaluation<R>,
     ) -> Result<(), SurfaceChannelError> {
         let c = &self.client;
@@ -345,8 +347,8 @@ where
         let head = |index: &Tensor<R>, cut: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {
             Ok(c.maximum(&c.index_select(&end, 0, index)?, cut)?)
         };
-        let surface = head(&self.link_a, &self.cut[0])?;
-        let channel = head(&self.link_b, &self.cut[1])?;
+        let surface = head(&self.link_a, &operations.cut[0])?;
+        let channel = head(&self.link_b, &operations.cut[1])?;
         let signed = &evaluation.exchange.signed;
         let zero = self.scalar(0.0)?;
         let allowance = |receiver: &Tensor<R>| -> Result<Tensor<R>, SurfaceChannelError> {

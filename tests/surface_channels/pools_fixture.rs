@@ -352,6 +352,7 @@ impl Case {
             structures: self.structures.clone(),
             pool_ends: self.pool_ends.clone(),
             operating: self.operating.clone(),
+            geometry_schedules: Vec::new(),
             runoff: None,
             storage_exclusion_evidence: "The reach tank and the ponds lie outside the surface cell"
                 .into(),

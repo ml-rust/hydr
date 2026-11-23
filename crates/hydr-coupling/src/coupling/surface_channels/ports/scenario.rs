@@ -221,6 +221,7 @@ impl Scenario {
             structures: Vec::new(),
             pool_ends: Vec::new(),
             operating: None,
+            geometry_schedules: Vec::new(),
             runoff: None,
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: SurfaceChannelConfig {

@@ -216,6 +216,8 @@ pub struct SurfaceChannelSetup {
     pub operating: Option<SurfaceChannelOperating>,
     /// Native runoff owned by the coordinator, or `None` without it.
     pub runoff: Option<SurfaceChannelRunoff>,
+    /// Prescribed structure geometry schedules in declaration order.
+    pub geometry_schedules: Vec<crate::structures::StructureGeometrySchedule>,
     /// Evidence that surface cells, channel cells, and pools store no water twice.
     pub storage_exclusion_evidence: String,
     /// Explicit dimensional tolerances, common duration limits, and work limits.

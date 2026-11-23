@@ -308,6 +308,7 @@ fn parts() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState), Error> {
         structures: vec![spill()?],
         pool_ends: Vec::new(),
         operating: None,
+        geometry_schedules: Vec::new(),
         runoff: Some(runoff()?),
         storage_exclusion_evidence: "The reach and the pond lie outside the surface".into(),
         config: SurfaceChannelConfig {
