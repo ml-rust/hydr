@@ -26,7 +26,7 @@ mod output;
 mod parameters;
 
 pub use barrel::{CulvertBarrel, CulvertBarrelShape, CulvertFloor};
-pub use batch::CulvertBarrelBatch;
+pub use batch::{BarrelDepthCertificate, CulvertBarrelBatch};
 pub use capabilities::culvert_barrel_capabilities;
 pub use depth::{
     BarrelDepthStatus, CriticalDepthStatus, CulvertBarrelDepth, CulvertBarrelDepthRow,

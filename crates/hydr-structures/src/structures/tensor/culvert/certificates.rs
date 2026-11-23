@@ -10,7 +10,7 @@
 
 use super::context::{Bounds, TensorBarrelContext};
 use crate::structures::numerics::culvert::BarrelClient;
-use crate::structures::numerics::culvert::certify::{self, ArcCertificates};
+use crate::structures::numerics::culvert::certify::{self, DepthCertificates, Reading};
 use crate::structures::numerics::culvert::constants::CIRCLE_CRITICAL_TOP;
 use crate::structures::{CulvertBarrel, StructureError};
 use numr::dtype::DType;
@@ -59,23 +59,23 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
         let targets = Tensor::<R>::from_slice(&arc_rows, &[arc_rows.len()], device)?;
         let copies = Tensor::<R>::from_slice(&copies, &[copies.len()], device)?;
         let unit = self.unit()?.select(&index)?;
-        let Some(rows) = &unit.arcs else {
+        if unit.arcs.is_none() {
             return Err(StructureError::numerical(
                 "the unit-rise context lost its arc rows: report this runtime",
             ));
-        };
+        }
         let certificates = with_interval_arithmetic(
             &self.client,
             DType::F64,
             "culvert arc barrel certificates",
-            |a| certify::certify(a, &unit, rows, rounds),
+            |a| certify::certify(a, &unit, Reading::Arcs, rounds),
         )?;
         let c = &self.client;
         let failed = c.sum(&certificates.failed, &[0], false)?.item::<f64>()?;
         if failed != 0.0 {
-            return Err(rejection(barrels, &owners, &certificates));
+            return Err(rejection(barrels, &owners, &certificates, false));
         }
-        let ArcCertificates {
+        let DepthCertificates {
             critical_slope,
             normal_top,
             normal_slope,
@@ -105,11 +105,13 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
     }
 }
 
-/// Names the first failing arc row. Reads the failing mask to the host.
-fn rejection<R: Runtime<DType = DType>>(
+/// Names the first failing row, with its floor when `floored`. Reads the failing mask to the
+/// host.
+pub(super) fn rejection<R: Runtime<DType = DType>>(
     barrels: &[CulvertBarrel],
     owners: &[usize],
-    certificates: &ArcCertificates<R>,
+    certificates: &DepthCertificates<R>,
+    floored: bool,
 ) -> StructureError {
     let failed = match certificates.failed.try_to_vec::<f64>() {
         Ok(failed) => failed,
@@ -117,16 +119,25 @@ fn rejection<R: Runtime<DType = DType>>(
     };
     let first = failed.iter().position(|&flag| flag != 0.0);
     match first.and_then(|k| owners.get(k).map(|&row| (row, barrels.get(row)))) {
-        Some((row, Some(barrel))) => StructureError::definition(format!(
-            "shape={:?},span_m={:?},rise_m={:?},given_radius_m={:?}: conveyance has no certified single peak below the crown. Change the dimensions or report this barrel",
-            barrel.shape(),
-            barrel.span_m(),
-            barrel.rise_m(),
-            barrel.given_radius_m().unwrap_or(&[]),
-        ))
-        .at(row),
+        Some((row, Some(barrel))) => {
+            let bed = match barrel.floor().filter(|_| floored) {
+                Some(floor) => format!(
+                    ",sediment_depth_m={:?},roughness_ratio={:?}",
+                    floor.sediment_depth_m, floor.roughness_ratio
+                ),
+                None => String::new(),
+            };
+            StructureError::definition(format!(
+                "shape={:?},span_m={:?},rise_m={:?},given_radius_m={:?}{bed}: conveyance has no certified single peak below the crown. Change the dimensions or report this barrel",
+                barrel.shape(),
+                barrel.span_m(),
+                barrel.rise_m(),
+                barrel.given_radius_m().unwrap_or(&[]),
+            ))
+            .at(row)
+        }
         _ => StructureError::numerical(
-            "the device certificate count found a failing arc row that the host copy does not show: report this runtime",
+            "the device certificate count found a failing row that the host copy does not show: report this runtime",
         ),
     }
 }

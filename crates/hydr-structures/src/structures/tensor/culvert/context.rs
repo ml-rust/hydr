@@ -43,22 +43,28 @@ pub(crate) struct TensorBarrelContext<R: Runtime<DType = DType>> {
     pub(crate) shallow_operand: Tensor<R>,
     pub(crate) series: SeriesTensors<R>,
     /// Upper end of the critical-depth domain in `s = y/D`: `1 - 2^-53` circle and arc, `1` box.
+    /// Floored circle and arc rows hold `1 - 2^-52` in `s = y/D'`.
     pub(crate) critical_top: Tensor<R>,
     /// Lower bound of `d r_c / ds` on the critical domain: `5.4` circle, `3` box, the
-    /// certified `kappa_c` arc.
+    /// certified `kappa_c` arc and floored circle.
     pub(crate) critical_slope: Tensor<R>,
     /// Upper end of the normal-depth domain in `s = y/D`: `s_N = 0.93818` circle, `1` box, the
-    /// certified rising-limb top arc.
+    /// certified rising-limb top arc and floored circle.
     pub(crate) normal_top: Tensor<R>,
     /// Lower bound of `d r_n / ds` on the normal domain: `5.42e-5` circle, `3` box, the
-    /// certified `kappa_n` arc.
+    /// certified `kappa_n` arc and floored circle.
     pub(crate) normal_slope: Tensor<R>,
     /// Enclosure in `s` of the conveyance peak: the frozen circle bounds, `[1, 1]` for a box,
-    /// whose conveyance rises to the crown, and the certified `[s_N, s_F]` arc.
+    /// whose conveyance rises to the crown, and the certified `[s_N, s_F]` arc and floored circle.
     pub(crate) conveyance_peak: Bounds<R>,
     /// Enclosure of `ln k_max`, the log peak conveyance `a^(5/3) / p^(2/3)` in unit geometry:
     /// the frozen circle bounds and the certified arc bounds. Zero on box rows, which never read it.
+    /// Floored circle and arc rows hold `(5 ln A - 2 ln P_n) / 3` in their frame.
     pub(crate) log_peak: Bounds<R>,
+    /// `[s_j, kappa_j]` per rising-limb knot: `kappa_j` bounds `d r_n / ds` below on
+    /// `[2^-30, s_j]` of a floored circle or arc row. Other rows hold `[1/2, 1]`, which no query
+    /// reads. `None` when no row is a floored circle or arc barrel.
+    pub(crate) limb: Option<Vec<Bounds<R>>>,
     pub(crate) full_area: Bounds<R>,
     pub(crate) full_perimeter: Bounds<R>,
     pub(crate) full_radius: Bounds<R>,
@@ -70,8 +76,9 @@ pub(crate) struct TensorBarrelContext<R: Runtime<DType = DType>> {
     pub(crate) unit_arcs: Option<ArcRows<R>>,
     /// Each row's frame, where point geometry runs. `None` when every row is its own frame.
     pub(crate) frame: Option<Box<BarrelFrame<R>>>,
-    /// Open sections above each declared floor. `None` when no row has a floor. The fields
-    /// above describe the barrel without its floor.
+    /// Open sections above each declared floor. `None` when no row has a floor. The geometry
+    /// fields above describe the barrel without its floor. The depth domains, slope floors and
+    /// peak bounds of a floored row describe its open section.
     pub(crate) floor: Option<Box<FloorRows<R>>>,
 }
 
@@ -170,6 +177,7 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             normal_slope: take(&self.normal_slope)?,
             conveyance_peak: pair(&self.conveyance_peak)?,
             log_peak: pair(&self.log_peak)?,
+            limb: self.limb.as_deref().map(table).transpose()?,
             full_area: pair(&self.full_area)?,
             full_perimeter: pair(&self.full_perimeter)?,
             full_radius: pair(&self.full_radius)?,
@@ -222,7 +230,9 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
                 &framed,
             )?))
         };
-        Self::rows(client, barrels, frame)?.certify_arcs(barrels, rounds)
+        Self::rows(client, barrels, frame)?
+            .certify_arcs(barrels, rounds)?
+            .certify_floors(barrels, rounds)
     }
 
     /// Uploads the rows and encloses the full-state constants, without depth certificates.
@@ -352,6 +362,7 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             normal_slope,
             conveyance_peak,
             log_peak,
+            limb: None,
             full_area,
             full_perimeter,
             full_radius,
@@ -362,6 +373,11 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
         };
         context.floor = FloorRows::new(&context, barrels)?.map(Box::new);
         Ok(context)
+    }
+
+    /// Rise of the depth domain per row: the open rise `D'` above a floor, `D` elsewhere. Exact.
+    pub(crate) fn open_rise(&self) -> &Tensor<R> {
+        self.floor.as_deref().map_or(&self.rise, |floor| &floor.top)
     }
 
     /// Barrel count `m`.

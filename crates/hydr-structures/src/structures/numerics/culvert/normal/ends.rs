@@ -29,9 +29,11 @@ use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
-use solvr::common::arithmetic::ArithmeticResult;
+use solvr::common::arithmetic::{ArithmeticResult, Interval};
 
 /// Classifies every row from the residual at both domain ends and the circle peak.
+///
+/// Returns the row classes with the slope floor of each row's solver domain.
 pub(super) fn classify<R>(
     a: &mut Arithmetic<'_, R>,
     barrel: &TensorBarrelContext<R>,
@@ -39,7 +41,7 @@ pub(super) fn classify<R>(
     discharge: &Tensor<R>,
     roughness: &Tensor<R>,
     slope: &Tensor<R>,
-) -> ArithmeticResult<Ends<R>>
+) -> ArithmeticResult<(Ends<R>, Tensor<R>)>
 where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R>,
@@ -112,12 +114,47 @@ where
     status = c.where_cond(&solved, &code(codes::NORMAL_SOLVED)?, &status)?;
     status = c.where_cond(&flat, &code(codes::NORMAL_NON_POSITIVE_SLOPE)?, &status)?;
 
-    Ok(Ends {
-        target: [row_target.lower().clone(), row_target.upper().clone()],
-        status,
-        enclosed: c.sub(&c.sub(one, &above_capacity)?, &flat)?,
-        solver_top: c.where_cond(&solved, top, &floor)?,
-        solved,
-        fraction: [lower, upper],
-    })
+    let (limb_top, limb_slope) = limb(a, barrel, unit, &row_target)?;
+    Ok((
+        Ends {
+            target: [row_target.lower().clone(), row_target.upper().clone()],
+            status,
+            enclosed: c.sub(&c.sub(one, &above_capacity)?, &flat)?,
+            solver_top: c.where_cond(&solved, &limb_top, &floor)?,
+            solved,
+            fraction: [lower, upper],
+        },
+        limb_slope,
+    ))
+}
+
+/// The domain top and slope floor of each bracketed row: `s_N` and `kappa_n`, or on a floored
+/// circle or arc row the first rising-limb knot `s_j` certified above the root, with `kappa_j`.
+///
+/// `r_n(s_j).lower > 0` places the root below `s_j`, so `[2^-30, s_j]` still brackets it.
+fn limb<R>(
+    a: &mut Arithmetic<'_, R>,
+    barrel: &TensorBarrelContext<R>,
+    unit: &TensorBarrelContext<R>,
+    row_target: &Interval<R>,
+) -> ArithmeticResult<(Tensor<R>, Tensor<R>)>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    let mut top = barrel.normal_top.clone();
+    let mut slope = barrel.normal_slope.clone();
+    let (Some(knots), Some(rows)) = (&barrel.limb, &barrel.floor) else {
+        return Ok((top, slope));
+    };
+    let c = a.client();
+    let open = c.sub(&rows.floored, &rows.boxed)?;
+    // From the highest knot down, so the lowest knot above the root decides.
+    for [knot, floor] in knots.iter().rev() {
+        let value = residual(a, barrel, unit, row_target, knot)?;
+        let above = c.mul(&open, &c.gt(value.lower(), &barrel.zero)?)?;
+        top = c.where_cond(&above, knot, &top)?;
+        slope = c.where_cond(&above, floor, &slope)?;
+    }
+    Ok((top, slope))
 }

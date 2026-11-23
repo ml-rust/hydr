@@ -22,11 +22,13 @@
 
 mod bed;
 mod chain;
+mod depth;
 mod frame;
 mod layout;
 mod point;
 mod range;
 
+pub(crate) use depth::{at_fraction, frame_depths, log_scale};
 pub(crate) use layout::{FloorInputs, FloorLayout, layout};
 pub(crate) use point::{FloorSection, at_depth};
 pub(crate) use range::over_depth;

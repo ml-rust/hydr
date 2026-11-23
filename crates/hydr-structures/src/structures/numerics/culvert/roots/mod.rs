@@ -3,7 +3,8 @@
 //! Each depth query writes an increasing log residual in `s = y/D` and classifies its rows from
 //! the residual at both domain ends first. Bracketed rows get the domain `[2^-30, top]`. Every
 //! other row gets `[2^-30, 2^-30]`, so the solver classifies it from one endpoint. Depth
-//! enclosures are `D` times the enclosure in `s`, rounded outward and capped at `D`.
+//! enclosures are `D` times the enclosure in `s`, rounded outward and capped at `D`. Above a
+//! floor the open rise `D'` takes the place of `D` and depths run up from the bed.
 
 mod signs;
 
@@ -144,13 +145,11 @@ where
         let lower = c.where_cond(&failed, &barrel.one, &lower)?;
         let upper = c.where_cond(&failed, &barrel.zero, &upper)?;
         let fraction = a.bounds(&lower, &upper)?;
-        let rise = a.point(&barrel.rise)?;
+        let open = barrel.open_rise();
+        let rise = a.point(open)?;
         let depth = a.mul(&rise, &fraction)?;
-        // Every enclosure lies in s <= 1, so the exact crown D caps the rounded product.
-        Ok([
-            depth.lower().clone(),
-            c.minimum(depth.upper(), &barrel.rise)?,
-        ])
+        // Every enclosure lies in s <= 1, so the exact crown caps the rounded product.
+        Ok([depth.lower().clone(), c.minimum(depth.upper(), open)?])
     });
     let [lower, upper] = match depth {
         Ok(depth) => depth,

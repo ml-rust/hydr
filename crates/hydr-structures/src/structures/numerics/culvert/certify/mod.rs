@@ -33,10 +33,37 @@
 //! a positive one or inside `[s_N, s_F]` after the last round, when no negative run reaches
 //! the top, or when `s_F - s_N` stays above `2^-20`. A failing row has no certified single
 //! conveyance peak below the crown.
+//!
+//! # Above a floor
+//!
+//! A circle or arc barrel with a floor certifies its open section in `s = y/D'`, with `D'` the
+//! open rise and `y` measured up from the bed. The bed width `b = T(0)` and the weighted
+//! perimeter `P_n = P_w + rho^(3/2) b` replace `T(0) = 0` and `P`, and the cover runs in each
+//! row's frame, the barrel scaled by a power of two to a rise in `[1, 2)`.
+//!
+//! - Below the widest depth `T` is concave and increasing with `T(0) = b >= 0`, so the critical
+//!   floor `2` holds as above. `P_n` is concave with `P_n(0) = rho^(3/2) b >= 0`, so
+//!   `y P_n' <= P_n` and `d r_n / ds = D' (5 T/A - 2 P_n'/P_n) >= 3/s >= 3`.
+//! - A bed at or above the widest depth has `T` falling from the bed, so `A <= y T` fails. The
+//!   cover then starts at `2^-30`. There `3 T/A > 0` and `-T'/T >= 0`, so no critical piece
+//!   bound is negative.
+//! - The domain top is `1 - 2^-52`. Its frame depth `D'_f (1 - 2^-52)` rounds up to at most the
+//!   F64 below `D'_f`, so every piece stays below the crown.
+//! - `P_n` moves the peak with `rho`, so each row gets its own peak and `log_peak` encloses the
+//!   log frame conveyance `(5 ln A_f - 2 ln P_n,f) / 3`.
+//! - `kappa_n` is small, because the slope falls to zero at the peak. Knot `j` of the rising
+//!   limb ends the run of first-cover pieces whose normal lower bound reaches `2^(1 - j)`, and
+//!   `kappa_j` bounds the slope on `[2^-30, s_j]`. A root certified below `s_j` then takes the
+//!   domain `[2^-30, s_j]` with the floor `kappa_j`, so the solver's slope correction stays
+//!   tight away from the peak.
+//!
+//! A box with a floor keeps the box constants: `d r_c / ds = 3/s`, and
+//! `d r_n / ds = 5/s - 4 D' / (rho^(3/2) B + 2 D' s) >= 5/s - 2/s = 3/s`.
 
 #[cfg(test)]
 mod certificate_rows;
 mod cover;
+mod floors;
 mod slopes;
 
 pub(crate) use cover::{REFINEMENT_ROUNDS, certify};
@@ -46,9 +73,18 @@ use numr::dtype::DType;
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
-/// Certificates of `[k]` unit-rise arc rows.
-pub(crate) struct ArcCertificates<R: Runtime<DType = DType>> {
-    /// `kappa_c`, a lower bound of `d r_c / ds` on `[2^-30, 1 - 2^-53]`.
+/// The sections a cover reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Reading {
+    /// Unit-rise arc rows.
+    Arcs,
+    /// Open sections above each floor, in each row's frame.
+    Floors,
+}
+
+/// Certificates of `[k]` rows.
+pub(crate) struct DepthCertificates<R: Runtime<DType = DType>> {
+    /// `kappa_c`, a lower bound of `d r_c / ds` on the critical domain.
     pub(crate) critical_slope: Tensor<R>,
     /// `s_N`, the top of the rising limb.
     pub(crate) normal_top: Tensor<R>,
@@ -58,6 +94,9 @@ pub(crate) struct ArcCertificates<R: Runtime<DType = DType>> {
     pub(crate) peak: Bounds<R>,
     /// Enclosure of the log unit conveyance over the peak enclosure.
     pub(crate) log_peak: Bounds<R>,
+    /// `[s_j, kappa_j]` per rising-limb knot above a floor: `kappa_j` bounds `d r_n / ds` below
+    /// on `[2^-30, s_j]`. `None` on arc rows.
+    pub(crate) limb: Option<Vec<Bounds<R>>>,
     /// 1 on rows without a certificate.
     pub(crate) failed: Tensor<R>,
 }

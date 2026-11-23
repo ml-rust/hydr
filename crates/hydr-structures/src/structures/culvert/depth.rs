@@ -23,7 +23,8 @@ pub trait BarrelDepthStatus: sealed::Sealed + Copy + Debug + PartialEq {}
 ///
 /// The search domain is `[D 2^-30, top]`, with `top = D (1 - 2^-53)` for a circle and `D` for
 /// a box. A circle has one critical depth below the crown for every `Q > 0`. A box has one only
-/// for `Q <= sqrt(g) B D^(3/2)`.
+/// for `Q <= sqrt(g) B D^(3/2)`. Above a floor the open rise `D'` replaces `D`, depths run up
+/// from the bed, and a circle or arc barrel ends its domain at `D' (1 - 2^-52)`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CriticalDepthStatus {
     /// Zero discharge. The depth is exactly `[0, 0]`.
@@ -36,7 +37,8 @@ pub enum CriticalDepthStatus {
     /// ends at `D`. A box root lies in it when `Q` does not exceed the crown limit.
     AtCrown,
     /// Certified above the domain top. A circle root lies within `2^-53 D` of the crown, in the
-    /// enclosure `[D (1 - 2^-53), D]`. A box has no free-surface critical depth and no enclosure.
+    /// enclosure `[D (1 - 2^-53), D]`. Above a floor the enclosure is `[D' (1 - 2^-52), D']`.
+    /// A box has no free-surface critical depth and no enclosure.
     AboveCrown,
 }
 
@@ -63,6 +65,8 @@ impl BarrelDepthStatus for CriticalDepthStatus {}
 /// Circle conveyance peaks at `s_K D`, `s_K = 0.9381812`, above the full-barrel conveyance,
 /// and falls from there to the crown. Box conveyance rises up to its open-section limit at the
 /// crown, which exceeds the full-barrel conveyance. Full-barrel flow is the caller's branch.
+/// Above a floor the open rise `D'` replaces `D`, depths run up from the bed, and the
+/// conveyance is `A^(5/3) / P_n^(2/3)` with the wall `n`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NormalDepthStatus {
     /// Zero discharge on a positive slope. The depth is exactly `[0, 0]`.
@@ -102,7 +106,8 @@ impl BarrelDepthStatus for NormalDepthStatus {}
 /// Certified depth per barrel row, as status codes and lower and upper F64 `[m]` tensors.
 ///
 /// Every exact root that the status places in an enclosure lies inside its `[lower, upper]`
-/// pair, in metres above the invert. Rows without an enclosure hold NaN endpoints.
+/// pair, in metres above the invert, or above the bed of a barrel with a floor. Rows without an
+/// enclosure hold NaN endpoints.
 pub struct CulvertBarrelDepth<R: Runtime<DType = DType>, S: BarrelDepthStatus> {
     status: Tensor<R>,
     lower: Tensor<R>,

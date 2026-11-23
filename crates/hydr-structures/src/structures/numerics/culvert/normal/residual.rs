@@ -9,17 +9,25 @@
 //!
 //! Both rise in `s` on their domains. The bracketed term is the row target, fixed per query.
 //! Unit geometry keeps the area of a tiny rise away from underflow.
+//!
+//! Above a floor `s = y/D'`, with `y` from the bed and `D'` the open rise. Friction takes the
+//! wall `n` and the weighted perimeter `P_n = P_w + rho^(3/2) b` in place of `P`.
+//!
+//! - A circle and an arc barrel read `A = 2^2e A_f` and `P_n = 2^e P_n,f` from frame geometry,
+//!   so `r_n = 5 ln A_f - 2 ln P_n,f - (3 ln Q + 3 ln n - 1.5 ln S - 8 e ln 2)`.
+//! - A box has `A = B D' s` and `P_n = rho^(3/2) B + 2 D' s`.
 
-use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose, section};
+use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose, floor, section};
 use crate::structures::tensor::culvert::TensorBarrelContext;
 use numr::dtype::DType;
-use numr::ops::{CompareOps, ConditionalOps};
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval};
 
 /// Encloses the row target `3 ln Q + 3 ln n - 1.5 ln S` minus `8 ln D` (circle and arc) or
-/// `5 ln B + 5 ln D` (box).
+/// `5 ln B + 5 ln D` (box). Above a floor, `D'` replaces `D` and a circle or arc row subtracts
+/// `8 e ln 2`.
 ///
 /// `discharge`, `roughness` and `slope` are `[m]` tensors. Rows with zero discharge take a unit
 /// discharge and rows with a nonpositive slope a unit slope, so the caller must classify them
@@ -44,7 +52,7 @@ where
     let ln_n = a.log_positive(&n)?;
     let s = a.point(&c.where_cond(&sloped, slope, &barrel.one)?)?;
     let ln_s = a.log_positive(&s)?;
-    let d = a.point(&barrel.rise)?;
+    let d = a.point(barrel.open_rise())?;
     let ln_d = a.log_positive(&d)?;
     let b = a.point(&barrel.span)?;
     let ln_b = a.log_positive(&b)?;
@@ -59,6 +67,15 @@ where
     let drive = a.mul(&three_halves, &ln_s)?;
     let flow = a.sub(&resistance, &drive)?;
     let circle = a.mul(&eight, &ln_d)?;
+    let circle = match &barrel.floor {
+        Some(rows) => {
+            let open = c.sub(&rows.floored, &rows.boxed)?;
+            let ln_scale = floor::log_scale(a, barrel)?;
+            let framed = a.mul(&eight, &ln_scale)?;
+            choose(a, &open, &framed, &circle)?
+        }
+        None => circle,
+    };
     let both = a.add(&ln_b, &ln_d)?;
     let rectangle = a.mul(&five, &both)?;
     let scale = choose(a, &barrel.boxed, &rectangle, &circle)?;
@@ -68,8 +85,8 @@ where
 /// Encloses `r_n` at the depth fractions `fraction` (`[m]`) against the stored row `target`.
 ///
 /// `unit` holds the unit-rise rows of the same width. Every fraction must lie in
-/// `[2^-30, s_N]` on circle and arc rows and in `[2^-30, 1]` on box rows. Other fractions
-/// reject the enclosing call at its completion check, or leave the rising limb.
+/// `[2^-30, s_N]` on circle and arc rows, floored or not, and in `[2^-30, 1]` on box rows. Other
+/// fractions reject the enclosing call at its completion check, or leave the rising limb.
 pub(crate) fn residual<R>(
     a: &mut Arithmetic<'_, R>,
     barrel: &TensorBarrelContext<R>,
@@ -98,8 +115,17 @@ where
     let box_fraction = c.where_cond(&barrel.boxed, fraction, &half)?;
     let s = a.point(&box_fraction)?;
     let ln_s = a.log_positive(&s)?;
-    let d = a.point(&barrel.rise)?;
+    let d = a.point(barrel.open_rise())?;
     let b = a.point(&barrel.span)?;
+    // A floored box wets its bed with the weight rho^(3/2).
+    let b = match &barrel.floor {
+        Some(rows) => {
+            let [lower, upper] = &rows.weighted_bed;
+            let weighted = a.bounds(lower, upper)?;
+            choose(a, &rows.floored, &weighted, &b)?
+        }
+        None => b,
+    };
     let depth = a.mul(&d, &s)?;
     let walls = a.mul(&two, &depth)?;
     let perimeter = a.add(&b, &walls)?;
@@ -109,6 +135,18 @@ where
     let rectangle = a.sub(&area_term, &perimeter_term)?;
 
     let shape = choose(a, &barrel.boxed, &rectangle, &circle)?;
+    let shape = match &barrel.floor {
+        Some(rows) => {
+            let open = floor::at_fraction(a, barrel, rows, fraction)?;
+            let ln_area = a.log_positive(&open.geometry.area)?;
+            let ln_weighted = a.log_positive(&open.geometry.weighted)?;
+            let area_term = a.mul(&five, &ln_area)?;
+            let perimeter_term = a.mul(&two, &ln_weighted)?;
+            let framed = a.sub(&area_term, &perimeter_term)?;
+            choose(a, &open.rows, &framed, &shape)?
+        }
+        None => shape,
+    };
     a.sub(&shape, target)
 }
 

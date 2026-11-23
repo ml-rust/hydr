@@ -32,14 +32,14 @@ pub(super) struct PieceSlopes<R: Runtime<DType = DType>> {
 }
 
 /// `A`, `T` and `P` over a piece.
-struct Flow<'f, R: Runtime<DType = DType>> {
-    area: &'f Interval<R>,
-    width: &'f Interval<R>,
-    perimeter: &'f Interval<R>,
+pub(super) struct Flow<'f, R: Runtime<DType = DType>> {
+    pub(super) area: &'f Interval<R>,
+    pub(super) width: &'f Interval<R>,
+    pub(super) perimeter: &'f Interval<R>,
 }
 
 /// Lower and upper bounds of one part, with its known mask.
-type Part<R> = (Tensor<R>, Tensor<R>, Tensor<R>, Tensor<R>);
+pub(super) type Part<R> = (Tensor<R>, Tensor<R>, Tensor<R>, Tensor<R>);
 
 /// Encloses both slopes over the pieces `[lower, upper]` of the unit-rise rows `unit`.
 ///
@@ -82,6 +82,7 @@ where
         a,
         corner,
         &flow,
+        None,
         &on_corner,
         [
             &c.where_cond(&on_corner, lower, corner_middle)?,
@@ -94,6 +95,7 @@ where
         a,
         top,
         &flow,
+        None,
         &on_top,
         [
             &c.where_cond(&on_top, &top_bottom, top_middle)?,
@@ -114,7 +116,7 @@ where
 }
 
 /// `x` where `mask` is 1 and `fill` elsewhere.
-fn guard<R>(
+pub(super) fn guard<R>(
     a: &mut Arithmetic<'_, R>,
     mask: &Tensor<R>,
     x: &Interval<R>,
@@ -132,11 +134,13 @@ where
 
 /// Both slopes from the arc `band` over the depths `[from, to]` of the rows `applies` marks.
 ///
-/// Rows outside `applies` must carry a depth inside the band's circle.
-fn part<R>(
+/// Rows outside `applies` must carry a depth inside the band's circle. The slopes are in
+/// `d / dy`, times `scale` when one is given, which turns them into `d / ds` with `y = scale s`.
+pub(super) fn part<R>(
     a: &mut Arithmetic<'_, R>,
     band: &ArcBand<R>,
     flow: &Flow<'_, R>,
+    scale: Option<&Interval<R>>,
     applies: &Tensor<R>,
     [from, to]: [&Tensor<R>; 2],
 ) -> ArithmeticResult<Part<R>>
@@ -187,6 +191,10 @@ where
     let wetting = a.div_positive_interval(&radius, &wall)?;
     let wetting = a.mul(&four, &wetting)?;
     let normal = a.sub(&gain, &wetting)?;
+    let (critical, normal) = match scale {
+        Some(scale) => (a.mul(scale, &critical)?, a.mul(scale, &normal)?),
+        None => (critical, normal),
+    };
 
     let inf = constant(f64::INFINITY)?;
     let minus_inf = constant(f64::NEG_INFINITY)?;

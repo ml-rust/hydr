@@ -1,15 +1,17 @@
 //! The piece cover, its refinement rounds and the per-row reductions.
 
-use super::ArcCertificates;
 use super::slopes::{PieceSlopes, over_pieces};
-use crate::structures::numerics::culvert::constants::{CIRCLE_CRITICAL_TOP, CRITICAL_FLOOR};
+use super::{DepthCertificates, Reading, floors};
+use crate::structures::numerics::culvert::constants::{
+    CIRCLE_CRITICAL_TOP, CRITICAL_FLOOR, FLOOR_CRITICAL_TOP,
+};
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, section};
-use crate::structures::tensor::culvert::{ArcRows, TensorBarrelContext};
+use crate::structures::tensor::culvert::{ArcRows, Bounds, TensorBarrelContext};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
-use solvr::common::arithmetic::ArithmeticResult;
+use solvr::common::arithmetic::{ArithmeticResult, Interval};
 
 /// Pieces of the first cover per row.
 const COVER_PIECES: usize = 512;
@@ -22,6 +24,9 @@ pub(crate) const REFINEMENT_ROUNDS: usize = 16;
 
 /// Widest certified peak enclosure `s_F - s_N`, `2^-20`.
 const PEAK_WIDTH: f64 = 1.0 / 1_048_576.0;
+
+/// Knots of the rising limb above a floor, with thresholds `2, 1, ..., 2^-6`.
+const LIMB_KNOTS: usize = 8;
 
 /// Pieces of every row: the row of each piece and the fractions of its ends in its span.
 struct Grid<R: Runtime<DType = DType>> {
@@ -140,21 +145,27 @@ impl<R: Runtime<DType = DType>> Run<R> {
     }
 }
 
-/// Certifies the `[k]` unit-rise arc rows `unit` with `rounds` refinement rounds.
+/// Certifies the `[k]` rows `unit` with `rounds` refinement rounds.
+///
+/// `Arcs` reads unit-rise arc rows. `Floors` reads the open sections of framed rows.
 pub(crate) fn certify<R>(
     a: &mut Arithmetic<'_, R>,
     unit: &TensorBarrelContext<R>,
-    rows: &ArcRows<R>,
+    reading: Reading,
     rounds: usize,
-) -> ArithmeticResult<ArcCertificates<R>>
+) -> ArithmeticResult<DepthCertificates<R>>
 where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R>,
 {
     let c = a.client();
     let floor = unit.constant(CRITICAL_FLOOR)?;
-    let top = unit.constant(CIRCLE_CRITICAL_TOP)?;
-    let start = c.maximum(&rows.widest_depth[0], &floor)?;
+    let (widest, top) = match reading {
+        Reading::Arcs => (arc_rows(unit)?.widest_depth[0].clone(), CIRCLE_CRITICAL_TOP),
+        Reading::Floors => (floors::widest(a, unit)?, FLOOR_CRITICAL_TOP),
+    };
+    let top = unit.constant(top)?;
+    let start = c.maximum(&widest, &floor)?;
 
     // Pieces shrink as (1 - u)^2 toward the top, as equal normal angles do at the crown.
     let quadratic: Vec<f64> = (0..=COVER_PIECES)
@@ -165,7 +176,7 @@ where
         .collect();
     let cover = Grid::new(unit, &quadratic)?;
     let [lower, upper] = cover.ends(c, &start, &top)?;
-    let slopes = slopes_on(a, &cover, &lower, &upper)?;
+    let slopes = slopes_on(a, reading, &cover, &lower, &upper)?;
     let minus_inf = cover.unit.constant(f64::NEG_INFINITY)?;
     let critical = c.where_cond(&slopes.known, &slopes.critical_lower, &minus_inf)?;
     let critical = c.minimum(&cover.least(c, &critical)?, &unit.constant(2.0)?)?;
@@ -180,6 +191,10 @@ where
         inner: unit.zero.clone(),
     };
     run = advance(c, &cover, &run, [&lower, &upper], &slopes)?;
+    let knots = match reading {
+        Reading::Floors => Some(limb_knots(c, &cover, [&lower, &upper], &slopes, &top)?),
+        Reading::Arcs => None,
+    };
     let linear: Vec<f64> = (0..=ROUND_PIECES)
         .map(|i| i as f64 / ROUND_PIECES as f64)
         .collect();
@@ -187,7 +202,7 @@ where
     let width = unit.constant(PEAK_WIDTH)?;
     for _ in 0..rounds {
         let [lower, upper] = round.ends(c, &run.low, &run.high)?;
-        let slopes = slopes_on(a, &round, &lower, &upper)?;
+        let slopes = slopes_on(a, reading, &round, &lower, &upper)?;
         // A row whose gap is already narrow keeps it, so its slope floor stays clear of zero.
         let active = c.gt(&c.sub(&run.high, &run.low)?, &width)?;
         let next = advance(c, &round, &run, [&lower, &upper], &slopes)?;
@@ -200,28 +215,105 @@ where
         &c.maximum(&run.failed, &run.inner)?,
         &c.maximum(&open, &wide)?,
     )?;
-    let geometry = section::over_depth(a, unit, &run.low, &run.high)?.geometry;
-    let ln_area = a.log_positive(&geometry.area)?;
-    let ln_perimeter = a.log_positive(&geometry.perimeter)?;
+    let [area, perimeter] = conveyance(a, reading, unit, &run.low, &run.high)?;
+    let ln_area = a.log_positive(&area)?;
+    let ln_perimeter = a.log_positive(&perimeter)?;
     let five = a.point(&unit.constant(5.0)?)?;
     let two = a.point(&unit.constant(2.0)?)?;
     let area_term = a.mul(&five, &ln_area)?;
     let perimeter_term = a.mul(&two, &ln_perimeter)?;
     let log_cube = a.sub(&area_term, &perimeter_term)?;
     let log_peak = a.div_positive(&log_cube, &unit.constant(3.0)?)?;
-    Ok(ArcCertificates {
+    // A knot never passes s_N, so its floor covers a part of the rising limb.
+    let limb = knots
+        .map(|knots| {
+            knots
+                .into_iter()
+                .map(|[knot, floor]| Ok([c.minimum(&knot, &run.low)?, floor]))
+                .collect::<numr::error::Result<Vec<_>>>()
+        })
+        .transpose()?;
+    Ok(DepthCertificates {
         critical_slope,
         normal_top: run.low.clone(),
         normal_slope: run.slope,
         peak: [run.low, run.high],
         log_peak: [log_peak.lower().clone(), log_peak.upper().clone()],
+        limb,
         failed,
     })
+}
+
+/// Knots `s_j` of the rising limb with lower bounds `kappa_j` of `d r_n / ds` on `[2^-30, s_j]`.
+///
+/// Knot `j` ends the run of cover pieces whose normal lower bound reaches `2^(1 - j)`, so
+/// `kappa_j` is at least that threshold or the lower-part floor `3`. Knots rise and floors fall
+/// with `j`.
+fn limb_knots<R>(
+    c: &R::Client,
+    grid: &Grid<R>,
+    [lower, upper]: [&Tensor<R>; 2],
+    slopes: &PieceSlopes<R>,
+    top: &Tensor<R>,
+) -> numr::error::Result<Vec<Bounds<R>>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    let three = grid.unit.constant(3.0)?;
+    let cap = grid.least(c, &three)?;
+    let tops = grid.spread(c, top)?;
+    (0..LIMB_KNOTS)
+        .map(|j| {
+            let threshold = grid.unit.constant(2f64.powi(1 - j as i32))?;
+            let strong = c.mul(&slopes.known, &c.ge(&slopes.normal_lower, &threshold)?)?;
+            // The first piece below the threshold starts the knot. Every piece before it is strong.
+            let knot = grid.least(c, &c.where_cond(&strong, &tops, lower)?)?;
+            let before = c.le(upper, &grid.spread(c, &knot)?)?;
+            let floor = grid.least(c, &c.where_cond(&before, &slopes.normal_lower, &three)?)?;
+            Ok([knot, c.minimum(&floor, &cap)?])
+        })
+        .collect()
+}
+
+/// The arc rows of `unit`, which must hold them.
+fn arc_rows<R: Runtime<DType = DType>>(
+    unit: &TensorBarrelContext<R>,
+) -> ArithmeticResult<&ArcRows<R>> {
+    unit.arcs.as_ref().ok_or_else(|| {
+        numr::error::Error::InvalidArgument {
+            arg: "unit",
+            reason: "arc certificates need arc rows".into(),
+        }
+        .into()
+    })
+}
+
+/// `A` and the friction perimeter over `[low, high]`: `P` on arc rows, `P_n` above a floor.
+fn conveyance<R>(
+    a: &mut Arithmetic<'_, R>,
+    reading: Reading,
+    unit: &TensorBarrelContext<R>,
+    low: &Tensor<R>,
+    high: &Tensor<R>,
+) -> ArithmeticResult<[Interval<R>; 2]>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    match reading {
+        Reading::Arcs => {
+            let geometry = section::over_depth(a, unit, low, high)?.geometry;
+            Ok([geometry.area, geometry.perimeter])
+        }
+        Reading::Floors => floors::conveyance(a, unit, low, high),
+    }
 }
 
 /// Slopes over the pieces of `grid`.
 fn slopes_on<R>(
     a: &mut Arithmetic<'_, R>,
+    reading: Reading,
     grid: &Grid<R>,
     lower: &Tensor<R>,
     upper: &Tensor<R>,
@@ -230,14 +322,10 @@ where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R>,
 {
-    let Some(rows) = &grid.unit.arcs else {
-        return Err(numr::error::Error::InvalidArgument {
-            arg: "unit",
-            reason: "arc certificates need arc rows".into(),
-        }
-        .into());
-    };
-    over_pieces(a, &grid.unit, rows, lower, upper)
+    match reading {
+        Reading::Arcs => over_pieces(a, &grid.unit, arc_rows(&grid.unit)?, lower, upper),
+        Reading::Floors => floors::over_pieces(a, &grid.unit, lower, upper),
+    }
 }
 
 /// Moves the run past the positive pieces and the gap top before the trailing negative run.

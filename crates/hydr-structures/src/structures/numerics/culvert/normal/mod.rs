@@ -14,6 +14,10 @@
 //! - Box conveyance rises up to the crown, where its open-section limit `K(D^-)` exceeds the
 //!   full-barrel conveyance. The domain ends at that limit. A target above it has no
 //!   free-surface uniform flow. Full-barrel friction above the crown is the caller's branch.
+//!
+//! Above a floor the domain is `s = y/D'` from the bed and the conveyance is
+//! `A^(5/3) / P_n^(2/3)` with the wall `n`. A floored circle or arc barrel takes its certified
+//! rising-limb top, slope floor and peak. A floored box keeps the box domain and floor.
 
 mod ends;
 mod residual;
@@ -69,15 +73,16 @@ where
     R::Client: BarrelClient<R> + CertifiedBisectionAlgorithms<R>,
 {
     let c = &barrel.client;
-    let ends = with_interval_arithmetic(c, DType::F64, "culvert normal depth ends", |a| {
-        ends::classify(a, barrel, unit, discharge, roughness, slope)
-    })?;
+    let (ends, floors) =
+        with_interval_arithmetic(c, DType::F64, "culvert normal depth ends", |a| {
+            ends::classify(a, barrel, unit, discharge, roughness, slope)
+        })?;
     roots::solve(
         barrel,
         unit,
         ends,
         roots::Stopping {
-            slope: &barrel.normal_slope,
+            slope: &floors,
             rtol,
             stage: "culvert normal residual",
         },
@@ -113,11 +118,12 @@ where
             "normal depth row={row}: the solver named a row past the barrel list. Report this runtime"
         )));
     };
-    let rise = entry.rise_m();
+    let rise = entry.open_rise_m();
     let top = rise * fraction;
     Ok(format!(
-        "normal depth shape={:?},rise_m={rise:?},span_m={:?},discharge_m3_per_s={discharge:?},manning_n={roughness:?},slope={slope:?},bracket_m=[{:?}, {top:?}]",
+        "normal depth shape={:?},rise_m={:?},open_rise_m={rise:?},span_m={:?},discharge_m3_per_s={discharge:?},manning_n={roughness:?},slope={slope:?},bracket_m=[{:?}, {top:?}]",
         entry.shape(),
+        entry.rise_m(),
         entry.span_m(),
         rise * CRITICAL_FLOOR,
     ))

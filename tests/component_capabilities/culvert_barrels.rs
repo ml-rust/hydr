@@ -132,31 +132,6 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                 ),
             ]
         }
-        "floored-barrel-queries" => {
-            let bed = CulvertFloor {
-                sediment_depth_m: 0.2,
-                roughness_ratio: 2.5,
-            };
-            let floored = CulvertBarrelBatch::new(
-                client(),
-                vec![
-                    CulvertBarrel::circular(1.0)?,
-                    CulvertBarrel::rectangular_box(2.0, 1.0)?.with_floor(bed)?,
-                ],
-            )?;
-            vec![
-                (
-                    dropped(floored.critical_depth(&flows, 9.81)),
-                    K::Definition,
-                    "critical depth of a barrel with a floor is not yet available",
-                ),
-                (
-                    dropped(floored.normal_depth(&flows, &roughness, &slopes)),
-                    K::Definition,
-                    "normal depth of a barrel with a floor is not yet available",
-                ),
-            ]
-        }
         "empty-barrel-batch" => vec![(
             dropped(CulvertBarrelBatch::<Runtime>::new(client(), Vec::new())),
             K::Definition,

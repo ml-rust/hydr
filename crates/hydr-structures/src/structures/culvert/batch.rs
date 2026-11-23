@@ -43,11 +43,12 @@ impl<R: Runtime<DType = DType>> fmt::Debug for CulvertBarrelBatch<R> {
 
 impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
     /// Uploads the barrels, encloses their full-state constants and certifies the depth slope
-    /// floors and conveyance peak of each elliptical, pipe-arch and flat-floor arch barrel once.
+    /// floors and conveyance peak of each elliptical, pipe-arch and flat-floor arch barrel once,
+    /// and of the open section of each floored barrel other than a box.
     ///
     /// Rejects an empty barrel list and a runtime without F64 IEEE basic arithmetic,
     /// fused multiply-add, correctly rounded elementary functions, or square roots rounded
-    /// to nearest. Rejects, naming its row, an arc barrel whose certificate cannot be
+    /// to nearest. Rejects, naming its row, an arc or floored barrel whose certificate cannot be
     /// established: its dimensions scaled to a unit rise fail admission, or its conveyance has
     /// no certified single peak below the crown.
     pub fn new(client: R::Client, barrels: Vec<CulvertBarrel>) -> Result<Self, StructureError>
@@ -177,12 +178,12 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
         )?)
     }
 
-    /// Encloses the critical depth `Q^2 T = g A^3` of every barrel, in metres above the invert.
+    /// Encloses the critical depth `Q^2 T = g A^3` of every barrel, in metres above the invert,
+    /// or above the bed of a barrel with a floor.
     ///
     /// `discharge_m3_per_s` is an F64 `[m]` tensor of per-barrel discharge magnitudes on the
-    /// batch device. [`CriticalDepthStatus`] states what each row's enclosure holds.
-    /// Rejects a batch with a floored barrel, naming its row. Critical depth above a floor is
-    /// not yet available.
+    /// batch device. [`CriticalDepthStatus`] states what each row's enclosure holds. A barrel
+    /// with a floor solves on its open section of rise `D' = D - h`.
     /// Rejects a negative or nonfinite discharge, naming its row, and a nonfinite or nonpositive
     /// gravity.
     pub fn critical_depth(
@@ -201,7 +202,6 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             + CertifiedBisectionAlgorithms<R>,
     {
         let context = &*self.context;
-        self.without_floors("critical depth")?;
         check_gravity(gravity_m_per_s2)?;
         check_discharges(context, "discharge_m3_per_s", discharge_m3_per_s)?;
         let gravity = context.constant(gravity_m_per_s2)?;
@@ -216,15 +216,16 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
     }
 
     /// Encloses the Manning normal depth `Q = (1/n) A R^(2/3) sqrt(S)` of every barrel, in metres
-    /// above the invert.
+    /// above the invert, or above the bed of a barrel with a floor.
     ///
     /// `discharge_m3_per_s` holds per-barrel discharge magnitudes, `manning_n` the roughness in
     /// `s/m^(1/3)` and `slope` the barrel slope, positive downstream. All are F64 `[m]` tensors on
     /// the batch device. The normal depth is the root on the rising limb of the conveyance.
     /// [`NormalDepthStatus`] states what each row's enclosure holds. A zero or adverse slope
     /// reports `NonPositiveSlope` whatever the discharge.
-    /// Rejects a batch with a floored barrel, naming its row. Normal depth above a floor is not
-    /// yet available.
+    /// A barrel with a floor solves on its open section with `manning_n` the wall `n` and the
+    /// weighted perimeter `P_n = P_w + rho^(3/2) b` in place of `P`: `Q = (1/n) A^(5/3)
+    /// P_n^(-2/3) sqrt(S)`.
     /// Rejects a negative or nonfinite discharge, a nonpositive or nonfinite `n` and a nonfinite
     /// slope, naming the row.
     pub fn normal_depth(
@@ -244,7 +245,6 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
             + CertifiedBisectionAlgorithms<R>,
     {
         let context = &*self.context;
-        self.without_floors("normal depth")?;
         check_manning(
             context,
             [
@@ -264,11 +264,77 @@ impl<R: Runtime<DType = DType>> CulvertBarrelBatch<R> {
         Ok(CulvertBarrelDepth::from_depths(depths))
     }
 
-    /// Rejects the batch from `query`, naming the first barrel with a floor.
-    fn without_floors(&self, query: &str) -> Result<(), StructureError> {
-        for (row, barrel) in self.barrels.iter().enumerate() {
-            barrel.without_floor(query).map_err(|error| error.at(row))?;
-        }
-        Ok(())
+    /// Depth certificates of every row, copied to the host, for reference checks.
+    #[doc(hidden)]
+    pub fn depth_certificates(&self) -> Result<Vec<BarrelDepthCertificate>, StructureError> {
+        let context = &*self.context;
+        let read = |t: &Tensor<R>| t.try_to_vec::<f64>();
+        let [peak_lower, peak_upper] = &context.conveyance_peak;
+        let [log_lower, log_upper] = &context.log_peak;
+        let columns = [
+            read(&context.critical_top)?,
+            read(&context.critical_slope)?,
+            read(&context.normal_top)?,
+            read(&context.normal_slope)?,
+            read(peak_lower)?,
+            read(peak_upper)?,
+            read(log_lower)?,
+            read(log_upper)?,
+        ];
+        let knots = context
+            .limb
+            .iter()
+            .flatten()
+            .map(|[knot, floor]| Ok((read(knot)?, read(floor)?)))
+            .collect::<Result<Vec<_>, numr::error::Error>>()?;
+        let at = |column: &[f64], row: usize| column.get(row).copied().unwrap_or(f64::NAN);
+        Ok((0..context.width())
+            .map(|row| {
+                let [
+                    critical_top,
+                    critical_slope,
+                    normal_top,
+                    normal_slope,
+                    low,
+                    high,
+                    log_low,
+                    log_high,
+                ] = columns.each_ref().map(|column| at(column, row));
+                BarrelDepthCertificate {
+                    critical_top,
+                    critical_slope,
+                    normal_top,
+                    normal_slope,
+                    peak: (low, high),
+                    log_peak: (log_low, log_high),
+                    limb: knots
+                        .iter()
+                        .map(|(knot, floor)| (at(knot, row), at(floor, row)))
+                        .collect(),
+                }
+            })
+            .collect())
     }
+}
+
+/// Depth certificate of one barrel row, in `s = y/D` or `s = y/D'` above a floor.
+#[doc(hidden)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct BarrelDepthCertificate {
+    /// Upper end of the critical-depth domain.
+    pub critical_top: f64,
+    /// Lower bound of `d r_c / ds` on the critical domain.
+    pub critical_slope: f64,
+    /// Upper end `s_N` of the normal-depth domain.
+    pub normal_top: f64,
+    /// Lower bound of `d r_n / ds` on the normal domain.
+    pub normal_slope: f64,
+    /// Enclosure of the conveyance peak.
+    pub peak: (f64, f64),
+    /// Enclosure of the log peak conveyance: unit geometry without a floor, frame geometry
+    /// above one.
+    pub log_peak: (f64, f64),
+    /// `(s_j, kappa_j)` per rising-limb knot: `kappa_j` bounds `d r_n / ds` below on
+    /// `[2^-30, s_j]`. Empty when no row of the batch is a floored circle or arc barrel.
+    pub limb: Vec<(f64, f64)>,
 }

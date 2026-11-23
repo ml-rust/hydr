@@ -701,7 +701,8 @@ A floor is a flat bed at depth `h` above the invert, the same along the whole ba
 - The queries then report the open section above the bed. Its rise is `open_rise_m() = D - h`, and every depth runs up from the bed.
 - `with_floor` stores the depth `D - fl(D - h)`, within half an F64 step of `h`, so `D - h` is exact. `floor()` returns it, and `base()` returns the barrel without its floor.
 - A depth at or above the rise rejects: declare `StructureCondition::Closed` instead. A zero depth on a barrel without its own floor, a nonfinite or nonpositive ratio, and an open rise below `2^-992` also reject with `Definition`.
-- `geometry`, `geometry_over` and `full_geometry` accept floored barrels. `critical_depth`, `normal_depth`, `CulvertInletBatch`, `CulvertOutletBatch` and `CulvertParameters` reject a floored barrel with `Definition`, naming the row. Use `base()` for those queries.
+- `geometry`, `geometry_over`, `full_geometry`, `critical_depth` and `normal_depth` accept floored barrels. `CulvertInletBatch`, `CulvertOutletBatch` and `CulvertParameters` reject a floored barrel with `Definition`, naming the row. Use `base()` for those queries.
+- `normal_depth` above a floor takes `manning_n` as the wall `n` and friction on `P_n`: `Q = (1/n) A^(5/3) P_n^(-2/3) sqrt(S)`.
 
 ### Run a query
 
@@ -748,6 +749,8 @@ Each row also carries a `BarrelState`:
 
 The search domain is `[D 2^-30, top]`. `top` is `D (1 - 2^-53)` for a circle or an arc barrel and `D` for a box. A circle or an arc barrel has one critical depth below the crown for every `Q > 0`. A box has one only for `Q <= sqrt(g) B D^(3/2)`.
 
+Above a floor, the open rise `D'` replaces `D` and depths run up from the bed. A floored circle or arc barrel has `top = D' (1 - 2^-52)`, so its `AboveCrown` enclosure is `[D' (1 - 2^-52), D']`.
+
 | `CriticalDepthStatus` | Enclosure |
 | --- | --- |
 | `Dry` | Zero discharge. Exactly `[0, 0]`. |
@@ -763,6 +766,8 @@ The normal depth is the root on the rising limb of the conveyance `K = A^(5/3) /
 Circle conveyance peaks at `0.9381812 D`, above the full-barrel conveyance, then falls to the crown. Arc barrel conveyance also peaks below the crown. Box conveyance rises to its open-section limit at the crown. That limit exceeds the full-barrel conveyance.
 
 `CulvertBarrelBatch::new` certifies each ellipse, pipe-arch and flat-floor arch once. The certificate bounds the slope of both depth residuals and encloses the conveyance peak. Construction rejects, naming the row, a barrel without a certificate: its dimensions scaled by a power of two to a rise in `[1, 2)` fail admission, or its conveyance has no certified single peak below the crown.
+
+A floored circle or arc barrel gets its own certificate on the open section, with conveyance `A^(5/3) / P_n^(2/3)`. A rougher bed raises the conveyance peak, so each bed ratio has its own domain top. The rejection message adds the sediment depth and the ratio. A floored box keeps the box domain: its conveyance rises to the crown for every ratio.
 
 | `NormalDepthStatus` | Enclosure |
 | --- | --- |
@@ -813,6 +818,7 @@ Independent 100-digit references are frozen before any kernel runs.
 | [Scaled arc barrels](../tests/culvert_shapes/scales.rs) | Each arc shape at `2^-900`, `1` and `2^300`: geometry and full geometry equal the unit barrel's scaled bit for bit. At `2^300` critical, normal and inlet enclosures meet the scaled unit enclosures. At `2^-900` zero discharge is dry and a represented discharge lies above the crown. |
 | Frame unit tests | Circles, boxes and arc barrels outside `[1, 2)` return the bits of a metre evaluation. Certificates at `2^-900` and `2^300` equal the unit barrel's bit for bit. |
 | [Floored barrels](../tests/culvert_blockage/sections.rs) | Eighteen beds in every shape, from a thin bed to a sliver under the crown, junction beds included. Every reference lies inside its enclosure within a frozen width. `P` and `P_n` add the bed to the walls. Sweeps show no certified reversal of `A`, `P_w`, `P_n` or `M`. [Lanes](../tests/culvert_blockage/floor_lanes.rs) of widths 1, 33 and 65 equal their single-row bits, rows without a floor keep their bits beside floored rows, and ranges hold every point they span. |
+| [Floored depths](../tests/culvert_blockage/depths.rs) | On all eighteen beds at bed ratios `0.5`, `1` and `2.5`, the slope floors lie at or below the independent minima and the peak enclosures hold the independent peaks. The peak rises with the ratio. Critical and normal statuses match the reference class of independent roots, and every enclosure holds its root within a frozen width. [Depth lanes](../tests/culvert_blockage/depth_lanes.rs) of widths 1, 33 and 65 equal their single-row bits, rows without a floor keep their bits, and no depth shows a certified reversal in discharge, roughness or slope. |
 
 ```sh
 cargo test --test culvert_barrels
@@ -830,7 +836,7 @@ cargo test --test culvert_blockage
 
 - Queries hold no state and advance no storage. No snapshot exists.
 - Full-barrel pressure flow and full-barrel friction stay with the caller.
-- A floor reports its bed width and weighted perimeter. Depth searches, inlet control, outlet control and the culvert law take no floor yet. Without a floor, a flat-floor arch floor takes the barrel's Manning `n`.
+- A floor reports its bed width and weighted perimeter, and critical and normal depth run on its open section. Inlet control, outlet control and the culvert law take no floor yet. Without a floor, a flat-floor arch floor takes the barrel's Manning `n`.
 - A floor is one flat bed along the whole barrel. A local deposit at one end is not modelled.
 - Barrel queries give no discharge. [`CulvertInletBatch`](#culvert-inlet-control), [`CulvertOutletBatch`](#culvert-outlet-control) and the [culvert law](#culvert-structure-law) give control headwaters and discharge.
 

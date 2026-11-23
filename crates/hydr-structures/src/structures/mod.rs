@@ -45,6 +45,8 @@ pub use blockage::{
     BlockageFraction, BlockageGeometry, StructureBlockage, StructureCondition,
     StructureConditionKind, StructureGeometry, StructureGeometryReport,
 };
+#[doc(hidden)]
+pub use culvert::BarrelDepthCertificate;
 pub(crate) use culvert::CulvertSide;
 pub use culvert::{
     BarrelDepthStatus, BarrelState, CriticalDepthStatus, CulvertAlignment, CulvertBarrel,

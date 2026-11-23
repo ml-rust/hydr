@@ -14,7 +14,7 @@ use crate::structures::numerics::culvert::arcs::cap::Shared;
 use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose};
 use crate::structures::tensor::culvert::{ArcRows, Bounds};
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ScalarOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval};
@@ -147,12 +147,24 @@ where
     R::Client: BarrelClient<R>,
 {
     let c = a.client();
-    let (Some(selected), Some(middle), Some(junction)) = (
+    let (Some(selected), Some(middle), Some(junction), Some(band)) = (
         masks.selected.get(j),
         rows.middles.get(j),
         masks.junction.get(j),
+        rows.bands.get(j),
     ) else {
         return Err(missing("a band past the crown band"));
+    };
+    // The crown band's stored middle reads the row's own rise, which on a row of another shape
+    // lies outside the harmless barrel's crown arc. Its own circle top keeps the depth inside.
+    let crown_middle;
+    let middle = if j == 2 {
+        let [_, start] = &band.start_depth;
+        let [crown, _] = &band.circle_high;
+        crown_middle = c.mul_scalar(&c.add(start, crown)?, 0.5)?;
+        &crown_middle
+    } else {
+        middle
     };
     let depth = c.where_cond(selected, bed, middle)?;
     let h = a.point(&depth)?;

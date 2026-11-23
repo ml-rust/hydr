@@ -18,6 +18,12 @@ mod floor_lanes;
 #[path = "culvert_blockage/depth_rows.rs"]
 mod depth_rows;
 
+#[path = "culvert_blockage/depths.rs"]
+mod depths;
+
+#[path = "culvert_blockage/depth_lanes.rs"]
+mod depth_lanes;
+
 #[allow(dead_code)]
 #[path = "culvert_blockage/inlet_rows.rs"]
 mod inlet_rows;

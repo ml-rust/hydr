@@ -5,6 +5,10 @@
 //! floors are `5.4` for a circle, `3` for a box and the row's certified floor for an arc
 //! barrel, in units of `1/D`. End classification runs first, so only bracketed rows iterate.
 //! Depth enclosures are `D` times the enclosure in `s`, rounded outward.
+//!
+//! Above a floor the domain is `s = y/D'` from the bed, with `D'` the open rise. A floored
+//! circle or arc barrel ends its domain at `1 - 2^-52` and takes its certified floor. A floored
+//! box keeps the box domain and floor.
 
 mod ends;
 pub(crate) mod residual;
@@ -95,11 +99,12 @@ where
             "critical depth row={row}: the solver named a row past the barrel list. Report this runtime"
         )));
     };
-    let rise = entry.rise_m();
+    let rise = entry.open_rise_m();
     let top = rise * fraction;
     Ok(format!(
-        "critical depth shape={:?},rise_m={rise:?},span_m={:?},discharge_m3_per_s={flow:?},bracket_m=[{:?}, {top:?}]",
+        "critical depth shape={:?},rise_m={:?},open_rise_m={rise:?},span_m={:?},discharge_m3_per_s={flow:?},bracket_m=[{:?}, {top:?}]",
         entry.shape(),
+        entry.rise_m(),
         entry.span_m(),
         rise * CRITICAL_FLOOR,
     ))

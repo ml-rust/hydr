@@ -6,17 +6,23 @@
 //!
 //! Both rise in `s`. The bracketed term is the row target, fixed per query.
 //! Unit geometry keeps the area of a tiny rise away from underflow.
+//!
+//! Above a floor `s = y/D'`, with `y` from the bed and `D'` the open rise.
+//!
+//! - A circle and an arc barrel read `A = 2^2e A_f` and `T = 2^e T_f` from frame geometry, so
+//!   `r_c = 3 ln A_f - ln T_f - (2 ln Q - ln g - 5 e ln 2)`.
+//! - A box is the box above with `D'` for `D`.
 
-use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose, section};
+use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose, floor, section};
 use crate::structures::tensor::culvert::TensorBarrelContext;
 use numr::dtype::DType;
-use numr::ops::{CompareOps, ConditionalOps};
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval};
 
 /// Encloses the row target `2 ln Q - ln g - 5 ln D` (circle and arc) or `- 2 ln B - 3 ln D`
-/// (box).
+/// (box). Above a floor, `D'` replaces `D` and a circle or arc row subtracts `5 e ln 2`.
 ///
 /// `discharge` and `gravity` are `[m]` tensors. Rows with zero discharge take a unit discharge,
 /// so the caller must classify them before reading the target.
@@ -36,7 +42,7 @@ where
     let ln_q = a.log_positive(&q)?;
     let g = a.point(gravity)?;
     let ln_g = a.log_positive(&g)?;
-    let d = a.point(&barrel.rise)?;
+    let d = a.point(barrel.open_rise())?;
     let ln_d = a.log_positive(&d)?;
     let b = a.point(&barrel.span)?;
     let ln_b = a.log_positive(&b)?;
@@ -47,6 +53,15 @@ where
     let twice_q = a.mul(&two, &ln_q)?;
     let flow = a.sub(&twice_q, &ln_g)?;
     let circle = a.mul(&five, &ln_d)?;
+    let circle = match &barrel.floor {
+        Some(rows) => {
+            let open = c.sub(&rows.floored, &rows.boxed)?;
+            let ln_scale = floor::log_scale(a, barrel)?;
+            let framed = a.mul(&five, &ln_scale)?;
+            choose(a, &open, &framed, &circle)?
+        }
+        None => circle,
+    };
     let twice_b = a.mul(&two, &ln_b)?;
     let thrice_d = a.mul(&three, &ln_d)?;
     let rectangle = a.add(&twice_b, &thrice_d)?;
@@ -57,8 +72,9 @@ where
 /// Encloses `r_c` at the depth fractions `fraction` (`[m]`) against the stored row `target`.
 ///
 /// `unit` holds the unit-rise rows of the same width. Every fraction must lie in
-/// `[2^-30, 1 - 2^-53]` on circle and arc rows and in `[2^-30, 1]` on box rows. Other fractions
-/// reject the enclosing call at its completion check.
+/// `[2^-30, 1 - 2^-53]` on circle and arc rows, in `[2^-30, 1 - 2^-52]` on floored circle and
+/// arc rows and in `[2^-30, 1]` on box rows. Other fractions reject the enclosing call at its
+/// completion check.
 pub(crate) fn residual<R>(
     a: &mut Arithmetic<'_, R>,
     barrel: &TensorBarrelContext<R>,
@@ -88,6 +104,17 @@ where
     let rectangle = a.mul(&three, &ln_s)?;
 
     let shape = choose(a, &barrel.boxed, &rectangle, &circle)?;
+    let shape = match &barrel.floor {
+        Some(rows) => {
+            let open = floor::at_fraction(a, barrel, rows, fraction)?;
+            let ln_area = a.log_positive(&open.geometry.area)?;
+            let ln_top = a.log_positive(&open.geometry.top_width)?;
+            let thrice_area = a.mul(&three, &ln_area)?;
+            let framed = a.sub(&thrice_area, &ln_top)?;
+            choose(a, &open.rows, &framed, &shape)?
+        }
+        None => shape,
+    };
     a.sub(&shape, target)
 }
 

@@ -74,6 +74,10 @@ pub(crate) const CRITICAL_FLOOR: f64 = 1.0 / 1_073_741_824.0;
 /// The box domain ends at the crown, `s = 1`.
 pub(crate) const CIRCLE_CRITICAL_TOP: f64 = 1.0 - f64::EPSILON / 2.0;
 
+/// Upper end `1 - 2^-52` of the critical-depth domain in `s = y/D'` above a floor, on circle and
+/// arc rows. Its frame depth rounds up to at most the F64 below the open rise.
+pub(crate) const FLOOR_CRITICAL_TOP: f64 = 1.0 - f64::EPSILON;
+
 /// Lower bound `5.4` of `d r_c / ds` for a circle on its critical domain.
 /// The minimum over `(0, 1)` is near `5.41288` at `s = 0.778`.
 pub(crate) const CIRCLE_CRITICAL_SLOPE: f64 = 5.4;
