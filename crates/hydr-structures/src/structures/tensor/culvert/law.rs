@@ -5,12 +5,14 @@
 //! never sees an undeclared inlet. The flap keeps those rows unused.
 
 use super::{Bounds, TensorBarrelContext, TensorInletContext, TensorOutletContext};
+use crate::structures::blockage::{CulvertGeometrySummary, effective};
 use crate::structures::numerics::culvert::{inlet::anchors, outlet};
 use crate::structures::tensor::{
     TensorStructureContext, TensorStructureInput, TensorStructureResult,
 };
 use crate::structures::{
-    CulvertBarrel, CulvertClient, CulvertSide, DirectionPolicy, StructureError, StructureLaw,
+    CulvertBarrel, CulvertBarrelShape, CulvertClient, CulvertSide, DirectionPolicy, StructureError,
+    StructureLaw,
 };
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, ConditionalOps};
@@ -28,6 +30,9 @@ pub(crate) trait CulvertLaw<R: Runtime<DType = DType>>: Send + Sync {
         input: &TensorStructureInput<R>,
         result: TensorStructureResult<R>,
     ) -> Result<TensorStructureResult<R>, StructureError>;
+
+    /// Precomputed full-area and floor-width enclosures of each culvert element.
+    fn geometry(&self) -> &[CulvertGeometrySummary];
 }
 
 /// Culvert operands per element, `[n]` wide and zero off culvert lanes.
@@ -111,16 +116,18 @@ pub(crate) struct TensorCulvertLaw<R: Runtime<DType = DType>> {
     pub(crate) inlet: TensorInletContext<R>,
     /// `2m` outlet rows.
     pub(crate) outlet: TensorOutletContext<R>,
-    /// Inverts at A and B per lane.
+    /// Bed elevations at A and B per lane (`fl(z + h)` above sediment, invert otherwise).
     pub(crate) invert: [Tensor<R>; 2],
     /// 1 where flow may leave A, and 1 where flow may leave B, per lane.
     pub(crate) allow: [Tensor<R>; 2],
-    /// Barrel count per lane.
+    /// Effective open barrel count `N - k` per lane.
     pub(crate) count: Tensor<R>,
     /// Lane index `j` per lane, as F64.
     pub(crate) forward: Tensor<R>,
     /// Lane count `m`, the offset of the B-end rows.
     pub(crate) width: usize,
+    /// Full-area and floor-width enclosures per culvert element, for geometry reports.
+    pub(crate) geometry: Vec<CulvertGeometrySummary>,
 }
 
 impl<R: Runtime<DType = DType>> TensorCulvertLaw<R> {
@@ -141,22 +148,36 @@ impl<R: Runtime<DType = DType>> TensorCulvertLaw<R> {
             let StructureLaw::Culvert(parameters) = &element.law else {
                 continue;
             };
-            let a = parameters.rows(CulvertSide::A);
-            let b = parameters.rows(CulvertSide::B);
+            let blockage = effective::culvert_blockage(&element.condition);
+            let a = parameters
+                .effective_rows(CulvertSide::A, blockage)
+                .map_err(|e| e.at(index))?;
+            let b = parameters
+                .effective_rows(CulvertSide::B, blockage)
+                .map_err(|e| e.at(index))?;
             let (Some(forward), Some(reverse)) = (a.or(b), b.or(a)) else {
                 return Err(StructureError::definition(
                     "culvert declares no end: supply the end of at least one flow direction",
                 )
                 .at(index));
             };
+            let bed_a = parameters
+                .bed_elevation(CulvertSide::A, blockage)
+                .map_err(|e| e.at(index))?;
+            let bed_b = parameters
+                .bed_elevation(CulvertSide::B, blockage)
+                .map_err(|e| e.at(index))?;
+            let open_barrels = parameters
+                .barrel_count()
+                .saturating_sub(blockage.map_or(0, |b| b.closed_barrels));
             elements.push(index);
             forward_rows.push(forward);
             reverse_rows.push(reverse);
-            invert[0].push(parameters.invert(CulvertSide::A));
-            invert[1].push(parameters.invert(CulvertSide::B));
+            invert[0].push(bed_a);
+            invert[1].push(bed_b);
             allow[0].push(flag(element.direction != DirectionPolicy::BtoAOnly));
             allow[1].push(flag(element.direction != DirectionPolicy::AtoBOnly));
-            count.push(f64::from(parameters.barrel_count()));
+            count.push(f64::from(open_barrels));
         }
         if elements.is_empty() {
             return Ok(None);
@@ -186,6 +207,7 @@ impl<R: Runtime<DType = DType>> TensorCulvertLaw<R> {
             .map(|lane| i64::try_from(lane).unwrap_or(i64::MAX))
             .collect();
         let lane = barrel.select(&Tensor::<R>::from_slice(&front, &[width], device)?)?;
+        let geometry = summarize_geometry(&elements, &barrels[..width], &lane)?;
         Ok(Some(Self {
             lane,
             lanes: Tensor::<R>::from_slice(&lanes, &[width], device)?,
@@ -200,8 +222,56 @@ impl<R: Runtime<DType = DType>> TensorCulvertLaw<R> {
             count: column(&count)?,
             forward: column(&forward)?,
             width,
+            geometry,
         }))
     }
+}
+
+fn summarize_geometry<R: Runtime<DType = DType>>(
+    elements: &[usize],
+    barrels: &[CulvertBarrel],
+    lane: &TensorBarrelContext<R>,
+) -> Result<Vec<CulvertGeometrySummary>, StructureError>
+where
+    R::Client: CulvertClient<R>,
+{
+    let base_low = lane.full_area[0].try_to_vec::<f64>()?;
+    let base_high = lane.full_area[1].try_to_vec::<f64>()?;
+    let open = lane.open_full_area()?;
+    let eff_low = open[0].try_to_vec::<f64>()?;
+    let eff_high = open[1].try_to_vec::<f64>()?;
+    let floor_info = match lane.floor.as_deref() {
+        Some(floor) => Some((
+            floor.floored.try_to_vec::<f64>()?,
+            floor.bed_width[0].try_to_vec::<f64>()?,
+            floor.bed_width[1].try_to_vec::<f64>()?,
+        )),
+        None => None,
+    };
+    let mut out = Vec::with_capacity(elements.len());
+    for (j, (&element, barrel)) in elements.iter().zip(barrels).enumerate() {
+        let base_floor = if matches!(
+            barrel.shape(),
+            CulvertBarrelShape::Box | CulvertBarrelShape::Arch
+        ) {
+            let span = barrel.span_m();
+            (span, span)
+        } else {
+            (0.0, 0.0)
+        };
+        let eff_floor = match &floor_info {
+            Some((floored, low, high)) if floored[j] != 0.0 => (low[j], high[j]),
+            _ => base_floor,
+        };
+        out.push(CulvertGeometrySummary {
+            element,
+            base_full_area_m2: (base_low[j], base_high[j]),
+            effective_full_area_m2: (eff_low[j], eff_high[j]),
+            base_floor_width_m: base_floor,
+            effective_floor_width_m: eff_floor,
+        });
+    }
+    Ok(out)
 }
 
 fn flag(value: bool) -> f64 {

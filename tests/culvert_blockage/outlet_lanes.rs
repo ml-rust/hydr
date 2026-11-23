@@ -13,7 +13,7 @@ use hydr::structures::{
 };
 
 #[test]
-fn culvert_law_still_rejects_a_floor_naming_it() -> Outcome<()> {
+fn culvert_parameters_reject_a_prefloored_barrel_naming_it() -> Outcome<()> {
     let barrel = barrel(0)?;
     let end = CulvertEnd::new(CulvertInlet::hds5(1)?, 0.5)?;
     let result = CulvertParameters::new(
@@ -36,12 +36,12 @@ fn culvert_law_still_rejects_a_floor_naming_it() -> Outcome<()> {
         },
     );
     let message = result.err().map(|e| e.to_string()).unwrap_or_default();
-    if message.contains("the culvert law of a barrel with a floor is not yet available")
+    if message.contains("CulvertParameters holds the unblocked barrel")
         && message.contains("sediment_depth_m=")
     {
         Ok(())
     } else {
-        Err(format!("the law admitted a floor or named it wrongly: {message}").into())
+        Err(format!("the law admitted a pre-floored barrel or named it wrongly: {message}").into())
     }
 }
 

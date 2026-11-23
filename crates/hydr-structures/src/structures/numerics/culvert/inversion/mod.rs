@@ -73,6 +73,10 @@ where
         }
         Ok(result)
     }
+
+    fn geometry(&self) -> &[crate::structures::blockage::CulvertGeometrySummary] {
+        &self.geometry
+    }
 }
 
 /// Barrel, unit-circle, inlet and outlet rows gathered at one row index per lane.

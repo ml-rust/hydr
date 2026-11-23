@@ -148,10 +148,11 @@ The law evaluates the effective value `x_e = fl(x · fl(1 - f))` of the base val
 | Weir | `StructureBlockage::weir(crest_length, evidence)` | Crest length `L_e` |
 | Orifice | `StructureBlockage::orifice(area, evidence)` | Opening area `A_e` |
 | Gate | `StructureBlockage::gate(width, opening_range, evidence)` | Width `B_e` and maximum opening `m_e` |
+| Culvert | `StructureBlockage::culvert(CulvertBlockage { face_a, face_b, sediment, closed_barrels }, evidence)` | Reduced section above `h`, bed elevations `fl(z + h)`, `N - k` barrels, scaled inlet discharge, `ke_f` |
 
 A blocked gate admits openings up to `m_e`. A larger manual opening, trajectory knot, actuator target or position, or control target rejects. Hydr never clamps it.
 
-A `Closed` structure reports `discharge_m3_per_s = +0.0`, regime `Closed`, status `PhysicalZero`, no proposed direction, and no operands. `Closed` takes precedence over every other regime, including equal heads, a closed gate, and flap blocking. Head and support checks still run. A closed gate keeps its base opening range, so its operations stay admitted.
+A `Closed` structure reports `discharge_m3_per_s = +0.0`, regime `Closed`, status `PhysicalZero`, no proposed direction, and no operands. `Closed` takes precedence over every other regime, including equal heads, a closed gate, and flap blocking. Head and support checks still run. A closed gate keeps its base opening range, so its operations stay admitted. A closed culvert keeps its base rows admitted.
 
 `StructureBatch::geometry()` returns one `StructureGeometryReport` per element. It holds the condition kind, the base geometry, and the effective geometry. The effective geometry is `None` for a closed element.
 
@@ -161,7 +162,7 @@ A `Closed` structure reports `discharge_m3_per_s = +0.0`, regime `Closed`, statu
 | Effective value not a positive normal F64 | Supply a smaller share or a larger base value |
 | Blockage of another law, such as a gate blockage on a weir | Use the constructor of the element's law |
 | `Blocked` or `Closed` on a pump | Declare `AsBuilt`. Stop the pump with `PumpStoppedIsolated`. |
-| `Blocked` or `Closed` on a culvert | Declare `AsBuilt`. Culvert blockage is not yet available. |
+| Culvert exit-face blockage, `closed_barrels >= N`, or sediment depth `>= D` | Clear the exit face, reduce the count or depth, or declare `Closed` |
 | Empty or control-character evidence | Supply explicit evidence |
 
 ## Orifices and rectangular weirs
@@ -701,7 +702,7 @@ A floor is a flat bed at depth `h` above the invert, the same along the whole ba
 - The queries then report the open section above the bed. Its rise is `open_rise_m() = D - h`, and every depth runs up from the bed.
 - `with_floor` stores the depth `D - fl(D - h)`, within half an F64 step of `h`, so `D - h` is exact. `floor()` returns it, and `base()` returns the barrel without its floor.
 - A depth at or above the rise rejects: declare `StructureCondition::Closed` instead. A zero depth on a barrel without its own floor, a nonfinite or nonpositive ratio, and an open rise below `2^-992` also reject with `Definition`.
-- `geometry`, `geometry_over`, `full_geometry`, `critical_depth` and `normal_depth` accept floored barrels. So do [`CulvertInletBatch`](#control-a-floored-or-blocked-inlet) and [`CulvertOutletBatch`](#control-a-floored-barrel-or-a-blocked-entrance). `CulvertParameters` rejects a floored barrel with `Definition`, naming the sediment depth. Use `base()` for the culvert law.
+- `geometry`, `geometry_over`, `full_geometry`, `critical_depth` and `normal_depth` accept floored barrels. So do [`CulvertInletBatch`](#control-a-floored-or-blocked-inlet) and [`CulvertOutletBatch`](#control-a-floored-barrel-or-a-blocked-entrance). `CulvertParameters` holds the unblocked barrel; set an open floor with `CulvertParameters::with_floor_manning_n`, or declare sediment with `StructureBlockage::culvert`.
 - `normal_depth` above a floor takes `manning_n` as the wall `n` and friction on `P_n`: `Q = (1/n) A^(5/3) P_n^(-2/3) sqrt(S)`.
 
 ### Run a query
@@ -836,7 +837,7 @@ cargo test --test culvert_blockage
 
 - Queries hold no state and advance no storage. No snapshot exists.
 - Full-barrel pressure flow and full-barrel friction stay with the caller.
-- A floor reports its bed width and weighted perimeter, and critical depth, normal depth, inlet control and outlet control run on its open section. The culvert law takes no floor yet. Without a floor, a flat-floor arch floor takes the barrel's Manning `n`.
+- A floor reports its bed width and weighted perimeter, and critical depth, normal depth, inlet control, outlet control, and the culvert law run on its open section. Without a floor or `floor_manning_n`, a flat-floor arch floor takes the barrel's Manning `n`.
 - A floor is one flat bed along the whole barrel. A local deposit at one end is not modelled.
 - Barrel queries give no discharge. [`CulvertInletBatch`](#culvert-inlet-control), [`CulvertOutletBatch`](#culvert-outlet-control) and the [culvert law](#culvert-structure-law) give control headwaters and discharge.
 
@@ -1050,7 +1051,7 @@ A barrel with a [floor](#declare-a-floor) runs the march on the open section abo
 
 A face of blocked share `f` takes the entrance loss `ke_f = ke / (1 - f)^2 + (f / (1 - f))^2`. The first term is the entrance loss at the face velocity `V / (1 - f)`. The second is the Borda-Carnot expansion `(V / (1 - f) - V)^2 / (2 g)` back to the barrel velocity. This rule is a hydr definition with no published coefficient. `HW_o` rises with `f`, and `f = 0` keeps `ke` and every unblocked bit.
 
-A blockage of the face that flow leaves through, the exit of its direction, has no model. The culvert law rejects it once culvert blockage reaches the law.
+A blockage of the face that flow leaves through, the exit of its direction, has no model. The culvert law rejects it.
 
 ### Handle admission
 
@@ -1233,8 +1234,10 @@ A [CUDA check](../tests/runtime_backends/culvert_laws.rs) compares every layout 
 - The [surface/channel coordinator](surface-channels.md#attach-a-culvert) and [coupled level pools](coupled-level-pools.md#attach-a-culvert) hold culverts. Each requires the inverts at or above the attachment beds.
 - A shallow profile whose depth enclosure gives no certified positive area at a small angle takes the sensitivity cap.
 - Every flowing lane runs one outlet march. A lane the inlet does not certainly govern adds one outlet march per bisection round. An outlet-controlled lane that is not a drowned full barrel adds one coarse march for its head sensitivity.
-- No blockage, sediment, or debris is represented.
-- The floor of a flat-floor arch takes the culvert's Manning `n`. A natural bed with its own roughness, HDS-5 composite roughness, is not modelled.
+- Floor and sediment friction use HDS-5 eq. 3.8 equal-velocity composite roughness with constant Manning `n` per material and exponent `2/3`.
+- Sediment fills every barrel to one uniform depth along the whole barrel length. A local deposit at one end is not modelled.
+- Declared inlet coefficients act on the reduced open section above the bed. Their applicability is caller evidence. NCHRP Tables A.5 and A.6 are not admitted as codes.
+- Entrance face blockage scales inlet-control discharge by `(1 - f)` and sets outlet-control entrance loss to `ke / (1 - f)^2 + (f / (1 - f))^2`. Both are hydr definitions. Exit-face blockage rejects.
 - Discharges, their squares and powers of the area form in metres. Where the outlet products leave F64, as at a rise near `2^300` m, the proposal rejects as `Numerical`. Model such a culvert at a scale near metres.
 
 ## Read head sensitivity

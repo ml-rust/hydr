@@ -68,10 +68,11 @@ where
 {
     let barrel = &rows.barrel;
     let outlet_rows = &rows.outlet;
+    let view = outlet_rows.view(barrel);
     let c = &barrel.client;
     let one = &barrel.one;
     let flowing = c.mul(&lanes.active, &c.sub(one, &inlet.zero)?)?;
-    let drowned = c.mul(&flowing, &c.ge(&lanes.tailwater, &barrel.rise)?)?;
+    let drowned = c.mul(&flowing, &c.ge(&lanes.tailwater, &view.rise)?)?;
     let (closed, full_head, still) =
         with_interval_arithmetic(c, DType::F64, "culvert outlet closed form", |a| {
             let c = a.client();
@@ -80,8 +81,8 @@ where
             let ke = a.bounds(&outlet_rows.entrance[0], &outlet_rows.entrance[1])?;
             let g = a.point(&outlet_rows.gravity)?;
             let s = a.point(&outlet_rows.slope)?;
-            let area = a.bounds(&barrel.full_area[0], &barrel.full_area[1])?;
-            let radius = a.bounds(&barrel.full_radius[0], &barrel.full_radius[1])?;
+            let area = a.bounds(&view.full_area[0], &view.full_area[1])?;
+            let radius = a.bounds(&view.full_radius[0], &view.full_radius[1])?;
             let four = a.point(&barrel.constant(4.0)?)?;
             let third = a.div_positive(&four, &barrel.constant(3.0)?)?;
             let ln_radius = a.log_positive(&radius)?;
@@ -117,7 +118,7 @@ where
                 ],
             ))
         })?;
-    let full = c.mul(&drowned, &c.ge(&full_head, &barrel.rise)?)?;
+    let full = c.mul(&drowned, &c.ge(&full_head, &view.rise)?)?;
     let open = c.mul(&flowing, &c.sub(one, &full)?)?;
     let dead = c.mul(&open, &c.gt(&still[0], &lanes.headwater)?)?;
     let level = c.mul(

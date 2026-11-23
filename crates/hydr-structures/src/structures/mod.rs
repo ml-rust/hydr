@@ -42,8 +42,8 @@ pub use actuator::{
 pub use applicability::{CulvertApplicability, OrificeApplicability, WeirApplicability};
 pub use batch::StructureBatch;
 pub use blockage::{
-    BlockageFraction, BlockageGeometry, StructureBlockage, StructureCondition,
-    StructureConditionKind, StructureGeometry, StructureGeometryReport,
+    BlockageFraction, BlockageGeometry, CulvertBlockage, CulvertSediment, StructureBlockage,
+    StructureCondition, StructureConditionKind, StructureGeometry, StructureGeometryReport,
 };
 #[doc(hidden)]
 pub use culvert::BarrelDepthCertificate;

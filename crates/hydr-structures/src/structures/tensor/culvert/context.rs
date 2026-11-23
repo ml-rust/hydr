@@ -380,6 +380,13 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
         self.floor.as_deref().map_or(&self.rise, |floor| &floor.top)
     }
 
+    /// Half rise of the depth domain per row: `D' / 2` above a floor, `D / 2` elsewhere. Exact.
+    pub(crate) fn open_half_rise(&self) -> &Tensor<R> {
+        self.floor
+            .as_deref()
+            .map_or(&self.half_rise, |floor| &floor.half_top)
+    }
+
     /// Barrel count `m`.
     pub(crate) fn width(&self) -> usize {
         self.rise.shape()[0]

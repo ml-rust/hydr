@@ -338,4 +338,69 @@ mod tests {
         assert!(certified(spec, weak()?, &cases)? > cases.len() / 2);
         Ok(())
     }
+
+    #[test]
+    fn floored_and_face_blocked_culverts_bound_holds_over_head_grid() -> TestResult {
+        use super::fixture::{certified_with_condition, culvert};
+        use crate::structures::{
+            BlockageFraction, CulvertBlockage, CulvertSediment, DirectionPolicy, StructureBlockage,
+            StructureCondition,
+        };
+        // Sedimented circle (h = 0.24 m, bed n = 0.030) with 25% entrance face blockage on a long
+        // rough barrel so both inlet and outlet control appear.
+        let spec = Spec {
+            barrel: CulvertBarrel::circular(1.2)?,
+            length_m: 100.0,
+            manning_n: 0.024,
+            inverts: [0.08, 0.0],
+        };
+        let law = culvert(spec, CulvertInlet::hds5(1)?, false)?;
+        let condition = StructureCondition::Blocked(StructureBlockage::culvert(
+            CulvertBlockage {
+                face_a: BlockageFraction::new(0.25)?,
+                face_b: BlockageFraction::NONE,
+                sediment: Some(CulvertSediment {
+                    depth_m: 0.24,
+                    bed_manning_n: 0.030,
+                }),
+                closed_barrels: 0,
+            },
+            "Sediment and debris survey".into(),
+        )?);
+        let cases = pairs(
+            &grid(0.5, 2.2, 3),
+            &grid(0.3, 1.5, 3),
+            &[0.24, 0.32, 1.2, 1.28],
+        );
+        let outlet = certified_with_condition(law, DirectionPolicy::AtoBOnly, condition, &cases)?;
+        assert!(outlet > 0, "expected outlet-controlled lanes");
+
+        // Sedimented box with open-bottom floor replaced by sediment, inlet + outlet regimes.
+        let box_spec = Spec {
+            barrel: CulvertBarrel::rectangular_box(2.0, 1.5)?,
+            length_m: 30.0,
+            manning_n: 0.012,
+            inverts: [0.06, 0.0],
+        };
+        let box_law = culvert(box_spec, CulvertInlet::hds5(9)?, false)?;
+        let box_cond = StructureCondition::Blocked(StructureBlockage::culvert(
+            CulvertBlockage {
+                face_a: BlockageFraction::new(0.25)?,
+                face_b: BlockageFraction::NONE,
+                sediment: Some(CulvertSediment {
+                    depth_m: 0.45,
+                    bed_manning_n: 0.030,
+                }),
+                closed_barrels: 0,
+            },
+            "Sediment survey".into(),
+        )?);
+        let box_cases = pairs(
+            &grid(0.7, 2.4, 3),
+            &grid(0.5, 1.8, 3),
+            &[0.45, 0.51, 1.5, 1.56],
+        );
+        certified_with_condition(box_law, DirectionPolicy::AtoBOnly, box_cond, &box_cases)?;
+        Ok(())
+    }
 }

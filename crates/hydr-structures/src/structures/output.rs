@@ -75,11 +75,11 @@ pub enum StructureStatus {
 /// Original evaluated law operands, including running pump shutoff. Isolated branches expose no fabricated heads.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StructureHydraulicOperands {
-    /// Culvert control heads and the certified per-barrel discharge.
+    /// Culvert control heads above the bed and the certified per-barrel discharge.
     Culvert {
-        /// Donor stage above the inlet invert, in metres.
+        /// Donor stage above the inlet bed elevation (invert without sediment), in metres.
         headwater_m: f64,
-        /// Receiver stage above the outlet invert, in metres. Zero for a free outfall.
+        /// Receiver stage above the outlet bed elevation (invert without sediment), in metres. Zero for a free outfall.
         tailwater_m: f64,
         /// `(lower, upper)` enclosure of the discharge of one barrel, in m³/s.
         barrel_discharge_m3_per_s: (f64, f64),

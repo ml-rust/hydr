@@ -1,16 +1,16 @@
 //! Condition admission and the effective geometry of each law.
 
-use super::{BlockageFraction, BlockageGeometry, StructureCondition};
+use super::{BlockageFraction, BlockageGeometry, CulvertBlockage, StructureCondition};
 use crate::structures::definition::text;
 use crate::structures::{
-    GateParameters, StructureElement, StructureError, StructureLaw, SubmergedOrificeParameters,
-    SuppressedRectangularWeirParameters,
+    CulvertParameters, CulvertSide, DirectionPolicy, GateParameters, StructureElement,
+    StructureError, StructureLaw, SubmergedOrificeParameters, SuppressedRectangularWeirParameters,
 };
 
 /// Checks the condition of `element` against its law.
 ///
-/// A pump rejects `Blocked` and `Closed`. A culvert rejects both until culvert blockage exists.
-/// A blockage must match the law, and every effective value must be a positive normal F64.
+/// A pump rejects `Blocked` and `Closed`. A blockage must match the law, and every effective
+/// value must be a positive normal F64.
 pub(crate) fn check(element: &StructureElement) -> Result<(), StructureError> {
     let id = &element.id;
     let blockage = match (&element.condition, &element.law) {
@@ -18,12 +18,6 @@ pub(crate) fn check(element: &StructureElement) -> Result<(), StructureError> {
         (condition, StructureLaw::Pump(_)) => {
             return Err(StructureError::definition(format!(
                 "structure={id:?},condition={:?}: a pump curve has no geometry to block. Declare StructureCondition::AsBuilt and stop the pump with StructureOperatingPoint::PumpStoppedIsolated",
-                condition.kind()
-            )));
-        }
-        (condition, StructureLaw::Culvert(_)) => {
-            return Err(StructureError::definition(format!(
-                "structure={id:?},condition={:?}: culvert blockage and closed culverts are not yet available. Declare StructureCondition::AsBuilt",
                 condition.kind()
             )));
         }
@@ -55,6 +49,9 @@ pub(crate) fn check(element: &StructureElement) -> Result<(), StructureError> {
                 *opening_range,
             )
         }
+        (BlockageGeometry::Culvert(culvert), StructureLaw::Culvert(p)) => {
+            check_culvert(id, element.direction, p, culvert)
+        }
         (geometry, law) => {
             let (name, action) = law_action(law);
             Err(StructureError::definition(format!(
@@ -63,6 +60,40 @@ pub(crate) fn check(element: &StructureElement) -> Result<(), StructureError> {
             )))
         }
     }
+}
+
+fn check_culvert(
+    id: &str,
+    direction: DirectionPolicy,
+    parameters: &CulvertParameters,
+    blockage: &CulvertBlockage,
+) -> Result<(), StructureError> {
+    if blockage.closed_barrels >= parameters.barrel_count() {
+        return Err(StructureError::definition(format!(
+            "structure={id:?},closed_barrels={},barrel_count={}: all barrels are closed. Declare StructureCondition::Closed",
+            blockage.closed_barrels,
+            parameters.barrel_count()
+        )));
+    }
+    if direction != DirectionPolicy::BtoAOnly && blockage.face_b != BlockageFraction::NONE {
+        return Err(StructureError::definition(format!(
+            "structure={id:?},direction={direction:?},face_b={}: exit-face blockage is not modelled on an end that flow exits. Set face_b to BlockageFraction::NONE or declare DirectionPolicy::BtoAOnly",
+            blockage.face_b.blocked_share()
+        )));
+    }
+    if direction != DirectionPolicy::AtoBOnly && blockage.face_a != BlockageFraction::NONE {
+        return Err(StructureError::definition(format!(
+            "structure={id:?},direction={direction:?},face_a={}: exit-face blockage is not modelled on an end that flow exits. Set face_a to BlockageFraction::NONE or declare DirectionPolicy::AtoBOnly",
+            blockage.face_a.blocked_share()
+        )));
+    }
+    parameters.effective_barrel(Some(blockage))?;
+    parameters.bed_elevation(CulvertSide::A, Some(blockage))?;
+    parameters.bed_elevation(CulvertSide::B, Some(blockage))?;
+    for side in [CulvertSide::A, CulvertSide::B] {
+        parameters.effective_rows(side, Some(blockage))?;
+    }
+    Ok(())
 }
 
 /// Law variant name and the corrective action for a mismatched blockage.
@@ -79,7 +110,7 @@ fn law_action(law: &StructureLaw) -> (&'static str, &'static str) {
             "SuppressedRectangularWeir",
             "Supply StructureBlockage::weir",
         ),
-        StructureLaw::Culvert(_) => ("Culvert", "Declare StructureCondition::AsBuilt"),
+        StructureLaw::Culvert(_) => ("Culvert", "Supply StructureBlockage::culvert"),
         StructureLaw::Pump(_) => ("Pump", "Declare StructureCondition::AsBuilt"),
     }
 }
@@ -151,6 +182,14 @@ pub(crate) fn gate_maximum_opening(
             opening_range.apply(parameters.maximum_opening_m())
         }
         _ => parameters.maximum_opening_m(),
+    }
+}
+
+/// Culvert blockage carried by `condition`, or `None` for `AsBuilt`, `Closed`, or other laws.
+pub(crate) fn culvert_blockage(condition: &StructureCondition) -> Option<&CulvertBlockage> {
+    match geometry(condition) {
+        Some(BlockageGeometry::Culvert(culvert)) => Some(culvert),
+        _ => None,
     }
 }
 

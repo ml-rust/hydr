@@ -1,7 +1,7 @@
 //! Exact original physical bits for complete structure-definition compatibility.
 
 use super::{
-    BlockageFraction, CulvertEnd, CulvertParameters, PumpSpeedPolicy, StructureCondition,
+    BlockageGeometry, CulvertEnd, CulvertParameters, PumpSpeedPolicy, StructureCondition,
     StructureElement, StructureLaw,
 };
 
@@ -27,17 +27,47 @@ fn same_condition(a: &StructureCondition, b: &StructureCondition) -> bool {
             StructureCondition::Closed { evidence: b },
         ) => a == b,
         (StructureCondition::Blocked(a), StructureCondition::Blocked(b)) => {
-            let shares = |blockage: &crate::structures::StructureBlockage| {
-                blockage
-                    .geometry()
-                    .fractions()
-                    .into_iter()
-                    .map(BlockageFraction::blocked_share)
-                    .collect::<Vec<_>>()
-            };
             a.applicability_evidence() == b.applicability_evidence()
-                && std::mem::discriminant(a.geometry()) == std::mem::discriminant(b.geometry())
-                && bits(&shares(a), &shares(b))
+                && same_blockage_geometry(a.geometry(), b.geometry())
+        }
+        _ => false,
+    }
+}
+fn same_blockage_geometry(a: &BlockageGeometry, b: &BlockageGeometry) -> bool {
+    match (a, b) {
+        (
+            BlockageGeometry::Weir { crest_length: a },
+            BlockageGeometry::Weir { crest_length: b },
+        ) => bits(&[a.blocked_share()], &[b.blocked_share()]),
+        (BlockageGeometry::Orifice { area: a }, BlockageGeometry::Orifice { area: b }) => {
+            bits(&[a.blocked_share()], &[b.blocked_share()])
+        }
+        (
+            BlockageGeometry::Gate {
+                width: aw,
+                opening_range: ao,
+            },
+            BlockageGeometry::Gate {
+                width: bw,
+                opening_range: bo,
+            },
+        ) => bits(
+            &[aw.blocked_share(), ao.blocked_share()],
+            &[bw.blocked_share(), bo.blocked_share()],
+        ),
+        (BlockageGeometry::Culvert(a), BlockageGeometry::Culvert(b)) => {
+            a.closed_barrels == b.closed_barrels
+                && bits(
+                    &[a.face_a.blocked_share(), a.face_b.blocked_share()],
+                    &[b.face_a.blocked_share(), b.face_b.blocked_share()],
+                )
+                && match (a.sediment, b.sediment) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) => {
+                        bits(&[a.depth_m, a.bed_manning_n], &[b.depth_m, b.bed_manning_n])
+                    }
+                    _ => false,
+                }
         }
         _ => false,
     }
@@ -154,9 +184,15 @@ fn same_culvert(a: &CulvertParameters, b: &CulvertParameters) -> bool {
         _ => false,
     };
     let radii = |p: &CulvertParameters| p.barrel().given_radius_m().unwrap_or(&[]).to_vec();
+    let same_floor = match (a.floor_manning_n(), b.floor_manning_n()) {
+        (None, None) => true,
+        (Some(a), Some(b)) => bits(&[a], &[b]),
+        _ => false,
+    };
     a.applicability() == b.applicability()
         && a.barrel().shape() == b.barrel().shape()
         && a.barrel_count() == b.barrel_count()
+        && same_floor
         && bits(&values(a), &values(b))
         && bits(&radii(a), &radii(b))
         && same_end(a.ends().a, b.ends().a)
@@ -350,6 +386,103 @@ mod tests {
             assert!(!same_elements(
                 std::slice::from_ref(&base),
                 std::slice::from_ref(&other)
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn culvert_blockage_and_floor_manning_bits_distinguish_elements() -> TestResult {
+        use crate::structures::{
+            BlockageFraction, CulvertBarrel, CulvertBlockage, CulvertSediment, StructureBlockage,
+            StructureCondition,
+        };
+        let boxed = CulvertBarrel::rectangular_box(2.0, 1.5)?;
+        let make = |floor_n: Option<f64>,
+                    blockage: CulvertBlockage,
+                    ev: &str|
+         -> TestResult<StructureElement> {
+            let mut el = arc_culvert(boxed)?;
+            if let StructureLaw::Culvert(p) = el.law {
+                el.law = StructureLaw::Culvert(match floor_n {
+                    Some(n) => p.with_floor_manning_n(n)?,
+                    None => p,
+                });
+            }
+            el.condition =
+                StructureCondition::Blocked(StructureBlockage::culvert(blockage, ev.into())?);
+            Ok(el)
+        };
+        let sed = CulvertSediment {
+            depth_m: 0.3,
+            bed_manning_n: 0.03,
+        };
+        let b0 = CulvertBlockage {
+            face_a: BlockageFraction::new(0.25)?,
+            face_b: BlockageFraction::NONE,
+            sediment: Some(sed),
+            closed_barrels: 1,
+        };
+        let base = make(Some(0.03), b0, "Survey")?;
+        assert!(same_elements(
+            std::slice::from_ref(&base),
+            &[make(Some(0.03), b0, "Survey")?]
+        ));
+        let others = [
+            make(None, b0, "Survey")?,
+            make(Some(0.03_f64.next_up()), b0, "Survey")?,
+            make(
+                Some(0.03),
+                CulvertBlockage {
+                    face_a: BlockageFraction::new(0.25_f64.next_up())?,
+                    ..b0
+                },
+                "Survey",
+            )?,
+            make(
+                Some(0.03),
+                CulvertBlockage {
+                    sediment: Some(CulvertSediment {
+                        depth_m: 0.3_f64.next_up(),
+                        ..sed
+                    }),
+                    ..b0
+                },
+                "Survey",
+            )?,
+            make(
+                Some(0.03),
+                CulvertBlockage {
+                    sediment: Some(CulvertSediment {
+                        bed_manning_n: 0.03_f64.next_up(),
+                        ..sed
+                    }),
+                    ..b0
+                },
+                "Survey",
+            )?,
+            make(
+                Some(0.03),
+                CulvertBlockage {
+                    sediment: None,
+                    ..b0
+                },
+                "Survey",
+            )?,
+            make(
+                Some(0.03),
+                CulvertBlockage {
+                    closed_barrels: 2,
+                    ..b0
+                },
+                "Survey",
+            )?,
+            make(Some(0.03), b0, "Survey.")?,
+        ];
+        for other in &others {
+            assert!(!same_elements(
+                std::slice::from_ref(&base),
+                std::slice::from_ref(other)
             ));
         }
         Ok(())

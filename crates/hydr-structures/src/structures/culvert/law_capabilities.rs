@@ -88,12 +88,12 @@ static CULVERT: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "buried-dry-end",
             UnsupportedReason::RejectedByAdmission,
-            "A known dry end whose bed lies above its culvert invert rejects.",
+            "A known dry end whose bed lies above its culvert bed elevation rejects.",
         ),
         unsupported(
-            "culvert-blockage",
-            UnsupportedReason::OutsideModel,
-            "No blockage, sediment or debris; the barrel is clean and fully open.",
+            "culvert-exit-face-blockage",
+            UnsupportedReason::RejectedByAdmission,
+            "A face blockage on an end that a declared direction uses as its exit rejects, including any face blockage on a bidirectional culvert.",
         ),
     ],
     limits: &[
@@ -102,8 +102,20 @@ static CULVERT: ComponentCapabilities = ComponentCapabilities {
             "The law holds no water. Barrel storage is not represented, and proposals keep no state.",
         ),
         limit(
-            "culvert-floor-roughness",
-            "The floor of a flat-floor arch takes the culvert's Manning n. A natural bed with its own roughness, HDS-5 composite roughness, is not modelled.",
+            "culvert-composite-roughness",
+            "Floor and sediment friction use HDS-5 eq. 3.8 equal-velocity composite roughness with constant Manning n per material and exponent 2/3, applied through the weighted perimeter P_n.",
+        ),
+        limit(
+            "culvert-uniform-sediment",
+            "Sediment fills every barrel to one uniform depth along the whole barrel length. A local deposit at one end is not modelled.",
+        ),
+        limit(
+            "culvert-buried-inlet-coefficients",
+            "Declared inlet coefficients act on the reduced open section above the bed. Their applicability is caller evidence. NCHRP Tables A.5 and A.6 are not admitted as codes.",
+        ),
+        limit(
+            "culvert-face-loss",
+            "Entrance face blockage scales inlet-control discharge by the open share (1 - f) and sets outlet-control entrance loss to ke / (1 - f)^2 + (f / (1 - f))^2. Both are hydr definitions.",
         ),
         limit(
             "culvert-metre-products",
@@ -135,9 +147,9 @@ static CULVERT: ComponentCapabilities = ComponentCapabilities {
         ),
     ],
     summary: Summary {
-        equations: "HDS-5: discharge is min(Q_i, Q_o), the inverse of the larger of the inlet and outlet control headwaters at fixed tailwater",
+        equations: "HDS-5: discharge is min(Q_i, Q_o) across open barrels, inverting the larger of inlet and outlet control headwaters above the bed with optional floor roughness, sediment, entrance face blockage, closed barrels, or Closed zero discharge",
         method: "closed-form inlet inverses per band and one certified bisection in the form-1 critical-depth fraction; a drowned full barrel in closed form and otherwise one certified bisection over the certified outlet march",
-        assessment: "independent 100-digit inlet and outlet corpus rows return their discharge within the frozen round-trip tolerance",
+        assessment: "independent 100-digit inlet and outlet corpus rows return their discharge within the frozen round-trip tolerance on unblocked, open-floor, sedimented, and face-blocked barrels",
     },
 };
 

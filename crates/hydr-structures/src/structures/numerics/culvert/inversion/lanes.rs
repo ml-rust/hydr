@@ -107,7 +107,11 @@ where
     let receiver_wet = c.where_cond(&nominal_b, &wet_a, &wet_b)?;
     let inlet_invert = c.where_cond(&nominal_b, invert_b, invert_a)?;
     let outlet_invert = c.where_cond(&nominal_b, invert_a, invert_b)?;
-    let headwater = c.where_cond(&active, &c.sub(&donor, &inlet_invert)?, &rise.half_rise)?;
+    let headwater = c.where_cond(
+        &active,
+        &c.sub(&donor, &inlet_invert)?,
+        rise.open_half_rise(),
+    )?;
     let submerged = c.mul(&active, &receiver_wet)?;
     let tailwater = c.where_cond(
         &submerged,

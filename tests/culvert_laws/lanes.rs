@@ -5,7 +5,8 @@
 
 use super::support::{Culvert, DATUM, TestResult, dry, heads, wet};
 use hydr::structures::{
-    CulvertBarrel, CulvertClient, CulvertInlet, HeadSupport, StructureBatch, StructureElement,
+    BlockageFraction, CulvertBarrel, CulvertBlockage, CulvertClient, CulvertInlet, CulvertSediment,
+    HeadSupport, StructureBatch, StructureBlockage, StructureCondition, StructureElement,
     StructureLaw, SuppressedRectangularWeirParameters, WeirApplicability,
 };
 use numr::dtype::DType;
@@ -135,7 +136,81 @@ pub fn layout_lanes() -> TestResult<Vec<Lane>> {
             });
         }
     }
+    lanes.extend(blocked_lanes()?);
     Ok(lanes)
+}
+
+/// Floored, face-blocked, open-bottom, closed-barrel, and `Closed` culvert lanes.
+fn blocked_lanes() -> TestResult<Vec<Lane>> {
+    let circle = CulvertBarrel::circular(1.2)?;
+    let rectangle = CulvertBarrel::rectangular_box(2.0, 1.5)?;
+    let arch = CulvertBarrel::arch(3.048, 1.6002)?;
+
+    let mut face_and_sed = Culvert::both(circle, [0.1, 0.0], CulvertInlet::hds5(1)?, 0.5);
+    face_and_sed.end_b = None;
+    let mut el_face_sed = face_and_sed.element("bf0")?;
+    el_face_sed.condition = StructureCondition::Blocked(StructureBlockage::culvert(
+        CulvertBlockage {
+            face_a: BlockageFraction::new(0.5)?,
+            face_b: BlockageFraction::NONE,
+            sediment: Some(CulvertSediment {
+                depth_m: 0.24,
+                bed_manning_n: 0.030,
+            }),
+            closed_barrels: 0,
+        },
+        "Sediment and debris survey".into(),
+    )?);
+
+    let mut multi = Culvert::both(rectangle, [0.05, 0.0], CulvertInlet::hds5(9)?, 0.5);
+    multi.count = 3;
+    let mut el_multi = multi.element("bf1")?;
+    el_multi.condition = StructureCondition::Blocked(StructureBlockage::culvert(
+        CulvertBlockage {
+            face_a: BlockageFraction::NONE,
+            face_b: BlockageFraction::NONE,
+            sediment: Some(CulvertSediment {
+                depth_m: 0.45,
+                bed_manning_n: 0.030,
+            }),
+            closed_barrels: 1,
+        },
+        "One barrel blocked with sediment".into(),
+    )?);
+
+    let open_arch = Culvert::both(arch, [0.1, 0.0], CulvertInlet::hds5(45)?, 0.5);
+    let mut el_arch = open_arch.element("bf2")?;
+    if let StructureLaw::Culvert(params) = el_arch.law {
+        el_arch.law = StructureLaw::Culvert(params.with_floor_manning_n(0.030)?);
+    }
+
+    let mut el_closed = face_and_sed.element("bf3")?;
+    el_closed.condition = StructureCondition::Closed {
+        evidence: "Bulkhead installed".into(),
+    };
+
+    Ok(vec![
+        Lane {
+            element: el_face_sed,
+            a: wet(1.8),
+            b: wet(0.6),
+        },
+        Lane {
+            element: el_multi,
+            a: wet(2.2),
+            b: wet(1.1),
+        },
+        Lane {
+            element: el_arch,
+            a: wet(2.0),
+            b: wet(0.8),
+        },
+        Lane {
+            element: el_closed,
+            a: wet(2.5),
+            b: wet(0.2),
+        },
+    ])
 }
 
 /// Lane indices of a batch of `width` lanes, starting at offset `width` and wrapping.

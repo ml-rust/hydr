@@ -3,10 +3,11 @@
 use crate::runtime::{Runtime, client};
 use hydr::capability::{ArithmeticRequirement as A, ComponentId, UnsupportedReason};
 use hydr::structures::{
-    CulvertAlignment, CulvertApplicability, CulvertBarrel, CulvertEnd, CulvertEnds, CulvertInlet,
-    CulvertInletForm, CulvertParameters, DirectionPolicy, EndpointHead, HeadConvention,
-    HeadSupport, StructureBatch, StructureCondition, StructureElement, StructureError,
-    StructureHeads, StructureInputErrorKind as K, StructureLaw, culvert_capabilities,
+    BlockageFraction, CulvertAlignment, CulvertApplicability, CulvertBarrel, CulvertBlockage,
+    CulvertEnd, CulvertEnds, CulvertInlet, CulvertInletForm, CulvertParameters, DirectionPolicy,
+    EndpointHead, HeadConvention, HeadSupport, StructureBatch, StructureBlockage,
+    StructureCondition, StructureElement, StructureError, StructureHeads,
+    StructureInputErrorKind as K, StructureLaw, culvert_capabilities,
 };
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -213,6 +214,33 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                 "a known dry culvert end needs its bed at or below its invert",
             )]
         }
+        "culvert-exit-face-blockage" => {
+            let blocked_a = StructureCondition::Blocked(StructureBlockage::culvert(
+                CulvertBlockage {
+                    face_a: BlockageFraction::new(0.25)?,
+                    ..CulvertBlockage::NONE
+                },
+                "Debris survey".into(),
+            )?);
+            let blocked_b = StructureCondition::Blocked(StructureBlockage::culvert(
+                CulvertBlockage {
+                    face_b: BlockageFraction::new(0.25)?,
+                    ..CulvertBlockage::NONE
+                },
+                "Debris survey".into(),
+            )?);
+            let mut two_way = element(
+                parameters(level(), 1, both)?,
+                DirectionPolicy::Bidirectional,
+            );
+            two_way.condition = blocked_a;
+            let mut one_way = element(parameters(level(), 1, one)?, DirectionPolicy::AtoBOnly);
+            one_way.condition = blocked_b;
+            vec![
+                (with_culverts(two_way), K::Definition, "exit-face blockage"),
+                (with_culverts(one_way), K::Definition, "exit-face blockage"),
+            ]
+        }
         _ => return Ok(None),
     }))
 }
@@ -244,7 +272,10 @@ fn culvert_law_nests_its_queries_and_declares_their_arithmetic() {
     );
     for id in [
         "culvert-barrel-storage",
-        "culvert-floor-roughness",
+        "culvert-composite-roughness",
+        "culvert-uniform-sediment",
+        "culvert-buried-inlet-coefficients",
+        "culvert-face-loss",
         "culvert-metre-products",
     ] {
         assert!(
@@ -252,11 +283,20 @@ fn culvert_law_nests_its_queries_and_declares_their_arithmetic() {
             "{id}"
         );
     }
+    for removed in ["culvert-arc-barrel", "culvert-blockage"] {
+        assert!(
+            capabilities
+                .unsupported
+                .iter()
+                .all(|entry| entry.id != removed),
+            "{removed}"
+        );
+    }
     assert!(
         capabilities
-            .unsupported
+            .limits
             .iter()
-            .all(|entry| entry.id != "culvert-arc-barrel")
+            .all(|limit| limit.id != "culvert-floor-roughness")
     );
 }
 

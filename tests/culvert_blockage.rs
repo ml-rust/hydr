@@ -41,6 +41,12 @@ mod outlets;
 #[path = "culvert_blockage/outlet_lanes.rs"]
 mod outlet_lanes;
 
+#[path = "culvert_blockage/laws.rs"]
+mod laws;
+
+#[path = "culvert_blockage/law_rules.rs"]
+mod law_rules;
+
 #[allow(dead_code)]
 #[path = "culvert_blockage/composite_rows.rs"]
 mod composite_rows;

@@ -141,6 +141,28 @@ where
     a.add(&point, &scaled)
 }
 
+/// Encloses `h(s) / D` (or `h(s) / D'` above a floor) at the depth fractions `s`
+/// (`[m]`, `2^-30 <= s <= critical_top`).
+pub(crate) fn section_unit_head<R>(
+    a: &mut Arithmetic<'_, R>,
+    barrel: &TensorBarrelContext<R>,
+    unit: &TensorBarrelContext<R>,
+    s: &Tensor<R>,
+) -> ArithmeticResult<Interval<R>>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    let base = unit_head(a, barrel, unit, s)?;
+    let Some(rows) = barrel.floor.as_deref() else {
+        return Ok(base);
+    };
+    let c = a.client();
+    let open = c.sub(&rows.floored, &rows.boxed)?;
+    let framed = open_head(a, barrel, rows, s)?;
+    super::super::choose(a, &open, &framed, &base)
+}
+
 /// Encloses `h(s) / D` at the depth fractions `s` (`[m]`, `0 <= s < 1`).
 ///
 /// Rows with `s = 0` hold a harmless value. The caller replaces it by zero.

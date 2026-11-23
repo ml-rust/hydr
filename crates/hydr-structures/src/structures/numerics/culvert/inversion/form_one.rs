@@ -12,7 +12,7 @@
 use super::Selected;
 use crate::structures::numerics::culvert::constants::CRITICAL_FLOOR;
 use crate::structures::numerics::culvert::critical::residual::{residual as critical, target};
-use crate::structures::numerics::culvert::inlet::head::unit_head;
+use crate::structures::numerics::culvert::inlet::head::section_unit_head;
 use crate::structures::numerics::culvert::{Arithmetic, roots};
 use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext, TensorInletContext};
 use crate::structures::{CulvertClient, StructureError};
@@ -71,9 +71,9 @@ where
     let term = a.mul(&k, &power)?;
     let slope_term = a.bounds(&inlet.slope_term[0], &inlet.slope_term[1])?;
     let inner = a.add(&term, &slope_term)?;
-    let head = unit_head(a, barrel, unit, s)?;
+    let head = section_unit_head(a, barrel, unit, s)?;
     let sum = a.add(&head, &inner)?;
-    let d = a.point(&barrel.rise)?;
+    let d = a.point(barrel.open_rise())?;
     let total = a.mul(&d, &sum)?;
     let h = a.point(headwater)?;
     a.sub(&total, &h)
@@ -99,7 +99,14 @@ where
     let signs = with_interval_arithmetic(c, DType::F64, "culvert form-1 inversion ends", |a| {
         let bottom = residual(a, rows, headwater, &floor)?;
         let crown = residual(a, rows, headwater, top)?;
-        roots::classify(a, barrel, wanted, [&bottom, &crown], top, &barrel.rise)
+        roots::classify(
+            a,
+            barrel,
+            wanted,
+            [&bottom, &crown],
+            top,
+            barrel.open_rise(),
+        )
     })?;
     let upper = c.where_cond(&signs.solved, top, &floor)?;
     let cause = Cell::new(None);
@@ -120,7 +127,7 @@ where
         },
         &floor,
         &upper,
-        &barrel.rise,
+        barrel.open_rise(),
         &super::options(barrel.width()),
     );
     let roots = match (solved, cause.take()) {

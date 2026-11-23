@@ -30,11 +30,21 @@ where
     let one = &barrel.one;
     let lower = a.point(&inlet.bounds[0])?;
     let scale = a.bounds(&coefficients.scale[0], &coefficients.scale[1])?;
+    let scale = if coefficients.faced {
+        let unit = a.point(one)?;
+        let blocked = a.point(&coefficients.face)?;
+        let open = a.sub(&unit, &blocked)?;
+        let scaled = a.mul(&scale, &open)?;
+        let has_face = a.client().gt(&coefficients.face, &barrel.zero)?;
+        choose(a, &has_face, &scaled, &scale)?
+    } else {
+        scale
+    };
     let x = a.div_positive_interval(&lower, &scale)?;
     let x_low = x.lower().clone();
     let wet = c.gt(&x_low, &barrel.zero)?;
     let x_point = a.point(&c.where_cond(&wet, &x_low, one)?)?;
-    let d = a.point(&barrel.rise)?;
+    let d = a.point(barrel.open_rise())?;
     let m = a.point(&coefficients.m)?;
     let k = a.point(&coefficients.k)?;
 

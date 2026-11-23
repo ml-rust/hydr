@@ -65,7 +65,10 @@ fn conditions_that_do_not_fit_the_law_reject() -> Result {
             ),
             "condition.evidence",
         ),
-        (element("c", culvert()?, closed()), "not yet available"),
+        (
+            element("c", culvert()?, blocked_gate(0.5, 0.0)?),
+            "a Gate blockage cannot apply to a Culvert law. Supply StructureBlockage::culvert",
+        ),
     ];
     for (element, fragment) in cases {
         let message = rejected(batch(vec![element.clone()]))?;

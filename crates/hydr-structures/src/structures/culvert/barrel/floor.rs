@@ -109,17 +109,6 @@ impl CulvertBarrel {
         }
     }
 
-    /// Rejects a barrel with a floor from `query`, which covers barrels without floors only.
-    pub(crate) fn without_floor(&self, query: &str) -> Result<(), StructureError> {
-        let Some(floor) = self.floor else {
-            return Ok(());
-        };
-        Err(StructureError::definition(format!(
-            "sediment_depth_m={:?},roughness_ratio={:?}: {query} of a barrel with a floor is not yet available. Supply the barrel without its floor, CulvertBarrel::base",
-            floor.sediment_depth_m, floor.roughness_ratio
-        )))
-    }
-
     /// Rise of the open section above the bed, `D - h` in metres. `D` without a floor.
     pub fn open_rise_m(&self) -> f64 {
         match self.floor {

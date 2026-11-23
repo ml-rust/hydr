@@ -52,7 +52,12 @@ impl<R: Runtime<DType = DType>> StructureBatch<R> {
     }
     /// Declared and effective geometry of every element, in element order.
     pub fn geometry(&self) -> Vec<super::StructureGeometryReport> {
-        super::blockage::reports(&self.context.elements)
+        let culverts = self
+            .context
+            .culvert
+            .as_deref()
+            .map_or(&[][..], |law| law.geometry());
+        super::blockage::reports(&self.context.elements, culverts)
     }
     /// Evaluate original supported heads without mutating definitions or earlier proposals.
     pub fn propose(&self, heads: &[StructureHeads]) -> Result<StructureProposal<R>, StructureError>

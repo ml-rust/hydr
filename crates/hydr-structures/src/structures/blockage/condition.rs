@@ -40,6 +40,41 @@ impl StructureCondition {
     }
 }
 
+/// Uniform sediment bed in every barrel of a culvert.
+///
+/// The bed runs along the full barrel length, parallel to the invert. The open section sits
+/// above depth `depth_m` and has rise `D - depth_m`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CulvertSediment {
+    /// Sediment depth `h` above the invert, in metres, with `0 < h < D`.
+    pub depth_m: f64,
+    /// Manning roughness `n_bed` of the sediment bed, in `s/m^(1/3)`.
+    pub bed_manning_n: f64,
+}
+
+/// Typed blockage of a culvert: entrance face fractions, uniform sediment bed, and closed barrels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CulvertBlockage {
+    /// Blocked share of the face at endpoint A. Rejected if B-to-A flow exits at A.
+    pub face_a: BlockageFraction,
+    /// Blocked share of the face at endpoint B. Rejected if A-to-B flow exits at B.
+    pub face_b: BlockageFraction,
+    /// Uniform sediment bed in every barrel, replacing any open-bottom floor roughness.
+    pub sediment: Option<CulvertSediment>,
+    /// Number of fully blocked barrels `k`, with `0 <= k < N`. `k = N` is `StructureCondition::Closed`.
+    pub closed_barrels: u32,
+}
+
+impl CulvertBlockage {
+    /// Zero face blockage, no sediment, and no closed barrels.
+    pub const NONE: Self = Self {
+        face_a: BlockageFraction::NONE,
+        face_b: BlockageFraction::NONE,
+        sediment: None,
+        closed_barrels: 0,
+    };
+}
+
 /// Blocked shares of the geometry of one law.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -61,6 +96,8 @@ pub enum BlockageGeometry {
         /// Blocked share of the maximum opening. Every opening above the blocked limit rejects.
         opening_range: BlockageFraction,
     },
+    /// Blocked culvert faces, uniform sediment bed, and closed barrels.
+    Culvert(CulvertBlockage),
 }
 
 impl BlockageGeometry {
@@ -70,18 +107,7 @@ impl BlockageGeometry {
             Self::Weir { .. } => "Weir",
             Self::Orifice { .. } => "Orifice",
             Self::Gate { .. } => "Gate",
-        }
-    }
-
-    /// Every blocked share, in field order.
-    pub(crate) fn fractions(&self) -> Vec<BlockageFraction> {
-        match *self {
-            Self::Weir { crest_length } => vec![crest_length],
-            Self::Orifice { area } => vec![area],
-            Self::Gate {
-                width,
-                opening_range,
-            } => vec![width, opening_range],
+            Self::Culvert(_) => "Culvert",
         }
     }
 }
@@ -126,6 +152,14 @@ impl StructureBlockage {
             },
             applicability_evidence,
         )
+    }
+
+    /// Blocked culvert faces, uniform sediment bed, and closed barrels.
+    pub fn culvert(
+        blockage: CulvertBlockage,
+        applicability_evidence: String,
+    ) -> Result<Self, StructureError> {
+        Self::new(BlockageGeometry::Culvert(blockage), applicability_evidence)
     }
 
     fn new(

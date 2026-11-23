@@ -9,8 +9,9 @@ mod fraction;
 mod report;
 
 pub use condition::{
-    BlockageGeometry, StructureBlockage, StructureCondition, StructureConditionKind,
+    BlockageGeometry, CulvertBlockage, CulvertSediment, StructureBlockage, StructureCondition,
+    StructureConditionKind,
 };
 pub use fraction::BlockageFraction;
-pub(crate) use report::reports;
+pub(crate) use report::{CulvertGeometrySummary, reports};
 pub use report::{StructureGeometry, StructureGeometryReport};

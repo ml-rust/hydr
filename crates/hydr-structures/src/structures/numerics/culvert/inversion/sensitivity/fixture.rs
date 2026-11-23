@@ -7,7 +7,8 @@ use crate::structures::numerics::sensitivity::fixture::{
 use crate::structures::tensor::codes;
 use crate::structures::{
     CulvertAlignment, CulvertApplicability, CulvertBarrel, CulvertEnd, CulvertEnds, CulvertInlet,
-    CulvertInletForm, CulvertParameters, DirectionPolicy, StructureLaw, StructureOperatingPoint,
+    CulvertInletForm, CulvertParameters, DirectionPolicy, StructureCondition, StructureElement,
+    StructureLaw, StructureOperatingPoint, StructureOperation,
 };
 
 /// Barrel, length, roughness and A and B inverts of a test culvert.
@@ -100,6 +101,53 @@ pub(super) fn pairs(upstream: &[f64], downstream: &[f64], boundaries: &[f64]) ->
         }
     }
     cases
+}
+
+/// Checks the bound of one copy of `law` with `condition` per lane. Returns outlet-controlled
+/// flowing lanes.
+pub(super) fn certified_with_condition(
+    law: StructureLaw,
+    direction: DirectionPolicy,
+    condition: StructureCondition,
+    cases: &[Lane],
+) -> TestResult<usize> {
+    use crate::structures::coupling::CouplingStructures;
+    use numr::runtime::cpu::{CpuClient, CpuDevice, ParallelismConfig};
+    let elements: Vec<StructureElement> = (0..cases.len())
+        .map(|index| StructureElement {
+            id: format!("c{index}"),
+            endpoint_a: format!("a{index}"),
+            endpoint_b: format!("b{index}"),
+            datum: "analytical".into(),
+            direction,
+            law: law.clone(),
+            condition: condition.clone(),
+        })
+        .collect();
+    let operations: Vec<StructureOperation> = elements
+        .iter()
+        .map(|e| StructureOperation {
+            structure_id: e.id.clone(),
+            operating_point: StructureOperatingPoint::Passive,
+        })
+        .collect();
+    let client =
+        CpuClient::new(CpuDevice::new()).with_parallelism(ParallelismConfig::new(Some(1), None));
+    let structures = CouplingStructures::with_culverts(client, elements, operations)?;
+    check_bound(&structures, cases)?;
+    let sample = evaluate(&structures, cases, None)?;
+    let mut outlet = 0;
+    for (index, (&q, &s)) in sample.discharge.iter().zip(&sample.sensitivity).enumerate() {
+        assert!(
+            q == 0.0 || s < CAP,
+            "lane {index}: stages={:?} takes the cap",
+            cases[index].stage
+        );
+        if q != 0.0 && sample.regime[index] == codes::CULVERT_OUTLET_CONTROL {
+            outlet += 1;
+        }
+    }
+    Ok(outlet)
 }
 
 /// Checks the bound against centred differences over `cases`. Every flowing lane must hold a

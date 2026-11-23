@@ -67,7 +67,7 @@ where
     };
     // Form 1 starts at `HW_i(0) = D Ks S`. Form 2 starts at zero, below every active headwater.
     let start = with_interval_arithmetic(c, DType::F64, "culvert inlet start", |a| {
-        let d = a.point(&barrel.rise)?;
+        let d = a.point(barrel.open_rise())?;
         let slope_term = a.bounds(&inlet.slope_term[0], &inlet.slope_term[1])?;
         Ok(a.mul(&d, &slope_term)?.lower().clone())
     })?;
@@ -98,11 +98,24 @@ where
         )
         .at(law.elements[lane]));
     }
+    let mut lower = c.where_cond(&flowing, &lower, &barrel.zero)?;
+    let mut upper = c.where_cond(&flowing, &upper, &barrel.zero)?;
+    if inlet.faced {
+        let [scaled_low, scaled_high] =
+            with_interval_arithmetic(c, DType::F64, "culvert inlet face blockage", |a| {
+                let one = a.point(&barrel.one)?;
+                let blocked = a.point(&inlet.face)?;
+                let open = a.sub(&one, &blocked)?;
+                let q = a.bounds(&lower, &upper)?;
+                let scaled = a.mul(&q, &open)?;
+                Ok([scaled.lower().clone(), scaled.upper().clone()])
+            })?;
+        let has_face = c.gt(&inlet.face, &barrel.zero)?;
+        lower = c.where_cond(&has_face, &scaled_low, &lower)?;
+        upper = c.where_cond(&has_face, &scaled_high, &upper)?;
+    }
     Ok(InletDischarge {
-        bounds: [
-            c.where_cond(&flowing, &lower, &barrel.zero)?,
-            c.where_cond(&flowing, &upper, &barrel.zero)?,
-        ],
+        bounds: [lower, upper],
         zero,
         bands,
     })
@@ -129,7 +142,7 @@ where
         let inlet = &self.rows.inlet;
         let c = a.client();
         let enter = |a: &mut Arithmetic<'_, R>, [lower, upper]: &Bounds<R>| a.bounds(lower, upper);
-        let d = a.point(&barrel.rise)?;
+        let d = a.point(barrel.open_rise())?;
         let scale = enter(a, &inlet.scale)?;
         let slope_term = enter(a, &inlet.slope_term)?;
         let harmless =
@@ -169,7 +182,7 @@ where
 
         // Submerged: `X = sqrt((HW / D - Y - Ks S) / c)`.
         let h_full = a.point(self.headwater)?;
-        let relative = a.div_positive(&h_full, &barrel.rise)?;
+        let relative = a.div_positive(&h_full, barrel.open_rise())?;
         let y = a.point(&inlet.y)?;
         let offset = a.add(&y, &slope_term)?;
         let excess = a.sub(&relative, &offset)?;
