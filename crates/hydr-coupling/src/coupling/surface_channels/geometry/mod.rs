@@ -6,10 +6,15 @@
 //! counter bit-identical.
 
 mod pools;
+mod surface;
 
 pub(super) use pools::{
     apply_pool_curves, check_pool_curve_schedules, next_pool_curve_event, pool_curve_epochs_at,
     restored_pool_curves,
+};
+pub(super) use surface::{
+    apply_surface_bed, check_surface_bed_schedules, next_surface_bed_event, restore_surface_data,
+    surface_bed_epochs_at,
 };
 
 use super::SurfaceChannelError;
@@ -98,6 +103,72 @@ pub(super) fn next_event(schedules: &[StructureGeometrySchedule], start_s: f64) 
     next_geometry_event_after(schedules, start_s)
 }
 
+/// Prepared start-of-interval geometry overrides (surface bed and pool curve epochs).
+pub(super) struct StartGeometry<R: Runtime<DType = DType>> {
+    pub surface: Option<crate::solver::Solver<R>>,
+    pub pools: Option<super::pools::PoolChild<R>>,
+    pub receipts: Vec<SurfaceChannelGeometryReceipt>,
+}
+
+/// Applies any surface bed and pool curve epochs active at `start_s`.
+pub(super) fn prepare_start_geometry<R: Runtime<DType = DType>>(
+    context: &Context<R>,
+    definition: &super::SurfaceChannelDefinition,
+    surface: &crate::solver::Solver<R>,
+    pools: Option<&super::pools::PoolChild<R>>,
+    start_s: f64,
+) -> Result<StartGeometry<R>, SurfaceChannelError>
+where
+    R::Client: numr::ops::BinaryOps<R>
+        + numr::ops::CompareOps<R>
+        + numr::ops::ConditionalOps<R>
+        + numr::ops::CorrectlyRoundedOps<R>
+        + numr::ops::CumulativeOps<R>
+        + numr::ops::HypotOps<R>
+        + numr::ops::IndexingOps<R>
+        + numr::ops::ReduceOps<R>
+        + numr::ops::ScalarOps<R>
+        + numr::ops::ShapeOps<R>
+        + numr::ops::TwoSumOps<R>
+        + numr::ops::TypeConversionOps<R>
+        + numr::ops::UnaryOps<R>
+        + solvr::optimize::roots::BatchedBisectionAlgorithms<R>
+        + solvr::optimize::roots::BatchedNewtonAlgorithms<R>,
+{
+    let setup = definition.setup();
+    let (active_surface, mut receipts) = if setup.surface_bed_schedules.is_empty() {
+        (None, Vec::new())
+    } else {
+        let (next, r) = apply_surface_bed(
+            setup.surface.domain.bed(),
+            &setup.surface_bed_schedules,
+            surface,
+            start_s,
+        )?;
+        (Some(next), r)
+    };
+    let (active_pools, pool_receipts) = match (pools, definition.pools.as_ref()) {
+        (Some(child), Some(declared)) if !setup.pool_curve_schedules.is_empty() => {
+            let (next, r) = apply_pool_curves(
+                context,
+                declared,
+                &setup.pool_curve_schedules,
+                child,
+                start_s,
+            )?;
+            (Some(next), r)
+        }
+        (Some(child), _) => (Some(child.clone()), Vec::new()),
+        _ => (None, Vec::new()),
+    };
+    receipts.extend(pool_receipts);
+    Ok(StartGeometry {
+        surface: active_surface,
+        pools: active_pools,
+        receipts,
+    })
+}
+
 /// Active epoch per schedule at `time_s`.
 pub(super) fn epochs_at(schedules: &[StructureGeometrySchedule], time_s: f64) -> Vec<usize> {
     active_geometry_epochs(schedules, time_s)
@@ -119,6 +190,14 @@ pub(super) fn check_snapshot_epochs(
         return Err(super::frames::rejected(
             "pool_curve_epochs",
             "differs from the active pool curve schedule epochs at counters.time_s",
+        ));
+    }
+    if data.surface_bed_epochs
+        != surface_bed_epochs_at(&data.setup.surface_bed_schedules, data.counters.time_s)
+    {
+        return Err(super::frames::rejected(
+            "surface_bed_epochs",
+            "differs from the active surface bed schedule epochs at counters.time_s",
         ));
     }
     Ok(())

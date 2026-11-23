@@ -136,6 +136,8 @@ mod structures_reversal;
 mod structures_surface_reach;
 #[path = "surface_channels/structures_surface_reach_surveyed.rs"]
 mod structures_surface_reach_surveyed;
+#[path = "surface_channels/surface_bed_epochs.rs"]
+mod surface_bed_epochs;
 #[path = "surface_channels/surveyed.rs"]
 mod surveyed;
 #[allow(dead_code)]

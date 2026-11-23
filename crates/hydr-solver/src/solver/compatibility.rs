@@ -45,6 +45,21 @@ impl Definition {
     /// # Errors
     /// Rejects an engine whose retained window starts after the interval the source needs.
     pub(super) fn equivalent(&self, other: &Candidate<'_>) -> Result<bool, EngineError> {
+        self.equivalent_inner(other, true)
+    }
+
+    pub(super) fn equivalent_ignoring_bed(
+        &self,
+        other: &Candidate<'_>,
+    ) -> Result<bool, EngineError> {
+        self.equivalent_inner(other, false)
+    }
+
+    fn equivalent_inner(
+        &self,
+        other: &Candidate<'_>,
+        check_bed: bool,
+    ) -> Result<bool, EngineError> {
         if self.prefix.intervals > other.retained_from {
             return Err(EngineError::rejected(
                 "forcing window",
@@ -54,7 +69,7 @@ impl Definition {
                 ),
             ));
         }
-        if !self.same_static(other) {
+        if !self.same_static(other, check_bed) {
             return Ok(false);
         }
         let base = self.prefix.intervals.max(other.prefix.intervals);
@@ -85,9 +100,17 @@ impl Definition {
                 .all(|(left, right)| same_interval(left, right)))
     }
 
-    fn same_static(&self, other: &Candidate<'_>) -> bool {
+    fn same_static(&self, other: &Candidate<'_>, check_bed: bool) -> bool {
         let (domain, land, config) = (other.domain, other.land, other.config);
-        if self.domain != *domain
+        let same_domain = if check_bed {
+            self.domain == *domain
+        } else {
+            self.domain.grid() == domain.grid()
+                && self.domain.manning() == domain.manning()
+                && self.domain.active() == domain.active()
+                && self.domain.reference() == domain.reference()
+        };
+        if !same_domain
             || self.land != *land
             || self.boundaries != *other.boundaries
             || self.config != *config
@@ -99,7 +122,7 @@ impl Definition {
             let [x, y] = domain.reference().origin();
             [dx, dy, x, y]
         };
-        if !same_bits(self.domain.bed(), domain.bed())
+        if (check_bed && !same_bits(self.domain.bed(), domain.bed()))
             || !same_bits(self.domain.manning(), domain.manning())
             || !same_bits(&geometry(&self.domain), &geometry(domain))
             || !same_bits(&controls(&self.config), &controls(config))

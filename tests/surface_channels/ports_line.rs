@@ -140,6 +140,7 @@ impl Line {
             operating: None,
             geometry_schedules: Vec::new(),
             pool_curve_schedules: Vec::new(),
+            surface_bed_schedules: Vec::new(),
             runoff: None,
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: crate::fixture::config(),

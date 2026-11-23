@@ -10,6 +10,7 @@ pub(crate) mod coupling;
 mod definition;
 mod engine;
 mod forcing_history;
+mod geometry;
 mod output;
 mod receipts;
 mod restore;
@@ -31,6 +32,11 @@ pub use advance::{AdvanceReport, AdvanceStatus};
 pub use capabilities::{CONTRACT_VERSION, surface_solver_capabilities};
 pub use engine::Solver;
 pub use forcing_history::ForcingPrefix;
+pub use geometry::{
+    SurfaceBedEpoch, SurfaceBedSchedule, SurfaceBedUpdate, active_bed_at,
+    active_surface_bed_epochs, bed_digest_bits, check_surface_bed_schedules,
+    next_surface_bed_event_after,
+};
 pub use output::{CellResult, FaceTransfer};
 pub use setup::{InitialState, SolverSetup};
 pub use snapshot::{SNAPSHOT_SCHEMA, Snapshot, SnapshotData};

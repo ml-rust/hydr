@@ -80,9 +80,6 @@ pub(super) type NodePackages<'a> = (
 pub(super) type NodeChildren<R> = (Option<LevelPoolBatch<R>>, Option<OperatingChildren<R>>);
 
 /// Restores the pool and operating packages of one frame into copies of `bases`.
-///
-/// Each base holds the immutable model the package must match: the destination's children,
-/// or fresh children of a resumed definition.
 pub(super) fn node_children<R: Runtime<DType = DType>>(
     context: &Context<R>,
     prefix: &str,
@@ -179,8 +176,9 @@ where
         match self {
             Self::Destination(batch) => {
                 let mut engine = batch.surface.coupling_clone();
+                let has_bed = !batch.setup().surface_bed_schedules.is_empty();
                 let ports = batch.context.ports.as_ref().map(|ports| &ports.surface);
-                engine.coupling_restore_data(surface, ports)?;
+                super::geometry::restore_surface_data(&mut engine, surface, ports, has_bed)?;
                 let reaches = reaches
                     .iter()
                     .zip(&batch.reaches)
@@ -200,6 +198,7 @@ where
                         prefix,
                         &surface.setup,
                         &definition.setup().surface,
+                        definition.setup().surface_bed_schedules.is_empty(),
                     ),
                     "differs from the current surface definition",
                 )?;

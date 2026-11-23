@@ -240,6 +240,7 @@ impl SurfaceChannelDefinition {
             &pool_ends,
             &setup.pool_curve_schedules,
         )?;
+        super::geometry::check_surface_bed_schedules(&setup)?;
         let runoff = check_runoff(&setup, &reach_index, pools.as_ref())?;
         check_caller_pool_inflows(&setup.pool_inflows, runoff.as_ref())?;
         let surface_cells: Vec<usize> = setup

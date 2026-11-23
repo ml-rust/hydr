@@ -92,7 +92,11 @@ where
             "differs from the destination original state",
         )?;
         let mut surface = self.surface.coupling_clone();
-        surface.coupling_restore(&snapshot.surface)?;
+        if self.setup().surface_bed_schedules.is_empty() {
+            surface.coupling_restore(&snapshot.surface)?;
+        } else {
+            surface.coupling_restore_with_bed(&snapshot.surface)?;
+        }
         let reaches = self
             .reaches
             .iter()

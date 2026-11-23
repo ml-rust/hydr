@@ -89,6 +89,10 @@ pub(super) fn setup(a: &SurfaceChannelSetupData, b: &SurfaceChannelSetupData) ->
         same_value(&a.pool_curve_schedules, &b.pool_curve_schedules),
         || "setup.pool_curve_schedules".into(),
     )?;
+    require(
+        same_value(&a.surface_bed_schedules, &b.surface_bed_schedules),
+        || "setup.surface_bed_schedules".into(),
+    )?;
     require(same_value(&a.runoff, &b.runoff), || "setup.runoff".into())
 }
 
@@ -195,9 +199,22 @@ pub(super) fn reach_definitions(
 /// Compares the static surface definition of a frame package with the coordinator's.
 ///
 /// Forcing stays out: the surface engine compares forcing windows itself.
-pub(super) fn surface_definition(prefix: &str, a: &SolverSetup, b: &SolverSetup) -> Check {
-    require(
+pub(super) fn surface_definition(
+    prefix: &str,
+    a: &SolverSetup,
+    b: &SolverSetup,
+    check_bed: bool,
+) -> Check {
+    let same_domain = if check_bed {
         same_value(&a.domain, &b.domain)
+    } else {
+        same_value(&a.domain.grid(), &b.domain.grid())
+            && bits(a.domain.manning(), b.domain.manning())
+            && a.domain.active() == b.domain.active()
+            && same_value(a.domain.reference(), b.domain.reference())
+    };
+    require(
+        same_domain
             && same_value(&a.land, &b.land)
             && same_value(&a.boundaries, &b.boundaries)
             && same_value(&a.config, &b.config),
@@ -226,6 +243,9 @@ pub(super) fn replayed(
     })?;
     require(found.pool_curve_epochs == given.pool_curve_epochs, || {
         "pool_curve_epochs".into()
+    })?;
+    require(found.surface_bed_epochs == given.surface_bed_epochs, || {
+        "surface_bed_epochs".into()
     })?;
     require(same_value(&found.runoff, &given.runoff), || "runoff".into())?;
     counters("counters", &found.counters, &given.counters)?;

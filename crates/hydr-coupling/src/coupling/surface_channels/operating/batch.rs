@@ -69,6 +69,12 @@ where
         ) {
             end = end.min(event);
         }
+        if let Some(event) = super::super::geometry::next_surface_bed_event(
+            &self.definition.setup().surface_bed_schedules,
+            self.time_s,
+        ) {
+            end = end.min(event);
+        }
         Ok(end)
     }
 

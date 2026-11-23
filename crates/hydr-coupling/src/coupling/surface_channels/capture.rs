@@ -235,6 +235,10 @@ where
                 &setup.pool_curve_schedules,
                 self.time_s,
             ),
+            surface_bed_epochs: super::geometry::surface_bed_epochs_at(
+                &setup.surface_bed_schedules,
+                self.time_s,
+            ),
             runoff: runoff_data(self.runoff.as_ref())?,
             counters: counter_data(
                 (&self.counters, self.pools.as_ref()),

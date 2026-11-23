@@ -20,6 +20,7 @@ use super::start::Start;
 use super::state::{PreviousFrame, StoredStep};
 use super::{SurfaceChannelError, SurfaceChannelForcingInterval};
 use crate::channel::{ChannelError, ChannelReach};
+use crate::solver::Solver;
 use hydr_solver::internal::CouplingPreparation;
 use numr::dtype::DType;
 use numr::ops::{
@@ -44,6 +45,7 @@ type AttemptOperands<'a, R> = (
     &'a Cell<Option<Stall>>,
     AttemptOperation<R>,
     Option<&'a RunoffStart>,
+    &'a Solver<R>,
     Option<&'a PoolChild<R>>,
     &'a [SurfaceChannelGeometryReceipt],
 );
@@ -145,21 +147,15 @@ where
             };
             return Err(recompute(start, requested, end, minimum, 0, reason.into()));
         }
-        let (active_pools, pool_geometry) = match (&self.pools, self.definition.pools.as_ref()) {
-            (Some(child), Some(declared)) if !setup.pool_curve_schedules.is_empty() => {
-                let (next, receipts) = super::geometry::apply_pool_curves(
-                    &self.context,
-                    declared,
-                    &setup.pool_curve_schedules,
-                    child,
-                    start,
-                )?;
-                (Some(next), receipts)
-            }
-            (Some(child), _) => (Some(child.clone()), Vec::new()),
-            _ => (None, Vec::new()),
-        };
-        let pool_operands = match (&active_pools, pool_start) {
+        let start_geometry = super::geometry::prepare_start_geometry(
+            &self.context,
+            &self.definition,
+            &self.surface,
+            self.pools.as_ref(),
+            start,
+        )?;
+        let surface_for_step = start_geometry.surface.as_ref().unwrap_or(&self.surface);
+        let pool_operands = match (&start_geometry.pools, pool_start) {
             (Some(child), Some(pool_start)) => Some((child, pool_start)),
             (None, None) => None,
             _ => {
@@ -168,7 +164,7 @@ where
                 ));
             }
         };
-        let children = (&self.surface, &self.reaches[..], pool_operands);
+        let children = (surface_for_step, &self.reaches[..], pool_operands);
         let first = self.operation_at(end)?;
         let operands = self
             .context
@@ -200,8 +196,9 @@ where
                     &stalled,
                     operation,
                     runoff.as_ref(),
-                    active_pools.as_ref(),
-                    &pool_geometry,
+                    surface_for_step,
+                    start_geometry.pools.as_ref(),
+                    &start_geometry.receipts,
                 ),
                 &reach_ids,
                 forcing,
@@ -266,7 +263,15 @@ where
         end: f64,
         requested: f64,
         retries: usize,
-        (operands, stalled, mut operation, runoff_start, active_pools, pool_geometry): AttemptOperands<'_, R>,
+        (
+            operands,
+            stalled,
+            mut operation,
+            runoff_start,
+            active_surface,
+            active_pools,
+            extra_geometry,
+        ): AttemptOperands<'_, R>,
         reach_ids: &[&str],
         forcing: &SurfaceChannelForcingInterval,
     ) -> Result<Self, SurfaceChannelError> {
@@ -278,19 +283,19 @@ where
             .as_ref()
             .zip(operands.ports.as_ref())
             .map(|(topology, ports)| (&topology.surface, &ports.ghosts));
-        let stage =
-            match self
-                .surface
-                .coupling_prepare(end, retries, context.exchange_links(), ghosts)?
-            {
-                CouplingPreparation::Ready(stage) => *stage,
-                CouplingPreparation::SourceRetry(error)
-                | CouplingPreparation::BoundaryRetry(error) => {
-                    return Err(SurfaceChannelError::Numerical(format!(
-                        "surface preparation: {error}. Shorten the common interval"
-                    )));
-                }
-            };
+        let stage = match active_surface.coupling_prepare(
+            end,
+            retries,
+            context.exchange_links(),
+            ghosts,
+        )? {
+            CouplingPreparation::Ready(stage) => *stage,
+            CouplingPreparation::SourceRetry(error) | CouplingPreparation::BoundaryRetry(error) => {
+                return Err(SurfaceChannelError::Numerical(format!(
+                    "surface preparation: {error}. Shorten the common interval"
+                )));
+            }
+        };
         let ports = context.bind_ports(&stage, operands, &self.reaches, reach_ids)?;
         let limit = stage
             .limit()
@@ -321,7 +326,7 @@ where
         let (surface, outcome, ports) = if context.transfer_count() == 0 {
             // Without transfers the surface still takes its runoff through the exchange.
             let lanes = runoff.as_ref().and_then(|runoff| runoff.surface.as_ref());
-            let surface = context.complete_exchange(&self.surface, &stage, None, lanes)?;
+            let surface = context.complete_exchange(active_surface, &stage, None, lanes)?;
             (surface, LinkOutcome::empty(context)?, ports)
         } else {
             let pool_child = active_pools.map(|child| (child, steps));
@@ -330,7 +335,7 @@ where
                 context.attempt(operands, (stage, links), ports, pool_child, runoff.as_ref())?;
             pool_received = pool_receipts(self, &attempt)?;
             let accepted = Accepted {
-                surface: &self.surface,
+                surface: active_surface,
                 reaches: &self.reaches,
                 pools: active_pools,
             };
@@ -434,7 +439,7 @@ where
             )));
         }
         let mut geometry = std::mem::take(&mut operation.geometry);
-        geometry.extend_from_slice(pool_geometry);
+        geometry.extend_from_slice(extra_geometry);
         for receipt in &mut geometry {
             receipt.storage_before_m3 = totals.storage_before_m3;
             receipt.storage_after_m3 = totals.storage_before_m3;

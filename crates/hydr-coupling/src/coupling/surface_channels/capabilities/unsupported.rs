@@ -178,7 +178,7 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
     unsupported(
         "structure-geometry-events",
         UnsupportedReason::NotAttached,
-        "Structure geometry schedules and pool curve epochs are admitted; surface beds and channel sections stay fixed over the run.",
+        "Structure geometry schedules, pool curve epochs, and surface bed epochs are admitted; channel sections stay fixed over the run.",
         SURFACE_CHANNELS_DOC,
     ),
     unsupported(

@@ -14,6 +14,21 @@ use crate::solver::definition::Definition;
 /// # Errors
 /// Rejects an inconsistent prefix, an engine window that starts after the package window, or any definition difference.
 pub(super) fn check(definition: &Definition, data: &SnapshotData) -> Result<(), EngineError> {
+    check_inner(definition, data, true)
+}
+
+pub(super) fn check_ignoring_bed(
+    definition: &Definition,
+    data: &SnapshotData,
+) -> Result<(), EngineError> {
+    check_inner(definition, data, false)
+}
+
+fn check_inner(
+    definition: &Definition,
+    data: &SnapshotData,
+    check_bed: bool,
+) -> Result<(), EngineError> {
     let prefix = &data.forcing_prefix;
     let first = data
         .setup
@@ -36,8 +51,13 @@ pub(super) fn check(definition: &Definition, data: &SnapshotData) -> Result<(), 
         chain: None,
         retained_from: prefix.intervals,
     };
+    let same = if check_bed {
+        definition.equivalent(&candidate)?
+    } else {
+        definition.equivalent_ignoring_bed(&candidate)?
+    };
     require(
-        definition.equivalent(&candidate)?,
+        same,
         "definition",
         "domain, boundaries, forcing prefix, forcing window, or config differs",
     )

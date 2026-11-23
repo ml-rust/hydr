@@ -11,6 +11,15 @@ use hydr::channel::{ChannelLateralDirection, ChannelLateralInput};
 use hydr::forcing::WaterAmount;
 use solvr::optimize::CertifiedRootProbe;
 
+#[path = "frozen_formats.rs"]
+mod formats;
+
+use formats::{
+    before_blockage, before_culvert_roots, before_culverts, before_geometry_schedules,
+    before_pool_curve_epochs, before_pools, before_ports, before_root_probe, before_runoff,
+    before_runoff_reports, before_surface_bed_epochs, before_surface_runoff,
+};
+
 /// FNV-1a 64-bit digest of `text`.
 fn digest(text: &str) -> u64 {
     text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
@@ -18,218 +27,14 @@ fn digest(text: &str) -> u64 {
     })
 }
 
-/// The text in the package format before reach-end ports.
-///
-/// That format names schema `3` and contract `4`, with channel contract `2` and surface solver
-/// contract `1` in the nested packages. It holds no port fields, and its reach forcing holds
-/// each endpoint policy without `Some`. A case without ports changes no other field, so this
-/// text reproduces the earlier digest bit for bit.
-fn before_ports(text: &str) -> String {
-    text.replace(
-        "hydr-surface-channel-checkpoint-4",
-        "hydr-surface-channel-checkpoint-3",
-    )
-    .replace(
-        "hydr-surface-channel-numr-cpu-6",
-        "hydr-surface-channel-numr-cpu-4",
-    )
-    .replace("hydr-channel-1d-numr-cpu-3", "hydr-channel-1d-numr-cpu-2")
-    .replace("hydr-swe-numr-cpu-2", "hydr-swe-numr-cpu-1")
-    .replace(
-        ", ports: SurfaceChannelPortCounterData { ledgers: [], last_signed_volume_m3: [], surface_in_m3: 0.0, surface_out_m3: 0.0, paired_bound_m3: 0.0 }",
-        "",
-    )
-    .replace(", ports: [], port_paired_bound_m3: 0.0", "")
-    .replace(
-        "], ports: [], storage_exclusion_evidence",
-        "], storage_exclusion_evidence",
-    )
-    .replace("left: Some(Wall)", "left: Wall")
-    .replace("right: Some(Wall)", "right: Wall")
-}
-
-/// The text in the package format before pools, structure links, and pool ends.
-///
-/// That format names schema `4` and contract `6`. It holds no pool, structure, pool-end, or
-/// operating fields. A case without them changes no other field, so this text reproduces the
-/// digest of that format bit for bit.
-fn before_pools(text: &str) -> String {
-    text.replace(
-        "hydr-surface-channel-checkpoint-5",
-        "hydr-surface-channel-checkpoint-4",
-    )
-    .replace(
-        "hydr-surface-channel-numr-cpu-7",
-        "hydr-surface-channel-numr-cpu-6",
-    )
-    .replace(
-        ", pools: [], pool_support: [], pool_sources: None, pool_inflows: [], storage: LevelPoolConfig { volume_absolute: 1e-9, volume_relative: 1e-12 }, structures: [], pool_ends: [], operating: None",
-        "",
-    )
-    .replace(")], pools: [] }, surface: ", ")] }, surface: ")
-    .replace(", pools: None, operating: None, counters: ", ", counters: ")
-    .replace(", structures: [], pool_ends: [], pool_inflows: []", "")
-    .replace(", pool_sources: None, pool_inflows: []", "")
-    .replace(", structures: [], pool_ends: [], pools: []", "")
-}
-
-/// The text in the format before secant probes in surveyed roots.
-///
-/// That format names schema `5` and contract `7`, with channel schema `2` and channel contract
-/// `3` in the nested packages. Its root controls hold no probe field. A run with `Midpoint`
-/// probes changes no other field, so this text reproduces the digest of that format bit for bit.
-fn before_root_probe(text: &str) -> String {
-    text.replace(
-        "hydr-surface-channel-checkpoint-6",
-        "hydr-surface-channel-checkpoint-5",
-    )
-    .replace(
-        "hydr-surface-channel-numr-cpu-8",
-        "hydr-surface-channel-numr-cpu-7",
-    )
-    .replace("hydr-channel-checkpoint-3", "hydr-channel-checkpoint-2")
-    .replace("hydr-channel-1d-numr-cpu-4", "hydr-channel-1d-numr-cpu-3")
-    .replace(", probe: Midpoint", "")
-}
-
-/// The text in the format before culvert structure laws.
-///
-/// That format names schema `6` and the same contract `8`. Its structure elements hold no
-/// culvert law. A case without culverts changes no other field, so this text reproduces the
-/// digest of that format bit for bit.
-fn before_culverts(text: &str) -> String {
-    text.replace(
-        "hydr-surface-channel-checkpoint-7",
-        "hydr-surface-channel-checkpoint-6",
-    )
-}
-
-/// The text in the format before warm culvert root searches.
-///
-/// That format names contract `8`. A case without culverts changes no other field, so this text
-/// reproduces the digest of that format bit for bit.
-fn before_culvert_roots(text: &str) -> String {
-    text.replace(
-        "hydr-surface-channel-numr-cpu-9",
-        "hydr-surface-channel-numr-cpu-8",
-    )
-}
-
-/// The text in the format before runoff attachment.
-///
-/// That format names schema `7`. Its setup holds no runoff declaration, its original state no
-/// runoff states, and its forcing no runoff records. A case without runoff changes no other
-/// field, so this text reproduces the schema `7` digest bit for bit.
-fn before_runoff(text: &str) -> String {
-    text.replace(
-        "hydr-surface-channel-checkpoint-8",
-        "hydr-surface-channel-checkpoint-7",
-    )
-    .replace(
-        ", runoff: None, storage_exclusion_evidence",
-        ", storage_exclusion_evidence",
-    )
-    .replace(
-        ", pools: [], runoff: [] }, surface: ",
-        ", pools: [] }, surface: ",
-    )
-    .replace(", pool_inflows: [], runoff: [] }", ", pool_inflows: [] }")
-}
-
-/// The text in the format before runoff reports and runoff restart fields.
-///
-/// That format names contract `9`. Its packages hold no runoff child package or runoff
-/// counters, its interval receipts no runoff transfers, and its balance no runoff totals. A
-/// case without runoff changes no other field, so this text reproduces the contract `9` digest
-/// bit for bit.
-fn before_runoff_reports(text: &str) -> String {
-    text.replace(
-        "hydr-surface-channel-numr-cpu-10",
-        "hydr-surface-channel-numr-cpu-9",
-    )
-    .replace(
-        ", operating: None, runoff: None, counters: ",
-        ", operating: None, counters: ",
-    )
-    .replace(
-        ", runoff: SurfaceChannelRunoffCounterData { ledgers: [], split_bound_m3: 0.0 }",
-        "",
-    )
-    .replace(
-        ", pool_ends: [], pools: [], runoff: [] }",
-        ", pool_ends: [], pools: [] }",
-    )
-    .replace(", runoff_storage_m3: 0.0, runoff_delivered_m3: 0.0", "")
-}
-
-/// The text in the format before runoff into surface cells.
-///
-/// That format names contract `10`. A case without runoff changes no other field, so this
-/// text reproduces the contract `10` digest bit for bit.
-fn before_surface_runoff(text: &str) -> String {
-    text.replace(
-        "hydr-surface-channel-numr-cpu-11",
-        "hydr-surface-channel-numr-cpu-10",
-    )
-}
-
-/// The text in the format before structure conditions.
-///
-/// That format names schema `8`. Its structure elements hold no condition field. An as-built
-/// element changes no other field, so this text reproduces the schema `8` digest bit for bit.
-fn before_blockage(text: &str) -> String {
-    text.replace(
-        "hydr-surface-channel-checkpoint-9",
-        "hydr-surface-channel-checkpoint-8",
-    )
-    .replace(", condition: AsBuilt }", " }")
-}
-
-/// The text in the format before structure geometry schedules.
-///
-/// That format names schema `9` and contract `11`. Its setup holds no `geometry_schedules`,
-/// its package holds no `geometry_epochs`, and its step diagnostics hold no `geometry` receipts.
-/// A case without geometry schedules changes no other field, so this text reproduces the
-/// schema `9` digest bit for bit.
-fn before_geometry_schedules(text: &str) -> String {
-    text.replace(
-        "hydr-surface-channel-checkpoint-10",
-        "hydr-surface-channel-checkpoint-9",
-    )
-    .replace(
-        "hydr-surface-channel-numr-cpu-12",
-        "hydr-surface-channel-numr-cpu-11",
-    )
-    .replace(", geometry_schedules: []", "")
-    .replace(", geometry_epochs: []", "")
-    .replace(", geometry: []", "")
-}
-
-/// The text in the format before pool curve epochs.
-///
-/// That format names schema `10` and contract `12`. Its setup holds no `pool_curve_schedules`
-/// and its package holds no `pool_curve_epochs`. A case without pool curve schedules changes no
-/// other field, so this text reproduces the schema `10` digest bit for bit.
-fn before_pool_curve_epochs(text: &str) -> String {
-    text.replace(
-        "hydr-surface-channel-checkpoint-11",
-        "hydr-surface-channel-checkpoint-10",
-    )
-    .replace(
-        "hydr-surface-channel-numr-cpu-13",
-        "hydr-surface-channel-numr-cpu-12",
-    )
-    .replace(", pool_curve_schedules: []", "")
-    .replace(", pool_curve_epochs: []", "")
-}
-
 /// Fails unless `batch` matches the frozen `expected` digest, its text in the format before
-/// pool curve epochs matches `fixed_pools` (schema `10`, contract `12`), and each earlier format
+/// surface bed epochs matches `fixed_bed` (schema `11`, contract `13`), and each earlier format
 /// reproduces its frozen digest.
 fn check_current(
     batch: &Batch,
     [
         expected,
+        fixed_bed,
         fixed_pools,
         unscheduled,
         unconditioned,
@@ -238,13 +43,21 @@ fn check_current(
         unattached,
         cold,
         uncoupled,
-    ]: [u64; 9],
+    ]: [u64; 10],
 ) -> Result {
     let text = state(batch)?;
     let actual = digest(&text);
     if actual != expected {
         return Err(format!(
             "state digest={actual:#018x}, frozen={expected:#018x}: an accepted bit changed"
+        )
+        .into());
+    }
+    let text = before_surface_bed_epochs(&text);
+    let bed_fixed = digest(&text);
+    if bed_fixed != fixed_bed {
+        return Err(format!(
+            "digest before surface bed epochs={bed_fixed:#018x}, frozen={fixed_bed:#018x}: a field other than the identities and empty surface bed fields changed"
         )
         .into());
     }
@@ -320,7 +133,9 @@ fn check_current(
 fn check_earlier(batch: &Batch, probed: u64, current: u64, earlier: u64) -> Result {
     let text = before_root_probe(&before_culverts(&before_culvert_roots(&before_runoff(
         &before_runoff_reports(&before_surface_runoff(&before_blockage(
-            &before_geometry_schedules(&before_pool_curve_epochs(&state(batch)?)),
+            &before_geometry_schedules(&before_pool_curve_epochs(&before_surface_bed_epochs(
+                &state(batch)?,
+            ))),
         ))),
     ))));
     let unprobed = digest(&text);
@@ -388,6 +203,7 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
     check_current(
         &batch,
         [
+            0x38c7_85ff_5358_c7dd,
             0x3a75_1930_fa6d_cd55,
             0x83fa_9750_3ab2_226d,
             0x47b3_41e0_99b9_461e,
@@ -434,6 +250,7 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
     check_current(
         &flood(CertifiedRootProbe::SlackSecant)?,
         [
+            0x621a_83c5_98de_558a,
             0xefa5_7c00_c7cc_83a2,
             0x3f11_41bd_1f95_3f66,
             0x574f_42de_1061_7391,

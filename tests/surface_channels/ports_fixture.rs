@@ -1,7 +1,5 @@
-//! Reach-end port cases on a 4 x 2 grid of 2 m cells beside two 4 m wide rectangular reaches.
-//!
-//! Surface cell `row * 4 + column` is 2 m square; each reach has three 2 m x 4 m cells. West
-//! (`x_face(0, *)`) and east (`x_face(4, *)`) faces match reach ends via the public API only.
+//! Reach-end port cases on a 4 x 2 grid (2 m cells) beside two 4 m rectangular reaches.
+//! West (`x_face(0, *)`) and east (`x_face(4, *)`) faces match reach ends via the public API.
 
 use super::fixture::{Result, applicability, config};
 use hydr::channel::*;
@@ -392,6 +390,7 @@ impl Scenario {
             operating: None,
             geometry_schedules: Vec::new(),
             pool_curve_schedules: Vec::new(),
+            surface_bed_schedules: Vec::new(),
             runoff: None,
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: config(),

@@ -66,6 +66,16 @@ where
         exchange: Exchange,
         ports: Option<&SurfacePorts<R>>,
     ) -> Result<(), EngineError> {
+        self.import_data_with_bed(data, exchange, ports, false)
+    }
+
+    pub(in crate::solver) fn import_data_with_bed(
+        &mut self,
+        data: &SnapshotData,
+        exchange: Exchange,
+        ports: Option<&SurfacePorts<R>>,
+        allow_bed_epochs: bool,
+    ) -> Result<(), EngineError> {
         if let Some(ports) = ports {
             ports.check(self)?;
         }
@@ -80,7 +90,11 @@ where
         if exchange == Exchange::Reject {
             reject_exchange(&data.ledger, data.last_step.as_ref())?;
         }
-        super::forcing_window::check(&self.definition, data)?;
+        if allow_bed_epochs {
+            super::forcing_window::check_ignoring_bed(&self.definition, data)?;
+        } else {
+            super::forcing_window::check(&self.definition, data)?;
+        }
         FlowState::new(&data.setup.domain, data.accepted.flow.cells().to_vec())?;
         let soil = SoilState::new(&data.setup.land, data.accepted.soil.cells().to_vec())
             .map_err(static_error)?;
@@ -144,6 +158,11 @@ where
                 .map(crate::solver::receipts::StepReceipt::Imported),
             flow,
         };
+        if allow_bed_epochs && self.definition.domain.bed() != data.setup.domain.bed() {
+            let updated = self.coupling_with_bed(data.setup.domain.bed().to_vec())?;
+            self.definition = updated.definition;
+            self.context = updated.context;
+        }
         self.accepted = accepted;
         Ok(())
     }
