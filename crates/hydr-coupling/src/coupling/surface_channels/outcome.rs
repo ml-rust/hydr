@@ -13,6 +13,7 @@ use numr::dtype::DType;
 use numr::ops::IndexingOps;
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
+use std::sync::Arc;
 
 /// Link results of one attempt: the converged fixed point, or nothing without links and pool
 /// ends.
@@ -69,6 +70,7 @@ impl<R: Runtime<DType = DType>> Converged<R> {
                     PoolChild {
                         batch,
                         external: pool_attempt.external.next.clone(),
+                        curves: Arc::clone(&pool_attempt.curves),
                     },
                     PoolInflowStep {
                         volume_m3: summary.volume_m3,

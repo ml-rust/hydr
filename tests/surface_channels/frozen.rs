@@ -1,51 +1,8 @@
 //! Frozen digests of accepted coupled state guard bit-identical coordinator changes.
 //!
 //! Each digest is FNV-1a over the Debug text of the package, the composite ledger, and the
-//! live surface state. Debug text shows every bit of finite values. A digest changes only when
-//! an accepted bit, a step partition, or an iteration count changes.
-//!
-//! The plan-area response step changes every linked iteration path, so both cases carry new
-//! digests. The digests of earlier package formats no longer apply.
-//!
-//! Reach-end ports change the package format again. Each case also maps its text back to the
-//! format before ports and reproduces that format's digest.
-//!
-//! Correctly rounded `exp`, `log` and `pow` bump the surface/channel, channel and surface solver
-//! contract identities, so both current digests move. No accepted bit moves in either case: the
-//! text mapped back to the format before ports still reproduces that format's digest.
-//!
-//! Pools, structure links, pool ends, and operating children change the package format and bump
-//! the schema to `5` and the contract to `7`. Each case maps its text back to the format before
-//! pools and reproduces the digest of contract `6`, then maps on to the format before ports.
-//! No accepted bit moves.
-//!
-//! Secant probes in certified surveyed roots bump the schema to `6` and the contract to `8`,
-//! with channel schema `3` and channel contract `4`. The surveyed case moves accepted bits. It
-//! also runs with `Midpoint` probes and maps that text back to the format before root probes,
-//! which reproduces the digest of contract `7`. The rectangular case moves only its identities.
-//!
-//! Culvert structure laws bump the schema to `7`. The contract stays `8`. Each case maps its
-//! text back to the format before culverts and reproduces the schema `6` digest, so no accepted
-//! bit moves.
-//!
-//! Culvert root searches that start at the attempt's latest roots bump the contract to `9`.
-//! Partly full culvert outlets move accepted bits. Neither case holds a culvert, so each maps
-//! its text back to contract `8` and reproduces that digest.
-//!
-//! Runoff fields in the setup, the original state, and the forcing bump the schema to `8`. The
-//! contract stays `9`. Each case maps its text back to the format before runoff and reproduces
-//! the schema `7` digest, so no accepted bit moves.
-//!
-//! Runoff restart fields, runoff transfers, and runoff balance totals bump the contract to `10`.
-//! The schema stays `8`. Each case maps its text back to the format before runoff reports and
-//! reproduces the contract `9` digest, so no accepted bit moves.
-//!
-//! Runoff into surface cells bumps the contract to `11`. The schema stays `8`. Neither case
-//! holds runoff, so each maps its text back to contract `10` and reproduces that digest.
-//!
-//! Structure element conditions bump the schema to `9`. The contract stays `11`. Each case maps
-//! its text back to the format before structure conditions and reproduces the schema `8`
-//! digest, so no accepted bit moves.
+//! live surface state. Every schema or contract bump maps its text back through earlier formats
+//! and reproduces each earlier frozen digest bit for bit.
 
 use crate::fixture::Result;
 use crate::restoration::{network, state};
@@ -248,13 +205,32 @@ fn before_geometry_schedules(text: &str) -> String {
     .replace(", geometry: []", "")
 }
 
+/// The text in the format before pool curve epochs.
+///
+/// That format names schema `10` and contract `12`. Its setup holds no `pool_curve_schedules`
+/// and its package holds no `pool_curve_epochs`. A case without pool curve schedules changes no
+/// other field, so this text reproduces the schema `10` digest bit for bit.
+fn before_pool_curve_epochs(text: &str) -> String {
+    text.replace(
+        "hydr-surface-channel-checkpoint-11",
+        "hydr-surface-channel-checkpoint-10",
+    )
+    .replace(
+        "hydr-surface-channel-numr-cpu-13",
+        "hydr-surface-channel-numr-cpu-12",
+    )
+    .replace(", pool_curve_schedules: []", "")
+    .replace(", pool_curve_epochs: []", "")
+}
+
 /// Fails unless `batch` matches the frozen `expected` digest, its text in the format before
-/// structure geometry schedules matches `unscheduled` (schema `9`, contract `11`), and each
-/// earlier format reproduces its frozen digest.
+/// pool curve epochs matches `fixed_pools` (schema `10`, contract `12`), and each earlier format
+/// reproduces its frozen digest.
 fn check_current(
     batch: &Batch,
     [
         expected,
+        fixed_pools,
         unscheduled,
         unconditioned,
         celled,
@@ -262,13 +238,21 @@ fn check_current(
         unattached,
         cold,
         uncoupled,
-    ]: [u64; 8],
+    ]: [u64; 9],
 ) -> Result {
     let text = state(batch)?;
     let actual = digest(&text);
     if actual != expected {
         return Err(format!(
             "state digest={actual:#018x}, frozen={expected:#018x}: an accepted bit changed"
+        )
+        .into());
+    }
+    let text = before_pool_curve_epochs(&text);
+    let fixed = digest(&text);
+    if fixed != fixed_pools {
+        return Err(format!(
+            "digest before pool curve epochs={fixed:#018x}, frozen={fixed_pools:#018x}: a field other than the identities and empty pool curve fields changed"
         )
         .into());
     }
@@ -336,7 +320,7 @@ fn check_current(
 fn check_earlier(batch: &Batch, probed: u64, current: u64, earlier: u64) -> Result {
     let text = before_root_probe(&before_culverts(&before_culvert_roots(&before_runoff(
         &before_runoff_reports(&before_surface_runoff(&before_blockage(
-            &before_geometry_schedules(&state(batch)?),
+            &before_geometry_schedules(&before_pool_curve_epochs(&state(batch)?)),
         ))),
     ))));
     let unprobed = digest(&text);
@@ -404,6 +388,7 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
     check_current(
         &batch,
         [
+            0x3a75_1930_fa6d_cd55,
             0x83fa_9750_3ab2_226d,
             0x47b3_41e0_99b9_461e,
             0x8fcb_d6a0_2974_076b,
@@ -449,6 +434,7 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
     check_current(
         &flood(CertifiedRootProbe::SlackSecant)?,
         [
+            0xefa5_7c00_c7cc_83a2,
             0x3f11_41bd_1f95_3f66,
             0x574f_42de_1061_7391,
             0x1f01_27b4_850f_2fae,

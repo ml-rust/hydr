@@ -20,6 +20,7 @@ pub(super) struct StoredStep<R: Runtime<DType = DType>> {
     pub start: f64,
     pub end: f64,
     pub step: TensorPoolStep<R>,
+    pub context_generation: u64,
 }
 
 /// Complete persistent pool continuation with optional explicit sources and no outlet law.
@@ -30,6 +31,7 @@ pub struct LevelPoolBatch<R: Runtime<DType = DType>> {
     pub(super) time: f64,
     pub(super) steps: usize,
     pub(super) last: Option<Arc<StoredStep<R>>>,
+    pub(super) context_generation: u64,
 }
 
 /// Complete candidate state. Dropping it preserves accepted volume and accounting.
@@ -134,6 +136,7 @@ where
             time,
             steps: 0,
             last: None,
+            context_generation: 0,
         })
     }
     /// Explicitly project authoritative accepted element volumes.

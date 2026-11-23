@@ -7,8 +7,8 @@ use super::super::SurfaceChannelError;
 use super::{CheckedPools, pool_error};
 use crate::coupling::links::pool_plan::PoolPlan;
 use crate::storage::{
-    LevelPoolBatch, LevelPoolError, LevelPoolSnapshotData, LevelPoolSources, LevelPoolState,
-    LevelPoolTotals,
+    LevelPoolBatch, LevelPoolCurve, LevelPoolError, LevelPoolSnapshotData, LevelPoolSources,
+    LevelPoolState, LevelPoolTotals,
 };
 use hydr_storage::internal::LevelPoolCut;
 use numr::dtype::DType;
@@ -45,6 +45,9 @@ type CutVolumesFn<R> = fn(&LevelPoolBatch<R>, &[LevelPoolCut]) -> PoolResult<Ten
 type RestoredFn<R> =
     fn(&LevelPoolBatch<R>, &LevelPoolSnapshotData) -> PoolResult<LevelPoolBatch<R>>;
 
+/// A copy of the pools with updated curves, keeping volumes and counters bit-identical.
+type WithCurvesFn<R> = fn(&LevelPoolBatch<R>, &[LevelPoolCurve]) -> PoolResult<LevelPoolBatch<R>>;
+
 /// Pool calls that sort or interpolate, bound to one runtime.
 pub(in super::super) struct PoolFns<R: Runtime<DType = DType>> {
     /// Accepted stage of every pool. A dry pool takes its curve origin.
@@ -58,6 +61,10 @@ pub(in super::super) struct PoolFns<R: Runtime<DType = DType>> {
     pub snapshot: fn(&LevelPoolBatch<R>) -> PoolResult<LevelPoolSnapshotData>,
     /// A copy restored from a checked caller-owned package.
     pub restored: RestoredFn<R>,
+    /// A copy restored from a checked caller-owned package when curve epochs are scheduled.
+    pub restored_with_curves: RestoredFn<R>,
+    /// A copy with updated curves, keeping volumes and counters bit-identical.
+    pub with_curves: WithCurvesFn<R>,
 }
 
 impl<R: Runtime<DType = DType>> Clone for PoolFns<R> {
@@ -135,6 +142,8 @@ where
                 cut_volumes: cut_volumes::<R>,
                 snapshot: snapshot::<R>,
                 restored: restored::<R>,
+                restored_with_curves: restored_with_curves::<R>,
+                with_curves: with_curves::<R>,
             },
             plans,
         })
@@ -301,4 +310,46 @@ where
     let mut batch = batch.clone();
     batch.restore_data(data)?;
     Ok(batch)
+}
+
+fn restored_with_curves<R: Runtime<DType = DType>>(
+    batch: &LevelPoolBatch<R>,
+    data: &LevelPoolSnapshotData,
+) -> Result<LevelPoolBatch<R>, LevelPoolError>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
+    batch.coupling_restore_data(data)
+}
+
+fn with_curves<R: Runtime<DType = DType>>(
+    batch: &LevelPoolBatch<R>,
+    curves: &[LevelPoolCurve],
+) -> Result<LevelPoolBatch<R>, LevelPoolError>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>
+        + IndexingOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + SortingOps<R>
+        + Interp1dAlgorithms<R>,
+{
+    batch.coupling_with_curves(curves)
 }

@@ -47,6 +47,8 @@ mod levelling;
 mod lifecycle;
 #[path = "surface_channels/physics.rs"]
 mod physics;
+#[path = "surface_channels/pool_curve_epochs.rs"]
+mod pool_curve_epochs;
 #[path = "surface_channels/pools_definition.rs"]
 mod pools_definition;
 #[path = "surface_channels/pools_donors.rs"]

@@ -14,6 +14,8 @@ use crate::coupling::links::pool_ends;
 use crate::coupling::links::pool_heads::{Heads, PoolAttachments};
 use crate::coupling::links::pool_plan::PoolPlan;
 use crate::numerics::water_transfers::TransferTree;
+use crate::storage::LevelPoolBatch;
+use hydr_storage::internal::LevelPoolCut;
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ShapeOps, TwoSumOps,
@@ -21,6 +23,72 @@ use numr::ops::{
 };
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
+use std::sync::Arc;
+
+/// Curve-dependent pool operands of one epoch.
+#[derive(Clone)]
+pub(in super::super) struct PoolCurveState<R: Runtime<DType = DType>> {
+    /// Plan areas of every pool.
+    pub plans: Vec<PoolPlan>,
+    /// Curve origin of every pool, `[P]`.
+    pub origin: Tensor<R>,
+    /// Top curve knot volume of every pool, `[P]`.
+    pub maximum: Tensor<R>,
+    /// Top curve knot volume of every pool, in m³.
+    pub maximum_m3: Vec<f64>,
+    /// Curve origin of every pool group, zero at other groups, `[S + C + P]`.
+    pub group_origin: Tensor<R>,
+    /// Upper bound of the volume below every cut, `[K]`, or `None` without cuts.
+    pub cut_upper: Option<Tensor<R>>,
+}
+
+impl<R: Runtime<DType = DType>> PoolCurveState<R>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + IndexingOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + ShapeOps<R>
+        + TwoSumOps<R>
+        + TypeConversionOps<R>
+        + UnaryOps<R>,
+{
+    /// Builds the curve-dependent operands for `batch` against `topology` with pool groups
+    /// starting at `offset`.
+    pub fn from_batch(
+        client: &R::Client,
+        topology: &PoolTopology<R>,
+        offset: usize,
+        batch: &LevelPoolBatch<R>,
+    ) -> Result<Self, SurfaceChannelError> {
+        let device = client.device();
+        let floats = |values: &[f64]| Tensor::<R>::from_slice(values, &[values.len()], device);
+        let elements = batch.elements();
+        let plans: Vec<PoolPlan> = elements.iter().map(|e| PoolPlan::new(&e.curve)).collect();
+        let origins: Vec<f64> = elements.iter().map(|e| e.curve.origin()).collect();
+        let maximum_m3: Vec<f64> = elements
+            .iter()
+            .map(|e| e.curve.maximum_volume_m3())
+            .collect();
+        let mut group_origin = vec![0.0; offset + origins.len()];
+        group_origin[offset..].copy_from_slice(&origins);
+        let cut_upper = if topology.cut_specs.is_empty() {
+            None
+        } else {
+            Some((topology.fns.cut_volumes)(batch, &topology.cut_specs).map_err(pool_error)?)
+        };
+        Ok(Self {
+            plans,
+            origin: floats(&origins)?,
+            maximum: floats(&maximum_m3)?,
+            maximum_m3,
+            group_origin: floats(&group_origin)?,
+            cut_upper,
+        })
+    }
+}
 
 /// Both sides of every link of the table, in link order.
 pub(in super::super) struct LinkSides<'a> {
@@ -51,14 +119,8 @@ pub(in super::super) struct PoolCuts<R: Runtime<DType = DType>> {
 pub(in super::super) struct PoolTopology<R: Runtime<DType = DType>> {
     /// Pool identities in ascending order.
     pub ids: Vec<String>,
-    /// Plan areas of every pool.
-    pub plans: Vec<PoolPlan>,
-    /// Curve origin of every pool, `[P]`.
-    pub origin: Tensor<R>,
-    /// Top curve knot volume of every pool, `[P]`.
-    pub maximum: Tensor<R>,
-    /// Top curve knot volume of every pool, in m³.
-    pub maximum_m3: Vec<f64>,
+    /// Curve-dependent operands at the declared initial epoch.
+    pub curves: Arc<PoolCurveState<R>>,
     /// External inflow bindings and their assembly.
     pub inflows: InflowContext<R>,
     /// Pool calls bound to this runtime.
@@ -69,10 +131,10 @@ pub(in super::super) struct PoolTopology<R: Runtime<DType = DType>> {
     pub cutoff_a: Tensor<R>,
     /// Pool-side cutoff of each link's endpoint B, `-inf` at other nodes, `[L]`.
     pub cutoff_b: Tensor<R>,
-    /// Curve origin of every pool group, zero at other groups, `[S + C + P]`.
-    pub group_origin: Tensor<R>,
     /// Attachment cuts, or `None` without pool attachments.
     pub cuts: Option<PoolCuts<R>>,
+    /// Cut specifications `(pool_index, stage_m)` for recomputing cut volumes on curve epochs.
+    pub cut_specs: Vec<LevelPoolCut>,
     /// Attachment cut of every pool end, in pool-end order.
     pub end_cuts: Vec<usize>,
     empty_index: Tensor<R>,
@@ -166,8 +228,9 @@ where
             attachment_sign.push(1.0);
         }
         let mut end_cuts = Vec::new();
-        let cuts = if attachments.is_empty() {
-            None
+        let mut cut_specs = Vec::new();
+        let (cuts, cut_upper) = if attachments.is_empty() {
+            (None, None)
         } else {
             let CutCover {
                 cuts,
@@ -178,30 +241,39 @@ where
                 .map_err(LinkError::surface_channel)?;
             end_cuts = attachment_cuts.get(first_end..).unwrap_or(&[]).to_vec();
             let upper = (parts.fns.cut_volumes)(&parts.batch, &cuts).map_err(pool_error)?;
-            Some(PoolCuts {
-                blocks,
-                covers,
-                pool: index(&cuts.iter().map(|cut| cut.pool_index).collect::<Vec<_>>())?,
-                upper,
-                link: index(&attachment_link)?,
-                sign: floats(&attachment_sign)?,
-            })
+            cut_specs = cuts.clone();
+            (
+                Some(PoolCuts {
+                    blocks,
+                    covers,
+                    pool: index(&cuts.iter().map(|cut| cut.pool_index).collect::<Vec<_>>())?,
+                    upper: upper.clone(),
+                    link: index(&attachment_link)?,
+                    sign: floats(&attachment_sign)?,
+                }),
+                Some(upper),
+            )
         };
         let inflows = InflowContext::with_native(client, elements, &pools.declared.inflows, native)
             .map_err(inflow_error)?;
-        Ok(Self {
-            ids: pools.ids.clone(),
+        let curves = Arc::new(PoolCurveState {
             plans: parts.plans.clone(),
             origin: floats(&origins)?,
             maximum: floats(&maximum_m3)?,
             maximum_m3,
+            group_origin: floats(&group_origin)?,
+            cut_upper,
+        });
+        Ok(Self {
+            ids: pools.ids.clone(),
+            curves,
             inflows,
             fns: parts.fns,
             sources: pools.declared.sources.is_some(),
             cutoff_a: floats(&cutoffs[0])?,
             cutoff_b: floats(&cutoffs[1])?,
-            group_origin: floats(&group_origin)?,
             cuts,
+            cut_specs,
             end_cuts,
             empty_index: index(&[])?,
             empty: floats(&[])?,
@@ -213,6 +285,11 @@ where
 impl<R: Runtime<DType = DType>> PoolTopology<R> {
     /// Pool-local attachments without links: wet flags and the midpoint depth check.
     pub fn local(&self) -> PoolAttachments<'_, R> {
+        self.local_with_origin(&self.curves.origin)
+    }
+
+    /// Pool-local attachments without links using `origin`.
+    pub fn local_with_origin<'a>(&'a self, origin: &'a Tensor<R>) -> PoolAttachments<'a, R> {
         PoolAttachments {
             a: &self.empty_index,
             b: &self.empty_index,
@@ -220,7 +297,7 @@ impl<R: Runtime<DType = DType>> PoolTopology<R> {
             bed_b: &self.empty,
             cutoff_a: &self.empty,
             cutoff_b: &self.empty,
-            origin: &self.origin,
+            origin,
             zero: &self.zero,
         }
     }
@@ -245,6 +322,7 @@ where
     /// its origin. Each argument is `[S + C + P]`.
     pub fn check_pool_midpoints(
         &self,
+        curves: Option<&PoolCurveState<R>>,
         start: &Tensor<R>,
         end: &Tensor<R>,
         start_wet: &Tensor<R>,
@@ -253,10 +331,11 @@ where
         let Some(topology) = &self.pools else {
             return Ok(());
         };
+        let curves = curves.unwrap_or(&topology.curves);
         let offset = self.surface_count + self.slot_count;
         let pools = |values: &Tensor<R>| values.narrow(0, offset, self.pool_count);
         topology
-            .local()
+            .local_with_origin(&curves.origin)
             .midpoint_heads(
                 &self.client,
                 &pools(start)?,
@@ -272,6 +351,7 @@ where
     /// origin. `end` and `wet` are end stages and wet masks, `[S + C + P]`.
     pub fn check_pool_crossing(
         &self,
+        curves: &PoolCurveState<R>,
         end: &Tensor<R>,
         wet: &Tensor<R>,
         signed: &Tensor<R>,
@@ -286,7 +366,7 @@ where
             bed_b: &self.bed_b,
             cutoff_a: &topology.cutoff_a,
             cutoff_b: &topology.cutoff_b,
-            origin: &topology.group_origin,
+            origin: &curves.group_origin,
             zero: &topology.zero,
         };
         let c = &self.client;
@@ -305,6 +385,7 @@ where
     /// Incoming water funds no export.
     pub fn check_pool_cuts(
         &self,
+        curves: &PoolCurveState<R>,
         available: &Tensor<R>,
         signed: &Tensor<R>,
         ends: Option<&Tensor<R>>,
@@ -312,6 +393,7 @@ where
         let Some(cuts) = self.pools.as_ref().and_then(|p| p.cuts.as_ref()) else {
             return Ok(());
         };
+        let upper = curves.cut_upper.as_ref().unwrap_or(&cuts.upper);
         let c = &self.client;
         let joined;
         let volumes = match ends {
@@ -324,7 +406,7 @@ where
         let values = c.mul(&c.index_select(volumes, 0, &cuts.link)?, &cuts.sign)?;
         let demand = pool_ends::cut_demand(c, &cuts.blocks, &cuts.covers, &values)
             .map_err(LinkError::surface_channel)?;
-        let above = c.sub(&c.index_select(available, 0, &cuts.pool)?, &cuts.upper)?;
+        let above = c.sub(&c.index_select(available, 0, &cuts.pool)?, upper)?;
         let rounding = c.add_scalar(
             &c.mul_scalar(&c.abs(&above)?, 2.0 * f64::EPSILON)?,
             f64::from_bits(1),

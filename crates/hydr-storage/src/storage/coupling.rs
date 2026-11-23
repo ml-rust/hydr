@@ -86,7 +86,9 @@ where
     /// Zero storage retains the numerical curve origin, not a physical water stage.
     #[doc(hidden)]
     pub fn stages_tensor(&self) -> Result<Tensor<R>, LevelPoolError> {
-        if let Some(last) = &self.last {
+        if let Some(last) = &self.last
+            && last.context_generation == self.context_generation
+        {
             return Ok(last.step.stage_m.clone());
         }
         Ok(crate::storage::numerics::curves::evaluate(&self.context, &self.state.volume_m3)?.stage)

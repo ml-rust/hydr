@@ -117,7 +117,7 @@ fn linear_weir_breach_matches_ode_and_refines_second_order() -> Result {
         let final_batch = advance_to(batch, t_end)?;
         let diag = final_batch.last_step()?.ok_or("missing diagnostics")?;
         assert_eq!(diag.geometry.len(), 1);
-        assert_eq!(diag.geometry[0].structure_id, "breach");
+        assert_eq!(diag.geometry[0].element_id, "breach");
         pool_stage(&final_batch, "upper")
     };
 

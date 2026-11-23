@@ -100,7 +100,9 @@ where
                     start: self.time,
                     end,
                     step,
+                    context_generation: self.context_generation,
                 })),
+                context_generation: self.context_generation,
             },
         })
     }

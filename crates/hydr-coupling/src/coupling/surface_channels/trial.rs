@@ -6,9 +6,11 @@ use super::candidate::SurfaceChannelTrial;
 use super::completion::advanced;
 use super::evaluate::Accepted;
 use super::forcing::BoundForcing;
+use super::geometry::SurfaceChannelGeometryReceipt;
 use super::iteration::Stall;
 use super::operating::AttemptOperation;
 use super::outcome::{Converged, LinkOutcome};
+use super::pools::PoolChild;
 use super::retry::{recompute, shortening};
 use super::runoff::{
     RunoffStart, SurfaceRunoffStep, pool_receipts, runoff_delivery, runoff_end, runoff_start,
@@ -42,6 +44,8 @@ type AttemptOperands<'a, R> = (
     &'a Cell<Option<Stall>>,
     AttemptOperation<R>,
     Option<&'a RunoffStart>,
+    Option<&'a PoolChild<R>>,
+    &'a [SurfaceChannelGeometryReceipt],
 );
 
 impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R>
@@ -141,7 +145,21 @@ where
             };
             return Err(recompute(start, requested, end, minimum, 0, reason.into()));
         }
-        let pool_operands = match (&self.pools, pool_start) {
+        let (active_pools, pool_geometry) = match (&self.pools, self.definition.pools.as_ref()) {
+            (Some(child), Some(declared)) if !setup.pool_curve_schedules.is_empty() => {
+                let (next, receipts) = super::geometry::apply_pool_curves(
+                    &self.context,
+                    declared,
+                    &setup.pool_curve_schedules,
+                    child,
+                    start,
+                )?;
+                (Some(next), receipts)
+            }
+            (Some(child), _) => (Some(child.clone()), Vec::new()),
+            _ => (None, Vec::new()),
+        };
+        let pool_operands = match (&active_pools, pool_start) {
             (Some(child), Some(pool_start)) => Some((child, pool_start)),
             (None, None) => None,
             _ => {
@@ -177,7 +195,14 @@ where
                 end,
                 requested,
                 retries,
-                (&operands, &stalled, operation, runoff.as_ref()),
+                (
+                    &operands,
+                    &stalled,
+                    operation,
+                    runoff.as_ref(),
+                    active_pools.as_ref(),
+                    &pool_geometry,
+                ),
                 &reach_ids,
                 forcing,
             );
@@ -241,7 +266,7 @@ where
         end: f64,
         requested: f64,
         retries: usize,
-        (operands, stalled, mut operation, runoff_start): AttemptOperands<'_, R>,
+        (operands, stalled, mut operation, runoff_start, active_pools, pool_geometry): AttemptOperands<'_, R>,
         reach_ids: &[&str],
         forcing: &SurfaceChannelForcingInterval,
     ) -> Result<Self, SurfaceChannelError> {
@@ -299,7 +324,7 @@ where
             let surface = context.complete_exchange(&self.surface, &stage, None, lanes)?;
             (surface, LinkOutcome::empty(context)?, ports)
         } else {
-            let pool_child = self.pools.as_ref().map(|child| (child, steps));
+            let pool_child = active_pools.map(|child| (child, steps));
             let links = Arc::clone(&operation.operations);
             let attempt =
                 context.attempt(operands, (stage, links), ports, pool_child, runoff.as_ref())?;
@@ -307,7 +332,7 @@ where
             let accepted = Accepted {
                 surface: &self.surface,
                 reaches: &self.reaches,
-                pools: self.pools.as_ref(),
+                pools: active_pools,
             };
             let solved = context.solve(config, accepted, reach_ids, operands, &attempt, stalled)?;
             let converged = Converged::new(context, solved, attempt.pools.as_ref())?;
@@ -409,6 +434,7 @@ where
             )));
         }
         let mut geometry = std::mem::take(&mut operation.geometry);
+        geometry.extend_from_slice(pool_geometry);
         for receipt in &mut geometry {
             receipt.storage_before_m3 = totals.storage_before_m3;
             receipt.storage_after_m3 = totals.storage_before_m3;

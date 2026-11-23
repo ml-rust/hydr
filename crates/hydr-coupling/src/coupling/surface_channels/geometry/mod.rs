@@ -1,9 +1,16 @@
-//! Structure geometry schedules in the surface/channel coordinator.
+//! Structure geometry schedules and pool curve epochs in the surface/channel coordinator.
 //!
-//! Knot times join the coordinator event set so no interval straddles a knot. Each interval
-//! evaluates its midpoint geometry on every scheduled structure, rebuilds the interval's link
-//! operations (re-certifying floored culvert rows if sediment depth changed), and records a
-//! receipt with bit-equal storage-before and storage-after volume witnesses.
+//! Knot and epoch times join the coordinator event set so no interval straddles an event.
+//! Structure schedules evaluate midpoint geometry and rebuild interval link operations. Pool curve
+//! epochs replace the pool curves at the interval start while keeping every stored volume and
+//! counter bit-identical.
+
+mod pools;
+
+pub(super) use pools::{
+    apply_pool_curves, check_pool_curve_schedules, next_pool_curve_event, pool_curve_epochs_at,
+    restored_pool_curves,
+};
 
 use super::SurfaceChannelError;
 use super::context::Context;
@@ -17,13 +24,14 @@ use numr::dtype::DType;
 use numr::runtime::Runtime;
 use std::sync::Arc;
 
-/// Receipt of one structure geometry schedule applied on an accepted interval.
+/// Receipt of one geometry schedule event (structure or pool curve) applied on an accepted
+/// interval.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SurfaceChannelGeometryReceipt {
     /// Schedule identity.
     pub schedule_id: String,
-    /// Target structure identity.
-    pub structure_id: String,
+    /// Target structure or pool identity.
+    pub element_id: String,
     /// Interval start time (knot time when starting at an event), in seconds.
     pub time_s: f64,
     /// Active epoch index of this schedule at `time_s`.
@@ -95,6 +103,27 @@ pub(super) fn epochs_at(schedules: &[StructureGeometrySchedule], time_s: f64) ->
     active_geometry_epochs(schedules, time_s)
 }
 
+/// Checks `geometry_epochs` and `pool_curve_epochs` of `data` at `data.counters.time_s`.
+pub(super) fn check_snapshot_epochs(
+    data: &super::snapshot::SurfaceChannelSnapshotData,
+) -> Result<(), SurfaceChannelError> {
+    if data.geometry_epochs != epochs_at(&data.setup.geometry_schedules, data.counters.time_s) {
+        return Err(super::frames::rejected(
+            "geometry_epochs",
+            "differs from the active geometry schedule epochs at counters.time_s",
+        ));
+    }
+    if data.pool_curve_epochs
+        != pool_curve_epochs_at(&data.setup.pool_curve_schedules, data.counters.time_s)
+    {
+        return Err(super::frames::rejected(
+            "pool_curve_epochs",
+            "differs from the active pool curve schedule epochs at counters.time_s",
+        ));
+    }
+    Ok(())
+}
+
 /// Evaluates scheduled geometry for `[start_s, end_s]` and rebuilds `LinkOperations` with updated
 /// laws, cutoffs, and culvert stops, plus pending receipts (whose storage witness is filled on
 /// acceptance).
@@ -145,7 +174,7 @@ where
         if at_knot || old_bits != new_bits {
             receipts.push(SurfaceChannelGeometryReceipt {
                 schedule_id: schedule.schedule_id.clone(),
-                structure_id: schedule.structure_id.clone(),
+                element_id: schedule.structure_id.clone(),
                 time_s: start_s,
                 epoch,
                 old_value_bits: old_bits,

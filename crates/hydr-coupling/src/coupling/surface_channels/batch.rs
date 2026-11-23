@@ -240,14 +240,17 @@ where
         let context = Context::new(client, &definition, &surface, pools.as_ref())?;
         let counters = context.zero_counters()?;
         let pools = match pools {
-            Some(parts) => Some(PoolChild {
-                external: context
-                    .pool_topology()?
-                    .inflows
-                    .zero_state(&context.client)
-                    .map_err(inflow_error)?,
-                batch: parts.batch,
-            }),
+            Some(parts) => {
+                let topology = context.pool_topology()?;
+                Some(PoolChild {
+                    external: topology
+                        .inflows
+                        .zero_state(&context.client)
+                        .map_err(inflow_error)?,
+                    batch: parts.batch,
+                    curves: Arc::clone(&topology.curves),
+                })
+            }
             None => None,
         };
         let operating = match &definition.setup().operating {

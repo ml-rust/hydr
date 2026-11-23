@@ -178,7 +178,7 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
     unsupported(
         "structure-geometry-events",
         UnsupportedReason::NotAttached,
-        "Structure geometry schedules are admitted for crests, sills, areas, blockage, sediment, and closure; pool curves, surface beds, and channel sections stay fixed over the run.",
+        "Structure geometry schedules and pool curve epochs are admitted; surface beds and channel sections stay fixed over the run.",
         SURFACE_CHANNELS_DOC,
     ),
     unsupported(

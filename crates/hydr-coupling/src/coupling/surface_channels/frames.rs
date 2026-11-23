@@ -88,6 +88,7 @@ pub(super) fn node_children<R: Runtime<DType = DType>>(
     prefix: &str,
     (pool_base, operating_base): (Option<&LevelPoolBatch<R>>, Option<&OperatingChildren<R>>),
     (pools, operating): NodePackages<'_>,
+    allow_pool_curve_epochs: bool,
 ) -> Result<NodeChildren<R>, SurfaceChannelError>
 where
     R::Client: BinaryOps<R>
@@ -102,10 +103,16 @@ where
     let detail = "presence differs from the destination children";
     let pools = match (pool_base, pools) {
         (Some(base), Some(data)) => {
-            let restored = context.pool_topology()?.fns.restored;
-            Some(restored(base, data).map_err(|error| {
-                rejected(&format!("{prefix}pools"), &format!("rejects: {error}"))
-            })?)
+            let fns = context.pool_topology()?.fns;
+            let f = if allow_pool_curve_epochs {
+                fns.restored_with_curves
+            } else {
+                fns.restored
+            };
+            Some(
+                f(base, data)
+                    .map_err(|e| rejected(&format!("{prefix}pools"), &format!("rejects: {e}")))?,
+            )
         }
         (None, None) => None,
         _ => return Err(rejected(&format!("{prefix}pools"), detail)),
@@ -329,7 +336,13 @@ where
                     .map_err(|error| {
                         rejected(&path("counters.pool_inflows"), &format!("rejects: {error}"))
                     })?;
-                Some(PoolChild { batch, external })
+                let has_schedules = !parts.definition.setup().pool_curve_schedules.is_empty();
+                let curves = super::geometry::restored_pool_curves(context, &batch, has_schedules)?;
+                Some(PoolChild {
+                    batch,
+                    external,
+                    curves,
+                })
             }
             None => {
                 require(

@@ -189,6 +189,7 @@ pub fn case() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
             pool_ends: Vec::new(),
             operating: None,
             geometry_schedules: Vec::new(),
+            pool_curve_schedules: Vec::new(),
             runoff: None,
             storage_exclusion_evidence: "Reach storage lies outside every surface cell".into(),
             config: config(),

@@ -175,11 +175,16 @@ where
                 SurfaceChannelError::Numerical("pre-exchange stages lack a group".into())
             })
         };
+        let pool_plans = attempt
+            .pools
+            .as_ref()
+            .map(|p| p.curves.plans.as_slice())
+            .or_else(|| self.pools.as_ref().map(|p| p.curves.plans.as_slice()));
         for (link, (groups, ends)) in self.link_groups.iter().zip(&self.link_ends).enumerate() {
             let heads = [read(&host, groups[0])?, read(&host, groups[1])?];
             let law = attempt.operations.laws.get(link).ok_or_else(topology)?;
             let cut = law.cut;
-            let side_areas = [0, 1].map(|side| self.side_area(ends[side], heads, law));
+            let side_areas = [0, 1].map(|side| self.side_area(ends[side], heads, law, pool_plans));
             let [area_a, area_b] = side_areas;
             let area_a = area_a.ok_or_else(topology)?;
             let area_b = area_b.ok_or_else(topology)?;
@@ -236,12 +241,18 @@ where
     ///
     /// A pool takes its smallest segment area over every stage the link's bounds cover: both
     /// heads, both cutoffs, a pump's suction stop, and a culvert's invert stops.
-    fn side_area(&self, end: NodeEnd, heads: [f64; 2], law: &LinkLaw) -> Option<SideArea<'_>> {
+    fn side_area<'a>(
+        &'a self,
+        end: NodeEnd,
+        heads: [f64; 2],
+        law: &LinkLaw,
+        pool_plans: Option<&'a [crate::coupling::links::pool_plan::PoolPlan]>,
+    ) -> Option<SideArea<'a>> {
         Some(match end {
             NodeEnd::Surface(lane) => SideArea::Fixed(*self.lane_area_m2.get(lane)?),
             NodeEnd::Channel(slot) => SideArea::Slot(self.slot_plans.get(slot)?),
             NodeEnd::Pool(pool) => {
-                let plan = self.pools.as_ref()?.plans.get(pool)?;
+                let plan = pool_plans?.get(pool)?;
                 let stop = law.pump().map_or(f64::INFINITY, |p| p.stop_m);
                 let low = heads[0]
                     .min(heads[1])

@@ -248,7 +248,13 @@ where
         let estimate = x.narrow(0, 0, n)?;
         let midpoint = c.midpoint(&start.stage, &estimate)?;
         let end_wet = x.narrow(0, n + m, n)?;
-        self.check_pool_midpoints(&start.stage, &estimate, &start.wet, &end_wet)?;
+        self.check_pool_midpoints(
+            attempt.pools.as_ref().map(|p| p.curves.as_ref()),
+            &start.stage,
+            &estimate,
+            &start.wet,
+            &end_wet,
+        )?;
         let reserved = self.reserve(accepted.reaches, reach_ids, start, attempt, x)?;
         let (law, mut exchange) = if self.link_count == 0 {
             (None, self.no_exchange()?)

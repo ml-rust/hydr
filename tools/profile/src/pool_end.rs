@@ -176,6 +176,7 @@ pub fn parts() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState)> {
         pool_ends: vec![end],
         operating: None,
         geometry_schedules: Vec::new(),
+        pool_curve_schedules: Vec::new(),
         runoff: None,
         storage_exclusion_evidence: "The reach tank lies outside the surface cell".into(),
         config: SurfaceChannelConfig {

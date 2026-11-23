@@ -29,6 +29,7 @@ pub(crate) struct TensorPoolContext<R: Runtime<DType = DType>> {
     pub device: R::Device,
     pub zero: Tensor<R>,
     pub maximum: Tensor<R>,
+    pub initial_maximum: Tensor<R>,
     pub origin: Tensor<R>,
     pub groups: Vec<TensorPoolGroup<R>>,
     pub inverse_permutation: Tensor<R>,
@@ -146,13 +147,15 @@ where
                 )?,
             });
         }
+        let maximum = tensor(
+            &elements
+                .iter()
+                .map(|e| e.curve.maximum_volume_m3())
+                .collect::<Vec<_>>(),
+        )?;
         Ok(Self {
-            maximum: tensor(
-                &elements
-                    .iter()
-                    .map(|e| e.curve.maximum_volume_m3())
-                    .collect::<Vec<_>>(),
-            )?,
+            initial_maximum: maximum.clone(),
+            maximum,
             origin: tensor(
                 &elements
                     .iter()

@@ -4,7 +4,7 @@
 //! external inflow above a top knot. An iterate that overfills a pool takes saturated pool stages,
 //! so the map stays continuous. Only a converged overflow rejects. Neither rejection retries.
 
-use super::PoolChild;
+use super::{PoolChild, PoolCurveState};
 use crate::coupling::surface_channels::SurfaceChannelError;
 use crate::coupling::surface_channels::context::{Context, Ops};
 use crate::storage::LevelPoolSources;
@@ -40,9 +40,10 @@ where
         dt: f64,
     ) -> Result<(), SurfaceChannelError> {
         let topology = self.pool_topology()?;
+        let curves = &child.curves;
         let volumes = child.batch.volumes_tensor().try_to_vec::<f64>()?;
         let external = external.try_to_vec::<f64>()?;
-        for (index, ((plan, source), (&volume, &inflow))) in topology
+        for (index, ((plan, source), (&volume, &inflow))) in curves
             .plans
             .iter()
             .zip(sources)
@@ -55,7 +56,7 @@ where
                 + source.bottom_loss_rate_m3_per_s)
                 * dt;
             let candidate = (volume + rain - losses).max(0.0) + inflow;
-            let top = topology.maximum_m3.get(index).copied().unwrap_or(f64::NAN);
+            let top = curves.maximum_m3.get(index).copied().unwrap_or(f64::NAN);
             if candidate > top {
                 return Err(SurfaceChannelError::input(format!(
                     "pool-capacity-exceeded: pool={:?} candidate volume={candidate} before any link exchange exceeds the top curve knot volume={top}: declare a spill structure or extend the curve",
@@ -73,6 +74,7 @@ where
     /// `when` names the state in the rejection text.
     pub(super) fn overflow(
         &self,
+        curves: &PoolCurveState<R>,
         available: &Tensor<R>,
         outgoing: &Tensor<R>,
         incoming: &Tensor<R>,
@@ -81,23 +83,23 @@ where
         let c = &self.client;
         let topology = self.pool_topology()?;
         let candidate = c.add(&c.sub(available, outgoing)?, incoming)?;
-        let over = c.gt(&candidate, &topology.maximum)?;
+        let over = c.gt(&candidate, &curves.maximum)?;
         if c.max(&over, &[0], false)?.item::<f64>()? == 0.0 {
             return Ok(None);
         }
         let candidate = candidate.try_to_vec::<f64>()?;
         let index = candidate
             .iter()
-            .zip(&topology.maximum_m3)
+            .zip(&curves.maximum_m3)
             .position(|(volume, top)| volume > top)
             .unwrap_or(0);
         let message = format!(
             "pool-capacity-exceeded: pool={:?} candidate volume={} {when} exceeds the top curve knot volume={}: declare a spill structure or extend the curve",
             topology.ids.get(index).map_or("", String::as_str),
             candidate.get(index).copied().unwrap_or(f64::NAN),
-            topology.maximum_m3.get(index).copied().unwrap_or(f64::NAN)
+            curves.maximum_m3.get(index).copied().unwrap_or(f64::NAN)
         );
-        let stages: Vec<f64> = topology
+        let stages: Vec<f64> = curves
             .plans
             .iter()
             .zip(&candidate)

@@ -111,7 +111,7 @@ impl<R: Runtime<DType = DType>> Context<R> {
                 NodeEnd::Pool(pool) => self
                     .pools
                     .as_ref()
-                    .and_then(|parts| parts.plans.get(pool))
+                    .and_then(|parts| parts.curves.plans.get(pool))
                     .map_or(0.0, |plan| plan.smallest(stage, plan.top())),
             }
         };

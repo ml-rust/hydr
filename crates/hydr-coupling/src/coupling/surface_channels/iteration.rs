@@ -271,12 +271,18 @@ where
             let signed = &evaluation.exchange.signed;
             if self.link_count > 0 {
                 self.check_pool_crossing(
+                    &pools.curves,
                     &packet.narrow(0, 0, n)?,
                     &packet.narrow(0, n + m, n)?,
                     signed,
                 )?;
             }
-            self.check_pool_cuts(&pools.available, signed, evaluation.end_volume.as_ref())?;
+            self.check_pool_cuts(
+                &pools.curves,
+                &pools.available,
+                signed,
+                evaluation.end_volume.as_ref(),
+            )?;
         }
         if let (Some(start_support), Some(end_support), Some(volumes)) = (
             &start.end_support,

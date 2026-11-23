@@ -5,8 +5,8 @@
 use super::super::context::{Context, Ops};
 use super::super::memo::{TrialKey, TrialMemo};
 use super::super::{SurfaceChannelError, SurfaceChannelForcingInterval};
-use super::CheckedPools;
 use super::capacity::PoolOverflow;
+use super::{CheckedPools, PoolCurveState};
 use crate::coupling::CoupledLevelPoolError;
 use crate::coupling::level_pools::{BoundInflows, InflowState, PreparedInflows};
 use crate::storage::{LevelPoolBatch, LevelPoolError, LevelPoolSources};
@@ -14,12 +14,14 @@ use numr::dtype::DType;
 use numr::ops::ShapeOps;
 use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
+use std::sync::Arc;
 
 /// Accepted pool storage and external inflow ledgers.
 #[derive(Clone)]
 pub(in super::super) struct PoolChild<R: Runtime<DType = DType>> {
     pub batch: LevelPoolBatch<R>,
     pub external: InflowState<R>,
+    pub curves: Arc<PoolCurveState<R>>,
 }
 
 /// Pool operands of one trial.
@@ -36,6 +38,8 @@ pub(in super::super) struct PoolAttempt<R: Runtime<DType = DType>> {
     pub available: Tensor<R>,
     /// External inflow volumes and the next inflow ledgers.
     pub external: PreparedInflows<R>,
+    /// Active curve-dependent pool operands of this attempt.
+    pub curves: Arc<PoolCurveState<R>>,
 }
 
 /// A pool candidate with the rounding bound of its incoming merge, in m³.
@@ -176,6 +180,7 @@ where
             .map_err(pool_error)?;
         let none = Tensor::<R>::zeros(available.shape(), DType::F64, self.client.device())?;
         if let Some(overflow) = self.overflow(
+            &child.curves,
             &available,
             &none,
             &external.incoming,
@@ -187,6 +192,7 @@ where
             end,
             available,
             external,
+            curves: Arc::clone(&child.curves),
         })
     }
 
@@ -214,6 +220,7 @@ where
             merged.roundoff_bound_m3,
         )?;
         if let Some(overflow) = self.overflow(
+            &attempt.curves,
             &attempt.available,
             outgoing,
             &merged.volume,
@@ -250,10 +257,10 @@ where
         &self,
         attempt: &PoolAttempt<R>,
     ) -> Result<Tensor<R>, SurfaceChannelError> {
-        let topology = self.pool_topology()?;
         let available = attempt.available.try_to_vec::<f64>()?;
         let external = attempt.external.incoming.try_to_vec::<f64>()?;
-        let stages: Vec<f64> = topology
+        let stages: Vec<f64> = attempt
+            .curves
             .plans
             .iter()
             .zip(available.iter().zip(&external))

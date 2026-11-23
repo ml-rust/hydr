@@ -231,6 +231,10 @@ where
             pools: pool_data(context, self.pools.as_ref())?,
             operating: self.operating.as_ref().map(|o| o.data()).transpose()?,
             geometry_epochs: super::geometry::epochs_at(&setup.geometry_schedules, self.time_s),
+            pool_curve_epochs: super::geometry::pool_curve_epochs_at(
+                &setup.pool_curve_schedules,
+                self.time_s,
+            ),
             runoff: runoff_data(self.runoff.as_ref())?,
             counters: counter_data(
                 (&self.counters, self.pools.as_ref()),

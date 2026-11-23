@@ -95,7 +95,13 @@ where
         + SortingOps<R>,
 {
     context.range(&state.volume_m3, "current pool volume")?;
-    context.range(&state.initial_volume_m3, "initial pool volume")?;
+    context.nonnegative(&state.initial_volume_m3, "initial pool volume")?;
+    context.reject(
+        &context
+            .client
+            .gt(&state.initial_volume_m3, &context.initial_maximum)?,
+        "initial pool volume",
+    )?;
     super::bounds::check_counter(context, &state.cumulative_incoming_volume_m3, steps)?;
     super::bounds::check_counter(context, &state.cumulative_outgoing_volume_m3, steps)?;
     context.nonnegative(

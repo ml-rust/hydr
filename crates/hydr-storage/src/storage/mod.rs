@@ -11,6 +11,7 @@ pub(crate) mod definition;
 mod error;
 #[cfg(test)]
 mod fixture;
+mod geometry;
 pub(crate) mod numerics;
 pub(crate) mod prepared_interval;
 mod projection;
@@ -28,6 +29,10 @@ pub use capabilities::level_pool_capabilities;
 pub use curve::{LevelPoolCurve, LevelPoolKnot};
 pub use definition::{LevelPoolConfig, LevelPoolElement, LevelPoolInput, LevelPoolState};
 pub use error::LevelPoolError;
+pub use geometry::{
+    PoolCurveEpoch, PoolCurveSchedule, active_curve_at, active_pool_curve_epochs,
+    check_pool_curve_schedules, curve_digest_bits, next_pool_curve_event_after,
+};
 pub use receipt::{
     LevelPoolElementLedger, LevelPoolOutput, LevelPoolReceipt, LevelPoolStepDiagnostics,
     LevelPoolTotals,

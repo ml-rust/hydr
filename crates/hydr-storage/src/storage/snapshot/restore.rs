@@ -55,6 +55,21 @@ where
     }
     /// Check complete caller-owned state before atomic replacement, without replaying historical intervals.
     pub fn restore_data(&mut self, data: &LevelPoolSnapshotData) -> Result<(), LevelPoolError> {
+        self.restore_inner(data, false)
+    }
+
+    pub(crate) fn restore_data_with_curve_epochs(
+        &mut self,
+        data: &LevelPoolSnapshotData,
+    ) -> Result<(), LevelPoolError> {
+        self.restore_inner(data, true)
+    }
+
+    fn restore_inner(
+        &mut self,
+        data: &LevelPoolSnapshotData,
+        allow_curve_epochs: bool,
+    ) -> Result<(), LevelPoolError> {
         package_identity(
             "level pool",
             &data.schema,
@@ -63,11 +78,19 @@ where
             LEVEL_POOL_CONTRACT_VERSION,
         )
         .map_err(LevelPoolError::input)?;
-        self.compatible(
-            &data.elements,
-            &data.config,
-            data.source_policies.as_deref(),
-        )?;
+        if allow_curve_epochs {
+            self.compatible_metadata(
+                &data.elements,
+                &data.config,
+                data.source_policies.as_deref(),
+            )?;
+        } else {
+            self.compatible(
+                &data.elements,
+                &data.config,
+                data.source_policies.as_deref(),
+            )?;
+        }
         let mut candidate = if let Some(policies) = &data.source_policies {
             Self::new_with_sources(
                 self.context.client.clone(),
@@ -86,6 +109,16 @@ where
                 data.config.clone(),
             )?
         };
+        if allow_curve_epochs {
+            let mut ctx = TensorPoolContext::<R>::new_with_sources(
+                self.context.client.clone(),
+                data.elements.clone(),
+                data.config.clone(),
+                data.source_policies.clone(),
+            )?;
+            ctx.initial_maximum = self.context.initial_maximum.clone();
+            candidate.context = Arc::new(ctx);
+        }
         let context = &candidate.context;
         let n = context.elements.len();
         require(
@@ -98,7 +131,12 @@ where
         )?;
         let state = import_state(context, data)?;
         crate::storage::numerics::accounting::check_state(context, &state, data.accepted_steps)?;
-        crate::storage::numerics::curves::evaluate(context, &state.initial_volume_m3)?;
+        let initial_context = if allow_curve_epochs {
+            &self.context
+        } else {
+            context
+        };
+        crate::storage::numerics::curves::evaluate(initial_context, &state.initial_volume_m3)?;
         crate::storage::accounting::totals(context, &state)?;
         let computed = crate::storage::projection::ledgers(context, &state)?;
         require(
@@ -198,6 +236,7 @@ where
                 start: receipt.start,
                 end: receipt.end,
                 step,
+                context_generation: 0,
             };
             let checked = crate::storage::projection::step(context, &stored)?;
             require(
@@ -228,6 +267,26 @@ where
                     .zip(elements)
                     .all(|(a, b)| a.same_bits(b)),
             "curve/datum/provenance/assertion/support/config bits differ from the immutable target",
+        )
+    }
+
+    fn compatible_metadata(
+        &self,
+        elements: &[crate::storage::LevelPoolElement],
+        config: &crate::storage::LevelPoolConfig,
+        source_policies: Option<&[crate::storage::LevelPoolSourcePolicy]>,
+    ) -> Result<(), LevelPoolError> {
+        require(
+            self.source_policies() == source_policies
+                && self.config().same_bits(config)
+                && self.elements().len() == elements.len()
+                && self.elements().iter().zip(elements).all(|(a, b)| {
+                    a.id == b.id
+                        && a.connected_pool_assertion == b.connected_pool_assertion
+                        && a.storage_support_identity == b.storage_support_identity
+                        && a.curve.vertical_reference() == b.curve.vertical_reference()
+                }),
+            "datum/assertion/support/config bits differ from the immutable target",
         )
     }
 }

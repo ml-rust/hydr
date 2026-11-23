@@ -63,6 +63,12 @@ where
         ) {
             end = end.min(event);
         }
+        if let Some(event) = super::super::geometry::next_pool_curve_event(
+            &self.definition.setup().pool_curve_schedules,
+            self.time_s,
+        ) {
+            end = end.min(event);
+        }
         Ok(end)
     }
 

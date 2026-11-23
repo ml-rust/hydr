@@ -19,7 +19,7 @@ pub(super) use child::{
     PoolAttempt, PoolChild, PoolCompletion, PoolStart, charge, inflow_error, pool_error,
 };
 pub(super) use fns::PoolParts;
-pub(super) use topology::{LinkSides, PoolTopology};
+pub(super) use topology::{LinkSides, PoolCurveState, PoolTopology};
 
 use super::SurfaceChannelSetup;
 use super::pool_ends::SurfaceChannelPoolEnd;
