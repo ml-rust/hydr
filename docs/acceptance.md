@@ -752,8 +752,9 @@ An impervious subcatchment without depression storage drains into a closed pond,
 | Layouts | Every lane at widths 1, 31, 32, 33, 64, and 65 equals its single-row result bit for bit |
 | Arc inlet codes | HDS-5 codes 30 to 47 equal the coefficient table bit for bit. Every 100-digit arc inlet row lies inside its enclosure within `2e-11` relative. |
 | Scale | An arc barrel scaled by `2^-900` or `2^300` keeps its certificates and its geometry, scaled, bit for bit |
+| Floored inlet and outlet | [Floored barrel cases](../tests/culvert_blockage.rs): every 100-digit inlet row on an open section lies inside its enclosure within `5e-11` relative, at face fractions `0` to `0.9`. Outlet full rows lie within `2^-40` and profile, supercritical and jump rows within `1e-9` relative, jump positions within `1e-6 L`. Headwater rises with the face blockage. Floored and clear rows mixed at widths 1, 33 and 65 equal their single-row bits. |
 
-The barrel cases establish geometry and depth enclosures only. They establish no culvert discharge, inlet or outlet control, or measured-event accuracy.
+The barrel cases establish geometry, depth and control headwater enclosures only. They establish no culvert discharge or measured-event accuracy.
 
 ## Structure blockage checks
 

@@ -47,6 +47,7 @@ pub fn inlet_row(row: &InletRow) -> Outcome<CulvertInletRow> {
         inlet: CulvertInlet::hds5(row.code)?,
         slope: f64::from_bits(*slope),
         gravity_m_per_s2: f64::from_bits(GRAVITY),
+        face_blockage: hydr::structures::BlockageFraction::NONE,
     })
 }
 

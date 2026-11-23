@@ -23,6 +23,7 @@ fn lane(row: &SwmmRow) -> Result<Lane, Box<dyn std::error::Error>> {
             inlet: CulvertInlet::hds5(row.code)?,
             slope: f64::from_bits(row.slope),
             gravity_m_per_s2: SWMM_GRAVITY,
+            face_blockage: hydr::structures::BlockageFraction::NONE,
         },
         discharge: f64::from_bits(row.discharge),
     })

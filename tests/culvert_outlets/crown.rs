@@ -31,6 +31,7 @@ fn steep_box(discharge: f64, tailwater: f64) -> Outcome<Lane> {
             entrance_loss: 0.5,
             slope: SLOPE,
             gravity_m_per_s2: 9.81,
+            face_blockage: hydr::structures::BlockageFraction::NONE,
         },
         discharge,
         tailwater,

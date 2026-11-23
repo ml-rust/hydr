@@ -42,6 +42,7 @@ pub fn outlet_row(inputs: &Inputs) -> Outcome<CulvertOutletRow> {
         entrance_loss: f64::from_bits(inputs.ke),
         slope: f64::from_bits(inputs.slope),
         gravity_m_per_s2: f64::from_bits(GRAVITY),
+        face_blockage: hydr::structures::BlockageFraction::NONE,
     })
 }
 

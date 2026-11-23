@@ -41,6 +41,7 @@ fn curves() -> Result<Vec<(CulvertInletRow, f64)>, Box<dyn std::error::Error>> {
                 inlet: CulvertInlet::hds5(entry.code)?,
                 slope: f64::from_bits(slope),
                 gravity_m_per_s2: f64::from_bits(GRAVITY),
+                face_blockage: hydr::structures::BlockageFraction::NONE,
             };
             made.push((row, unit_discharge));
         }

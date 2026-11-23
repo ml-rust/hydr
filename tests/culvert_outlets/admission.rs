@@ -17,6 +17,7 @@ fn row(barrel: CulvertBarrel) -> CulvertOutletRow {
         entrance_loss: 0.5,
         slope: 0.001,
         gravity_m_per_s2: 9.81,
+        face_blockage: hydr::structures::BlockageFraction::NONE,
     }
 }
 

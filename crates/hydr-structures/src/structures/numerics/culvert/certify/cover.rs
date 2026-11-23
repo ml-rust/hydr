@@ -25,7 +25,7 @@ pub(crate) const REFINEMENT_ROUNDS: usize = 16;
 /// Widest certified peak enclosure `s_F - s_N`, `2^-20`.
 const PEAK_WIDTH: f64 = 1.0 / 1_048_576.0;
 
-/// Knots of the rising limb above a floor, with thresholds `2, 1, ..., 2^-6`.
+/// Knots of the rising limb of an arc or open section, with thresholds `2, 1, ..., 2^-6`.
 const LIMB_KNOTS: usize = 8;
 
 /// Pieces of every row: the row of each piece and the fractions of its ends in its span.
@@ -191,10 +191,7 @@ where
         inner: unit.zero.clone(),
     };
     run = advance(c, &cover, &run, [&lower, &upper], &slopes)?;
-    let knots = match reading {
-        Reading::Floors => Some(limb_knots(c, &cover, [&lower, &upper], &slopes, &top)?),
-        Reading::Arcs => None,
-    };
+    let knots = limb_knots(c, &cover, [&lower, &upper], &slopes, &top)?;
     let linear: Vec<f64> = (0..=ROUND_PIECES)
         .map(|i| i as f64 / ROUND_PIECES as f64)
         .collect();
@@ -226,13 +223,9 @@ where
     let log_peak = a.div_positive(&log_cube, &unit.constant(3.0)?)?;
     // A knot never passes s_N, so its floor covers a part of the rising limb.
     let limb = knots
-        .map(|knots| {
-            knots
-                .into_iter()
-                .map(|[knot, floor]| Ok([c.minimum(&knot, &run.low)?, floor]))
-                .collect::<numr::error::Result<Vec<_>>>()
-        })
-        .transpose()?;
+        .into_iter()
+        .map(|[knot, floor]| Ok([c.minimum(&knot, &run.low)?, floor]))
+        .collect::<numr::error::Result<Vec<_>>>()?;
     Ok(DepthCertificates {
         critical_slope,
         normal_top: run.low.clone(),

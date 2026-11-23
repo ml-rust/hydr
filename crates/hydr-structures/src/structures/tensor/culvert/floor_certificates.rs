@@ -87,11 +87,6 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             limb,
             ..
         } = certificates;
-        let Some(limb) = limb else {
-            return Err(StructureError::numerical(
-                "the floor certificates lost their rising-limb knots: report this runtime",
-            ));
-        };
         let put = |base: &Tensor<R>, value: &Tensor<R>| {
             c.index_put(base, 0, &targets, &c.index_select(value, 0, &copies)?)
         };
@@ -110,12 +105,7 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
         self.normal_slope = put(&self.normal_slope, &normal_slope)?;
         self.conveyance_peak = pair(&self.conveyance_peak, &peak)?;
         self.log_peak = pair(&self.log_peak, &log_peak)?;
-        let harmless = [self.constant(0.5)?, self.one.clone()];
-        self.limb = Some(
-            limb.iter()
-                .map(|knot| pair(&harmless, knot))
-                .collect::<numr::error::Result<Vec<_>>>()?,
-        );
+        self.limb = Some(self.limb_with(&limb, &pair)?);
         Ok(self)
     }
 }

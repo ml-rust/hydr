@@ -121,7 +121,7 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
         },
         Limit {
             id: "culvert-floor-roughness",
-            summary: "A floored barrel reports its bed width and the weighted perimeter P_n = P_w + rho^(3/2) b of HDS-5 eq. 3.8 with exponent 2/3, for one Manning n per material. Normal depth takes the wall n with P_n. Inlet control, outlet control and the culvert law take no floor yet, and the floor of a flat-floor arch without one takes the barrel's Manning n.",
+            summary: "A floored barrel reports its bed width and the weighted perimeter P_n = P_w + rho^(3/2) b of HDS-5 eq. 3.8 with exponent 2/3, for one Manning n per material. Normal depth and outlet control take the wall n with P_n, and inlet control takes the open section. The culvert law takes no floor yet, and the floor of a flat-floor arch without one takes the barrel's Manning n.",
             doc: CULVERT_BARREL_DOC,
         },
         Limit {

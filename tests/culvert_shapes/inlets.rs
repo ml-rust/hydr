@@ -147,6 +147,7 @@ fn other_codes_reject_naming_the_reason_and_shapes_must_match() -> TestResult {
             inlet: CulvertInlet::hds5(code)?,
             slope: 0.01,
             gravity_m_per_s2: 9.81,
+            face_blockage: hydr::structures::BlockageFraction::NONE,
         };
         let text = definition_message(CulvertInletBatch::<Runtime>::new(client(), vec![row]))?;
         assert!(

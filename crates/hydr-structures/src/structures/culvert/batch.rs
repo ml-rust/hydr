@@ -335,6 +335,6 @@ pub struct BarrelDepthCertificate {
     /// above one.
     pub log_peak: (f64, f64),
     /// `(s_j, kappa_j)` per rising-limb knot: `kappa_j` bounds `d r_n / ds` below on
-    /// `[2^-30, s_j]`. Empty when no row of the batch is a floored circle or arc barrel.
+    /// `[2^-30, s_j]`. Empty when no row of the batch is an arc barrel or a floored circle.
     pub limb: Vec<(f64, f64)>,
 }

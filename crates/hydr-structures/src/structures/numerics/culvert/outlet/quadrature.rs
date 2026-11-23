@@ -333,6 +333,7 @@ mod tests {
         let params = ProfileParams {
             circular: tensor(&[0.0, 0.0])?,
             beta: [tensor(&[2.0, 2.0])?, tensor(&[2.0, 2.0])?],
+            bed: [tensor(&[2.0, 2.0])?, tensor(&[2.0, 2.0])?],
             rise: tensor(&[1.5, 1.5])?,
             froude: [tensor(&[0.0, 0.0])?, tensor(&[0.0, 0.0])?],
             log_friction: [tensor(&[-800.0, -800.0])?, tensor(&[-800.0, -800.0])?],
@@ -375,6 +376,7 @@ mod tests {
         let params = ProfileParams {
             circular: tensor(&[0.0, 0.0])?,
             beta: [tensor(&[2.0, 2.0])?, tensor(&[2.0, 2.0])?],
+            bed: [tensor(&[2.0, 2.0])?, tensor(&[2.0, 2.0])?],
             rise: tensor(&[1.5, 1.5])?,
             froude: [tensor(&[0.0, 0.0])?, tensor(&[0.0, 0.0])?],
             log_friction: [tensor(&[log_friction; 2])?, tensor(&[log_friction; 2])?],

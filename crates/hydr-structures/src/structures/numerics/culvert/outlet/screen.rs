@@ -100,6 +100,7 @@ where
     let outline = Outline {
         circular: &rounded,
         beta: &params.beta,
+        bed: &params.bed,
         arcs: params.arcs.as_ref(),
     };
     let angle = fraction_coordinate(a, &outline, &fraction)?;

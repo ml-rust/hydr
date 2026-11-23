@@ -70,6 +70,7 @@ fn selected_wgpu_rejects_culvert_outlet_f64_without_fallback() -> super::Result 
         entrance_loss: 0.5,
         slope: 0.001,
         gravity_m_per_s2: 9.81,
+        face_blockage: hydr::structures::BlockageFraction::NONE,
     };
     let arcs = super::culvert_shapes::lanes::arc_barrels()?;
     // The circle, then each arc shape alone.

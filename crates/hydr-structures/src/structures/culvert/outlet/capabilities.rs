@@ -68,12 +68,12 @@ static CULVERT_OUTLET: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "invalid-outlet-row",
             UnsupportedReason::RejectedByAdmission,
-            "An empty row list, a barrel with a floor, a nonfinite or nonpositive length, Manning n or gravity, a nonfinite or negative entrance loss, or a nonfinite slope rejects.",
+            "An empty row list, a nonfinite or nonpositive length, Manning n or gravity, a nonfinite or negative entrance loss, or a nonfinite slope rejects.",
         ),
         unsupported(
             "adverse-beyond-range",
             UnsupportedReason::RejectedByAdmission,
-            "An adverse barrel whose outlet invert sits more than half the rise above its inlet invert rejects.",
+            "An adverse barrel whose outlet invert sits more than half the rise above its inlet invert rejects, with the open rise D' above a floor. A sediment bed can so reject a row whose barrel without its floor admits.",
         ),
         unsupported(
             "invalid-query-input",
@@ -135,11 +135,19 @@ static CULVERT_OUTLET: ComponentCapabilities = ComponentCapabilities {
             "jump-free-outlet",
             "A jump is located only when the subcritical profile is free at the outlet and friction falls with depth across the jump.",
         ),
+        limit(
+            "culvert-composite-roughness",
+            "Above a floor friction is HDS-5 eq. 3.8 with exponent 2/3, written as the wall n with the weighted perimeter P_n = P_w + rho^(3/2) b, for one constant n per material.",
+        ),
+        limit(
+            "culvert-face-loss",
+            "A face of blocked share f takes the entrance loss ke/(1 - f)^2 + (f/(1 - f))^2: the entrance loss at the face velocity plus the Borda-Carnot expansion back to the barrel velocity. This is a hydr definition with no published coefficient.",
+        ),
     ],
     summary: Summary {
-        equations: "HDS-5 full-barrel loss with Ku = 2g, direct-step profiles dx/dy = (1 - Fr^2)/(S - Sf) from max(TW, yc), and the momentum function for the jump",
+        equations: "HDS-5 full-barrel loss with Ku = 2g, direct-step profiles dx/dy = (1 - Fr^2)/(S - Sf) from max(TW, yc), and the momentum function for the jump, on the open section above a floor with weighted-perimeter friction",
         method: "F64 interval enclosures; certified Simpson over a graded partition in a smooth section coordinate (circle half angle, box depth fraction, arc normal angle split at each junction) with order-4 Taylor jets for the fourth derivative; certified bisection for the inlet depth and the jump",
-        assessment: "independent 100-digit full-barrel rows and adaptive-quadrature profile rows lie inside every enclosure within their frozen tolerances",
+        assessment: "independent 100-digit full-barrel rows and adaptive-quadrature profile, supercritical and jump rows lie inside every enclosure within their frozen tolerances, on open sections above a floor and at face fractions 0 and 0.5 too",
     },
 };
 

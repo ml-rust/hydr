@@ -149,7 +149,7 @@ mod tests {
         Accuracy, SlopeOperands, head_slopes, march, prepare,
     };
     use crate::structures::tensor::culvert::TensorBarrelContext;
-    use crate::structures::{CulvertBarrel, CulvertOutletRow, StructureError};
+    use crate::structures::{BlockageFraction, CulvertBarrel, CulvertOutletRow, StructureError};
     use numr::dtype::DType;
     use numr::runtime::Runtime;
     use numr::runtime::cpu::{CpuDevice, CpuRuntime};
@@ -250,6 +250,7 @@ mod tests {
                     entrance_loss: 0.5,
                     slope,
                     gravity_m_per_s2: 9.81,
+                    face_blockage: BlockageFraction::NONE,
                 });
                 flows.push(flow);
                 tails.push(tail * barrel.rise_m());

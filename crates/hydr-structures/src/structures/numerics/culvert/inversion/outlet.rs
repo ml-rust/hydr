@@ -77,7 +77,7 @@ where
             let c = a.client();
             let n = a.point(&outlet_rows.manning)?;
             let length = a.point(&outlet_rows.length)?;
-            let ke = a.point(&outlet_rows.entrance)?;
+            let ke = a.bounds(&outlet_rows.entrance[0], &outlet_rows.entrance[1])?;
             let g = a.point(&outlet_rows.gravity)?;
             let s = a.point(&outlet_rows.slope)?;
             let area = a.bounds(&barrel.full_area[0], &barrel.full_area[1])?;

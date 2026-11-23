@@ -1,8 +1,8 @@
 //! Culvert law definition: barrel, alignment, roughness, barrel count and one end per direction.
 
 use crate::structures::{
-    CulvertApplicability, CulvertBarrel, CulvertInlet, CulvertInletRow, CulvertOutletRow,
-    StructureError,
+    BlockageFraction, CulvertApplicability, CulvertBarrel, CulvertInlet, CulvertInletRow,
+    CulvertOutletRow, StructureError,
 };
 
 /// Inlet of the culvert end that flow enters: an HDS-5 inlet and its entrance loss `ke`.
@@ -89,6 +89,7 @@ impl CulvertParameters {
         applicability: CulvertApplicability,
     ) -> Result<Self, StructureError> {
         applicability.check()?;
+        barrel.without_floor("the culvert law")?;
         let CulvertAlignment {
             length_m,
             invert_a_m,
@@ -199,6 +200,7 @@ impl CulvertParameters {
                 inlet: end.inlet,
                 slope,
                 gravity_m_per_s2: self.gravity_m_per_s2,
+                face_blockage: BlockageFraction::NONE,
             },
             CulvertOutletRow {
                 barrel: self.barrel,
@@ -207,6 +209,7 @@ impl CulvertParameters {
                 entrance_loss: end.entrance_loss,
                 slope,
                 gravity_m_per_s2: self.gravity_m_per_s2,
+                face_blockage: BlockageFraction::NONE,
             },
         ))
     }

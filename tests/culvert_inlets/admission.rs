@@ -12,6 +12,7 @@ fn row(barrel: CulvertBarrel, inlet: CulvertInlet, slope: f64) -> CulvertInletRo
         inlet,
         slope,
         gravity_m_per_s2: 9.81,
+        face_blockage: hydr::structures::BlockageFraction::NONE,
     }
 }
 

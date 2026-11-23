@@ -8,7 +8,7 @@ use numr::tensor::Tensor;
 
 /// One row per culvert inlet, aligned with the rows of its barrel context.
 ///
-/// Every field lives on the device. Admission certified on every row that the anchor at
+/// Every tensor field lives on the device. Admission certified on every row that the anchor at
 /// `X = 4` lies above the anchor at `X = 3.5`, so the headwater rises across the transition.
 pub(crate) struct TensorInletContext<R: Runtime<DType = DType>> {
     /// 1 on form-1 rows, 0 on form-2 rows.
@@ -23,6 +23,11 @@ pub(crate) struct TensorInletContext<R: Runtime<DType = DType>> {
     pub(crate) y: Tensor<R>,
     /// Gravity in metres per second squared.
     pub(crate) gravity: Tensor<R>,
+    /// Blocked share `f` of the inlet face. The headwater at `Q` is the unblocked headwater at
+    /// `Q / (1 - f)`.
+    pub(crate) face: Tensor<R>,
+    /// `true` when some row has a positive face blockage. Without one, a query runs at `Q`.
+    pub(crate) faced: bool,
     /// `Ks S`, with `Ks = -0.5` or `+0.7` mitered and the signed barrel slope `S`.
     pub(crate) slope_term: Bounds<R>,
     /// `A D^0.5 / Ku` in cubic metres per second, so `X = Q / scale`.
@@ -54,6 +59,8 @@ impl<R: Runtime<DType = DType>> TensorInletContext<R> {
             c: take(&self.c)?,
             y: take(&self.y)?,
             gravity: take(&self.gravity)?,
+            face: take(&self.face)?,
+            faced: self.faced,
             slope_term: pair(&self.slope_term)?,
             scale: pair(&self.scale)?,
             unsubmerged_discharge: pair(&self.unsubmerged_discharge)?,

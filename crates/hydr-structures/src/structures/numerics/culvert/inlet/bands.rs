@@ -26,11 +26,12 @@ pub(crate) struct Bands<R: Runtime<DType = DType>> {
     pub(crate) submerged: Tensor<R>,
 }
 
-/// Places each discharge against the limit-discharge enclosures. No interval call is needed.
+/// Places each discharge enclosure `[lower, upper]` against the limit-discharge enclosures. No
+/// interval call is needed.
 pub(crate) fn classify<R>(
     inlet: &TensorInletContext<R>,
     barrel: &TensorBarrelContext<R>,
-    discharge: &Tensor<R>,
+    [lower, upper]: &Bounds<R>,
 ) -> numr::error::Result<Bands<R>>
 where
     R: Runtime<DType = DType>,
@@ -40,9 +41,9 @@ where
     let [low_lower, low_upper] = &inlet.unsubmerged_discharge;
     let [high_lower, high_upper] = &inlet.submerged_discharge;
     Ok(Bands {
-        unsubmerged: c.le(discharge, low_upper)?,
-        transition: c.mul(&c.gt(discharge, low_lower)?, &c.lt(discharge, high_upper)?)?,
-        submerged: c.ge(discharge, high_lower)?,
+        unsubmerged: c.le(lower, low_upper)?,
+        transition: c.mul(&c.gt(upper, low_lower)?, &c.lt(lower, high_upper)?)?,
+        submerged: c.ge(upper, high_lower)?,
     })
 }
 
@@ -75,13 +76,15 @@ pub(crate) struct Operands<'o, R: Runtime<DType = DType>> {
     pub(crate) barrel: &'o TensorBarrelContext<R>,
     pub(crate) unit: &'o TensorBarrelContext<R>,
     pub(crate) inlet: &'o TensorInletContext<R>,
-    pub(crate) discharge: &'o Tensor<R>,
+    /// Enclosure of the unblocked discharge.
+    pub(crate) discharge: &'o Bounds<R>,
     pub(crate) bands: &'o Bands<R>,
-    /// Critical depth at `discharge` on form-1 rows that may be unsubmerged, dry elsewhere.
+    /// Critical depth over `discharge` on form-1 rows that may be unsubmerged, dry elsewhere.
     pub(crate) critical: &'o BarrelDepths<R>,
 }
 
-/// Encloses the inlet-control headwater of every row, in metres above the inlet invert.
+/// Encloses the inlet-control headwater of every row, in metres above the inlet invert, or
+/// above the bed of a barrel with a floor.
 ///
 /// Each band runs on every row. Rows outside a band evaluate it at a harmless `X`.
 /// A form-1 row that may be unsubmerged without a critical depth below the crown gets inverted
@@ -104,10 +107,10 @@ where
     } = *operands;
     let c = a.client();
     let enter = |a: &mut Arithmetic<'_, R>, [lower, upper]: &Bounds<R>| a.bounds(lower, upper);
-    let q = a.point(discharge)?;
+    let q = enter(a, discharge)?;
     let scale = enter(a, &inlet.scale)?;
     let x = a.div_positive_interval(&q, &scale)?;
-    let d = a.point(&barrel.rise)?;
+    let d = a.point(barrel.open_rise())?;
     let slope_term = enter(a, &inlet.slope_term)?;
 
     let within = |a: &mut Arithmetic<'_, R>, mask: &Tensor<R>, harmless: f64| {

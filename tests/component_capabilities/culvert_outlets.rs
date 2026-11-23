@@ -30,6 +30,7 @@ fn row(barrel: CulvertBarrel) -> CulvertOutletRow {
         entrance_loss: 0.5,
         slope: 0.001,
         gravity_m_per_s2: 9.81,
+        face_blockage: hydr::structures::BlockageFraction::NONE,
     }
 }
 
@@ -72,26 +73,30 @@ fn cases(id: &str) -> Result<Option<Vec<Rejection>>, Box<dyn std::error::Error>>
                 K::Definition,
                 "supply a finite barrel slope",
             ),
+        ],
+        "adverse-beyond-range" => vec![
             (
                 batch(vec![CulvertOutletRow {
-                    barrel: circle.with_floor(CulvertFloor {
-                        sediment_depth_m: 0.2,
-                        roughness_ratio: 2.5,
-                    })?,
+                    slope: -0.02,
                     ..good
                 }]),
                 K::Definition,
-                "outlet control of a barrel with a floor is not yet available",
+                "more than half the rise above the inlet invert",
+            ),
+            (
+                // The bed halves the open rise, so a fall the bare barrel admits rejects.
+                batch(vec![CulvertOutletRow {
+                    barrel: circle.with_floor(CulvertFloor {
+                        sediment_depth_m: 0.5 * circle.rise_m(),
+                        roughness_ratio: 2.5,
+                    })?,
+                    slope: -0.3 * circle.rise_m() / good.length_m,
+                    ..good
+                }]),
+                K::Definition,
+                "sediment_depth_m=",
             ),
         ],
-        "adverse-beyond-range" => vec![(
-            batch(vec![CulvertOutletRow {
-                slope: -0.02,
-                ..good
-            }]),
-            K::Definition,
-            "more than half the rise above the inlet invert",
-        )],
         "invalid-query-input" => {
             let outlets = CulvertOutletBatch::<Runtime>::new(client(), vec![good, good])?;
             vec![

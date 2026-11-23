@@ -18,7 +18,9 @@ use crate::structures::numerics::culvert::{
     BarrelClient, BarrelDepths, RowNames, choose, critical,
 };
 use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext, TensorInletContext};
-use crate::structures::{CulvertBarrel, CulvertInletForm, CulvertInletRow, StructureError};
+use crate::structures::{
+    BlockageFraction, CulvertBarrel, CulvertInletForm, CulvertInletRow, StructureError,
+};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps};
 use numr::runtime::Runtime;
@@ -75,8 +77,9 @@ where
             &barrel.constant(f64::from_bits(INLET_KU[0]))?,
             &barrel.constant(f64::from_bits(INLET_KU[1]))?,
         )?;
-        let area = a.bounds(&barrel.full_area[0], &barrel.full_area[1])?;
-        let d = a.point(&barrel.rise)?;
+        let [area_lower, area_upper] = barrel.open_full_area()?;
+        let area = a.bounds(&area_lower, &area_upper)?;
+        let d = a.point(barrel.open_rise())?;
         let root = a.sqrt_nonnegative(&d)?;
         let product = a.mul(&area, &root)?;
         let scale = a.div_positive_interval(&product, &ku)?;
@@ -151,6 +154,7 @@ where
         let masks = [&small, &reached];
         return Err(reject(rows, masks, &unsubmerged_discharge, [&low, &high])?);
     }
+    let face = column(&|r| r.face_blockage.blocked_share())?;
     Ok(TensorInletContext {
         form_one,
         k,
@@ -158,6 +162,10 @@ where
         c,
         y,
         gravity,
+        face,
+        faced: rows
+            .iter()
+            .any(|r| r.face_blockage != BlockageFraction::NONE),
         slope_term,
         scale,
         unsubmerged_discharge,

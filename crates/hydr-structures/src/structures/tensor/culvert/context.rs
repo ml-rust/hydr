@@ -62,8 +62,8 @@ pub(crate) struct TensorBarrelContext<R: Runtime<DType = DType>> {
     /// Floored circle and arc rows hold `(5 ln A - 2 ln P_n) / 3` in their frame.
     pub(crate) log_peak: Bounds<R>,
     /// `[s_j, kappa_j]` per rising-limb knot: `kappa_j` bounds `d r_n / ds` below on
-    /// `[2^-30, s_j]` of a floored circle or arc row. Other rows hold `[1/2, 1]`, which no query
-    /// reads. `None` when no row is a floored circle or arc barrel.
+    /// `[2^-30, s_j]` of an arc row or a floored circle row. Other rows hold `[1/2, 1]`, which no
+    /// query reads. `None` when no row is an arc barrel or a floored circle.
     pub(crate) limb: Option<Vec<Bounds<R>>>,
     pub(crate) full_area: Bounds<R>,
     pub(crate) full_perimeter: Bounds<R>,

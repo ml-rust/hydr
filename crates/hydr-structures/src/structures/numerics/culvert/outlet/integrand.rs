@@ -8,10 +8,12 @@
 //! | Shape | `a = A / D^2` | `t = T / D` | `p = P / D` | `ds/dv` |
 //! | --- | --- | --- | --- | --- |
 //! | circle | `(phi - sin phi cos phi) / 4` | `sin phi` | `phi` | `sin phi / 2` |
-//! | box | `beta s` | `beta` | `beta + 2 s` | `1` |
+//! | box | `beta s` | `beta` | `w beta + 2 s` | `1` |
 //! | arc band `k` | `c_k - 2 x_k r_k cos psi + r_k^2 (psi - sin psi cos psi)` | `2 (x_k + r_k sin psi)` | `p_k + 2 r_k (psi - psi_k)` | `r_k sin psi` |
 //!
-//! `beta = B / D`. With `F = Q^2 / (g D^5)` and `K = n^2 Q^2 / D^(16/3)`, `Fr^2 = F t / a^3` and
+//! `beta = B / D`, and `w = 1` or `w = rho^(3/2)` on a box with a floor. Above a floor `D` is the
+//! open rise `D'`, `s` runs from the bed, `p` is the weighted perimeter `P_n / D'`, and circle
+//! and arc rows take the open bands from the bed normal. With `F = Q^2 / (g D^5)` and `K = n^2 Q^2 / D^(16/3)`, `Fr^2 = F t / a^3` and
 //! `Sf = K exp((4 ln p - 10 ln a) / 3)`. The signs `lambda` and `mu` make the numerator and the
 //! denominator positive along a profile, so `G > 0` is the distance gained per unit of `v`.
 
@@ -35,7 +37,9 @@ pub(crate) struct ProfileParams<R: Runtime<DType = DType>> {
     pub(crate) circular: Tensor<R>,
     /// `B / D`.
     pub(crate) beta: Bounds<R>,
-    /// Rise `D` in metres.
+    /// Bed term of the box perimeter: `beta`, or `rho^(3/2) beta` above a floor.
+    pub(crate) bed: Bounds<R>,
+    /// Rise `D` in metres, the open rise `D'` above a floor.
     pub(crate) rise: Tensor<R>,
     /// `F = Q^2 / (g D^5)`.
     pub(crate) froude: Bounds<R>,
@@ -68,6 +72,7 @@ impl<R: Runtime<DType = DType>> ProfileParams<R> {
         Ok(Self {
             circular: take(&self.circular)?,
             beta: pair(&self.beta)?,
+            bed: pair(&self.bed)?,
             rise: take(&self.rise)?,
             froude: pair(&self.froude)?,
             log_friction: pair(&self.log_friction)?,
@@ -108,6 +113,7 @@ impl<R: Runtime<DType = DType>> ProfileParams<R> {
         Outline {
             circular: &self.circular,
             beta: &self.beta,
+            bed: &self.bed,
             arcs: self.arcs.as_ref(),
         }
     }
@@ -208,7 +214,8 @@ where
     let box_area = Jet::linear(scaled, Some(Rc::clone(&b)), n);
     let two = Rc::new(a.point(&fill(like, 2.0)?)?);
     let doubled = a.mul(&two, &s)?;
-    let wetted = Rc::new(a.add(&b, &doubled)?);
+    let bed = a.bounds(&outline.bed[0], &outline.bed[1])?;
+    let wetted = Rc::new(a.add(&bed, &doubled)?);
     let box_perimeter = Jet::linear(wetted, Some(two), n);
     let box_top = Jet::constant(b, n);
     let box_step = Jet::constant(one, n);

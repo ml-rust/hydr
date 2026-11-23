@@ -19,6 +19,9 @@ use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::with_interval_arithmetic;
 
+/// Writes certified bounds over the base bounds of a context.
+pub(super) type Pair<'p, R> = dyn Fn(&Bounds<R>, &Bounds<R>) -> numr::error::Result<Bounds<R>> + 'p;
+
 impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
     /// Certifies the arc rows and writes their depth domains, slope floors and peak bounds.
     ///
@@ -81,6 +84,7 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
             normal_slope,
             peak,
             log_peak,
+            limb,
             ..
         } = certificates;
         let put = |base: &Tensor<R>, value: &Tensor<R>| {
@@ -101,7 +105,33 @@ impl<R: Runtime<DType = DType>> TensorBarrelContext<R> {
         self.normal_slope = put(&self.normal_slope, &normal_slope)?;
         self.conveyance_peak = pair(&self.conveyance_peak, &peak)?;
         self.log_peak = pair(&self.log_peak, &log_peak)?;
+        self.limb = Some(self.limb_with(&limb, &pair)?);
         Ok(self)
+    }
+
+    /// The rising-limb knots with `knots` written on certified rows by `pair`. Rows without
+    /// knots hold `[1/2, 1]`, which no query reads.
+    pub(super) fn limb_with(
+        &self,
+        knots: &[Bounds<R>],
+        pair: &Pair<'_, R>,
+    ) -> numr::error::Result<Vec<Bounds<R>>>
+    where
+        R::Client: BarrelClient<R>,
+    {
+        let harmless = [self.constant(0.5)?, self.one.clone()];
+        knots
+            .iter()
+            .enumerate()
+            .map(|(j, knot)| {
+                let base = self
+                    .limb
+                    .as_ref()
+                    .and_then(|limb| limb.get(j))
+                    .unwrap_or(&harmless);
+                pair(base, knot)
+            })
+            .collect()
     }
 }
 

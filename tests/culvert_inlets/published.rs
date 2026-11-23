@@ -28,6 +28,7 @@ fn lane(design: &Design) -> Result<Lane, Box<dyn std::error::Error>> {
             inlet: CulvertInlet::hds5(design.code)?,
             slope: design.slope,
             gravity_m_per_s2: US_GRAVITY,
+            face_blockage: hydr::structures::BlockageFraction::NONE,
         },
         discharge: design.discharge * FOOT * FOOT * FOOT,
     })

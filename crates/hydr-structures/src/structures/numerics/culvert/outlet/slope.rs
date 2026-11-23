@@ -355,6 +355,12 @@ where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R>,
 {
+    // The bounds read the open section of each floored row, as the march did.
+    let viewed = SlopeOperands {
+        barrel: operands.outlet.view(operands.barrel),
+        ..*operands
+    };
+    let operands = &viewed;
     let SlopeOperands {
         barrel,
         outlet,
@@ -374,7 +380,7 @@ where
     let square = a.mul(&q, &q)?;
     let flow = Flow {
         kinetic: a.div_positive(&square, &outlet.gravity)?,
-        ke: a.point(&outlet.entrance)?,
+        ke: a.bounds(&outlet.entrance[0], &outlet.entrance[1])?,
         slope: a.point(&outlet.slope)?,
         rate: a.bounds(&classes.rate[0], &classes.rate[1])?,
     };

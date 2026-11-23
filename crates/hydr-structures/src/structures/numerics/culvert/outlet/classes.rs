@@ -232,7 +232,7 @@ where
     let slope = a.point(&outlet.slope)?;
     let rate = a.sub(&full_friction, &slope)?;
     let length = a.point(&outlet.length)?;
-    let ke = a.point(&outlet.entrance)?;
+    let ke = a.bounds(&outlet.entrance[0], &outlet.entrance[1])?;
     let unit = a.point(one)?;
     let loss = a.add(&unit, &ke)?;
     let flow_square = a.mul(&flow, &flow)?;
@@ -281,6 +281,7 @@ where
     let base = ProfileParams {
         circular: barrel.circular.clone(),
         beta: outlet.beta.clone(),
+        bed: outlet.bed.clone(),
         rise: rise.clone(),
         froude: ends(&froude),
         log_friction: ends(&log_friction),

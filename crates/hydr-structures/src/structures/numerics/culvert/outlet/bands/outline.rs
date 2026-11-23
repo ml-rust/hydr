@@ -10,12 +10,14 @@ use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 use solvr::common::arithmetic::{ArithmeticResult, Interval};
 
-/// Shape view of the rows of a march: shape masks, `B / D` and the arc bands.
+/// Shape view of the rows of a march: shape masks, `B / D`, the box bed term and the arc bands.
 #[derive(Clone, Copy)]
 pub(crate) struct Outline<'s, R: Runtime<DType = DType>> {
     /// 1 on circle rows.
     pub(crate) circular: &'s Tensor<R>,
     pub(crate) beta: &'s Bounds<R>,
+    /// Bed term of the box perimeter `p = bed + 2 s`: `beta`, or `rho^(3/2) beta` above a floor.
+    pub(crate) bed: &'s Bounds<R>,
     pub(crate) arcs: Option<&'s ArcShape<R>>,
 }
 

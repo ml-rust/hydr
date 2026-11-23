@@ -206,3 +206,48 @@ fn near_peak_targets_reach_capacity_inside_the_peak_enclosure() -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn arc_rows_hold_rising_limb_knots_under_the_independent_minima() -> TestResult {
+    // Knots rise to s_N and their floors fall to kappa_n. Each floor lies at or below the true
+    // minimum of d r_n / ds over [2^-30, s] for the reference knots s at or below it.
+    let mut barrels = vec![
+        CulvertBarrel::circular(1.0)?,
+        CulvertBarrel::rectangular_box(2.0, 1.0)?,
+    ];
+    for entry in CERTIFIED {
+        barrels.push(barrel(&entry.barrel)?);
+    }
+    let found = CulvertBarrelBatch::<Runtime>::new(client(), barrels)?.depth_certificates()?;
+    let mut failures = Vec::new();
+    for row in found.iter().take(2) {
+        if !row.limb.iter().all(|&knot| knot == (0.5, 1.0)) {
+            failures.push(format!("circle or box row read knots {:?}", row.limb));
+        }
+    }
+    for (entry, row) in CERTIFIED.iter().zip(found.iter().skip(2)) {
+        let below = |s: f64| {
+            entry
+                .rising
+                .iter()
+                .filter(|(at, _)| f64::from_bits(*at) <= s)
+                .map(|(_, m)| f64::from_bits(*m))
+                .next_back()
+        };
+        let (s_n, kn) = (row.normal_top, row.normal_slope);
+        let held = row.limb.len() == 8
+            && row.limb.windows(2).all(|w| match w {
+                [(s, k), (t, l)] => s <= t && k >= l,
+                _ => false,
+            })
+            && row
+                .limb
+                .iter()
+                .all(|&(s, k)| kn <= k && s <= s_n && below(s).is_none_or(|m| k <= m));
+        if !held {
+            failures.push(format!("{}: knots {:?}", entry.barrel.name, row.limb));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    Ok(())
+}

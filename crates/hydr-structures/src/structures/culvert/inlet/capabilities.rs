@@ -65,7 +65,7 @@ static CULVERT_INLET: ComponentCapabilities = ComponentCapabilities {
         unsupported(
             "invalid-inlet-row",
             UnsupportedReason::RejectedByAdmission,
-            "An empty row list, a barrel with a floor, a nonfinite slope, a nonfinite or nonpositive gravity, or a coded inlet on a barrel of another shape rejects.",
+            "An empty row list, a nonfinite slope, a nonfinite or nonpositive gravity, or a coded inlet on a barrel of another shape rejects.",
         ),
         unsupported(
             "falling-transition",
@@ -119,11 +119,21 @@ static CULVERT_INLET: ComponentCapabilities = ComponentCapabilities {
             summary: "A code admits on any barrel of its shape class. The 18 in and 31 in corner radii in the HDS-5 chart labels of codes 36 to 44 are not checked.",
             doc: CULVERT_INLET_DOC,
         },
+        Limit {
+            id: "culvert-buried-inlet-coefficients",
+            summary: "Above a floor the declared coefficients act on the open section: open rise D', open full area, critical head of the open section, and headwater above the bed. HDS-5 publishes no applicability of its coefficients to a buried barrel, so their use there is the caller's applicability evidence. NCHRP 15-24 Tables A.5 and A.6 are not codes.",
+            doc: CULVERT_INLET_DOC,
+        },
+        Limit {
+            id: "culvert-face-loss",
+            summary: "A face of blocked share f passes (1 - f) times the unblocked discharge at each headwater. This is a hydr definition with no published coefficient.",
+            doc: CULVERT_INLET_DOC,
+        },
     ],
     summary: Summary {
-        equations: "HDS-5 inlet control: unsubmerged forms 1 and 2, the submerged form, and a linear transition between X = 3.5 and 4",
+        equations: "HDS-5 inlet control: unsubmerged forms 1 and 2, the submerged form, and a linear transition between X = 3.5 and 4, on the open section above a floor, with a face blockage scaling the discharge",
         method: "F64 interval enclosures with correctly rounded log and exp powers, certified critical depth for the form-1 critical head, and the exact SI conversion Ku = 0.3048^(-1/2)",
-        assessment: "independent 100-digit headwater curves and limit anchors lie inside every enclosure; SWMM rows agree within their fixed tolerances except SWMM's stale form-1 flows",
+        assessment: "independent 100-digit headwater curves and limit anchors lie inside every enclosure, on open sections above a floor and at face fractions 0, 0.25, 0.5 and 0.9 too; SWMM rows agree within their fixed tolerances except SWMM's stale form-1 flows",
     },
 };
 

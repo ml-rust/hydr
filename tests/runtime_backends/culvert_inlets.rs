@@ -68,6 +68,7 @@ fn selected_wgpu_rejects_culvert_inlet_f64_without_fallback() -> super::Result {
             inlet: CulvertInlet::hds5(code)?,
             slope: 0.01,
             gravity_m_per_s2: 9.81,
+            face_blockage: hydr::structures::BlockageFraction::NONE,
         })
     };
     let mut rows = vec![row(CulvertBarrel::circular(1.0)?, 1)?];

@@ -304,6 +304,7 @@ pub fn inlet_row(row: &InletRow) -> Outcome<CulvertInletRow> {
         inlet: CulvertInlet::hds5(row.code)?,
         slope: f64::from_bits(*slope),
         gravity_m_per_s2: f64::from_bits(inlet_rows::GRAVITY),
+        face_blockage: hydr::structures::BlockageFraction::NONE,
     })
 }
 
@@ -332,6 +333,7 @@ pub fn inlet_lanes() -> Outcome<Vec<InletLane>> {
             inlet: CulvertInlet::hds5(code)?,
             slope: 0.01,
             gravity_m_per_s2: gravity,
+            face_blockage: hydr::structures::BlockageFraction::NONE,
         })
     };
     let extra = [
@@ -355,6 +357,7 @@ pub fn outlet_lane(row: &OutletRow) -> Outcome<OutletLane> {
             entrance_loss: f64::from_bits(inputs.ke),
             slope: f64::from_bits(inputs.slope),
             gravity_m_per_s2: f64::from_bits(outlet_rows::GRAVITY),
+            face_blockage: hydr::structures::BlockageFraction::NONE,
         },
         discharge: f64::from_bits(inputs.discharge),
         tailwater: f64::from_bits(inputs.tailwater),
@@ -392,6 +395,7 @@ pub fn outlet_lanes() -> Outcome<Vec<OutletLane>> {
         entrance_loss: 0.5,
         slope,
         gravity_m_per_s2: 9.81,
+        face_blockage: hydr::structures::BlockageFraction::NONE,
     };
     let extra = [
         (row(circle, 0.001), 0.8, 1.4),

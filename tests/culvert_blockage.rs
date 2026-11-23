@@ -28,9 +28,18 @@ mod depth_lanes;
 #[path = "culvert_blockage/inlet_rows.rs"]
 mod inlet_rows;
 
+#[path = "culvert_blockage/inlets.rs"]
+mod inlets;
+
 #[allow(dead_code)]
 #[path = "culvert_blockage/outlet_rows.rs"]
 mod outlet_rows;
+
+#[path = "culvert_blockage/outlets.rs"]
+mod outlets;
+
+#[path = "culvert_blockage/outlet_lanes.rs"]
+mod outlet_lanes;
 
 #[allow(dead_code)]
 #[path = "culvert_blockage/composite_rows.rs"]

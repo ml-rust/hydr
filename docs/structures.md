@@ -701,7 +701,7 @@ A floor is a flat bed at depth `h` above the invert, the same along the whole ba
 - The queries then report the open section above the bed. Its rise is `open_rise_m() = D - h`, and every depth runs up from the bed.
 - `with_floor` stores the depth `D - fl(D - h)`, within half an F64 step of `h`, so `D - h` is exact. `floor()` returns it, and `base()` returns the barrel without its floor.
 - A depth at or above the rise rejects: declare `StructureCondition::Closed` instead. A zero depth on a barrel without its own floor, a nonfinite or nonpositive ratio, and an open rise below `2^-992` also reject with `Definition`.
-- `geometry`, `geometry_over`, `full_geometry`, `critical_depth` and `normal_depth` accept floored barrels. `CulvertInletBatch`, `CulvertOutletBatch` and `CulvertParameters` reject a floored barrel with `Definition`, naming the row. Use `base()` for those queries.
+- `geometry`, `geometry_over`, `full_geometry`, `critical_depth` and `normal_depth` accept floored barrels. So do [`CulvertInletBatch`](#control-a-floored-or-blocked-inlet) and [`CulvertOutletBatch`](#control-a-floored-barrel-or-a-blocked-entrance). `CulvertParameters` rejects a floored barrel with `Definition`, naming the sediment depth. Use `base()` for the culvert law.
 - `normal_depth` above a floor takes `manning_n` as the wall `n` and friction on `P_n`: `Q = (1/n) A^(5/3) P_n^(-2/3) sqrt(S)`.
 
 ### Run a query
@@ -836,7 +836,7 @@ cargo test --test culvert_blockage
 
 - Queries hold no state and advance no storage. No snapshot exists.
 - Full-barrel pressure flow and full-barrel friction stay with the caller.
-- A floor reports its bed width and weighted perimeter, and critical and normal depth run on its open section. Inlet control, outlet control and the culvert law take no floor yet. Without a floor, a flat-floor arch floor takes the barrel's Manning `n`.
+- A floor reports its bed width and weighted perimeter, and critical depth, normal depth, inlet control and outlet control run on its open section. The culvert law takes no floor yet. Without a floor, a flat-floor arch floor takes the barrel's Manning `n`.
 - A floor is one flat bed along the whole barrel. A local deposit at one end is not modelled.
 - Barrel queries give no discharge. [`CulvertInletBatch`](#culvert-inlet-control), [`CulvertOutletBatch`](#culvert-outlet-control) and the [culvert law](#culvert-structure-law) give control headwaters and discharge.
 
@@ -887,6 +887,7 @@ These codes return `StructureInputErrorKind::Definition` with the reason:
 | `inlet` | A `CulvertInlet`. A coded inlet must match the barrel shape. |
 | `slope` | Signed barrel slope `S` in m/m, positive when the barrel falls away from the inlet |
 | `gravity_m_per_s2` | Gravity, for the form-1 critical head |
+| `face_blockage` | `BlockageFraction` blocked share `f` of the inlet face. `BlockageFraction::NONE` for a clear face. |
 
 The runtime needs the same F64 contracts as `CulvertBarrelBatch`.
 
@@ -906,6 +907,21 @@ The form-1 critical depth `dc` and the area and top width at it come from the [b
 | `UnsubmergedLimit`, `SubmergedLimit` | `X` may lie on either side of 3.5 or 4 | Encloses the values of both bands |
 
 `Ks` is `-0.5`, or `+0.7` for a mitered inlet. HDS-5 draws a hand curve across the transition. Hydr defines it as linear, so the headwater is continuous at both limits.
+
+### Control a floored or blocked inlet
+
+A barrel with a [floor](#declare-a-floor) takes its inlet coefficients on the open section above the bed:
+
+| Term | Above a floor |
+| --- | --- |
+| `D` | Open rise `D' = D - h` |
+| `A` | Open full area `A'_full` |
+| `Hc` | Critical head of the open section, from its critical depth |
+| `HW` | Headwater above the bed |
+
+HDS-5 publishes no applicability of its coefficients to a buried barrel. Hydr applies the declared code or explicit coefficients to the open section. State in the culvert's applicability evidence that you accept them there. NCHRP 15-24 Tables A.5 and A.6 (HDS-5 PDF 200) are not codes: their reference rise, area and headwater datum are unconfirmed, and one row is likely misprinted. Supply them as explicit coefficients only with evidence that they match this definition.
+
+A face of blocked share `f` passes `(1 - f)` times the unblocked discharge at each headwater: `HW_f(Q) = HW_i(Q / (1 - f))`. This rule is a hydr definition. No published coefficient covers face debris. For form 2 and the submerged form it equals substituting the reduced area `(1 - f) A`. For form 1 it does not, because `Hc` stays that of the unblocked face. On the evidence sections the two differ by up to 0.79 relative in `HW`. The headwater rises with `f`, and `f = 0` keeps the unblocked bits.
 
 ### Handle admission
 
@@ -934,9 +950,12 @@ Each message names the row, the code or coefficients, the slope, and the gravity
 | [Arc codes](../tests/culvert_shapes/inlets.rs) | Codes 30 to 47 equal the HDS-5 coefficient table bit for bit, with their shape and mitered flag. Rejected codes name their reason. A code on another shape names both shapes. |
 | [Arc reference rows](../tests/culvert_shapes/inlets.rs) | Every 100-digit row of codes 30 to 47 on two ellipses, two pipe-arches and an arch, at three slopes and across the transition, lies inside its enclosure within `2e-11` relative. The limit anchors lie within `2e-11` of the rows beside each limit. |
 
+| [Floored inlets](../tests/culvert_blockage/inlets.rs) | Every 100-digit row of thirteen codes on eleven open sections, circle, box, ellipses, pipe-arch and arch beds included, at two slopes and across both limits, lies inside its enclosure within `5e-11` relative. At face fractions `0.25`, `0.5` and `0.9` the headwater at both ends of each `(1 - f) Q_0` enclosure holds the unblocked headwater. The headwater is continuous at both limits and rises with `f`. Layouts of widths 1, 33 and 65 mixing floored, blocked and clear rows equal their single-row bits. |
+
 ```sh
 cargo test --test culvert_inlets
 cargo test --test culvert_shapes inlets
+cargo test --test culvert_blockage inlets
 ```
 
 A [CUDA check](../tests/runtime_backends/culvert_inlets.rs) compares every reference row and layout width with CPU bit for bit. Arc rows of seven codes from 30 to 47, every arc shape and both mitered codes included, also match beside circle and box rows. WGPU rejects every barrel shape for lack of F64, without CPU fallback.
@@ -965,6 +984,7 @@ Read capabilities with `culvert_outlet_capabilities()`.
 | `entrance_loss` | Entrance loss coefficient `ke` of the inlet the flow enters |
 | `slope` | Signed slope `S` in m/m, positive when the barrel falls toward the outlet. The inlet invert sits `S L` above the outlet invert. |
 | `gravity_m_per_s2` | Gravity |
+| `face_blockage` | `BlockageFraction` blocked share `f` of the entrance face. `BlockageFraction::NONE` for a clear face. |
 
 The runtime needs the F64 contracts of `CulvertBarrelBatch`, solvr certified bisection and solvr certified Simpson integration.
 
@@ -1015,6 +1035,23 @@ Near a circle's conveyance peak capacity, `S - Sf` nearly vanishes at the peak d
 
 The supercritical profile starts at critical depth at the inlet. Along a profile the momentum `M = Q^2 / (g A) + m` changes by `A (S - Sf)` per metre. Where friction falls with depth, the gap between the subcritical and supercritical momentum rises along the barrel. The jump sits at its unique zero.
 
+The supercritical profile approaches the normal depth without reaching it. Where it comes within rounding of the normal depth before the outlet or the jump, the depth there is enclosed between the last certified profile depth and the far bound of the normal-depth enclosure.
+
+### Control a floored barrel or a blocked entrance
+
+A barrel with a [floor](#declare-a-floor) runs the march on the open section above the bed. Depths, tailwater, inlet head and headwater run up from the bed.
+
+| Term | Above a floor |
+| --- | --- |
+| `D` | Open rise `D' = D - h`. The adverse-fall check reads `D'`, so a bed can reject a row whose bare barrel admits. |
+| Free-surface friction | `Sf = n^2 Q^2 P_n^(4/3) / A^(10/3)` with the wall `n` and `P_n = P_w + rho^(3/2) b`. This is HDS-5 eq. 3.8 composite roughness with exponent `2/3`. |
+| Full-barrel friction | `R = A'_full / P_n,full`. A box keeps its crown `B` in `P_n,full`. |
+| Critical and normal depth | The [open-section depths](#read-normal-depth), with their certificates |
+
+A face of blocked share `f` takes the entrance loss `ke_f = ke / (1 - f)^2 + (f / (1 - f))^2`. The first term is the entrance loss at the face velocity `V / (1 - f)`. The second is the Borda-Carnot expansion `(V / (1 - f) - V)^2 / (2 g)` back to the barrel velocity. This rule is a hydr definition with no published coefficient. `HW_o` rises with `f`, and `f = 0` keeps `ke` and every unblocked bit.
+
+A blockage of the face that flow leaves through, the exit of its direction, has no model. The culvert law rejects it once culvert blockage reaches the law.
+
 ### Handle admission
 
 | Rejection | Kind | Fix |
@@ -1037,9 +1074,12 @@ The supercritical profile starts at critical depth at the inlet. Along a profile
 | [Arc barrels](../tests/culvert_shapes/outlets.rs) | On a horizontal and a vertical ellipse, a pipe-arch and an arch: independent full-barrel rows lie within `2^-40` relative, and mild, steep, adverse, drowned and near-crown profile rows within `1e-9` relative, with jump positions within `1e-6 L`. Headwater is continuous where the tailwater crosses critical depth, a junction depth or the crown, and never falls as discharge or tailwater rises. [Layouts](../tests/culvert_shapes/layouts.rs) mix arc, circle and box rows bit for bit. |
 | [Scaled arc barrels](../tests/culvert_shapes/scales.rs) | At `2^-60` and `2^60`, with lengths, discharges and `n` scaled alike, every headwater enclosure meets the scaled unit enclosure. At `2^-900` and `2^300` the query rejects as `Numerical`. |
 
+| [Floored outlets](../tests/culvert_blockage/outlets.rs) | On nine open sections, circle, box, ellipse, pipe-arch and arch beds included, at face fractions `0` and `0.5`: independent full-barrel rows lie within `2^-40` relative, and mild, rising, drowned, supercritical and jump rows within `1e-9` relative, with jump positions within `1e-6 L`. The face entrance loss matches its frozen values. [Lanes](../tests/culvert_blockage/outlet_lanes.rs): full-barrel head loss equals composite friction, headwater is continuous where the tailwater crosses critical depth, a junction or the crown, it rises with `f`, and layouts of widths 1, 33 and 65 mixing floored and clear rows equal their single-row bits. |
+
 ```sh
 cargo test --test culvert_outlets
 cargo test --test culvert_shapes outlets
+cargo test --test culvert_blockage outlet
 ```
 
 A [CUDA check](../tests/runtime_backends/culvert_outlets.rs) compares every reference row and layout width with CPU bit for bit. Arc rows of every shape in each outlet regime, the jump included, mixed with circle and box rows, also match. WGPU rejects every barrel shape for lack of F64, without CPU fallback.

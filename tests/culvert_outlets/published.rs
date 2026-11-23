@@ -43,6 +43,7 @@ fn full_barrel_losses_lie_within_their_published_tolerance() -> TestResult {
                 entrance_loss: design.ke,
                 slope: design.slope,
                 gravity_m_per_s2: US_GRAVITY,
+                face_blockage: hydr::structures::BlockageFraction::NONE,
             },
             discharge: design.discharge * FOOT * FOOT * FOOT,
             tailwater: 2.0 * rise + fall.max(0.0),

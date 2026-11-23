@@ -128,8 +128,9 @@ where
     ))
 }
 
-/// The domain top and slope floor of each bracketed row: `s_N` and `kappa_n`, or on a floored
-/// circle or arc row the first rising-limb knot `s_j` certified above the root, with `kappa_j`.
+/// The domain top and slope floor of each bracketed row: `s_N` and `kappa_n`, or on an arc row
+/// or a floored circle row the first rising-limb knot `s_j` certified above the root, with
+/// `kappa_j`. A circle or box row without a floor keeps `s_N` and `kappa_n`.
 ///
 /// `r_n(s_j).lower > 0` places the root below `s_j`, so `[2^-30, s_j]` still brackets it.
 fn limb<R>(
@@ -144,11 +145,18 @@ where
 {
     let mut top = barrel.normal_top.clone();
     let mut slope = barrel.normal_slope.clone();
-    let (Some(knots), Some(rows)) = (&barrel.limb, &barrel.floor) else {
+    let Some(knots) = &barrel.limb else {
         return Ok((top, slope));
     };
     let c = a.client();
-    let open = c.sub(&rows.floored, &rows.boxed)?;
+    let arced = match &barrel.arcs {
+        Some(arcs) => arcs.arced.clone(),
+        None => barrel.zero.clone(),
+    };
+    let open = match &barrel.floor {
+        Some(rows) => c.maximum(&arced, &c.sub(&rows.floored, &rows.boxed)?)?,
+        None => arced,
+    };
     // From the highest knot down, so the lowest knot above the root decides.
     for [knot, floor] in knots.iter().rev() {
         let value = residual(a, barrel, unit, row_target, knot)?;

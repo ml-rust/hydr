@@ -24,21 +24,21 @@
 
 mod jets;
 mod maps;
+mod open;
 mod outline;
+mod shape;
 
 pub(crate) use jets::{Trig, shape_jets};
 pub(crate) use maps::{angle_of, fraction_of};
 pub(crate) use outline::{Outline, hull};
 
 use super::trig::fill;
-use crate::structures::numerics::culvert::constants::PI;
-use crate::structures::numerics::culvert::{Arithmetic, BarrelClient};
-use crate::structures::tensor::culvert::{ArcRows, Bounds};
+use crate::structures::numerics::culvert::BarrelClient;
+use crate::structures::tensor::culvert::Bounds;
 use numr::dtype::DType;
-use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps, ScalarOps};
+use numr::ops::{BinaryOps, CompareOps, ConditionalOps, IndexingOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
-use solvr::common::arithmetic::ArithmeticResult;
 
 /// One band of each row in units of the rise.
 #[derive(Clone)]
@@ -117,69 +117,6 @@ pub(crate) struct ArcShape<R: Runtime<DType = DType>> {
 }
 
 impl<R: Runtime<DType = DType>> ArcShape<R> {
-    /// The march bands of the unit-rise arc layouts `rows`.
-    pub(crate) fn new(a: &mut Arithmetic<'_, R>, rows: &ArcRows<R>) -> ArithmeticResult<Self>
-    where
-        R::Client: BarrelClient<R>,
-    {
-        let c = a.client();
-        let like = &rows.arced;
-        let pi = [
-            fill(like, f64::from_bits(PI[0]))?,
-            fill(like, f64::from_bits(PI[1]))?,
-        ];
-        let crown = [fill(like, 1.0)?, fill(like, 1.0)?];
-        let two = a.point(&fill(like, 2.0)?)?;
-        let mut bands = Vec::with_capacity(rows.bands.len());
-        for (k, band) in rows.bands.iter().enumerate() {
-            let (end_angle, end_depth) = match rows.bands.get(k + 1) {
-                Some(next) => (next.start_angle.clone(), next.start_depth.clone()),
-                None => (pi.clone(), crown.clone()),
-            };
-            let x = a.bounds(&band.centre_x[0], &band.centre_x[1])?;
-            let r = a.bounds(&band.radius[0], &band.radius[1])?;
-            let angle = a.bounds(&band.start_angle[0], &band.start_angle[1])?;
-            let sine = a.bounds(&band.start_sin[0], &band.start_sin[1])?;
-            let cosine = a.bounds(&band.start_cos[0], &band.start_cos[1])?;
-            let start = a.bounds(&band.start_area[0], &band.start_area[1])?;
-            let lever = a.mul(&two, &x)?;
-            let lever = a.mul(&lever, &r)?;
-            let lift = a.mul(&lever, &cosine)?;
-            let product = a.mul(&sine, &cosine)?;
-            let segment = a.sub(&angle, &product)?;
-            let square = a.mul(&r, &r)?;
-            let segment = a.mul(&square, &segment)?;
-            let raised = a.add(&start, &lift)?;
-            let offset = a.sub(&raised, &segment)?;
-            bands.push(MarchBand {
-                centre_x: band.centre_x.clone(),
-                centre_y: band.centre_y.clone(),
-                radius: band.radius.clone(),
-                start_angle: band.start_angle.clone(),
-                end_angle,
-                start_depth: band.start_depth.clone(),
-                end_depth,
-                start_perimeter: band.start_perimeter.clone(),
-                area_offset: [offset.lower().clone(), offset.upper().clone()],
-            });
-        }
-        let mut least_radius = rows.bands[0].radius[0].clone();
-        for band in rows.bands.iter().skip(1) {
-            least_radius = c.minimum(&least_radius, &band.radius[0])?;
-        }
-        // The arch arc runs from its floor normal to pi.
-        let top = &rows.bands[2].start_angle[1];
-        let middle = c.mul_scalar(&c.add(top, &pi[0])?, 0.5)?;
-        let harmless = c.where_cond(&rows.floored, &middle, &fill(like, 0.5)?)?;
-        Ok(Self {
-            arced: rows.arced.clone(),
-            floored: rows.floored.clone(),
-            bands,
-            least_radius,
-            harmless,
-        })
-    }
-
     fn map(
         &self,
         take: &dyn Fn(&Tensor<R>) -> numr::error::Result<Tensor<R>>,
@@ -341,7 +278,7 @@ mod tests {
     use crate::structures::numerics::culvert::outlet::prepare;
     use crate::structures::numerics::culvert::section;
     use crate::structures::tensor::culvert::TensorBarrelContext;
-    use crate::structures::{CulvertBarrel, CulvertOutletRow, StructureError};
+    use crate::structures::{BlockageFraction, CulvertBarrel, CulvertOutletRow, StructureError};
     use numr::dtype::DType;
     use numr::runtime::Runtime;
     use numr::runtime::cpu::{CpuDevice, CpuRuntime};
@@ -369,6 +306,7 @@ mod tests {
             entrance_loss: 0.5,
             slope: 0.001,
             gravity_m_per_s2: 9.81,
+            face_blockage: BlockageFraction::NONE,
         }
     }
 

@@ -113,7 +113,11 @@ where
     let pole = Tensor::<R>::from_slice(&pole, &[1, count], &device)?
         .broadcast_to(&[p, count])?
         .contiguous()?;
-    above = c.maximum(&above, &c.mul(&pole, &wide(&asymptotic)?)?)?;
+    let poles = c.mul(&pole, &wide(&asymptotic)?)?;
+    above = c.maximum(&above, &poles)?;
+    // The pole node of an asymptotic row repeats the distance of the node before it, but the
+    // profile covers every distance before the pole. So it is never below a target.
+    let below = c.mul(&below, &c.sub(&fill(&poles, 1.0)?, &poles)?)?;
     let below_count = c.sum(&below, &[1], false)?;
     let above_count = c.sum(&above, &[1], false)?;
     let zero = fill(&below_count, 0.0)?;

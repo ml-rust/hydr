@@ -28,6 +28,11 @@
 //!   `s_N` up and `s_F` down.
 //! - `log_peak` encloses `(5 ln a - 2 ln p) / 3`, the log of the unit conveyance, over
 //!   `[s_N, s_F]`.
+//! - `kappa_n` is small, because the slope falls to zero at the peak. Knot `j` of the rising
+//!   limb ends the run of first-cover pieces whose normal lower bound reaches `2^(1 - j)`, and
+//!   `kappa_j` bounds the slope on `[2^-30, s_j]`. A root certified below `s_j` then takes the
+//!   domain `[2^-30, s_j]` with the floor `kappa_j`, so the solver's slope correction stays
+//!   tight away from the peak.
 //!
 //! A row fails when a critical bound is not positive, when a negative normal piece lies below
 //! a positive one or inside `[s_N, s_F]` after the last round, when no negative run reaches
@@ -51,11 +56,7 @@
 //!   F64 below `D'_f`, so every piece stays below the crown.
 //! - `P_n` moves the peak with `rho`, so each row gets its own peak and `log_peak` encloses the
 //!   log frame conveyance `(5 ln A_f - 2 ln P_n,f) / 3`.
-//! - `kappa_n` is small, because the slope falls to zero at the peak. Knot `j` of the rising
-//!   limb ends the run of first-cover pieces whose normal lower bound reaches `2^(1 - j)`, and
-//!   `kappa_j` bounds the slope on `[2^-30, s_j]`. A root certified below `s_j` then takes the
-//!   domain `[2^-30, s_j]` with the floor `kappa_j`, so the solver's slope correction stays
-//!   tight away from the peak.
+//! - The rising-limb knots follow the rule above.
 //!
 //! A box with a floor keeps the box constants: `d r_c / ds = 3/s`, and
 //! `d r_n / ds = 5/s - 4 D' / (rho^(3/2) B + 2 D' s) >= 5/s - 2/s = 3/s`.
@@ -94,9 +95,9 @@ pub(crate) struct DepthCertificates<R: Runtime<DType = DType>> {
     pub(crate) peak: Bounds<R>,
     /// Enclosure of the log unit conveyance over the peak enclosure.
     pub(crate) log_peak: Bounds<R>,
-    /// `[s_j, kappa_j]` per rising-limb knot above a floor: `kappa_j` bounds `d r_n / ds` below
-    /// on `[2^-30, s_j]`. `None` on arc rows.
-    pub(crate) limb: Option<Vec<Bounds<R>>>,
+    /// `[s_j, kappa_j]` per rising-limb knot: `kappa_j` bounds `d r_n / ds` below on
+    /// `[2^-30, s_j]`.
+    pub(crate) limb: Vec<Bounds<R>>,
     /// 1 on rows without a certificate.
     pub(crate) failed: Tensor<R>,
 }

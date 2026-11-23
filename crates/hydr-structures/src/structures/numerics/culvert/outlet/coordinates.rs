@@ -155,6 +155,7 @@ mod tests {
             let outline = Outline {
                 circular: &circular,
                 beta: &beta,
+                bed: &beta,
                 arcs: None,
             };
             let square = area(a, &outline, &rise, &v)?;
@@ -191,6 +192,7 @@ mod tests {
             let outline = Outline {
                 circular: &circular,
                 beta: &beta,
+                bed: &beta,
                 arcs: None,
             };
             let v = coordinate(a, &outline, &rise, &y)?;

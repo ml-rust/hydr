@@ -7,7 +7,7 @@ use super::super::jet;
 use super::super::partition::{ProfileSpec, guarded};
 use super::super::screen::with_peak;
 use super::super::trig::fill;
-use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, section};
+use crate::structures::numerics::culvert::{Arithmetic, BarrelClient, choose, floor, section};
 use crate::structures::tensor::codes;
 use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext, TensorOutletContext};
 use numr::dtype::DType;
@@ -118,6 +118,8 @@ where
 
 /// Encloses `M = Q^2 / (g A) + m` over a depth enclosure below the crown, from the barrel
 /// geometry at both ends. `A` and `m` both rise with depth.
+///
+/// `barrel` is the march view. Its floored rows read the open section above the bed.
 pub(super) fn momentum<R>(
     a: &mut Arithmetic<'_, R>,
     barrel: &TensorBarrelContext<R>,
@@ -131,12 +133,39 @@ where
     let c = a.client();
     let low = c.maximum(depth.lower(), &barrel.zero)?;
     let high = c.maximum(depth.upper(), &barrel.zero)?;
-    let bottom = section::at_depth(a, barrel, &low)?.geometry;
-    let top = section::at_depth(a, barrel, &high)?.geometry;
-    let area = a.bounds(bottom.area.lower(), top.area.upper())?;
-    let moment = a.bounds(bottom.moment.lower(), top.moment.upper())?;
+    let [bottom_area, bottom_moment] = area_moment(a, barrel, &low)?;
+    let [top_area, top_moment] = area_moment(a, barrel, &high)?;
+    let area = a.bounds(bottom_area.lower(), top_area.upper())?;
+    let moment = a.bounds(bottom_moment.lower(), top_moment.upper())?;
     let force = a.div_positive_interval(scale, &area)?;
     a.add(&force, &moment)
+}
+
+/// Area and moment at the represented depths `depth`: the open section on floored rows, the
+/// barrel elsewhere. Each source runs on every row, floored rows reading the barrel dry and
+/// other rows reading the open section dry.
+fn area_moment<R>(
+    a: &mut Arithmetic<'_, R>,
+    barrel: &TensorBarrelContext<R>,
+    depth: &Tensor<R>,
+) -> ArithmeticResult<[Interval<R>; 2]>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    let Some(rows) = barrel.floor.as_deref() else {
+        let geometry = section::at_depth(a, barrel, depth)?.geometry;
+        return Ok([geometry.area, geometry.moment]);
+    };
+    let c = a.client();
+    let zero = &barrel.zero;
+    let floored = &rows.floored;
+    let plain = section::at_depth(a, barrel, &c.where_cond(floored, zero, depth)?)?.geometry;
+    let open = floor::at_depth(a, barrel, rows, &c.where_cond(floored, depth, zero)?)?.geometry;
+    Ok([
+        choose(a, floored, &open.area, &plain.area)?,
+        choose(a, floored, &open.moment, &plain.moment)?,
+    ])
 }
 
 /// Row index of every lane when each row owns `per_row` consecutive lanes.

@@ -67,6 +67,7 @@ where
     R: Runtime<DType = DType>,
     R::Client: BarrelClient<R> + CertifiedBisectionAlgorithms<R> + CertifiedSimpsonAlgorithms<R>,
 {
+    let barrel = outlet.view(barrel);
     let c = &barrel.client;
     let m = barrel.width();
     let count = march.profile.lanes() + 1;

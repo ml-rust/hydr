@@ -13,15 +13,23 @@
 //! The transition is continuous at both limits by construction, and admission certifies that it
 //! rises. Every public query runs one discharge check, one critical-depth solve over the form-1
 //! rows that may be unsubmerged, and one interval call.
+//!
+//! Above a floor the open section takes the coefficients: `D'` for `D`, the open full area for
+//! `A`, and the critical head of the open section. The headwater runs up from the bed.
+//!
+//! A face of blocked share `f` passes `(1 - f)` times the unblocked discharge at each
+//! headwater, so `HW_f(Q) = HW_i(Q / (1 - f))`. `HW_i` rises with `Q`, so a query encloses
+//! `Q / (1 - f)` and evaluates the bands over that enclosure, with critical depth solved at both
+//! of its ends. A batch without a face blockage runs at `Q` with one solve.
 
 pub(crate) mod anchors;
 pub(crate) mod bands;
 pub(crate) mod head;
 mod power;
 
-use super::{BarrelClient, RowNames, critical};
+use super::{BarrelClient, BarrelDepths, RowNames, critical};
 use crate::structures::StructureError;
-use crate::structures::tensor::culvert::{TensorBarrelContext, TensorInletContext};
+use crate::structures::tensor::culvert::{Bounds, TensorBarrelContext, TensorInletContext};
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, ConditionalOps};
 use numr::runtime::Runtime;
@@ -52,15 +60,31 @@ where
     R::Client: BarrelClient<R> + CertifiedBisectionAlgorithms<R>,
 {
     let c = &barrel.client;
-    let bands = bands::classify(inlet, barrel, discharge)?;
+    let flows = unblocked(barrel, inlet, discharge)?;
+    let bands = bands::classify(inlet, barrel, &flows)?;
     let needs = c.mul(&inlet.form_one, &bands.unsubmerged)?;
-    let flow = c.where_cond(&needs, discharge, &barrel.zero)?;
-    let critical = critical::solve(names, barrel, unit, &flow, &inlet.gravity)?;
+    let solve = |end: &Tensor<R>| {
+        let flow = c.where_cond(&needs, end, &barrel.zero)?;
+        critical::solve(names, barrel, unit, &flow, &inlet.gravity)
+    };
+    let [low, high] = &flows;
+    let critical = if inlet.faced {
+        // Critical depth rises with discharge, so the two ends enclose it.
+        let below = solve(low)?;
+        let above = solve(high)?;
+        BarrelDepths {
+            status: c.maximum(&below.status, &above.status)?,
+            lower: below.lower,
+            upper: above.upper,
+        }
+    } else {
+        solve(low)?
+    };
     let operands = bands::Operands {
         barrel,
         unit,
         inlet,
-        discharge,
+        discharge: &flows,
         bands: &bands,
         critical: &critical,
     };
@@ -72,4 +96,31 @@ where
         lower: headwater.lower().clone(),
         upper: headwater.upper().clone(),
     })
+}
+
+/// Encloses the unblocked discharge `Q / (1 - f)` that gives the headwater of `Q` through a
+/// face of blocked share `f`. Both ends are `Q` itself when no row has a face blockage, and on
+/// each row with `f = 0`.
+fn unblocked<R>(
+    barrel: &TensorBarrelContext<R>,
+    inlet: &TensorInletContext<R>,
+    discharge: &Tensor<R>,
+) -> Result<Bounds<R>, StructureError>
+where
+    R: Runtime<DType = DType>,
+    R::Client: BarrelClient<R>,
+{
+    if !inlet.faced {
+        return Ok([discharge.clone(), discharge.clone()]);
+    }
+    let c = &barrel.client;
+    let flows = with_interval_arithmetic(c, DType::F64, "culvert inlet face blockage", |a| {
+        let q = a.point(discharge)?;
+        let one = a.point(&barrel.one)?;
+        let blocked = a.point(&inlet.face)?;
+        let open = a.sub(&one, &blocked)?;
+        let flow = a.div_positive_interval(&q, &open)?;
+        Ok([flow.lower().clone(), flow.upper().clone()])
+    })?;
+    Ok(flows)
 }

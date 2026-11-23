@@ -1,12 +1,14 @@
-//! One inlet-control row: barrel, inlet, signed barrel slope and gravity.
+//! One inlet-control row: barrel, inlet, signed barrel slope, gravity and face blockage.
 
 use super::CulvertInlet;
-use crate::structures::{CulvertBarrel, StructureError};
+use crate::structures::{BlockageFraction, CulvertBarrel, StructureError};
 
-/// Barrel, inlet, slope and gravity of one inlet-control row.
+/// Barrel, inlet, slope, gravity and face blockage of one inlet-control row.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CulvertInletRow {
-    /// Barrel the inlet leads into.
+    /// Barrel the inlet leads into. A barrel with a floor takes its inlet coefficients on the
+    /// open section: open rise `D'`, open full area, critical head of the open section, and
+    /// headwater above the bed.
     pub barrel: CulvertBarrel,
     /// HDS-5 inlet definition.
     pub inlet: CulvertInlet,
@@ -15,13 +17,15 @@ pub struct CulvertInletRow {
     pub slope: f64,
     /// Gravity in metres per second squared, for the form-1 critical head.
     pub gravity_m_per_s2: f64,
+    /// Blocked share `f` of the inlet face. The inlet passes `(1 - f)` times its unblocked
+    /// discharge at each headwater. This rule is a hydr definition.
+    pub face_blockage: BlockageFraction,
 }
 
 impl CulvertInletRow {
-    /// Rejects a barrel with a floor, a nonfinite slope, a nonfinite or nonpositive gravity, and
-    /// a coded inlet on a barrel of another shape.
+    /// Rejects a nonfinite slope, a nonfinite or nonpositive gravity, and a coded inlet on a
+    /// barrel of another shape.
     pub(crate) fn check(&self) -> Result<(), StructureError> {
-        self.barrel.without_floor("inlet control")?;
         let inlet = self.inlet.describe();
         if !self.slope.is_finite() {
             return Err(StructureError::definition(format!(

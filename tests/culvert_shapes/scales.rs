@@ -220,6 +220,7 @@ fn scaled_arc_barrels_answer_inlet_control_as_the_unit_barrel_scaled() -> TestRe
                 inlet: CulvertInlet::hds5(code)?,
                 slope: 0.01,
                 gravity_m_per_s2: 9.81,
+                face_blockage: hydr::structures::BlockageFraction::NONE,
             };
             let batch = CulvertInletBatch::<Runtime>::new(client(), vec![row; flows.len()])?;
             let rows = batch.headwater(&tensor(flows)?)?.project()?;
@@ -240,6 +241,7 @@ fn scaled_arc_barrels_answer_inlet_control_as_the_unit_barrel_scaled() -> TestRe
             inlet: CulvertInlet::hds5(code)?,
             slope: 0.01,
             gravity_m_per_s2: 9.81,
+            face_blockage: hydr::structures::BlockageFraction::NONE,
         };
         match CulvertInletBatch::<Runtime>::new(client(), vec![row]) {
             Err(StructureError::InvalidInput {
@@ -269,6 +271,7 @@ fn scaled_arc_barrels_answer_outlet_control_as_the_unit_barrel_scaled() -> TestR
                 entrance_loss: 0.5,
                 slope: 0.002,
                 gravity_m_per_s2: 9.81,
+                face_blockage: hydr::structures::BlockageFraction::NONE,
             };
             let batch = CulvertOutletBatch::<Runtime>::new(client(), vec![row; flows.len()])?;
             let rows = batch

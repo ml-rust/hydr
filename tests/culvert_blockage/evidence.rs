@@ -79,7 +79,7 @@ fn fixtures_are_the_frozen_files() {
     );
     assert_eq!(
         OUTLET_SHA256,
-        "ecf9a3ca1b393be347640db2351643ec3c149df6862c58691e3ff9ad908d3034"
+        "086890977b581cfaee26ff0cfc0c1880d48b9dd961e90ca170892461c05aa036"
     );
     assert_eq!(
         COMPOSITE_SHA256,
@@ -100,7 +100,14 @@ fn row_counts_match_the_evidence() {
     assert_eq!(inlet_rows::ANCHORS.len(), 26);
     assert!(inlet_rows::ANCHORS.iter().all(|a| a.transition_rising));
     assert_eq!(inlet_rows::CODES.len(), 13);
-    assert_eq!(outlet_rows::ROWS.len(), 162);
+    assert_eq!(outlet_rows::ROWS.len(), 198);
+    assert_eq!(
+        outlet_rows::ROWS
+            .iter()
+            .filter(|row| matches!(row.flow, Flow::Supercritical | Flow::Jump))
+            .count(),
+        36
+    );
     assert_eq!(FACE_LOSSES.len(), 16);
     assert_eq!(super::composite_rows::ROWS.len(), 4 * SECTIONS.len());
     assert_eq!(FRICTION.len(), SECTIONS.len());

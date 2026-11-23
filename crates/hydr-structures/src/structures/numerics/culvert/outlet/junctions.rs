@@ -196,7 +196,7 @@ mod tests {
     use crate::structures::numerics::culvert::outlet::partition::LANES;
     use crate::structures::numerics::culvert::outlet::{Accuracy, march, prepare};
     use crate::structures::tensor::culvert::TensorBarrelContext;
-    use crate::structures::{CulvertBarrel, CulvertOutletRow};
+    use crate::structures::{BlockageFraction, CulvertBarrel, CulvertOutletRow};
     use numr::runtime::cpu::{CpuDevice, CpuRuntime};
 
     type Cpu = CpuRuntime;
@@ -218,6 +218,7 @@ mod tests {
             entrance_loss: 0.5,
             slope: 0.05,
             gravity_m_per_s2: 9.81,
+            face_blockage: BlockageFraction::NONE,
         }];
         let barrel = TensorBarrelContext::<Cpu>::new(client.clone(), &barrels)?;
         let unit = barrel.unit()?;
