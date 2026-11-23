@@ -507,7 +507,7 @@ mod tests {
                     }
                 }
             }
-            for endpoint in &domain.star.endpoints {
+            for endpoint in domain.star.endpoints.iter() {
                 for side in 0..2 {
                     let far = endpoint.waves.far_rarefaction[side].try_to_vec::<f64>()?;
                     if let Some(local) = &endpoint.waves.local[side] {

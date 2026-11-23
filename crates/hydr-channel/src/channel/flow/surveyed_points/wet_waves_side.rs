@@ -204,7 +204,7 @@ where
     #[cfg(test)]
     let equality_stationary = c.mul(&equality_possible, &exact_zero(a, &head.retained)?)?;
     let mut evidence_available = one;
-    for endpoint in &star.endpoints {
+    for endpoint in star.endpoints.iter() {
         let evidence = &endpoint.waves;
         let mut available = evidence.far_rarefaction[side].clone();
         if let Some(local) = &evidence.local[side] {
