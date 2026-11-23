@@ -798,7 +798,7 @@ Preserve every package field and floating-point value exactly. Follow the [persi
 | Subcatchment runoff into surface cells, reach cells, and pools through free outlets | Tailwater feedback on runoff, external runon, and routing between subcatchments |
 | Level pools with local rain, bottom loss, evaporation, and external inflow | Pool ports. A pool holds no momentum. |
 | Weirs, submerged orifices, gates, pumps, and HDS-5 culverts of every admitted barrel shape between surface cells, channel cells, and pools | Partial orifice flow, pump priming, net positive suction head, motor dynamics, and culvert barrel storage |
-| Fixed blockage scenarios and caller-scheduled structure, pool curve, surface bed, and channel section geometry epochs with evidence | Blockage probability and inferred blockage |
+| Fixed blockage scenarios and caller-scheduled structure, pool curve, surface bed, and channel section geometry epochs with exclusive parameter authority (`duplicate-parameter-authority`) | Blockage probability, inferred blockage, and native SWMM drainage control authority (`native-control-authority`) |
 | Pool ends at a quiescent reservoir head on rectangular, triangular, or surveyed reaches | Dry or critical pool ends |
 | Prescribed, actuated, and sampled-pump operation at sampled decisions | Continuous control feedback, minimum dwell, and native SWMM rules |
 

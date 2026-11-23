@@ -41,6 +41,7 @@
 
 mod accounting;
 mod advance;
+mod authority;
 mod bank_links;
 mod batch;
 mod bindings;

@@ -140,6 +140,18 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
         SURFACE_CHANNELS_DOC,
     ),
     unsupported(
+        "duplicate-parameter-authority",
+        UnsupportedReason::RejectedByAdmission,
+        "A structure, pool, surface cell, or channel reach parameter claimed by two writers (including a static blockage/closure condition paired with a geometry schedule on the same parameter) rejects.",
+        SURFACE_CHANNELS_DOC,
+    ),
+    unsupported(
+        "native-control-authority",
+        UnsupportedReason::NotAttached,
+        "Native SWMM drainage control authority is not attached; it joins the authority table with the drainage adapter.",
+        SURFACE_CHANNELS_DOC,
+    ),
+    unsupported(
         "pool-capacity-exceeded",
         UnsupportedReason::RejectedByAdmission,
         "A pool that fills past its top curve knot rejects without retry; declare a spill structure or extend the curve.",

@@ -420,6 +420,24 @@ fn rejection_cases(id: &str) -> Option<Vec<Rejection>> {
                 "maximum_step_s or the surface forcing interval ends before the integrated span",
             ),
         ],
+        "duplicate-parameter-authority" => vec![(
+            edited(|s| {
+                let mk = |id: &str, t: f64| hydr::solver::SurfaceBedSchedule {
+                    schedule_id: id.into(),
+                    epochs: vec![hydr::solver::SurfaceBedEpoch {
+                        time_s: t,
+                        updates: vec![hydr::solver::SurfaceBedUpdate {
+                            cell: 0,
+                            bed_elevation_m: 0.1,
+                        }],
+                        evidence: "Duplicate bed writer".into(),
+                    }],
+                };
+                s.surface_bed_schedules = vec![mk("bed-a", 0.5), mk("bed-b", 1.0)];
+            }),
+            Input,
+            "duplicate-parameter-authority",
+        )],
         id => {
             return crate::surface_channel_ports::rejection_cases(id)
                 .or_else(|| crate::surface_channel_pools::rejection_cases(id))

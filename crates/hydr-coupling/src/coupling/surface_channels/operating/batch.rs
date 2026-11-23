@@ -96,13 +96,24 @@ where
         let schedules = &self.definition.setup().geometry_schedules;
         if !schedules.is_empty() {
             let points = attempt.operations.points.clone();
-            let (operations, geometry) = super::super::geometry::evaluate_interval(
+            let (operations, geometry, elements) = super::super::geometry::evaluate_interval(
                 &self.context,
                 schedules,
                 points,
                 self.time_s,
                 end,
             )?;
+            if let Some(children) = &self.operating
+                && let Some(gate) = children.gate()
+            {
+                let prepared_gate = attempt.prepared.as_ref().and_then(|p| p.gate.as_ref());
+                super::super::authority::check_actuated_gate_ranges(
+                    gate,
+                    prepared_gate,
+                    &elements,
+                    &format!("[{}, {end}]", self.time_s),
+                )?;
+            }
             attempt.operations = operations;
             attempt.geometry = geometry;
         }

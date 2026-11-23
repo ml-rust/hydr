@@ -225,20 +225,21 @@ pub(super) fn check_snapshot_epochs(
     Ok(())
 }
 
-/// Evaluates scheduled geometry for `[start_s, end_s]` and rebuilds `LinkOperations` with updated
-/// laws, cutoffs, and culvert stops, plus pending receipts (whose storage witness is filled on
-/// acceptance).
-pub(super) fn evaluate_interval<R: Runtime<DType = DType>>(
+/// Interval link operations, pending receipts, and evaluated structure elements.
+pub(super) type EvaluatedInterval<R> = (
+    Arc<LinkOperations<R>>,
+    Vec<SurfaceChannelGeometryReceipt>,
+    Vec<StructureElement>,
+);
+
+/// Evaluates all link elements at the midpoint of `[start_s, end_s]` (`start_s == end_s` gives
+/// the exact right limit at `start_s`).
+fn evaluate_elements<R: Runtime<DType = DType>>(
     context: &Context<R>,
     schedules: &[StructureGeometrySchedule],
-    points: Vec<StructureOperatingPoint>,
     start_s: f64,
     end_s: f64,
-) -> Result<(Arc<LinkOperations<R>>, Vec<SurfaceChannelGeometryReceipt>), SurfaceChannelError>
-where
-    R::Client: CulvertClient<R>,
-{
-    let mid = start_s + 0.5 * (end_s - start_s);
+) -> Result<Vec<StructureElement>, SurfaceChannelError> {
     let mut elements = Vec::with_capacity(context.link_elements.len());
     for element in &context.link_elements {
         let mine: Vec<&StructureGeometrySchedule> = schedules
@@ -257,6 +258,24 @@ where
             elements.push(evaluated);
         }
     }
+    Ok(elements)
+}
+
+/// Evaluates scheduled geometry for `[start_s, end_s]` and rebuilds `LinkOperations` with updated
+/// laws, cutoffs, and culvert stops, plus pending receipts (whose storage witness is filled on
+/// acceptance) and the evaluated elements.
+pub(super) fn evaluate_interval<R: Runtime<DType = DType>>(
+    context: &Context<R>,
+    schedules: &[StructureGeometrySchedule],
+    points: Vec<StructureOperatingPoint>,
+    start_s: f64,
+    end_s: f64,
+) -> Result<EvaluatedInterval<R>, SurfaceChannelError>
+where
+    R::Client: CulvertClient<R>,
+{
+    let mid = start_s + 0.5 * (end_s - start_s);
+    let elements = evaluate_elements(context, schedules, start_s, end_s)?;
     let beds: Vec<[f64; 2]> = context.operations.laws.iter().map(|law| law.bed).collect();
     let allowance = (context.head_absolute_m, context.head_relative);
     let mut ops = LinkOperations::declared(&context.client, &elements, points, &beds, allowance)?;
@@ -285,5 +304,5 @@ where
             });
         }
     }
-    Ok((Arc::new(ops), receipts))
+    Ok((Arc::new(ops), receipts, elements))
 }

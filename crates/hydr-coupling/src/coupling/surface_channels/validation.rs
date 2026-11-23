@@ -208,6 +208,7 @@ impl SurfaceChannelDefinition {
         }
         let structures =
             check_structures(&setup, &reach_index, pools.as_ref(), &taken, structures)?;
+        super::authority::AuthorityTable::build(&setup)?;
         let structure_beds: Vec<[f64; 2]> = setup
             .structures
             .iter()
