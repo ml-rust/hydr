@@ -48,6 +48,9 @@ mod culvert_outlet_lanes;
 #[path = "runtime_backends/culvert_outlets.rs"]
 mod culvert_outlets;
 #[allow(dead_code)]
+#[path = "culvert_shapes/backend_lanes.rs"]
+mod culvert_shapes;
+#[allow(dead_code)]
 #[path = "surface_channels/culverts_fixture.rs"]
 mod culverts_fixture;
 #[allow(dead_code)]

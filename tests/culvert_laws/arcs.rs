@@ -1,6 +1,7 @@
 //! The culvert law on tangent-arc barrels: round trip, control selection, equal heads,
 //! reversal and dry ends.
 
+use super::lanes::arc_barrels as barrels;
 use super::round_trip::{ROUND_TRIP_TOLERANCE, control_headwater, invert};
 use super::support::{Culvert, TestResult, client, close, dry, elements, propose, wet};
 use hydr::structures::{
@@ -11,29 +12,6 @@ use numr::runtime::cpu::CpuRuntime;
 
 /// Relative gap between the two control headwaters below which a lane may tie.
 const SEPARATION: f64 = 1e-9;
-
-/// One evidence barrel per arc shape with an HDS-5 code of its shape.
-fn barrels() -> TestResult<[(CulvertBarrel, u8); 5]> {
-    Ok([
-        (
-            CulvertBarrel::horizontal_ellipse(1.524, 0.9652, 0.419_475_92)?,
-            30,
-        ),
-        (
-            CulvertBarrel::vertical_ellipse(0.9652, 1.524, 0.419_475_92)?,
-            34,
-        ),
-        (
-            CulvertBarrel::pipe_arch(1.8542, 1.397, 0.4572, 1.938_528)?,
-            36,
-        ),
-        (
-            CulvertBarrel::pipe_arch(1.8542, 1.397, 0.4572, 1.938_528)?,
-            37,
-        ),
-        (CulvertBarrel::arch(3.048, 1.6002)?, 46),
-    ])
-}
 
 #[test]
 fn arc_culvert_discharge_inverts_the_larger_control_headwater() -> TestResult {

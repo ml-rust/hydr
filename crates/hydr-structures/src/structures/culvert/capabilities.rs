@@ -128,7 +128,7 @@ static CULVERT_BARREL: ComponentCapabilities = ComponentCapabilities {
     summary: Summary {
         equations: "circular, box and tangent-arc closed-conduit geometry, critical depth Q^2 T = g A^3 and Manning normal depth on the rising conveyance limb",
         method: "F64 interval enclosures with correctly rounded acos and log, arc bands from each wall's chord and circular segment, and certified bisection in s = y/D",
-        assessment: "independent 100-digit references lie inside every enclosure; CPU and CUDA bounds match bit for bit on circular and box barrels",
+        assessment: "independent 100-digit references lie inside every enclosure; CPU and CUDA bounds match bit for bit on circular, box and tangent-arc barrels",
     },
 };
 

@@ -32,9 +32,30 @@ pub fn culvert_law(
     inverts: [f64; 2],
     two_way: bool,
 ) -> Result<StructureLaw> {
-    let end = CulvertEnd::new(CulvertInlet::hds5(1)?, 0.5)?;
-    Ok(StructureLaw::Culvert(CulvertParameters::new(
+    barrel_culvert_law(
         CulvertBarrel::circular(rise)?,
+        (1, "HDS-5 Table A.1 code 1"),
+        length,
+        inverts,
+        two_way,
+    )
+}
+
+/// Concrete culvert of `barrel` with HDS-5 inlet `code` at each end, `length` m long between
+/// `inverts` `[A, B]`.
+///
+/// `provenance` names the source of the code's coefficients. The entrance loss is `0.5` and
+/// Manning `n` is `0.013`. `two_way` declares the B end too, else only A-to-B flow has an end.
+pub fn barrel_culvert_law(
+    barrel: CulvertBarrel,
+    (code, provenance): (u8, &str),
+    length: f64,
+    inverts: [f64; 2],
+    two_way: bool,
+) -> Result<StructureLaw> {
+    let end = CulvertEnd::new(CulvertInlet::hds5(code)?, 0.5)?;
+    Ok(StructureLaw::Culvert(CulvertParameters::new(
+        barrel,
         CulvertAlignment {
             length_m: length,
             invert_a_m: inverts[0],
@@ -48,7 +69,7 @@ pub fn culvert_law(
         },
         gravity(),
         CulvertApplicability {
-            coefficient_provenance: "HDS-5 Table A.1 code 1".into(),
+            coefficient_provenance: provenance.into(),
             barrel_condition_assertion: "Clean synthetic concrete barrel".into(),
         },
     )?))

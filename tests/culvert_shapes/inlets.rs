@@ -3,51 +3,18 @@
 
 use super::coefficient_rows::CODES as COEFFICIENTS;
 use super::inlet_rows::{
-    ANCHORS, BARRELS, CODES, GRAVITY, INLET_SHA256, InletRow, KU, RELATIVE_TOLERANCE, ROWS, Regime,
-    SLOPES, Shape,
+    ANCHORS, CODES, INLET_SHA256, KU, RELATIVE_TOLERANCE, ROWS, Regime, SLOPES,
 };
+use super::lanes::{Outcome, inlet_barrel as barrel, inlet_row, inlet_shape as shape};
 use super::runtime::{Runtime, client};
 use hydr::structures::{
-    CulvertBarrel, CulvertBarrelShape, CulvertInlet, CulvertInletBatch, CulvertInletForm,
-    CulvertInletHeadwaterRow, CulvertInletRow, InletRegime, StructureError,
-    StructureInputErrorKind,
+    CulvertBarrel, CulvertInlet, CulvertInletBatch, CulvertInletForm, CulvertInletHeadwaterRow,
+    CulvertInletRow, InletRegime, StructureError, StructureInputErrorKind,
 };
 use numr::runtime::RuntimeClient;
 use numr::tensor::Tensor;
 
-type Outcome<T> = Result<T, Box<dyn std::error::Error>>;
 type TestResult = Outcome<()>;
-
-fn shape(shape: Shape) -> CulvertBarrelShape {
-    match shape {
-        Shape::HorizontalEllipse => CulvertBarrelShape::HorizontalEllipse,
-        Shape::VerticalEllipse => CulvertBarrelShape::VerticalEllipse,
-        Shape::PipeArch => CulvertBarrelShape::PipeArch,
-        Shape::Arch => CulvertBarrelShape::Arch,
-    }
-}
-
-fn barrel(index: usize) -> Outcome<CulvertBarrel> {
-    let entry = BARRELS.get(index).ok_or("row names no barrel")?;
-    let inputs: Vec<f64> = entry.inputs.iter().map(|b| f64::from_bits(*b)).collect();
-    Ok(match (entry.shape, inputs.as_slice()) {
-        (Shape::HorizontalEllipse, &[b, d, r]) => CulvertBarrel::horizontal_ellipse(b, d, r)?,
-        (Shape::VerticalEllipse, &[b, d, r]) => CulvertBarrel::vertical_ellipse(b, d, r)?,
-        (Shape::PipeArch, &[b, d, c, r]) => CulvertBarrel::pipe_arch(b, d, c, r)?,
-        (Shape::Arch, &[b, d]) => CulvertBarrel::arch(b, d)?,
-        _ => return Err(format!("fixture barrel {}: wrong input count", entry.name).into()),
-    })
-}
-
-fn inlet_row(row: &InletRow) -> Outcome<CulvertInletRow> {
-    let slope = SLOPES.get(row.slope).ok_or("row names no slope")?;
-    Ok(CulvertInletRow {
-        barrel: barrel(row.barrel)?,
-        inlet: CulvertInlet::hds5(row.code)?,
-        slope: f64::from_bits(*slope),
-        gravity_m_per_s2: f64::from_bits(GRAVITY),
-    })
-}
 
 /// Headwater of every frozen row from one batch.
 fn headwater() -> Outcome<Vec<CulvertInletHeadwaterRow>> {

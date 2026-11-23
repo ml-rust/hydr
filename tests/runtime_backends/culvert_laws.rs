@@ -30,22 +30,27 @@ fn selected_cuda_client_matches_culvert_laws_bit_for_bit() -> super::Result {
 #[cfg(feature = "wgpu")]
 #[test]
 fn selected_wgpu_rejects_culvert_law_f64_without_fallback() -> super::Result {
+    use super::culvert_law_lanes::arc_barrels;
     use super::support::{Culvert, elements};
     use hydr::structures::{CulvertBarrel, CulvertInlet, StructureBatch, StructureInputErrorKind};
     use numr::runtime::wgpu::WgpuRuntime;
-    let culvert = Culvert::both(
-        CulvertBarrel::circular(1.0)?,
-        [0.0, 0.0],
-        CulvertInlet::hds5(1)?,
-        0.5,
-    );
-    let error = super::f64_rejection(
-        StructureBatch::<WgpuRuntime>::with_culverts(super::wgpu_client()?, elements(&[culvert])?),
-        "culvert law",
-    )?;
-    assert_eq!(
-        error.input_kind(),
-        Some(StructureInputErrorKind::Definition)
-    );
+    // The circle, then each arc shape alone.
+    let barrels = std::iter::once((CulvertBarrel::circular(1.0)?, 1)).chain(arc_barrels()?);
+    for (barrel, code) in barrels {
+        let culvert = Culvert::both(barrel, [0.0, 0.0], CulvertInlet::hds5(code)?, 0.5);
+        let error = super::f64_rejection(
+            StructureBatch::<WgpuRuntime>::with_culverts(
+                super::wgpu_client()?,
+                elements(&[culvert])?,
+            ),
+            "culvert law",
+        )?;
+        assert_eq!(
+            error.input_kind(),
+            Some(StructureInputErrorKind::Definition),
+            "{:?} code {code}",
+            barrel.shape()
+        );
+    }
     Ok(())
 }

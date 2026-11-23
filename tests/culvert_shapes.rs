@@ -17,6 +17,14 @@ mod geometry;
 #[path = "culvert_shapes/sweeps.rs"]
 mod sweeps;
 
+#[allow(dead_code)]
+#[path = "culvert_shapes/lanes.rs"]
+mod lanes;
+
+#[allow(dead_code)]
+#[path = "culvert_shapes/lane_outputs.rs"]
+mod lane_outputs;
+
 #[path = "culvert_shapes/layouts.rs"]
 mod layouts;
 
@@ -50,6 +58,7 @@ mod scales;
 use hydr::structures::{
     CriticalDepthStatus, CulvertBarrel, CulvertBarrelBatch, CulvertBarrelShape, NormalDepthStatus,
 };
+use lanes::barrel;
 use reference_rows::{BARRELS, Barrel, GEOMETRY_SHA256, ROWS, Shape, State};
 use runtime::{Runtime, client};
 
@@ -61,16 +70,6 @@ fn inputs(entry: &Barrel) -> Vec<f64> {
         .iter()
         .map(|bits| f64::from_bits(*bits))
         .collect()
-}
-
-fn barrel(entry: &Barrel) -> Result<CulvertBarrel, Box<dyn std::error::Error>> {
-    Ok(match (entry.shape, inputs(entry).as_slice()) {
-        (Shape::HorizontalEllipse, &[b, d, r]) => CulvertBarrel::horizontal_ellipse(b, d, r)?,
-        (Shape::VerticalEllipse, &[b, d, r]) => CulvertBarrel::vertical_ellipse(b, d, r)?,
-        (Shape::PipeArch, &[b, d, c, r]) => CulvertBarrel::pipe_arch(b, d, c, r)?,
-        (Shape::Arch, &[b, d]) => CulvertBarrel::arch(b, d)?,
-        _ => return Err(format!("fixture barrel {}: wrong input count", entry.name).into()),
-    })
 }
 
 #[test]

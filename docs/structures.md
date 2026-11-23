@@ -756,7 +756,7 @@ Independent 100-digit references are frozen before any kernel runs.
 | [Critical depth](../tests/culvert_barrels/critical.rs) and [normal depth](../tests/culvert_barrels/normal.rs) | Statuses match the reference class of the exact root. Every promised enclosure contains it. No depth shows a certified reversal as discharge rises. Normal depth also rises with roughness and as slope falls. |
 | [Layouts](../tests/culvert_barrels/layouts.rs) | Widths 1, 31, 32, 33, 64, and 65 mix circle and box rows. Every lane of every query equals its single-row result bit for bit. |
 | [Admission](../tests/culvert_barrels/admission.rs) | Each rejection names its row, value, and action |
-| [Arc barrels](../tests/culvert_shapes/geometry.rs) | Twelve ellipses, pipe-arches and arches at frozen depths, junctions and seams included. Every reference lies inside its enclosure within a frozen width. [Sweeps](../tests/culvert_shapes/sweeps.rs) show no certified reversal, `dA/dy = T` and `dM/dy = A`, and ranges that hold their ends and references. [Layouts](../tests/culvert_shapes/layouts.rs) of widths 1, 33 and 65 mix arc, circle and box rows bit for bit. |
+| [Arc barrels](../tests/culvert_shapes/geometry.rs) | Twelve ellipses, pipe-arches and arches at frozen depths, junctions and seams included. Every reference lies inside its enclosure within a frozen width. [Sweeps](../tests/culvert_shapes/sweeps.rs) show no certified reversal, `dA/dy = T` and `dM/dy = A`, and ranges that hold their ends and references. [Layouts](../tests/culvert_shapes/layouts.rs) of widths 1, 33 and 65 mix arc, circle and box rows for point, range and full geometry, critical and normal depth, inlet control, and outlet headwater and jumps. Every lane equals its single-row result bit for bit, and circle and box rows keep their bits beside arc rows. |
 | [Arc barrel depths](../tests/culvert_shapes/depths.rs) | Critical and normal statuses match the reference class of independent roots, and every promised enclosure contains the root. [Depth laws](../tests/culvert_shapes/depth_laws.rs) show no certified reversal in discharge, roughness or slope, the same depth fraction for barrels scaled by `2^-300`, and unchanged circle and box rows beside arc rows. |
 | [Scaled arc barrels](../tests/culvert_shapes/scales.rs) | Each arc shape at `2^-900`, `1` and `2^300`: geometry and full geometry equal the unit barrel's scaled bit for bit. At `2^300` critical, normal and inlet enclosures meet the scaled unit enclosures. At `2^-900` zero discharge is dry and a represented discharge lies above the crown. |
 | Frame unit tests | Circles, boxes and arc barrels outside `[1, 2)` return the bits of a metre evaluation. Certificates at `2^-900` and `2^300` equal the unit barrel's bit for bit. |
@@ -769,14 +769,13 @@ cargo test --test culvert_shapes
 | Runtime | Behavior |
 | --- | --- |
 | CPU | Reference |
-| CUDA | [Every query](../tests/runtime_backends/culvert_barrels.rs) over the reference rows and each layout width matches CPU bit for bit. Point geometry also matches over the dense sweep. |
+| CUDA | [Every query](../tests/runtime_backends/culvert_barrels.rs) over the reference rows and each layout width matches CPU bit for bit. Point geometry also matches over the dense sweep. Arc rows of every shape, mixed with circle and box rows, match for every query, critical and normal depth through the construction certificates included. |
 | WGPU | Construction rejects for lack of F64, without CPU fallback |
 
 ### Know the barrel limits
 
 - Queries hold no state and advance no storage. No snapshot exists.
 - Full-barrel pressure flow and full-barrel friction stay with the caller.
-- CUDA parity covers circular and box barrels only.
 - The floor of a flat-floor arch takes the barrel's Manning `n`. A natural bed with its own roughness, HDS-5 composite roughness, is not modelled.
 - Barrel queries give no discharge. [`CulvertInletBatch`](#culvert-inlet-control), [`CulvertOutletBatch`](#culvert-outlet-control) and the [culvert law](#culvert-structure-law) give control headwaters and discharge.
 
@@ -879,14 +878,13 @@ cargo test --test culvert_inlets
 cargo test --test culvert_shapes inlets
 ```
 
-A [CUDA check](../tests/runtime_backends/culvert_inlets.rs) compares every reference row and layout width with CPU bit for bit. WGPU rejects for lack of F64, without CPU fallback.
+A [CUDA check](../tests/runtime_backends/culvert_inlets.rs) compares every reference row and layout width with CPU bit for bit. Arc rows of seven codes from 30 to 47, every arc shape and both mitered codes included, also match beside circle and box rows. WGPU rejects every barrel shape for lack of F64, without CPU fallback.
 
 ### Know the inlet limits
 
 - At zero discharge, a form-1 row returns `D Ks S`, the value of its equation, not zero.
 - The slope term takes the signed slope as given. HDS-5 drops slope adjustments when the exit invert lies more than `D/2` above the entrance. Keep adverse slopes within that range.
 - HDS-5 codes 27 to 29 and 48 to 57 reject. Supply explicit coefficients from the manufacturer or from HDS-5 for those inlets.
-- CUDA parity covers circular and box barrels only.
 
 ## Culvert outlet control
 
@@ -975,7 +973,7 @@ The supercritical profile starts at critical depth at the inlet. Along a profile
 | [Crown sweeps](../tests/culvert_outlets/crown.rs) | A steep box resolves through its critical capacity and its headwater never falls. It is continuous at the capacity and where a full outlet head reaches the crown at the inlet. It steps up by `(Sf_full - S) L` where it primes, and every discharge next to that step resolves. |
 | [Layouts](../tests/culvert_outlets/layouts.rs) | Widths 1, 33, and 65, one past each of 32 and 64 lanes. Every lane equals its single-row result bit for bit. |
 | [Admission](../tests/culvert_outlets/admission.rs) | Each rejection names its row, value, and action |
-| [Arc barrels](../tests/culvert_shapes/outlets.rs) | On a horizontal and a vertical ellipse, a pipe-arch and an arch: independent full-barrel rows lie within `2^-40` relative, and mild, steep, adverse, drowned and near-crown profile rows within `1e-9` relative, with jump positions within `1e-6 L`. Headwater is continuous where the tailwater crosses critical depth, a junction depth or the crown, and never falls as discharge or tailwater rises. Layouts mix arc, circle and box rows bit for bit. |
+| [Arc barrels](../tests/culvert_shapes/outlets.rs) | On a horizontal and a vertical ellipse, a pipe-arch and an arch: independent full-barrel rows lie within `2^-40` relative, and mild, steep, adverse, drowned and near-crown profile rows within `1e-9` relative, with jump positions within `1e-6 L`. Headwater is continuous where the tailwater crosses critical depth, a junction depth or the crown, and never falls as discharge or tailwater rises. [Layouts](../tests/culvert_shapes/layouts.rs) mix arc, circle and box rows bit for bit. |
 | [Scaled arc barrels](../tests/culvert_shapes/scales.rs) | At `2^-60` and `2^60`, with lengths, discharges and `n` scaled alike, every headwater enclosure meets the scaled unit enclosure. At `2^-900` and `2^300` the query rejects as `Numerical`. |
 
 ```sh
@@ -983,7 +981,7 @@ cargo test --test culvert_outlets
 cargo test --test culvert_shapes outlets
 ```
 
-A [CUDA check](../tests/runtime_backends/culvert_outlets.rs) compares every reference row and layout width with CPU bit for bit. WGPU rejects for lack of F64, without CPU fallback.
+A [CUDA check](../tests/runtime_backends/culvert_outlets.rs) compares every reference row and layout width with CPU bit for bit. Arc rows of every shape in each outlet regime, the jump included, mixed with circle and box rows, also match. WGPU rejects every barrel shape for lack of F64, without CPU fallback.
 
 ### Know the outlet limits
 
@@ -1120,13 +1118,13 @@ A tie takes the larger of both controls. The bound is capped at `2^256` per metr
 | [Peak capacity](../tests/culvert_laws/capacity.rs) | On a circle run through its conveyance peak capacity at two tailwaters, `Q(HW(Q))` returns `Q` within `1e-6` under outlet control. Discharge rises with the donor head across that range. |
 | Sensitivity unit tests | The bound holds against a centred difference on inlet and drowned lanes, and over head grids on mild, adverse, zero-slope, steep drowned, and priming barrels, and on mild horizontal ellipse, pipe-arch and arch barrels. No flowing lane takes the cap. |
 | [Arc barrels](../tests/culvert_laws/arcs.rs) | On each arc shape, `Q(HW(Q))` returns `Q` within `1e-6` on mild, adverse and short barrels, and the regime names the larger control. Reversed heads negate the discharge bit for bit. Equal heads and dry donors give exact zero. Free outfalls agree bit for bit. At `2^-60` and `2^60`, with lengths, heads and `n` scaled alike, the discharge equals the scaled unit discharge within `1e-6` with the same regime. At `2^300` the proposal rejects as `Numerical`. At `2^-900` the batch rejects, naming the element. |
-| [Layouts](../tests/culvert_laws/layouts.rs) | Widths 1, 33, and 65 with weirs. Every lane equals its single-lane result bit for bit. |
+| [Layouts](../tests/culvert_laws/layouts.rs) | Widths 1, 33, and 65 mix circle, box and arc culverts of every shape with weirs. Every lane equals its single-lane result bit for bit. |
 
 ```sh
 cargo test --test culvert_laws
 ```
 
-A [CUDA check](../tests/runtime_backends/culvert_laws.rs) compares every layout with CPU bit for bit. WGPU rejects for lack of F64, without CPU fallback.
+A [CUDA check](../tests/runtime_backends/culvert_laws.rs) compares every layout with CPU bit for bit. Its lanes hold circle, box and arc culverts of every shape. WGPU rejects every barrel shape for lack of F64, without CPU fallback.
 
 ### Know the culvert limits
 
@@ -1137,7 +1135,6 @@ A [CUDA check](../tests/runtime_backends/culvert_laws.rs) compares every layout 
 - No blockage, sediment, or debris is represented.
 - The floor of a flat-floor arch takes the culvert's Manning `n`. A natural bed with its own roughness, HDS-5 composite roughness, is not modelled.
 - Discharges, their squares and powers of the area form in metres. Where the outlet products leave F64, as at a rise near `2^300` m, the proposal rejects as `Numerical`. Model such a culvert at a scale near metres.
-- CUDA parity covers circular and box barrels only.
 
 ## Read head sensitivity
 

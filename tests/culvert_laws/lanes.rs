@@ -43,8 +43,60 @@ fn weir(id: &str) -> TestResult<StructureElement> {
     })
 }
 
+/// One evidence barrel per arc shape with an HDS-5 code of its shape. The pipe-arch takes a
+/// plain and a mitered code.
+pub fn arc_barrels() -> TestResult<[(CulvertBarrel, u8); 5]> {
+    Ok([
+        (
+            CulvertBarrel::horizontal_ellipse(1.524, 0.9652, 0.419_475_92)?,
+            30,
+        ),
+        (
+            CulvertBarrel::vertical_ellipse(0.9652, 1.524, 0.419_475_92)?,
+            34,
+        ),
+        (
+            CulvertBarrel::pipe_arch(1.8542, 1.397, 0.4572, 1.938_528)?,
+            36,
+        ),
+        (
+            CulvertBarrel::pipe_arch(1.8542, 1.397, 0.4572, 1.938_528)?,
+            37,
+        ),
+        (CulvertBarrel::arch(3.048, 1.6002)?, 46),
+    ])
+}
+
+/// Arc culverts of every shape: inlet control into a dry bed, reversed outlet control, level,
+/// blocked at an undeclared end, drowned, and dry at both ends.
+fn arc_culverts() -> TestResult<Vec<(Culvert, HeadSupport, HeadSupport)>> {
+    let [ellipse, tall, pipe_arch, mitered, arch] = arc_barrels()?;
+    let culvert = |(barrel, code): (CulvertBarrel, u8), inverts| -> TestResult<Culvert> {
+        Ok(Culvert::both(
+            barrel,
+            inverts,
+            CulvertInlet::hds5(code)?,
+            0.5,
+        ))
+    };
+    let mut long = culvert(tall, [0.0, 0.0])?;
+    long.length_m = 100.0;
+    long.manning_n = 0.024;
+    let mut flap = culvert(mitered, [0.2, 0.0])?;
+    flap.end_b = None;
+    let low = culvert(arch, [0.2, 0.0])?;
+    Ok(vec![
+        (culvert(ellipse, [0.3, 0.0])?, wet(1.8), dry(0.0)),
+        (long, wet(2.2), wet(2.6)),
+        (culvert(pipe_arch, [0.1, 0.0])?, wet(1.0), wet(1.0)),
+        (flap, wet(0.6), wet(1.4)),
+        (low, wet(2.4), wet(1.2)),
+        (low, dry(0.1), dry(-0.1)),
+    ])
+}
+
 /// Distinct lanes: inlet- and outlet-controlled, drowned, reversed, blocked, level and dry
-/// culverts between weirs.
+/// culverts of every barrel shape between weirs.
 pub fn layout_lanes() -> TestResult<Vec<Lane>> {
     let circle = CulvertBarrel::circular(1.2)?;
     let rectangle = CulvertBarrel::rectangular_box(2.0, 1.5)?;
@@ -56,7 +108,7 @@ pub fn layout_lanes() -> TestResult<Vec<Lane>> {
     long.manning_n = 0.03;
     let mut twin = Culvert::both(rectangle, [0.1, 0.0], CulvertInlet::hds5(26)?, 0.4);
     twin.count = 2;
-    let culverts = [
+    let mut culverts = vec![
         (flap, wet(1.4), dry(0.0)),
         (steep, wet(2.5), wet(0.2)),
         (flap, wet(0.5), wet(1.0)),
@@ -66,6 +118,7 @@ pub fn layout_lanes() -> TestResult<Vec<Lane>> {
         (steep, dry(0.2), dry(-0.1)),
         (long, wet(1.1), wet(0.6)),
     ];
+    culverts.extend(arc_culverts()?);
     let mut lanes = Vec::new();
     for (index, (culvert, a, b)) in culverts.into_iter().enumerate() {
         lanes.push(Lane {

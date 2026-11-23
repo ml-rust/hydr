@@ -1,63 +1,22 @@
 //! Arc barrel outlet control: the frozen outlet rows, continuity where the tailwater crosses
-//! critical depth, a junction depth or the crown, monotone sweeps, and batch layouts mixed with
-//! circle and box rows.
+//! critical depth, a junction depth or the crown, and monotone sweeps.
 
+use super::lanes::{Outcome, OutletLane as Lane, outlet_lane as lane};
 use super::outlet_rows::{
-    BARRELS, FULL_RELATIVE_TOLERANCE, FULL_ROWS, GRAVITY, JUMP_POSITION_TOLERANCE, OUTLET_SHA256,
-    Outlet, OutletRow, PROFILE_RELATIVE_TOLERANCE, PROFILE_ROWS, Shape,
+    BARRELS, FULL_RELATIVE_TOLERANCE, FULL_ROWS, JUMP_POSITION_TOLERANCE, OUTLET_SHA256, Outlet,
+    OutletRow, PROFILE_RELATIVE_TOLERANCE, PROFILE_ROWS,
 };
 use super::runtime::{Runtime, client};
 use hydr::structures::{
-    CulvertBarrel, CulvertOutletBatch, CulvertOutletHeadwaterRow, CulvertOutletJumpRow,
-    CulvertOutletRow, JumpStatus, OutletRegime,
+    CulvertOutletBatch, CulvertOutletHeadwaterRow, CulvertOutletJumpRow, JumpStatus, OutletRegime,
 };
 use numr::runtime::RuntimeClient;
 use numr::tensor::Tensor;
 
-type Outcome<T> = Result<T, Box<dyn std::error::Error>>;
 type TestResult = Outcome<()>;
-
-/// Batch widths: one row, and one past each of 32 and 64 lanes.
-const WIDTHS: [usize; 3] = [1, 33, 65];
 
 /// Points of each monotone sweep.
 const POINTS: usize = 16;
-
-/// One batch row with the discharge and tailwater it is queried at.
-#[derive(Clone, Copy, Debug)]
-struct Lane {
-    row: CulvertOutletRow,
-    discharge: f64,
-    tailwater: f64,
-}
-
-fn barrel(index: usize) -> Outcome<CulvertBarrel> {
-    let entry = BARRELS.get(index).ok_or("row names no barrel")?.barrel;
-    let inputs: Vec<f64> = entry.inputs.iter().map(|b| f64::from_bits(*b)).collect();
-    Ok(match (entry.shape, inputs.as_slice()) {
-        (Shape::HorizontalEllipse, &[b, d, r]) => CulvertBarrel::horizontal_ellipse(b, d, r)?,
-        (Shape::VerticalEllipse, &[b, d, r]) => CulvertBarrel::vertical_ellipse(b, d, r)?,
-        (Shape::PipeArch, &[b, d, c, r]) => CulvertBarrel::pipe_arch(b, d, c, r)?,
-        (Shape::Arch, &[b, d]) => CulvertBarrel::arch(b, d)?,
-        _ => return Err(format!("fixture barrel {}: wrong input count", entry.name).into()),
-    })
-}
-
-fn lane(row: &OutletRow) -> Outcome<Lane> {
-    let inputs = &row.inputs;
-    Ok(Lane {
-        row: CulvertOutletRow {
-            barrel: barrel(inputs.barrel)?,
-            length_m: f64::from_bits(inputs.length),
-            manning_n: f64::from_bits(inputs.manning),
-            entrance_loss: f64::from_bits(inputs.ke),
-            slope: f64::from_bits(inputs.slope),
-            gravity_m_per_s2: f64::from_bits(GRAVITY),
-        },
-        discharge: f64::from_bits(inputs.discharge),
-        tailwater: f64::from_bits(inputs.tailwater),
-    })
-}
 
 fn profile(barrel: usize, name: &str) -> Outcome<&'static OutletRow> {
     PROFILE_ROWS
@@ -366,84 +325,6 @@ fn headwater_never_falls_as_discharge_or_tailwater_rises() -> TestResult {
         for (index, chunk) in rows.chunks(POINTS).enumerate() {
             let name = BARRELS.get(index).map_or("?", |b| b.barrel.name);
             rising(chunk, &format!("{name} {what} sweep"))?;
-        }
-    }
-    Ok(())
-}
-
-/// Circle and box lanes with the C4 corpus inputs.
-fn closed_lanes() -> Outcome<Vec<Lane>> {
-    let circle = CulvertBarrel::circular(1.2)?;
-    let square = CulvertBarrel::rectangular_box(2.0, 1.5)?;
-    let row = |barrel, slope| CulvertOutletRow {
-        barrel,
-        length_m: 40.0,
-        manning_n: 0.013,
-        entrance_loss: 0.5,
-        slope,
-        gravity_m_per_s2: 9.81,
-    };
-    Ok(vec![
-        Lane {
-            row: row(circle, 0.001),
-            discharge: 0.8,
-            tailwater: 0.9,
-        },
-        Lane {
-            row: row(circle, 0.03),
-            discharge: 0.8,
-            tailwater: 0.7,
-        },
-        Lane {
-            row: row(square, 0.001),
-            discharge: 3.0,
-            tailwater: 0.0,
-        },
-        Lane {
-            row: row(square, 0.02),
-            discharge: 3.0,
-            tailwater: 2.0,
-        },
-    ])
-}
-
-#[test]
-fn arc_circle_and_box_rows_return_single_row_bits_at_every_layout_width() -> TestResult {
-    let mut lanes = closed_lanes()?;
-    for index in 0..BARRELS.len() {
-        for name in ["m1", "rising_to_crown", "steep_jump"] {
-            lanes.push(lane(profile(index, name)?)?);
-        }
-    }
-    let text = |lanes: &[Lane]| -> Outcome<Vec<String>> {
-        let (rows, jumps) = evaluate(lanes)?;
-        Ok(rows
-            .iter()
-            .zip(&jumps)
-            .map(|(row, jump)| format!("{row:?} {jump:?}"))
-            .collect())
-    };
-    let mut singles = Vec::with_capacity(lanes.len());
-    for lane in &lanes {
-        let [single] = <[String; 1]>::try_from(text(std::slice::from_ref(lane))?)
-            .map_err(|rows| format!("single query returned {} rows", rows.len()))?;
-        singles.push(single);
-    }
-    for width in WIDTHS {
-        let picked: Vec<usize> = (0..width).map(|j| (width + j) % lanes.len()).collect();
-        let batch: Vec<Lane> = picked
-            .iter()
-            .filter_map(|&i| lanes.get(i).copied())
-            .collect();
-        let rows = text(&batch)?;
-        for (position, (row, &index)) in rows.iter().zip(&picked).enumerate() {
-            let single = singles.get(index).ok_or("no single-row result")?;
-            if row != single {
-                return Err(format!(
-                    "width {width} lane {position}: {row} differs from the single-row {single}"
-                )
-                .into());
-            }
         }
     }
     Ok(())

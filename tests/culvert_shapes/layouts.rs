@@ -1,116 +1,132 @@
-//! Batch layouts: arc, circle and box lanes return the bits of their single-row queries.
+//! Batch layouts: arc, circle and box lanes return the bits of their single-row queries, for
+//! geometry, depths, inlet control and outlet control.
 //!
 //! `Debug` prints each F64 in round-trip form, so equal text means equal bits.
 
-use super::geometry::{Outcome, tensor};
-use super::reference_rows::{BARRELS, ROWS};
+use super::TestResult;
+use super::lane_outputs::{barrel_outputs, inlet_outputs, layout, outlet_outputs};
+use super::lanes::{
+    BarrelLane, InletLane, Outcome, OutletLane, QUERIES, Query, WIDTHS, barrel_lanes, inlet_lanes,
+    outlet_lanes,
+};
 use super::runtime::{Runtime, client};
-use super::{TestResult, barrel};
-use hydr::structures::{CulvertBarrel, CulvertBarrelBatch, CulvertBarrelShape};
+use hydr::structures::{CulvertBarrel, CulvertBarrelShape};
 
-/// Batch widths around one and two vector widths.
-const WIDTHS: [usize; 3] = [1, 33, 65];
-
-/// Circle and box lanes mixed into the arc lanes, as depth fractions of their rise.
-const CLOSED_FRACTIONS: [f64; 6] = [0.0, 1e-3, 0.05, 0.5, 0.999, 1.25];
-
-/// One row: its barrel and the depth range it reads. A point query reads the upper end.
-#[derive(Clone, Copy, Debug)]
-struct Lane {
-    barrel: CulvertBarrel,
-    lower: f64,
-    upper: f64,
-}
-
-/// Every reference row of every arc barrel, with a circle and a box row after every third.
-fn lanes() -> Outcome<Vec<Lane>> {
-    let closed = [
-        CulvertBarrel::circular(1.3)?,
-        CulvertBarrel::rectangular_box(2.0, 1.1)?,
-    ];
-    let mut made = Vec::new();
-    for (k, row) in ROWS.iter().enumerate() {
-        let entry = BARRELS.get(row.barrel).ok_or("row names no barrel")?;
-        let depth = f64::from_bits(row.depth);
-        made.push(Lane {
-            barrel: barrel(entry)?,
-            lower: 0.5 * depth,
-            upper: depth,
-        });
-        if k % 3 == 2 {
-            let index = (k / 3) % (closed.len() * CLOSED_FRACTIONS.len());
-            let shape = closed[index % closed.len()];
-            let fraction = CLOSED_FRACTIONS[index / closed.len()];
-            let depth = fraction * shape.rise_m();
-            made.push(Lane {
-                barrel: shape,
-                lower: 0.5 * depth,
-                upper: depth,
-            });
-        }
-    }
-    Ok(made)
-}
-
-/// Point and range geometry of `lanes` as one text per row. Range rows reaching the crown
-/// take the point query alone.
-fn texts(lanes: &[Lane]) -> Outcome<Vec<String>> {
-    let barrels: Vec<CulvertBarrel> = lanes.iter().map(|lane| lane.barrel).collect();
-    let batch = CulvertBarrelBatch::<Runtime>::new(client(), barrels)?;
-    let upper: Vec<f64> = lanes.iter().map(|lane| lane.upper).collect();
-    let points = batch.geometry(&tensor(&upper)?)?.project()?;
-    let free: Vec<bool> = lanes
-        .iter()
-        .map(|lane| lane.upper < lane.barrel.rise_m())
-        .collect();
-    let lower: Vec<f64> = lanes
-        .iter()
-        .zip(&free)
-        .map(|(lane, &free)| if free { lane.lower } else { 0.0 })
-        .collect();
-    let top: Vec<f64> = lanes
-        .iter()
-        .zip(&free)
-        .map(|(lane, &free)| if free { lane.upper } else { 0.0 })
-        .collect();
-    let spans = batch
-        .geometry_over(&tensor(&lower)?, &tensor(&top)?)?
-        .project()?;
-    Ok(points
-        .iter()
-        .zip(&spans)
-        .zip(&free)
-        .map(|((point, span), &free)| {
-            if free {
-                format!("{point:?} {span:?}")
-            } else {
-                format!("{point:?}")
-            }
-        })
-        .collect())
-}
-
-#[test]
-fn arc_barrel_queries_return_single_row_bits_at_every_layout_width() -> TestResult {
-    let lanes = lanes()?;
+/// Requires every lane of every width to equal its single-row text.
+///
+/// `run` evaluates one batch of lanes. `what` names the query in errors.
+fn same_at_every_width<T: Copy>(
+    what: &str,
+    lanes: &[T],
+    run: impl Fn(&[T]) -> Outcome<Vec<String>>,
+) -> TestResult {
     let mut singles = Vec::with_capacity(lanes.len());
-    for lane in &lanes {
-        let [single] = <[String; 1]>::try_from(texts(std::slice::from_ref(lane))?)
-            .map_err(|rows| format!("single query returned {} rows", rows.len()))?;
+    for lane in lanes {
+        let [single] = <[String; 1]>::try_from(run(std::slice::from_ref(lane))?)
+            .map_err(|rows| format!("{what} single query returned {} rows", rows.len()))?;
         singles.push(single);
     }
     for width in WIDTHS {
-        // Each width starts elsewhere, so one lane sits at a different position per width.
-        let picked: Vec<usize> = (0..width).map(|j| (width + j) % lanes.len()).collect();
-        let batch: Vec<Lane> = picked
+        let picked = layout(width, lanes.len());
+        let batch: Vec<T> = picked
             .iter()
             .filter_map(|&i| lanes.get(i).copied())
             .collect();
-        let rows = texts(&batch)?;
-        assert_eq!(rows.len(), width);
+        let rows = run(&batch)?;
+        if rows.len() != width {
+            return Err(format!("{what} width {width} returned {} rows", rows.len()).into());
+        }
         for (position, (row, &index)) in rows.iter().zip(&picked).enumerate() {
             let single = singles.get(index).ok_or("missing single row")?;
-            assert_eq!(row, single, "width {width} lane {position}");
+            if row != single {
+                return Err(format!(
+                    "{what} width {width} lane {position}: {row} differs from the single-row {single}"
+                )
+                .into());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Layout check of one barrel query.
+fn barrel_layouts(query: Query) -> TestResult {
+    let client = client();
+    same_at_every_width(&format!("{query:?}"), &barrel_lanes(query)?, |batch| {
+        barrel_outputs::<Runtime>(&client, query, batch)
+    })
+}
+
+#[test]
+fn arc_point_geometry_returns_single_row_bits_at_every_layout_width() -> TestResult {
+    barrel_layouts(Query::Geometry)
+}
+
+#[test]
+fn arc_range_geometry_returns_single_row_bits_at_every_layout_width() -> TestResult {
+    barrel_layouts(Query::Range)
+}
+
+#[test]
+fn arc_full_geometry_returns_single_row_bits_at_every_layout_width() -> TestResult {
+    barrel_layouts(Query::Full)
+}
+
+#[test]
+fn arc_critical_depth_returns_single_row_bits_at_every_layout_width() -> TestResult {
+    barrel_layouts(Query::Critical)
+}
+
+#[test]
+fn arc_normal_depth_returns_single_row_bits_at_every_layout_width() -> TestResult {
+    barrel_layouts(Query::Normal)
+}
+
+#[test]
+fn arc_inlet_control_returns_single_row_bits_at_every_layout_width() -> TestResult {
+    let client = client();
+    same_at_every_width("inlet", &inlet_lanes()?, |batch| {
+        inlet_outputs::<Runtime>(&client, batch)
+    })
+}
+
+#[test]
+fn arc_outlet_control_returns_single_row_bits_at_every_layout_width() -> TestResult {
+    let client = client();
+    same_at_every_width("outlet", &outlet_lanes()?, |batch| {
+        outlet_outputs::<Runtime>(&client, batch)
+    })
+}
+
+fn plain(barrel: &CulvertBarrel) -> bool {
+    matches!(
+        barrel.shape(),
+        CulvertBarrelShape::Circular | CulvertBarrelShape::Box
+    )
+}
+
+/// Requires the circle and box lanes to return the same text beside the arc lanes as alone.
+fn closed_unchanged<T: Copy>(
+    what: &str,
+    lanes: &[T],
+    closed: impl Fn(&T) -> bool,
+    run: impl Fn(&[T]) -> Outcome<Vec<String>>,
+) -> TestResult {
+    let alone: Vec<T> = lanes.iter().filter(|lane| closed(lane)).copied().collect();
+    let mixed = run(lanes)?;
+    let beside: Vec<&String> = lanes
+        .iter()
+        .zip(&mixed)
+        .filter(|(lane, _)| closed(lane))
+        .map(|(_, text)| text)
+        .collect();
+    let alone = run(&alone)?;
+    if beside.len() != alone.len() || beside.is_empty() {
+        return Err(format!("{what}: {} closed lanes beside arcs", beside.len()).into());
+    }
+    for (with_arcs, without) in beside.iter().zip(&alone) {
+        if *with_arcs != without {
+            return Err(format!("{what}: {with_arcs} beside arcs, {without} alone").into());
         }
     }
     Ok(())
@@ -118,25 +134,25 @@ fn arc_barrel_queries_return_single_row_bits_at_every_layout_width() -> TestResu
 
 #[test]
 fn circle_and_box_rows_keep_their_bits_beside_arc_rows() -> TestResult {
-    let lanes = lanes()?;
-    let plain = |lane: &Lane| {
-        matches!(
-            lane.barrel.shape(),
-            CulvertBarrelShape::Circular | CulvertBarrelShape::Box
-        )
-    };
-    let closed: Vec<Lane> = lanes.iter().filter(|lane| plain(lane)).copied().collect();
-    let mixed = texts(&lanes)?;
-    let alone = texts(&closed)?;
-    let beside: Vec<&String> = lanes
-        .iter()
-        .zip(&mixed)
-        .filter(|(lane, _)| plain(lane))
-        .map(|(_, text)| text)
-        .collect();
-    assert_eq!(beside.len(), alone.len());
-    for (with_arcs, without) in beside.iter().zip(&alone) {
-        assert_eq!(*with_arcs, without);
+    let client = client();
+    for query in QUERIES {
+        closed_unchanged(
+            &format!("{query:?}"),
+            &barrel_lanes(query)?,
+            |lane: &BarrelLane| plain(&lane.barrel),
+            |batch| barrel_outputs::<Runtime>(&client, query, batch),
+        )?;
     }
-    Ok(())
+    closed_unchanged(
+        "inlet",
+        &inlet_lanes()?,
+        |lane: &InletLane| plain(&lane.row.barrel),
+        |batch| inlet_outputs::<Runtime>(&client, batch),
+    )?;
+    closed_unchanged(
+        "outlet",
+        &outlet_lanes()?,
+        |lane: &OutletLane| plain(&lane.row.barrel),
+        |batch| outlet_outputs::<Runtime>(&client, batch),
+    )
 }

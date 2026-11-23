@@ -14,6 +14,8 @@ mod culverts_drain;
 mod culverts_fixture;
 #[path = "surface_channels/culverts_invert.rs"]
 mod culverts_invert;
+#[path = "surface_channels/culverts_pipe_arch.rs"]
+mod culverts_pipe_arch;
 #[path = "surface_channels/culverts_reversal.rs"]
 mod culverts_reversal;
 #[path = "surface_channels/culverts_roadway.rs"]

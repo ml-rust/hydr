@@ -1,8 +1,10 @@
 //! Culvert cases of the surface/channel coordinator through the public API.
 //!
-//! Every culvert is a circular concrete barrel of the fixture law `culvert_law`. Each case
-//! returns its setup and initial state, so the CPU and CUDA runs share it.
+//! Every culvert but one is a circular concrete barrel of the fixture law `culvert_law`. The
+//! pipe-arch case takes `barrel_culvert_law`. Each case returns its setup and initial state, so
+//! the CPU and CUDA runs share it.
 
+use crate::pools_fixture::laws::barrel_culvert_law;
 use crate::pools_fixture::{
     Case, INFLOW, REACH, Result, WITHDRAWAL, channel, culvert_law, manual, pond, pool, structure,
     weir_law,
@@ -12,7 +14,7 @@ use hydr::coupling::{
     SurfaceChannelForcingInterval, SurfaceChannelReachForcing, SurfaceChannelSetup,
 };
 use hydr::forcing::WaterAmount;
-use hydr::structures::{DirectionPolicy, StructureOperatingPoint};
+use hydr::structures::{CulvertBarrel, DirectionPolicy, StructureOperatingPoint};
 
 /// Rise of every culvert barrel, in m.
 pub const RISE_M: f64 = 0.3;
@@ -139,6 +141,39 @@ fn drowning_from(depth_m: f64) -> Result<Case> {
     case.structures = vec![structure(
         "culvert",
         culvert_law(LONG_RISE_M, 40.0, [0.1, 0.0], true)?,
+        DirectionPolicy::Bidirectional,
+        manual(StructureOperatingPoint::Passive),
+        (pool("head"), 0.0),
+        (pool("basin"), 0.0),
+    )];
+    Ok(case)
+}
+
+/// Span, rise, corner radius and bottom radius of the pipe-arch of [`pipe_arch_case`], in m.
+///
+/// The 73 in by 55 in evidence pipe-arch of the arc barrel cases at a quarter of its size.
+pub const PIPE_ARCH_M: [f64; 4] = [0.46355, 0.34925, 0.1143, 0.484632];
+
+/// A large head pond 1 m deep drains through a short pipe-arch culvert into a dry basin.
+///
+/// The inlet at the head pond sits at 0.1 m, the outlet at the basin floor. Both ends are
+/// declare HDS-5 pipe-arch code 36, so the culvert runs both ways.
+pub fn pipe_arch_case() -> Result<Case> {
+    let [span, rise, corner, bottom] = PIPE_ARCH_M;
+    let mut case = Case::tanks(0.0, 0.0);
+    case.ponds = vec![
+        (pond("basin", 0.0, 4.0, 3.0)?, 0.0),
+        (pond("head", 0.0, 200.0, 3.0)?, 1.0 * 200.0),
+    ];
+    case.structures = vec![structure(
+        "culvert",
+        barrel_culvert_law(
+            CulvertBarrel::pipe_arch(span, rise, corner, bottom)?,
+            (36, "HDS-5 Table A.2 code 36"),
+            8.0,
+            [0.1, 0.0],
+            true,
+        )?,
         DirectionPolicy::Bidirectional,
         manual(StructureOperatingPoint::Passive),
         (pool("head"), 0.0),
