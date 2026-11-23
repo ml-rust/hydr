@@ -50,6 +50,7 @@ mod capabilities;
 mod capture;
 mod completion;
 mod context;
+mod crossing;
 mod definition;
 mod error;
 mod evaluate;

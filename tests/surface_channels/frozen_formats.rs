@@ -175,3 +175,10 @@ pub fn before_channel_section_epochs(text: &str) -> String {
     .replace(", channel_section_schedules: []", "")
     .replace(", channel_section_epochs: []", "")
 }
+
+pub fn before_cutoff_localization(text: &str) -> String {
+    text.replace(
+        "hydr-surface-channel-numr-cpu-16",
+        "hydr-surface-channel-numr-cpu-15",
+    )
+}

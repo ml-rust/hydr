@@ -4,6 +4,7 @@ use super::accounting::{PoolInflowStep, within};
 use super::batch::SurfaceChannelBatch;
 use super::candidate::SurfaceChannelTrial;
 use super::completion::advanced;
+use super::crossing::{CrossingSignal, is_crossing_error};
 use super::evaluate::Accepted;
 use super::forcing::BoundForcing;
 use super::geometry::SurfaceChannelGeometryReceipt;
@@ -11,7 +12,7 @@ use super::iteration::Stall;
 use super::operating::AttemptOperation;
 use super::outcome::{Converged, LinkOutcome};
 use super::pools::PoolChild;
-use super::retry::{recompute, shortening};
+use super::retry::{next_retry_end, recompute};
 use super::runoff::{
     RunoffStart, SurfaceRunoffStep, pool_receipts, runoff_delivery, runoff_end, runoff_start,
     with_runoff,
@@ -19,7 +20,7 @@ use super::runoff::{
 use super::start::Start;
 use super::state::{PreviousFrame, StoredStep};
 use super::{SurfaceChannelError, SurfaceChannelForcingInterval};
-use crate::channel::{ChannelError, ChannelReach};
+use crate::channel::ChannelReach;
 use crate::solver::Solver;
 use hydr_solver::internal::CouplingPreparation;
 use numr::dtype::DType;
@@ -39,10 +40,11 @@ use std::sync::Arc;
 /// Fraction of the smallest step limit a shortened attempt uses.
 pub(super) const LIMIT_SAFETY: f64 = 0.95;
 
-/// Accepted-start operands, stall cell, operation, and runoff start of one attempt.
-type AttemptOperands<'a, R> = (
+/// Accepted-start operands, stall/crossing cells, operation, and runoff start of one attempt.
+pub(super) type AttemptOperands<'a, R> = (
     &'a Start<R>,
     &'a Cell<Option<Stall>>,
+    &'a Cell<Option<CrossingSignal>>,
     AttemptOperation<R>,
     Option<&'a RunoffStart>,
     &'a Solver<R>,
@@ -175,6 +177,7 @@ where
         let mut prepared = Some(first);
         let mut retries = 0;
         let stalled = Cell::new(None);
+        let crossing = Cell::new(None);
         loop {
             let dt = end - start;
             if !dt.is_finite() || dt < minimum || end <= start {
@@ -185,7 +188,7 @@ where
                 });
             }
             stalled.set(None);
-            // A retry prepares the operating children again at its shorter end.
+            crossing.set(None);
             let operation = match prepared.take() {
                 Some(operation) if operation.end.to_bits() == end.to_bits() => operation,
                 _ => self.operation_at(end)?,
@@ -197,6 +200,7 @@ where
                 (
                     &operands,
                     &stalled,
+                    &crossing,
                     operation,
                     runoff.as_ref(),
                     surface_for_step,
@@ -214,47 +218,33 @@ where
             if !error.is_retryable() {
                 return Err(error);
             }
-            let suggested = match &error {
-                SurfaceChannelError::RecomputeInterval {
-                    suggested_end_s, ..
-                }
-                | SurfaceChannelError::Channel {
-                    source:
-                        ChannelError::RecomputeInterval {
-                            suggested_end_s, ..
-                        },
-                    ..
-                } => Some(*suggested_end_s),
-                _ => None,
-            };
-            let fraction = stalled.get().map_or(0.5, |stall| {
-                shortening(stall.contraction, config.contraction_target)
-            });
-            let shorter = suggested
-                .filter(|&t| t.is_finite() && t > start && t < end)
-                .unwrap_or(start + fraction * dt);
-            if operands.forcing.requires_exact_span {
-                return Err(recompute(
-                    start,
+            let crossing_sig = crossing.get();
+            if crossing_sig.is_some() || is_crossing_error(&error) {
+                return self.resolve_crossing(
+                    end,
                     requested,
-                    shorter,
-                    minimum,
                     retries,
-                    error.to_string(),
-                ));
+                    crossing_sig,
+                    &error,
+                    &operands,
+                    runoff.as_ref(),
+                    &start_geometry,
+                    &reach_ids,
+                    forcing,
+                );
             }
-            if retries >= config.retry_limit
-                || shorter - start < minimum
-                || shorter <= start
-                || shorter >= end
-            {
-                return Err(SurfaceChannelError::Unresolved {
-                    dt_s: dt,
-                    retries,
-                    reason: error.to_string(),
-                });
-            }
-            end = shorter;
+            end = next_retry_end(
+                start,
+                end,
+                requested,
+                minimum,
+                retries,
+                config.retry_limit,
+                config.contraction_target,
+                stalled.get(),
+                operands.forcing.requires_exact_span,
+                &error,
+            )?;
             retries += 1;
         }
     }
@@ -262,7 +252,7 @@ where
     /// Calculates one complete candidate ending at `end` under `operation`.
     ///
     /// Runoff runs once, after the step limits pass and before the pools and the fixed point.
-    fn attempt(
+    pub(super) fn attempt(
         &self,
         end: f64,
         requested: f64,
@@ -270,6 +260,7 @@ where
         (
             operands,
             stalled,
+            crossing,
             mut operation,
             runoff_start,
             active_surface,
@@ -344,7 +335,9 @@ where
                 reaches: active_reaches,
                 pools: active_pools,
             };
-            let solved = context.solve(config, accepted, reach_ids, operands, &attempt, stalled)?;
+            let solved = context.solve(
+                config, accepted, reach_ids, operands, &attempt, stalled, crossing,
+            )?;
             let converged = Converged::new(context, solved, attempt.pools.as_ref())?;
             nodes = Some(converged.nodes);
             for (entry, next) in context.linked.iter().zip(converged.linked) {

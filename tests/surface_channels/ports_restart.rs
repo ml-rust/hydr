@@ -179,7 +179,7 @@ fn earlier_package_identities_reject() -> Result {
     );
     assert_eq!(
         SURFACE_CHANNEL_CONTRACT_VERSION,
-        "hydr-surface-channel-numr-cpu-15"
+        "hydr-surface-channel-numr-cpu-16"
     );
     let data = package()?;
     for found in [
@@ -217,6 +217,7 @@ fn earlier_package_identities_reject() -> Result {
         "hydr-surface-channel-numr-cpu-12",
         "hydr-surface-channel-numr-cpu-13",
         "hydr-surface-channel-numr-cpu-14",
+        "hydr-surface-channel-numr-cpu-15",
     ] {
         let mut earlier = data.clone();
         earlier.contract = found.into();

@@ -28,6 +28,8 @@ mod culverts_reversal;
 mod culverts_roadway;
 #[path = "surface_channels/culverts_sweep.rs"]
 mod culverts_sweep;
+#[path = "surface_channels/cutoff_localization.rs"]
+mod cutoff_localization;
 #[path = "surface_channels/definition.rs"]
 mod definition;
 #[path = "surface_channels/donors.rs"]

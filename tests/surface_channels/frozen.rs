@@ -16,9 +16,9 @@ mod formats;
 
 use formats::{
     before_blockage, before_channel_section_epochs, before_culvert_roots, before_culverts,
-    before_geometry_schedules, before_pool_curve_epochs, before_pools, before_ports,
-    before_root_probe, before_runoff, before_runoff_reports, before_surface_bed_epochs,
-    before_surface_runoff,
+    before_cutoff_localization, before_geometry_schedules, before_pool_curve_epochs, before_pools,
+    before_ports, before_root_probe, before_runoff, before_runoff_reports,
+    before_surface_bed_epochs, before_surface_runoff,
 };
 
 /// FNV-1a 64-bit digest of `text`.
@@ -35,6 +35,7 @@ fn check_current(
     batch: &Batch,
     [
         expected,
+        unlocalized,
         fixed_sections,
         fixed_bed,
         fixed_pools,
@@ -45,13 +46,21 @@ fn check_current(
         unattached,
         cold,
         uncoupled,
-    ]: [u64; 11],
+    ]: [u64; 12],
 ) -> Result {
     let text = state(batch)?;
     let actual = digest(&text);
     if actual != expected {
         return Err(format!(
             "state digest={actual:#018x}, frozen={expected:#018x}: an accepted bit changed"
+        )
+        .into());
+    }
+    let text = before_cutoff_localization(&text);
+    let pre_loc = digest(&text);
+    if pre_loc != unlocalized {
+        return Err(format!(
+            "digest before cutoff localization={pre_loc:#018x}, frozen={unlocalized:#018x}: a field other than the contract identity changed"
         )
         .into());
     }
@@ -144,7 +153,7 @@ fn check_earlier(batch: &Batch, probed: u64, current: u64, earlier: u64) -> Resu
     let text = before_root_probe(&before_culverts(&before_culvert_roots(&before_runoff(
         &before_runoff_reports(&before_surface_runoff(&before_blockage(
             &before_geometry_schedules(&before_pool_curve_epochs(&before_surface_bed_epochs(
-                &before_channel_section_epochs(&state(batch)?),
+                &before_channel_section_epochs(&before_cutoff_localization(&state(batch)?)),
             ))),
         ))),
     ))));
@@ -213,6 +222,7 @@ fn rectangular_network_state_matches_frozen_digest() -> Result {
     check_current(
         &batch,
         [
+            0x9c9f_67dc_34b6_c74e,
             0x8376_6354_ae1a_8b39,
             0x38c7_85ff_5358_c7dd,
             0x3a75_1930_fa6d_cd55,
@@ -261,6 +271,7 @@ fn surveyed_flood_state_matches_frozen_digest() -> Result {
     check_current(
         &flood(CertifiedRootProbe::SlackSecant)?,
         [
+            0xd934_9f9f_226a_a7f7,
             0xef04_a404_8666_2b4e,
             0x621a_83c5_98de_558a,
             0xefa5_7c00_c7cc_83a2,

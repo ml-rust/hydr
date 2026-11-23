@@ -1,6 +1,7 @@
 //! Fixed-point iteration over end stages and signed link volumes, with separate budgets.
 
 use super::context::{Context, Ops};
+use super::crossing::CrossingSignal;
 use super::evaluate::{Accepted, Attempt, Evaluation, Trials};
 use super::link_law::LawAt;
 use super::start::Start;
@@ -128,6 +129,7 @@ where
     /// interval retries it. The converged candidate then passes the link crossing check, the
     /// raised-cutoff crossing check at pool attachments, the pool cut check with pool-end exports,
     /// and the pool-end wet-support check. Each of those rejections is retryable.
+    #[allow(clippy::too_many_arguments)]
     pub fn solve(
         &self,
         config: &SurfaceChannelConfig,
@@ -136,6 +138,7 @@ where
         start: &Start<R>,
         attempt: &Attempt<R>,
         stalled: &Cell<Option<Stall>>,
+        crossing: &Cell<Option<CrossingSignal>>,
     ) -> Result<Solved<R>, SurfaceChannelError> {
         // Kept trials never outlive this attempt, so none crosses an accepted step or a retry.
         let ended = self.pool_ends.as_ref().map_or(0, |ends| ends.ended.len());
@@ -269,27 +272,43 @@ where
             let m = self.transfer_count();
             let packet = &evaluation.packet;
             let signed = &evaluation.exchange.signed;
-            if self.link_count > 0 {
-                self.check_pool_crossing(
+            let end_stage = packet.narrow(0, 0, n)?;
+            if self.link_count > 0
+                && let Err(err) = self.check_pool_crossing(
                     &pools.curves,
-                    &packet.narrow(0, 0, n)?,
+                    &end_stage,
                     &packet.narrow(0, n + m, n)?,
                     signed,
-                )?;
+                )
+            {
+                let margin = self
+                    .raised_cutoff_margin(&pools.curves, &end_stage, signed)?
+                    .unwrap_or(-1.0);
+                crossing.set(Some(CrossingSignal { margin }));
+                return Err(err);
             }
-            self.check_pool_cuts(
+            if let Err(err) = self.check_pool_cuts(
                 &pools.curves,
                 &pools.available,
                 signed,
                 evaluation.end_volume.as_ref(),
-            )?;
+            ) {
+                let margin = self
+                    .raised_cutoff_margin(&pools.curves, &end_stage, signed)?
+                    .unwrap_or(-1.0)
+                    .min(-f64::MIN_POSITIVE);
+                crossing.set(Some(CrossingSignal { margin }));
+                return Err(err);
+            }
         }
         if let (Some(start_support), Some(end_support), Some(volumes)) = (
             &start.end_support,
             &evaluation.end_support,
             &evaluation.end_volume,
-        ) {
-            self.check_end_support(start_support, end_support, volumes)?;
+        ) && let Err(err) = self.check_end_support(start_support, end_support, volumes)
+        {
+            crossing.set(Some(CrossingSignal { margin: -1.0 }));
+            return Err(err);
         }
         let norms = norms.into_inner();
         let contraction = match norms.as_slice() {
