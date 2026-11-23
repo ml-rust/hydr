@@ -8,6 +8,7 @@ pub mod structures;
 
 #[doc(hidden)]
 pub mod internal {
+    pub use crate::structures::blockage::effective::culvert_bed_elevations;
     pub use crate::structures::coupling::CouplingStructures;
     pub use crate::structures::identity::{bits, same_elements};
     pub use crate::structures::tensor::TensorStructureResult;

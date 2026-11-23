@@ -12,7 +12,8 @@
 
 use super::Result;
 use crate::culverts_fixture::{
-    drowning_case, pipe_arch_case, reversal_case, roadway_case, sweep_case, tide,
+    blocked_culvert_case, drowning_case, pipe_arch_case, reversal_case, roadway_case, sweep_case,
+    tide,
 };
 use crate::pools_fixture::Case;
 
@@ -41,7 +42,7 @@ fn short_tide(t: f64) -> f64 {
 /// Parity needs every law path once, not a long run: the tide both ways, inlet control into a
 /// dry basin, a partly full outlet whose one interval runs cold and warm root searches, a
 /// drowned barrel under a road, and a pipe-arch barrel draining into a dry basin.
-pub fn runs() -> [Run; 5] {
+pub fn runs() -> [Run; 6] {
     [
         Run {
             case: reversal_case,
@@ -69,6 +70,12 @@ pub fn runs() -> [Run; 5] {
         },
         Run {
             case: pipe_arch_case,
+            tide: still,
+            dt: 0.5,
+            end_s: 1.0,
+        },
+        Run {
+            case: blocked_culvert_case,
             tide: still,
             dt: 0.5,
             end_s: 1.0,

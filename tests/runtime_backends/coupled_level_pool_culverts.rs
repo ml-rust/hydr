@@ -14,7 +14,7 @@ mod culverts_fixture;
 use crate::coupled_pool_fixture as fixture;
 
 use super::Result;
-use culverts_fixture::{reversal, roadway};
+use culverts_fixture::{blocked_culvert, reversal, roadway};
 use hydr::coupling::{
     CoupledLevelPoolForcingInterval, CoupledLevelPoolInitialState, CoupledLevelPoolSetup,
     CoupledPoolInflow, CoupledPoolInflowValue,
@@ -84,7 +84,7 @@ macro_rules! coupled_culvert_execution {
 
 #[test]
 fn selected_cpu_client_executes_coupled_level_pool_culverts() -> Result {
-    for parts in [reversal()?, roadway()?] {
+    for parts in [reversal()?, roadway()?, blocked_culvert()?] {
         let states =
             coupled_culvert_execution!(super::runtime::Runtime, super::runtime::client(), parts);
         assert_eq!(states.len(), INTERVALS);
@@ -96,7 +96,7 @@ fn selected_cpu_client_executes_coupled_level_pool_culverts() -> Result {
 #[test]
 fn selected_cuda_client_matches_cpu_coupled_level_pool_culverts() -> Result {
     use numr::runtime::cuda::{CudaClient, CudaDevice, CudaRuntime};
-    for (index, build) in [reversal, roadway].into_iter().enumerate() {
+    for (index, build) in [reversal, roadway, blocked_culvert].into_iter().enumerate() {
         let cpu =
             coupled_culvert_execution!(super::runtime::Runtime, super::runtime::client(), build()?);
         let cuda =

@@ -163,7 +163,7 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
         },
         Limit {
             id: "structure-hydraulic-support",
-            summary: "Running pumps need a wet donor and a wet receiver or a free outlet at or above a dry receiver's bed. Submerged orifices need water above the crown at both endpoints. A culvert donor at or below its invert gives nothing, and a dry receiver is a free outfall at its invert.",
+            summary: "Running pumps need a wet donor and a wet receiver or a free outlet at or above a dry receiver's bed. Submerged orifices need water above the crown at both endpoints. A culvert donor at or below its bed elevation gives nothing, and a dry receiver is a free outfall at its bed elevation.",
             doc: COUPLED_DOC,
         },
         Limit {
@@ -178,7 +178,7 @@ static COUPLED_LEVEL_POOLS: ComponentCapabilities = ComponentCapabilities {
         },
     ],
     summary: Summary {
-        equations: "volume balance of connected level pools exchanging water through checked structure laws",
+        equations: "volume balance of connected level pools exchanging water through checked structure laws with typed blockage and Closed states",
         method: "midpoint-head Picard iteration with bounded interval halving, one signed volume per structure, and nested level-pool accounting",
         assessment: "selected analytical exchange, refinement, source, inflow and restart cases; field accuracy remains unestablished",
     },

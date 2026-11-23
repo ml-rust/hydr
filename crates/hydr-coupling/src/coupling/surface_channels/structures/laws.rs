@@ -5,7 +5,9 @@
 //! are weirs with both cutoffs at the crest.
 
 use crate::coupling::links::cutoffs::endpoint_cutoffs;
-use crate::structures::{DirectionPolicy, StructureElement, StructureLaw, StructureOperatingPoint};
+use crate::structures::{
+    DirectionPolicy, StructureCondition, StructureElement, StructureLaw, StructureOperatingPoint,
+};
 
 /// Margin of the suction stop above the suction cutoff, in units of `|cutoff| f64::EPSILON`.
 const SUCTION_MARGIN_ULPS: f64 = 16.0;
@@ -44,9 +46,11 @@ pub(in super::super) enum LawKind {
     Orifice,
     /// Pump on its curve, or isolated.
     Pump(PumpLimits),
-    /// HDS-5 culvert. A receiver at or below its invert is a free outfall. A donor stops at its
-    /// invert stop.
+    /// HDS-5 culvert. A receiver at or below its bed elevation is a free outfall. A donor stops
+    /// at its bed stop.
     Culvert(CulvertLimits),
+    /// Fully closed structure. Cutoffs stay at the attachment beds; no cap, no stop, zero volume.
+    Closed,
 }
 
 /// Culvert operands of the invert cap.
@@ -89,34 +93,38 @@ impl LinkLaw {
         (absolute, relative): (f64, f64),
     ) -> Self {
         let cut = endpoint_cutoffs(element, beds);
-        let kind = match &element.law {
-            StructureLaw::Culvert(_) => LawKind::Culvert(CulvertLimits {
-                stop_m: cut.map(|cutoff| stop_above(cutoff, (absolute, relative))),
-            }),
-            StructureLaw::SuppressedRectangularWeir(_) => LawKind::Weir,
-            StructureLaw::HydrostaticRectangularGate(_) => LawKind::Gate,
-            StructureLaw::SubmergedOrifice(_) => LawKind::Orifice,
-            StructureLaw::Pump(p) => {
-                let donor = usize::from(element.direction == DirectionPolicy::BtoAOnly);
-                let stop_m = stop_above(cut[donor], (absolute, relative));
-                let knots = p.curve().knots();
-                let zero = knots
-                    .iter()
-                    .find(|k| k.discharge_m3_per_s == 0.0)
-                    .or(knots.last())
-                    .map_or(0.0, |k| k.head_m);
-                let (running, speed) = match operation {
-                    StructureOperatingPoint::PumpRunning { speed_ratio } => (true, speed_ratio),
-                    _ => (false, 0.0),
-                };
-                let head = zero - LIFT_MARGIN_ULPS * f64::EPSILON * zero.abs();
-                LawKind::Pump(PumpLimits {
-                    donor,
-                    running,
-                    stop_m,
-                    lift_limit_m: head * speed * speed,
-                    outlet_m: p.free_outlet().map(|o| o.elevation_m),
-                })
+        let kind = if matches!(element.condition, StructureCondition::Closed { .. }) {
+            LawKind::Closed
+        } else {
+            match &element.law {
+                StructureLaw::Culvert(_) => LawKind::Culvert(CulvertLimits {
+                    stop_m: cut.map(|cutoff| stop_above(cutoff, (absolute, relative))),
+                }),
+                StructureLaw::SuppressedRectangularWeir(_) => LawKind::Weir,
+                StructureLaw::HydrostaticRectangularGate(_) => LawKind::Gate,
+                StructureLaw::SubmergedOrifice(_) => LawKind::Orifice,
+                StructureLaw::Pump(p) => {
+                    let donor = usize::from(element.direction == DirectionPolicy::BtoAOnly);
+                    let stop_m = stop_above(cut[donor], (absolute, relative));
+                    let knots = p.curve().knots();
+                    let zero = knots
+                        .iter()
+                        .find(|k| k.discharge_m3_per_s == 0.0)
+                        .or(knots.last())
+                        .map_or(0.0, |k| k.head_m);
+                    let (running, speed) = match operation {
+                        StructureOperatingPoint::PumpRunning { speed_ratio } => (true, speed_ratio),
+                        _ => (false, 0.0),
+                    };
+                    let head = zero - LIFT_MARGIN_ULPS * f64::EPSILON * zero.abs();
+                    LawKind::Pump(PumpLimits {
+                        donor,
+                        running,
+                        stop_m,
+                        lift_limit_m: head * speed * speed,
+                        outlet_m: p.free_outlet().map(|o| o.elevation_m),
+                    })
+                }
             }
         };
         Self {
@@ -234,6 +242,7 @@ impl LinkLaw {
                         / (s_d / area(donor, p.stop_m) + s_r / area(receiver, h_r));
                     suction.min(domain).max(0.0)
                 }
+                LawKind::Closed => return 0.0,
             };
             kept.min(available[donor] / s_d)
         };
@@ -466,6 +475,57 @@ mod tests {
         let [forward, _] = law.bounds([1.0, 0.5], area, [1.0, 1.0], [100.0, 100.0]);
         let domain = (pump.lift_limit_m - (2.0 - 1.0)) / (1.0 / 4.0 + 1.0 / 8.0);
         assert_eq!(forward, ((1.0 - pump.stop_m) * 4.0).min(domain));
+        Ok(())
+    }
+
+    #[test]
+    fn closed_law_keeps_attachment_beds_and_zero_bounds_and_sediment_raises_culvert_stop()
+    -> TestResult {
+        use crate::structures::{
+            BlockageFraction, CulvertBlockage, CulvertSediment, StructureBlockage,
+        };
+        let mut closed = element(weir_law(1.2)?, DirectionPolicy::Bidirectional);
+        closed.condition = StructureCondition::Closed {
+            evidence: "Bulkhead".into(),
+        };
+        let closed_law = LinkLaw::new(
+            &closed,
+            StructureOperatingPoint::Passive,
+            [0.2, 0.3],
+            (1e-12, 0.0),
+        );
+        assert_eq!(closed_law.kind, LawKind::Closed);
+        assert_eq!(closed_law.cut, [0.2, 0.3]);
+        assert!(closed_law.culvert().is_none() && !closed_law.has_below());
+        assert_eq!(
+            closed_law.bounds([2.0, 0.5], area, [1.0, 1.0], [100.0, 100.0]),
+            [0.0, 0.0]
+        );
+
+        let mut sed = element(culvert_law([0.2, 0.1])?, DirectionPolicy::Bidirectional);
+        sed.condition = StructureCondition::Blocked(StructureBlockage::culvert(
+            CulvertBlockage {
+                face_a: BlockageFraction::NONE,
+                face_b: BlockageFraction::NONE,
+                sediment: Some(CulvertSediment {
+                    depth_m: 0.2,
+                    bed_manning_n: 0.03,
+                }),
+                closed_barrels: 0,
+            },
+            "Sediment".into(),
+        )?);
+        let sed_law = LinkLaw::new(
+            &sed,
+            StructureOperatingPoint::Passive,
+            [0.0, 0.0],
+            (1e-12, 0.0),
+        );
+        let [bed_a, bed_b] =
+            hydr_structures::internal::culvert_bed_elevations(&sed).ok_or("culvert beds")?;
+        assert_eq!(sed_law.cut, [bed_a, bed_b]);
+        let stop = sed_law.culvert().ok_or("culvert limits")?.stop_m;
+        assert!(stop[0] > bed_a && stop[1] > bed_b);
         Ok(())
     }
 }

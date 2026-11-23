@@ -118,6 +118,23 @@ impl<R: Runtime<DType = DType>> SurfaceChannelBatch<R> {
         self.operating.as_ref().and_then(OperatingChildren::pump)
     }
 
+    /// Declared and effective geometry of every structure, in ascending structure identity order.
+    pub fn structure_geometry(&self) -> Vec<crate::structures::StructureGeometryReport> {
+        let Ok(structures) = self.context.operations.structures() else {
+            return Vec::new();
+        };
+        let all = structures.geometry();
+        self.context
+            .structure_positions()
+            .enumerate()
+            .filter_map(|(element, pos)| {
+                let mut report = all.get(pos)?.clone();
+                report.element = element;
+                Some(report)
+            })
+            .collect()
+    }
+
     /// Read-only runoff child, or `None` without active runoff.
     pub fn runoff(&self) -> Option<&SubcatchmentBatch<R>> {
         self.runoff.as_ref()

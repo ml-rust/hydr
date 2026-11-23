@@ -5,6 +5,8 @@ mod runtime;
 
 #[path = "coupled_level_pools/admission.rs"]
 mod admission;
+#[path = "coupled_level_pools/blockage.rs"]
+mod blockage;
 #[path = "coupled_level_pools/culverts.rs"]
 mod culverts;
 #[allow(dead_code)]

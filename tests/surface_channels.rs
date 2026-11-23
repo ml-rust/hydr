@@ -4,6 +4,8 @@
 #[allow(dead_code)]
 #[path = "support/analytic.rs"]
 mod analytic;
+#[path = "surface_channels/blockage.rs"]
+mod blockage;
 #[allow(dead_code)]
 #[path = "channel_pools/reference.rs"]
 mod channel_pool_reference;

@@ -53,7 +53,8 @@ Each structure element carries a [condition](structures.md#declare-a-blocked-or-
 A [culvert](structures.md#culvert-structure-law) joins two pools as any other structure does. The client implements `CulvertClient`, which `new` requires. Construction builds the culvert rows once.
 
 - Each invert sits at or above the attachment bed of its end. Construction rejects a lower invert with an input error.
-- A donor at or below its invert gives no water. A dry receiver is a free outfall at its invert.
+- A donor at or below its bed elevation (`fl(z + h)` above sediment, or its invert) gives no water. A dry receiver is a free outfall at its bed elevation.
+- `CoupledLevelPoolBatch::structure_geometry()` returns the base and effective geometry of every structure in declared order. A `Closed` structure keeps its attachment beds as cutoffs and moves exact zero volume.
 - A two-way culvert declares both ends. A one-end culvert moves exact zero when the heads drive flow into its undeclared end.
 - A road over the culvert is a separate weir between the same pools.
 

@@ -96,6 +96,10 @@ where
     pub fn source_policies(&self) -> Option<&[LevelPoolSourcePolicy]> {
         self.pools.source_policies()
     }
+    /// Declared and effective geometry of every structure, in declared structure order.
+    pub fn structure_geometry(&self) -> Vec<crate::structures::StructureGeometryReport> {
+        self.context.structures.geometry()
+    }
     /// Explicitly read cumulative external volume and addition bounds in boundary order.
     pub fn external_inflows(
         &self,

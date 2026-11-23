@@ -193,6 +193,23 @@ pub(crate) fn culvert_blockage(condition: &StructureCondition) -> Option<&Culver
     }
 }
 
+/// Bed elevations `[bed_a_m, bed_b_m]` of a culvert element (`fl(z + h)` above sediment, or
+/// base inverts without sediment). Returns `None` for non-culvert laws.
+#[doc(hidden)]
+pub fn culvert_bed_elevations(element: &StructureElement) -> Option<[f64; 2]> {
+    let StructureLaw::Culvert(parameters) = &element.law else {
+        return None;
+    };
+    let blockage = culvert_blockage(&element.condition);
+    let bed_a = parameters
+        .bed_elevation(CulvertSide::A, blockage)
+        .unwrap_or_else(|_| parameters.invert(CulvertSide::A));
+    let bed_b = parameters
+        .bed_elevation(CulvertSide::B, blockage)
+        .unwrap_or_else(|_| parameters.invert(CulvertSide::B));
+    Some([bed_a, bed_b])
+}
+
 /// Largest admitted opening of `element`, or `None` when it holds no gate.
 pub(crate) fn gate_opening_limit(element: &StructureElement) -> Option<f64> {
     match &element.law {

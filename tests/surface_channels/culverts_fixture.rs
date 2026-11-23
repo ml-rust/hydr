@@ -215,3 +215,37 @@ pub fn roadway_case() -> Result<Case> {
     ];
     Ok(case)
 }
+
+/// A head pond drains through a sedimented and face-blocked one-way culvert into a lower basin.
+pub fn blocked_culvert_case() -> Result<Case> {
+    use hydr::structures::{
+        BlockageFraction, CulvertBlockage, CulvertSediment, StructureBlockage, StructureCondition,
+    };
+    let mut case = Case::tanks(0.0, 0.0);
+    case.ponds = vec![
+        (pond("basin", 0.0, 20.0, 3.0)?, 0.2 * 20.0),
+        (pond("head", 0.0, 20.0, 3.0)?, 1.4 * 20.0),
+    ];
+    let mut link = structure(
+        "culvert",
+        culvert_law(0.6, 12.0, [0.1, 0.0], false)?,
+        DirectionPolicy::AtoBOnly,
+        manual(StructureOperatingPoint::Passive),
+        (pool("head"), 0.0),
+        (pool("basin"), 0.0),
+    );
+    link.element.condition = StructureCondition::Blocked(StructureBlockage::culvert(
+        CulvertBlockage {
+            face_a: BlockageFraction::new(0.25)?,
+            face_b: BlockageFraction::NONE,
+            sediment: Some(CulvertSediment {
+                depth_m: 0.15,
+                bed_manning_n: 0.030,
+            }),
+            closed_barrels: 0,
+        },
+        "Sediment and debris survey".into(),
+    )?);
+    case.structures = vec![link];
+    Ok(case)
+}

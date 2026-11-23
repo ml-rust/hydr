@@ -334,7 +334,7 @@ A culvert between a channel cell and a pool joins a reach to a pool through a ba
 
 A donor at or below its invert gives no water. A one-end culvert whose heads drive flow into its undeclared end reports `CulvertUndeclaredEnd` and moves exact zero.
 
-A blockage is a fixed scenario with evidence. The element's `condition` holds the blockage, and the `StructureScenario` names it. See [structures](structures.md#declare-a-blocked-or-closed-structure). The coordinator infers no blockage. Capability limit `blockage-as-scenario` records this.
+A blockage is a fixed scenario with evidence. The element's `condition` holds the blockage, and the `StructureScenario` names it. See [structures](structures.md#declare-a-blocked-or-closed-structure). `SurfaceChannelBatch::structure_geometry()` returns the base and effective geometry of each structure in ascending identity order. A `Closed` structure keeps its attachment beds as cutoffs, carries no cap or stop, and moves exact zero volume. A sedimented culvert places its cutoffs and stops above its bed elevations `fl(z + h)`. The coordinator infers no blockage. Capability limit `blockage-as-scenario` records this.
 
 ### Choose the operation owner
 

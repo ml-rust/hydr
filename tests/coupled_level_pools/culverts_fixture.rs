@@ -218,3 +218,28 @@ pub fn roadway() -> Result<(CoupledLevelPoolSetup, CoupledLevelPoolInitialState)
         ],
     )
 }
+
+/// An upper pool drains into a lower pool through a sedimented and face-blocked culvert.
+pub fn blocked_culvert() -> Result<(CoupledLevelPoolSetup, CoupledLevelPoolInitialState)> {
+    use hydr::structures::{BlockageFraction, CulvertBlockage, CulvertSediment, StructureBlockage};
+    let mut element = culvert(
+        "culvert",
+        ["upper", "lower"],
+        (0.6, 12.0),
+        [0.1, 0.0],
+        false,
+    )?;
+    element.condition = StructureCondition::Blocked(StructureBlockage::culvert(
+        CulvertBlockage {
+            face_a: BlockageFraction::new(0.25)?,
+            face_b: BlockageFraction::NONE,
+            sediment: Some(CulvertSediment {
+                depth_m: 0.15,
+                bed_manning_n: 0.030,
+            }),
+            closed_barrels: 0,
+        },
+        "Sediment and debris survey".into(),
+    )?);
+    system(&[("lower", 20.0, 0.2), ("upper", 20.0, 1.4)], vec![element])
+}

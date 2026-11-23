@@ -1,19 +1,26 @@
 //! Endpoint cutoffs per structure law and pool attachment admission.
 
-use crate::structures::{DirectionPolicy, StructureElement, StructureLaw};
+use crate::structures::{DirectionPolicy, StructureCondition, StructureElement, StructureLaw};
 
 /// Stage at or below which each endpoint of `element` stops giving water, `[A, B]`.
 ///
-/// Each cutoff starts at the attachment bed. A weir raises both to its crest, a gate to its sill,
-/// an orifice to its crown, and a culvert each to the invert at that end. A pump raises only its source side to its minimum suction stage.
-/// The source is B for `BtoAOnly` and A otherwise.
+/// A `Closed` element keeps the attachment beds as its cutoffs. Otherwise each cutoff starts at
+/// the attachment bed: a weir raises both to its crest, a gate to its sill, an orifice to its
+/// crown, and a culvert each to its bed elevation (`fl(z + h)` above sediment, or its invert). A
+/// pump raises only its source side to its minimum suction stage. The source is B for `BtoAOnly`
+/// and A otherwise.
 pub(crate) fn endpoint_cutoffs(element: &StructureElement, beds: [f64; 2]) -> [f64; 2] {
+    if matches!(element.condition, StructureCondition::Closed { .. }) {
+        return beds;
+    }
     let mut cuts = beds;
     match &element.law {
-        StructureLaw::Culvert(p) => {
-            let alignment = p.alignment();
-            cuts[0] = cuts[0].max(alignment.invert_a_m);
-            cuts[1] = cuts[1].max(alignment.invert_b_m);
+        StructureLaw::Culvert(_) => {
+            if let Some([bed_a, bed_b]) = hydr_structures::internal::culvert_bed_elevations(element)
+            {
+                cuts[0] = cuts[0].max(bed_a);
+                cuts[1] = cuts[1].max(bed_b);
+            }
         }
         StructureLaw::SuppressedRectangularWeir(p) => {
             cuts[0] = cuts[0].max(p.crest_m());
