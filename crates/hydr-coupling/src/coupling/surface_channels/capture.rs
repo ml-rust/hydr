@@ -239,6 +239,10 @@ where
                 &setup.surface_bed_schedules,
                 self.time_s,
             ),
+            channel_section_epochs: super::geometry::channel_section_epochs_at(
+                &setup.channel_section_schedules,
+                self.time_s,
+            ),
             runoff: runoff_data(self.runoff.as_ref())?,
             counters: counter_data(
                 (&self.counters, self.pools.as_ref()),

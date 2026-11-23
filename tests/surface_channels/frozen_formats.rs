@@ -162,3 +162,16 @@ pub fn before_surface_bed_epochs(text: &str) -> String {
     .replace(", surface_bed_schedules: []", "")
     .replace(", surface_bed_epochs: []", "")
 }
+
+pub fn before_channel_section_epochs(text: &str) -> String {
+    text.replace(
+        "hydr-surface-channel-checkpoint-13",
+        "hydr-surface-channel-checkpoint-12",
+    )
+    .replace(
+        "hydr-surface-channel-numr-cpu-15",
+        "hydr-surface-channel-numr-cpu-14",
+    )
+    .replace(", channel_section_schedules: []", "")
+    .replace(", channel_section_epochs: []", "")
+}

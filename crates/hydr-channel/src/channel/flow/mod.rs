@@ -33,6 +33,8 @@ mod receipt;
 mod reconstruction;
 mod riemann_diagnostics;
 mod rounding;
+#[path = "../geometry/mod.rs"]
+mod section_epochs;
 mod segmented_max;
 mod snapshot;
 mod sources;
@@ -66,6 +68,10 @@ pub use output::{
     ChannelCellResult, ChannelFrictionGeometryDiagnostics, ChannelLateralLedger,
     ChannelLateralReceipt, ChannelLateralStateData, ChannelRiemannDiagnostics,
     ChannelStepDiagnostics, ChannelWaterLedger,
+};
+pub use section_epochs::{
+    ChannelSectionEpoch, ChannelSectionSchedule, active_channel_section_epochs, active_geometry_at,
+    check_channel_section_schedules, geometry_digest_bits, next_channel_section_event_after,
 };
 pub use snapshot::{
     CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelIntervalSnapshotData,

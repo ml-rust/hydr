@@ -176,12 +176,6 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
         SURFACE_CHANNELS_DOC,
     ),
     unsupported(
-        "structure-geometry-events",
-        UnsupportedReason::NotAttached,
-        "Structure geometry schedules, pool curve epochs, and surface bed epochs are admitted; channel sections stay fixed over the run.",
-        SURFACE_CHANNELS_DOC,
-    ),
-    unsupported(
         "unmapped-runoff-outlet",
         UnsupportedReason::RejectedByAdmission,
         "An active runoff outlet without a destination, or a destination for an unknown or replaced outlet, rejects.",

@@ -97,18 +97,14 @@ where
         } else {
             surface.coupling_restore_with_bed(&snapshot.surface)?;
         }
+        let has_section = !self.setup().channel_section_schedules.is_empty();
         let reaches = self
             .reaches
             .iter()
             .zip(&snapshot.reaches)
             .zip(&self.setup().reaches)
             .map(|((reach, trusted), definition)| {
-                reach
-                    .restore(trusted)
-                    .map_err(|source| SurfaceChannelError::Channel {
-                        reach_id: definition.id.clone(),
-                        source,
-                    })
+                super::geometry::restore_reach(reach, trusted, has_section, &definition.id)
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {

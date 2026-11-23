@@ -9,6 +9,8 @@ mod blockage;
 #[allow(dead_code)]
 #[path = "channel_pools/reference.rs"]
 mod channel_pool_reference;
+#[path = "surface_channels/channel_section_epochs.rs"]
+mod channel_section_epochs;
 #[path = "surface_channels/culverts_drain.rs"]
 mod culverts_drain;
 #[allow(dead_code)]

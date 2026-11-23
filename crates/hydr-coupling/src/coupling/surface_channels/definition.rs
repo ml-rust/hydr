@@ -222,6 +222,8 @@ pub struct SurfaceChannelSetup {
     pub pool_curve_schedules: Vec<crate::storage::PoolCurveSchedule>,
     /// Prescribed surface bed elevation epoch schedules in declaration order.
     pub surface_bed_schedules: Vec<crate::solver::SurfaceBedSchedule>,
+    /// Prescribed channel cross-section epoch schedules in declaration order.
+    pub channel_section_schedules: Vec<crate::channel::ChannelSectionSchedule>,
     /// Evidence that surface cells, channel cells, and pools store no water twice.
     pub storage_exclusion_evidence: String,
     /// Explicit dimensional tolerances, common duration limits, and work limits.

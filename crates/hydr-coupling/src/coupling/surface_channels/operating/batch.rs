@@ -75,6 +75,12 @@ where
         ) {
             end = end.min(event);
         }
+        if let Some(event) = super::super::geometry::next_channel_section_event(
+            &self.definition.setup().channel_section_schedules,
+            self.time_s,
+        ) {
+            end = end.min(event);
+        }
         Ok(end)
     }
 

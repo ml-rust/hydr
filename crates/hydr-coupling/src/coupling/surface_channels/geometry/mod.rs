@@ -5,9 +5,14 @@
 //! epochs replace the pool curves at the interval start while keeping every stored volume and
 //! counter bit-identical.
 
+mod channel;
 mod pools;
 mod surface;
 
+pub(super) use channel::{
+    apply_channel_sections, channel_section_epochs_at, check_channel_section_schedules,
+    import_reach, next_channel_section_event, restore_reach,
+};
 pub(super) use pools::{
     apply_pool_curves, check_pool_curve_schedules, next_pool_curve_event, pool_curve_epochs_at,
     restored_pool_curves,
@@ -103,18 +108,21 @@ pub(super) fn next_event(schedules: &[StructureGeometrySchedule], start_s: f64) 
     next_geometry_event_after(schedules, start_s)
 }
 
-/// Prepared start-of-interval geometry overrides (surface bed and pool curve epochs).
+/// Prepared start-of-interval geometry overrides (surface bed, channel section, and pool curve
+/// epochs).
 pub(super) struct StartGeometry<R: Runtime<DType = DType>> {
     pub surface: Option<crate::solver::Solver<R>>,
+    pub reaches: Option<Vec<crate::channel::ChannelReach<R>>>,
     pub pools: Option<super::pools::PoolChild<R>>,
     pub receipts: Vec<SurfaceChannelGeometryReceipt>,
 }
 
-/// Applies any surface bed and pool curve epochs active at `start_s`.
+/// Applies any surface bed, channel section, and pool curve epochs active at `start_s`.
 pub(super) fn prepare_start_geometry<R: Runtime<DType = DType>>(
     context: &Context<R>,
     definition: &super::SurfaceChannelDefinition,
     surface: &crate::solver::Solver<R>,
+    reaches: &[crate::channel::ChannelReach<R>],
     pools: Option<&super::pools::PoolChild<R>>,
     start_s: f64,
 ) -> Result<StartGeometry<R>, SurfaceChannelError>
@@ -126,9 +134,12 @@ where
         + numr::ops::CumulativeOps<R>
         + numr::ops::HypotOps<R>
         + numr::ops::IndexingOps<R>
+        + numr::ops::MidpointOps<R>
+        + numr::ops::NextRepresentableOps<R>
         + numr::ops::ReduceOps<R>
         + numr::ops::ScalarOps<R>
         + numr::ops::ShapeOps<R>
+        + numr::ops::TensorOps<R>
         + numr::ops::TwoSumOps<R>
         + numr::ops::TypeConversionOps<R>
         + numr::ops::UnaryOps<R>
@@ -147,6 +158,8 @@ where
         )?;
         (Some(next), r)
     };
+    let (active_reaches, channel_receipts) = apply_channel_sections(setup, reaches, start_s)?;
+    receipts.extend(channel_receipts);
     let (active_pools, pool_receipts) = match (pools, definition.pools.as_ref()) {
         (Some(child), Some(declared)) if !setup.pool_curve_schedules.is_empty() => {
             let (next, r) = apply_pool_curves(
@@ -164,6 +177,7 @@ where
     receipts.extend(pool_receipts);
     Ok(StartGeometry {
         surface: active_surface,
+        reaches: active_reaches,
         pools: active_pools,
         receipts,
     })
@@ -198,6 +212,14 @@ pub(super) fn check_snapshot_epochs(
         return Err(super::frames::rejected(
             "surface_bed_epochs",
             "differs from the active surface bed schedule epochs at counters.time_s",
+        ));
+    }
+    if data.channel_section_epochs
+        != channel_section_epochs_at(&data.setup.channel_section_schedules, data.counters.time_s)
+    {
+        return Err(super::frames::rejected(
+            "channel_section_epochs",
+            "differs from the active channel section schedule epochs at counters.time_s",
         ));
     }
     Ok(())

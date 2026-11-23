@@ -124,7 +124,7 @@ impl ChannelSnapshotData {
 /// Trusted complete continuation clone without host projection.
 #[derive(Clone)]
 pub struct ChannelSnapshot<R: Runtime<DType = DType>> {
-    pub(super) reach: ChannelReach<R>,
+    pub(in crate::channel::flow) reach: ChannelReach<R>,
 }
 
 impl<R> ChannelSnapshot<R>

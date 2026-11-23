@@ -4,6 +4,11 @@ pub(crate) mod flow;
 mod section;
 
 pub use flow::{
+    ChannelSectionEpoch, ChannelSectionSchedule, active_channel_section_epochs, active_geometry_at,
+    check_channel_section_schedules, geometry_digest_bits, next_channel_section_event_after,
+};
+
+pub use flow::{
     CHANNEL_CONTRACT_VERSION, CHANNEL_SNAPSHOT_SCHEMA, ChannelBoundary, ChannelBoundaryConfig,
     ChannelBoundaryTrace, ChannelCellResult, ChannelConfig, ChannelEnd, ChannelError,
     ChannelFluxPort, ChannelForcingInterval, ChannelFrictionGeometryDiagnostics, ChannelGeometry,

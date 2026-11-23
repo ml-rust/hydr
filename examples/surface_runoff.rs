@@ -311,6 +311,7 @@ fn parts() -> Result<(SurfaceChannelSetup, SurfaceChannelInitialState), Error> {
         geometry_schedules: Vec::new(),
         pool_curve_schedules: Vec::new(),
         surface_bed_schedules: Vec::new(),
+        channel_section_schedules: Vec::new(),
         runoff: Some(runoff()?),
         storage_exclusion_evidence: "The reach and the pond lie outside the surface".into(),
         config: SurfaceChannelConfig {

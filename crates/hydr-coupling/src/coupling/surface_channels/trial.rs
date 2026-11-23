@@ -46,6 +46,7 @@ type AttemptOperands<'a, R> = (
     AttemptOperation<R>,
     Option<&'a RunoffStart>,
     &'a Solver<R>,
+    &'a [ChannelReach<R>],
     Option<&'a PoolChild<R>>,
     &'a [SurfaceChannelGeometryReceipt],
 );
@@ -151,10 +152,12 @@ where
             &self.context,
             &self.definition,
             &self.surface,
+            &self.reaches,
             self.pools.as_ref(),
             start,
         )?;
         let surface_for_step = start_geometry.surface.as_ref().unwrap_or(&self.surface);
+        let reaches_for_step = start_geometry.reaches.as_deref().unwrap_or(&self.reaches);
         let pool_operands = match (&start_geometry.pools, pool_start) {
             (Some(child), Some(pool_start)) => Some((child, pool_start)),
             (None, None) => None,
@@ -164,7 +167,7 @@ where
                 ));
             }
         };
-        let children = (surface_for_step, &self.reaches[..], pool_operands);
+        let children = (surface_for_step, reaches_for_step, pool_operands);
         let first = self.operation_at(end)?;
         let operands = self
             .context
@@ -197,6 +200,7 @@ where
                     operation,
                     runoff.as_ref(),
                     surface_for_step,
+                    reaches_for_step,
                     start_geometry.pools.as_ref(),
                     &start_geometry.receipts,
                 ),
@@ -269,6 +273,7 @@ where
             mut operation,
             runoff_start,
             active_surface,
+            active_reaches,
             active_pools,
             extra_geometry,
         ): AttemptOperands<'_, R>,
@@ -336,7 +341,7 @@ where
             pool_received = pool_receipts(self, &attempt)?;
             let accepted = Accepted {
                 surface: active_surface,
-                reaches: &self.reaches,
+                reaches: active_reaches,
                 pools: active_pools,
             };
             let solved = context.solve(config, accepted, reach_ids, operands, &attempt, stalled)?;
@@ -352,7 +357,7 @@ where
             (converged.surface, converged.outcome, attempt.ports)
         };
         for &index in &context.unlinked {
-            let reach = &self.reaches[index];
+            let reach = &active_reaches[index];
             let bound = &operands.forcing.reaches[index];
             let inputs = with_runoff(&bound.lateral, runoff.as_ref(), index);
             let forcing = reach

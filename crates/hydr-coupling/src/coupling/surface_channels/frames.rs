@@ -169,21 +169,18 @@ where
         surface: &SnapshotData,
         reaches: &[(String, ChannelSnapshotData)],
     ) -> Result<(Solver<R>, Vec<ChannelReach<R>>), SurfaceChannelError> {
-        let channel = |id: &str| {
-            let reach_id = id.to_string();
-            move |source| SurfaceChannelError::Channel { reach_id, source }
-        };
         match self {
             Self::Destination(batch) => {
                 let mut engine = batch.surface.coupling_clone();
                 let has_bed = !batch.setup().surface_bed_schedules.is_empty();
                 let ports = batch.context.ports.as_ref().map(|ports| &ports.surface);
                 super::geometry::restore_surface_data(&mut engine, surface, ports, has_bed)?;
+                let has_section = !batch.setup().channel_section_schedules.is_empty();
                 let reaches = reaches
                     .iter()
                     .zip(&batch.reaches)
                     .map(|((id, data), reach)| {
-                        reach.coupling_import_snapshot(data).map_err(channel(id))
+                        super::geometry::import_reach(reach, data, has_section, id)
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok((engine, reaches))
@@ -216,17 +213,23 @@ where
                     surface.setup.forcing.clone(),
                     ports.as_ref().map(|ports| &ports.surface),
                 )?;
+                let has_section = !definition.setup().channel_section_schedules.is_empty();
                 let reaches = reaches
                     .iter()
                     .zip(definition.coordinated.iter().zip(states))
                     .map(|((id, data), (coordinated, state))| {
-                        ChannelReach::<R>::new_coordinated(
+                        let reach = ChannelReach::<R>::new_coordinated(
                             (*client).clone(),
                             coordinated.clone(),
                             state.clone(),
                         )
-                        .and_then(|reach| reach.coupling_import_snapshot(data))
-                        .map_err(channel(id))
+                        .map_err(|source| {
+                            SurfaceChannelError::Channel {
+                                reach_id: id.clone(),
+                                source,
+                            }
+                        })?;
+                        super::geometry::import_reach(&reach, data, has_section, id)
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok((engine, reaches))
@@ -283,42 +286,33 @@ where
         let time = counters.time_s;
         let steps = counters.accepted_steps;
         let path = |field: &str| format!("{prefix}{field}");
-        require(
-            surface.time().to_bits() == time.to_bits() && surface_steps == steps,
-            &path("surface"),
-            "time or accepted count differs from the coordinator counters",
-        )?;
+        let check_clock = |field: &str, t: f64, s: usize| {
+            require(
+                t.to_bits() == time.to_bits() && s == steps,
+                &path(field),
+                "time or accepted count differs from the coordinator counters",
+            )
+        };
+        check_clock("surface", surface.time(), surface_steps)?;
         for (index, (reach, definition)) in reaches
             .iter()
             .zip(&parts.definition.setup().reaches)
             .enumerate()
         {
-            require(
-                reach.time().to_bits() == time.to_bits() && reach.accepted_steps() == steps,
-                &path(&format!("reaches[{index}] ({:?})", definition.id)),
-                "time or accepted count differs from the coordinator counters",
+            check_clock(
+                &format!("reaches[{index}] ({:?})", definition.id),
+                reach.time(),
+                reach.accepted_steps(),
             )?;
         }
         if let Some(pools) = &pools {
-            require(
-                pools.time().to_bits() == time.to_bits() && pools.accepted_steps() == steps,
-                &path("pools"),
-                "time or accepted count differs from the coordinator counters",
-            )?;
+            check_clock("pools", pools.time(), pools.accepted_steps())?;
         }
         if let Some(runoff) = &runoff {
-            require(
-                runoff.time().to_bits() == time.to_bits() && runoff.accepted_steps() == steps,
-                &path("runoff"),
-                "time or accepted count differs from the coordinator counters",
-            )?;
+            check_clock("runoff", runoff.time(), runoff.accepted_steps())?;
         }
         for (child, child_time, child_steps) in operating.iter().flat_map(|o| o.clocks()) {
-            require(
-                child_time.to_bits() == time.to_bits() && child_steps == steps,
-                &path(child),
-                "time or accepted count differs from the coordinator counters",
-            )?;
+            check_clock(child, child_time, child_steps)?;
         }
         require(
             steps > 0 || time.to_bits() == parts.initial.time_s.to_bits(),
@@ -404,20 +398,24 @@ fn import_counters<R: Runtime<DType = DType>>(
         .links
         .iter()
         .map(|l| {
-            let values = [
-                l.surface_to_channel_m3,
-                l.channel_to_surface_m3,
-                l.roundoff_bound_m3,
-            ];
-            (l.link_id.as_str(), values)
+            (
+                l.link_id.as_str(),
+                [
+                    l.surface_to_channel_m3,
+                    l.channel_to_surface_m3,
+                    l.roundoff_bound_m3,
+                ],
+            )
         })
         .collect();
     let structures: Vec<(&str, [f64; 3])> = data
         .structures
         .iter()
         .map(|s| {
-            let values = [s.a_to_b_m3, s.b_to_a_m3, s.roundoff_bound_m3];
-            (s.structure_id.as_str(), values)
+            (
+                s.structure_id.as_str(),
+                [s.a_to_b_m3, s.b_to_a_m3, s.roundoff_bound_m3],
+            )
         })
         .collect();
     for (field, ledgers, positions) in [

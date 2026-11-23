@@ -28,6 +28,19 @@ fn same_value<T: PartialEq + Debug>(a: &T, b: &T) -> bool {
     a == b && format!("{a:?}") == format!("{b:?}")
 }
 
+fn check_bits(path: &str, names: &[&str], a: &[f64], b: &[f64]) -> Check {
+    for ((&name, &x), &y) in names.iter().zip(a).zip(b) {
+        require(x.to_bits() == y.to_bits(), || format!("{path}.{name}"))?;
+    }
+    Ok(())
+}
+
+const EXCHANGE_FIELDS: [&str; 3] = [
+    "surface_to_channel_m3",
+    "channel_to_surface_m3",
+    "roundoff_bound_m3",
+];
+
 /// Compares two coordinator setups without their surface definitions.
 pub(super) fn setup(a: &SurfaceChannelSetupData, b: &SurfaceChannelSetupData) -> Check {
     require(
@@ -54,46 +67,37 @@ pub(super) fn setup(a: &SurfaceChannelSetupData, b: &SurfaceChannelSetupData) ->
     for (index, (a, b)) in a.ports.iter().zip(&b.ports).enumerate() {
         require(a == b, || format!("setup.ports[{index}] ({:?})", a.id))?;
     }
-    require(same_value(&a.pools, &b.pools), || "setup.pools".into())?;
-    require(same_value(&a.pool_support, &b.pool_support), || {
-        "setup.pool_support".into()
-    })?;
-    require(same_value(&a.pool_sources, &b.pool_sources), || {
-        "setup.pool_sources".into()
-    })?;
-    require(same_value(&a.pool_inflows, &b.pool_inflows), || {
-        "setup.pool_inflows".into()
-    })?;
-    require(same_value(&a.storage, &b.storage), || {
-        "setup.storage".into()
-    })?;
-    require(a.structures.len() == b.structures.len(), || {
-        "setup.structures".into()
-    })?;
+    let field = |same: bool, name: &str| require(same, || format!("setup.{name}"));
+    field(same_value(&a.pools, &b.pools), "pools")?;
+    field(same_value(&a.pool_support, &b.pool_support), "pool_support")?;
+    field(same_value(&a.pool_sources, &b.pool_sources), "pool_sources")?;
+    field(same_value(&a.pool_inflows, &b.pool_inflows), "pool_inflows")?;
+    field(same_value(&a.storage, &b.storage), "storage")?;
+    field(a.structures.len() == b.structures.len(), "structures")?;
     for (index, (a, b)) in a.structures.iter().zip(&b.structures).enumerate() {
         require(same_value(a, b), || {
             format!("setup.structures[{index}] ({:?})", a.element.id)
         })?;
     }
-    require(same_value(&a.pool_ends, &b.pool_ends), || {
-        "setup.pool_ends".into()
-    })?;
-    require(same_value(&a.operating, &b.operating), || {
-        "setup.operating".into()
-    })?;
-    require(
+    field(same_value(&a.pool_ends, &b.pool_ends), "pool_ends")?;
+    field(same_value(&a.operating, &b.operating), "operating")?;
+    field(
         same_value(&a.geometry_schedules, &b.geometry_schedules),
-        || "setup.geometry_schedules".into(),
+        "geometry_schedules",
     )?;
-    require(
+    field(
         same_value(&a.pool_curve_schedules, &b.pool_curve_schedules),
-        || "setup.pool_curve_schedules".into(),
+        "pool_curve_schedules",
     )?;
-    require(
+    field(
         same_value(&a.surface_bed_schedules, &b.surface_bed_schedules),
-        || "setup.surface_bed_schedules".into(),
+        "surface_bed_schedules",
     )?;
-    require(same_value(&a.runoff, &b.runoff), || "setup.runoff".into())
+    field(
+        same_value(&a.channel_section_schedules, &b.channel_section_schedules),
+        "channel_section_schedules",
+    )?;
+    field(same_value(&a.runoff, &b.runoff), "runoff")
 }
 
 fn same_config(a: &SurfaceChannelConfig, b: &SurfaceChannelConfig) -> bool {
@@ -189,7 +193,16 @@ pub(super) fn reach_definitions(
         require(*id == reach.id, || {
             format!("{prefix}reaches[{index}] ({id:?})")
         })?;
-        require(data.definition.same_bits(coordinated), || {
+        let same_def = if setup
+            .channel_section_schedules
+            .iter()
+            .any(|s| s.reach_id == reach.id)
+        {
+            data.definition.same_bits_ignoring_geometry(coordinated)
+        } else {
+            data.definition.same_bits(coordinated)
+        };
+        require(same_def, || {
             format!("{prefix}reaches[{index}] ({id:?}).definition")
         })?;
     }
@@ -247,6 +260,10 @@ pub(super) fn replayed(
     require(found.surface_bed_epochs == given.surface_bed_epochs, || {
         "surface_bed_epochs".into()
     })?;
+    require(
+        found.channel_section_epochs == given.channel_section_epochs,
+        || "channel_section_epochs".into(),
+    )?;
     require(same_value(&found.runoff, &given.runoff), || "runoff".into())?;
     counters("counters", &found.counters, &given.counters)?;
     match (&found.last_interval, &given.last_interval) {
@@ -286,27 +303,22 @@ fn counters(path: &str, a: &SurfaceChannelCounterData, b: &SurfaceChannelCounter
     })?;
     require(a.links.len() == b.links.len(), || format!("{path}.links"))?;
     for (index, (a, b)) in a.links.iter().zip(&b.links).enumerate() {
-        let link = || format!("{path}.links[{index}] ({:?})", a.link_id);
-        require(a.link_id == b.link_id, link)?;
-        for (name, x, y) in [
-            (
-                "surface_to_channel_m3",
+        let link = format!("{path}.links[{index}] ({:?})", a.link_id);
+        require(a.link_id == b.link_id, || link.clone())?;
+        check_bits(
+            &link,
+            &EXCHANGE_FIELDS,
+            &[
                 a.surface_to_channel_m3,
-                b.surface_to_channel_m3,
-            ),
-            (
-                "channel_to_surface_m3",
                 a.channel_to_surface_m3,
-                b.channel_to_surface_m3,
-            ),
-            (
-                "roundoff_bound_m3",
                 a.roundoff_bound_m3,
+            ],
+            &[
+                b.surface_to_channel_m3,
+                b.channel_to_surface_m3,
                 b.roundoff_bound_m3,
-            ),
-        ] {
-            require(x.to_bits() == y.to_bits(), || format!("{}.{name}", link()))?;
-        }
+            ],
+        )?;
     }
     port_counters(&format!("{path}.ports"), &a.ports, &b.ports)?;
     require(same_value(&a.structures, &b.structures), || {
@@ -332,40 +344,33 @@ fn port_counters(
         format!("{path}.ledgers")
     })?;
     for (index, (a, b)) in a.ledgers.iter().zip(&b.ledgers).enumerate() {
-        let port = || format!("{path}.ledgers[{index}] ({:?})", a.port_id);
-        require(a.port_id == b.port_id, port)?;
-        for (name, x, y) in [
-            (
-                "surface_to_channel_m3",
+        let port = format!("{path}.ledgers[{index}] ({:?})", a.port_id);
+        require(a.port_id == b.port_id, || port.clone())?;
+        check_bits(
+            &port,
+            &EXCHANGE_FIELDS,
+            &[
                 a.surface_to_channel_m3,
-                b.surface_to_channel_m3,
-            ),
-            (
-                "channel_to_surface_m3",
                 a.channel_to_surface_m3,
-                b.channel_to_surface_m3,
-            ),
-            (
-                "roundoff_bound_m3",
                 a.roundoff_bound_m3,
+            ],
+            &[
+                b.surface_to_channel_m3,
+                b.channel_to_surface_m3,
                 b.roundoff_bound_m3,
-            ),
-        ] {
-            require(x.to_bits() == y.to_bits(), || format!("{}.{name}", port()))?;
-        }
+            ],
+        )?;
     }
     require(
         bits(&a.last_signed_volume_m3, &b.last_signed_volume_m3),
         || format!("{path}.last_signed_volume_m3"),
     )?;
-    for (name, x, y) in [
-        ("surface_in_m3", a.surface_in_m3, b.surface_in_m3),
-        ("surface_out_m3", a.surface_out_m3, b.surface_out_m3),
-        ("paired_bound_m3", a.paired_bound_m3, b.paired_bound_m3),
-    ] {
-        require(x.to_bits() == y.to_bits(), || format!("{path}.{name}"))?;
-    }
-    Ok(())
+    check_bits(
+        path,
+        &["surface_in_m3", "surface_out_m3", "paired_bound_m3"],
+        &[a.surface_in_m3, a.surface_out_m3, a.paired_bound_m3],
+        &[b.surface_in_m3, b.surface_out_m3, b.paired_bound_m3],
+    )
 }
 
 fn diagnostics(
@@ -377,49 +382,47 @@ fn diagnostics(
     require(a.iterations == b.iterations, || {
         format!("{path}.iterations")
     })?;
-    for (name, x, y) in [
-        ("start_s", a.start_s, b.start_s),
-        ("end_s", a.end_s, b.end_s),
-        ("requested_end_s", a.requested_end_s, b.requested_end_s),
-        ("contraction", a.contraction, b.contraction),
-        ("head_residual_m", a.head_residual_m, b.head_residual_m),
-        (
+    let scalars = |d: &SurfaceChannelStepDiagnostics| {
+        [
+            d.start_s,
+            d.end_s,
+            d.requested_end_s,
+            d.contraction,
+            d.head_residual_m,
+            d.transfer_residual_m3,
+            d.storage_before_m3,
+            d.storage_after_m3,
+            d.surface_exchange_in_m3,
+            d.surface_exchange_out_m3,
+            d.channel_exchange_in_m3,
+            d.channel_exchange_out_m3,
+            d.paired_bound_m3,
+            d.mass_residual_m3,
+            d.mass_bound_m3,
+        ]
+    };
+    check_bits(
+        path,
+        &[
+            "start_s",
+            "end_s",
+            "requested_end_s",
+            "contraction",
+            "head_residual_m",
             "transfer_residual_m3",
-            a.transfer_residual_m3,
-            b.transfer_residual_m3,
-        ),
-        (
             "storage_before_m3",
-            a.storage_before_m3,
-            b.storage_before_m3,
-        ),
-        ("storage_after_m3", a.storage_after_m3, b.storage_after_m3),
-        (
+            "storage_after_m3",
             "surface_exchange_in_m3",
-            a.surface_exchange_in_m3,
-            b.surface_exchange_in_m3,
-        ),
-        (
             "surface_exchange_out_m3",
-            a.surface_exchange_out_m3,
-            b.surface_exchange_out_m3,
-        ),
-        (
             "channel_exchange_in_m3",
-            a.channel_exchange_in_m3,
-            b.channel_exchange_in_m3,
-        ),
-        (
             "channel_exchange_out_m3",
-            a.channel_exchange_out_m3,
-            b.channel_exchange_out_m3,
-        ),
-        ("paired_bound_m3", a.paired_bound_m3, b.paired_bound_m3),
-        ("mass_residual_m3", a.mass_residual_m3, b.mass_residual_m3),
-        ("mass_bound_m3", a.mass_bound_m3, b.mass_bound_m3),
-    ] {
-        require(x.to_bits() == y.to_bits(), || format!("{path}.{name}"))?;
-    }
+            "paired_bound_m3",
+            "mass_residual_m3",
+            "mass_bound_m3",
+        ],
+        &scalars(a),
+        &scalars(b),
+    )?;
     require(a.links.len() == b.links.len(), || format!("{path}.links"))?;
     for (index, (a, b)) in a.links.iter().zip(&b.links).enumerate() {
         let link = || format!("{path}.links[{index}] ({:?})", a.link_id);
