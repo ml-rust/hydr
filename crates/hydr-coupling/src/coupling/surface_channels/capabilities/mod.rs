@@ -175,7 +175,7 @@ static SURFACE_CHANNELS: ComponentCapabilities = ComponentCapabilities {
         ComponentId::Culvert,
         ComponentId::Subcatchment,
     ],
-    attachable_to: &[],
+    attachable_to: &[ComponentId::SurfaceChannelDrainage],
     unsupported: unsupported::UNSUPPORTED,
     limits: &[
         Limit {

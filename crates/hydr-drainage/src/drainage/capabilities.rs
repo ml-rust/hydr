@@ -67,7 +67,10 @@ static SWMM_DRAINAGE: ComponentCapabilities = ComponentCapabilities {
         },
     ],
     nested: &[],
-    attachable_to: &[ComponentId::SurfaceDrainage],
+    attachable_to: &[
+        ComponentId::SurfaceDrainage,
+        ComponentId::SurfaceChannelDrainage,
+    ],
     unsupported: &[
         unsupported(
             "surcharge-method-mismatch",

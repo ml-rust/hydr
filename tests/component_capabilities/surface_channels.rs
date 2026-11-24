@@ -232,7 +232,10 @@ fn surface_channels_nest_and_attach_declared_components() -> Result {
         assert!(declared.nested.contains(&component), "{component:?}");
     }
     assert!(declared.nested.contains(&ComponentId::SurfaceSolver));
-    assert!(declared.attachable_to.is_empty());
+    assert_eq!(
+        declared.attachable_to,
+        &[ComponentId::SurfaceChannelDrainage]
+    );
     for nested in declared.nested {
         let child = match nested {
             ComponentId::SurfaceSolver => hydr::solver::surface_solver_capabilities(),

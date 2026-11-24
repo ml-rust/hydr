@@ -19,16 +19,16 @@ use numr::tensor::Tensor;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
-pub(super) struct ResolvedInlet {
-    pub(super) spec: SurfaceDrainageInlet,
-    pub(super) link_lane: usize,
-    pub(super) node_index: usize,
-    pub(super) surface_bed_m: f64,
+pub(crate) struct ResolvedInlet {
+    pub(crate) spec: SurfaceDrainageInlet,
+    pub(crate) link_lane: usize,
+    pub(crate) node_index: usize,
+    pub(crate) surface_bed_m: f64,
 }
 
 /// Evaluates midpoint-head inlet transfers (`m³`) with proportional surface donor limiting.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn propose_transfers(
+pub(crate) fn propose_transfers(
     inlets: &[ResolvedInlet],
     link_count: usize,
     dt_s: f64,
@@ -90,7 +90,7 @@ pub(super) fn build_surface_exchange<R: Runtime<DType = DType>>(
 }
 
 /// Aggregates signed per-inlet transfer volumes into per-node SWMM inflow rates (`m³/s`).
-pub(super) fn aggregate_node_inflows(
+pub(crate) fn aggregate_node_inflows(
     inlets: &[ResolvedInlet],
     transfers_m3: &[f64],
     dt_s: f64,
@@ -103,7 +103,7 @@ pub(super) fn aggregate_node_inflows(
 }
 
 /// Builds per-inlet step transfer records for diagnostics.
-pub(super) fn build_transfer_records(
+pub(crate) fn build_transfer_records(
     inlets: &[ResolvedInlet],
     transfers_m3: &[f64],
     dt_s: f64,
@@ -126,14 +126,14 @@ pub(super) fn build_transfer_records(
         .collect()
 }
 
-pub(super) fn max_abs_diff(a: &[f64], b: &[f64]) -> f64 {
+pub(crate) fn max_abs_diff(a: &[f64], b: &[f64]) -> f64 {
     a.iter()
         .zip(b)
         .map(|(x, y)| (x - y).abs())
         .fold(0.0_f64, f64::max)
 }
 
-pub(super) fn relaxation(iter: usize) -> f64 {
+pub(crate) fn relaxation(iter: usize) -> f64 {
     match iter {
         0..=3 => 0.5,
         4..=9 => 0.25,
@@ -142,7 +142,7 @@ pub(super) fn relaxation(iter: usize) -> f64 {
 }
 
 /// Validates and converts `(link_id, target_setting)` commands against exclusive authority.
-pub(super) fn resolve_link_commands(
+pub(crate) fn resolve_link_commands(
     authority: &DrainageControlAuthorityTable,
     drainage: &SwmmDrainage,
     link_commands: &[(String, f64)],

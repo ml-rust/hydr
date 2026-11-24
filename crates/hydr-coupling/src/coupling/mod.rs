@@ -76,3 +76,12 @@ pub use surface_drainage::{
     SurfaceDrainageSnapshotData, SurfaceDrainageStepDiagnostics, SurfaceDrainageTrial,
     inlet_discharge_m3_per_s, surface_drainage_capabilities,
 };
+
+pub mod surface_channel_drainage;
+#[doc(no_inline)]
+pub use surface_channel_drainage::{
+    SURFACE_CHANNEL_DRAINAGE_CONTRACT_VERSION, SURFACE_CHANNEL_DRAINAGE_SNAPSHOT_SCHEMA,
+    SurfaceChannelDrainageBatch, SurfaceChannelDrainageError, SurfaceChannelDrainageSetup,
+    SurfaceChannelDrainageSnapshotData, SurfaceChannelDrainageStepDiagnostics,
+    SurfaceChannelDrainageTrial, surface_channel_drainage_capabilities,
+};

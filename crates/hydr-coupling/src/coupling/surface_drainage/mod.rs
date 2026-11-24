@@ -4,7 +4,7 @@ mod authority;
 mod batch;
 mod capabilities;
 mod error;
-mod exchange;
+pub(crate) mod exchange;
 mod inlet;
 mod state;
 

@@ -131,14 +131,14 @@ mod culverts;
 #[path = "component_capabilities/drainage.rs"]
 mod drainage;
 
-#[path = "component_capabilities/surface_drainage.rs"]
-mod surface_drainage;
-
-#[path = "component_capabilities/surface_f32.rs"]
-mod surface_f32;
-
 #[path = "component_capabilities/declarations.rs"]
 mod declarations;
+#[path = "component_capabilities/surface_channel_drainage.rs"]
+mod surface_channel_drainage;
+#[path = "component_capabilities/surface_drainage.rs"]
+mod surface_drainage;
+#[path = "component_capabilities/surface_f32.rs"]
+mod surface_f32;
 
 use declarations::declarations;
 use hydr::capability::{ComponentId, RegimeScope, RuntimeKind};
@@ -452,8 +452,9 @@ const CORRECTLY_ROUNDED_CALLERS: &[ComponentId] = &[
     ComponentId::Culvert,
     // Bank weir, host stall forecast `log`, and nested components.
     ComponentId::SurfaceChannels,
-    // Nests `SurfaceSolver`.
+    // Nests `SurfaceSolver` / `SurfaceChannels`.
     ComponentId::SurfaceDrainage,
+    ComponentId::SurfaceChannelDrainage,
     // Nested callers only.
     ComponentId::Subcatchment,
     ComponentId::ChannelPools,
