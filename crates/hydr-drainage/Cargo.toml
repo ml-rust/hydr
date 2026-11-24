@@ -1,0 +1,20 @@
+[package]
+name = "hydr-drainage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Safe Rust interface over the pinned EPA SWMM v5.2.4 drainage worker"
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+cuda = ["hydr-core/cuda"]
+wgpu = ["hydr-core/wgpu"]
+
+[dependencies]
+hydr-core = { workspace = true }
+sha2 = { workspace = true }
+
+[lints]
+workspace = true

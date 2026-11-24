@@ -44,6 +44,8 @@ pub enum ComponentId {
     CulvertOutlet,
     /// HDS-5 culvert structure law: discharge from the heads at both ends.
     Culvert,
+    /// Pinned EPA SWMM v5.2.4 piped drainage network solver.
+    SwmmDrainage,
 }
 
 impl ComponentId {
@@ -70,6 +72,7 @@ impl ComponentId {
             Self::CulvertInlet => "culvert-inlet",
             Self::CulvertOutlet => "culvert-outlet",
             Self::Culvert => "culvert",
+            Self::SwmmDrainage => "swmm-drainage",
         }
     }
 }
@@ -102,6 +105,7 @@ mod tests {
             ComponentId::CulvertInlet,
             ComponentId::CulvertOutlet,
             ComponentId::Culvert,
+            ComponentId::SwmmDrainage,
         ];
         assert_ids(&all.map(|c| c.id()));
     }

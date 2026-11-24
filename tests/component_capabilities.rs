@@ -128,6 +128,9 @@ mod culvert_outlets;
 #[path = "component_capabilities/culverts.rs"]
 mod culverts;
 
+#[path = "component_capabilities/drainage.rs"]
+mod drainage;
+
 #[path = "component_capabilities/declarations.rs"]
 mod declarations;
 

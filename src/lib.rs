@@ -21,6 +21,8 @@ pub use hydr_channel::channel;
 #[doc(inline)]
 pub use hydr_coupling::coupling;
 #[doc(inline)]
+pub use hydr_drainage::drainage;
+#[doc(inline)]
 pub use hydr_runoff::runoff;
 #[doc(inline)]
 pub use hydr_soil::soil;
