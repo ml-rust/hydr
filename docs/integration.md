@@ -123,6 +123,8 @@ A test in `tests/component_capabilities` backs every claim. A named test under t
 | Channel pool | `hydr::coupling::channel_pool_capabilities` | [Channel-to-pool connections](channel-pools.md) |
 | Runoff pool | `hydr::coupling::runoff_pool_capabilities` | [Runoff-to-pool connections](runoff-pools.md) |
 | Surface/channel | `hydr::coupling::surface_channel_capabilities` | [Surface/channel coupling](surface-channels.md) |
+| SWMM drainage | `hydr::drainage::swmm_drainage_capabilities` | [Piped drainage](drainage.md) |
+| Surface/drainage | `hydr::coupling::surface_drainage_capabilities` | [Surface-drainage coupling](surface-drainage.md) |
 
 ## Runtime selection and admission
 
@@ -277,6 +279,8 @@ Each row names a component that also declares [capabilities](#read-component-cap
 | [Channel pool](channel-pools.md) | `ChannelPoolSnapshotData` | `CHANNEL_POOL_SNAPSHOT_SCHEMA` (`hydr-channel-pool-checkpoint-2`) | `CHANNEL_POOL_CONTRACT_VERSION` (`hydr-channel-pool-numr-cpu-3`) | `ChannelPoolBatch::import_snapshot` | Channel (per reach), level pool |
 | [Runoff pool](runoff-pools.md) | `RunoffPoolSnapshotData` | `RUNOFF_POOL_SNAPSHOT_SCHEMA` (`hydr-runoff-pool-checkpoint-1`) | `RUNOFF_POOL_CONTRACT_VERSION` (`hydr-runoff-pool-numr-cpu-2`) | `RunoffPoolBatch::restore_data` | Subcatchment, coupled level pool |
 | [Surface/channel](surface-channels.md) | `SurfaceChannelSnapshotData` | `SURFACE_CHANNEL_SNAPSHOT_SCHEMA` (`hydr-surface-channel-checkpoint-13`) | `SURFACE_CHANNEL_CONTRACT_VERSION` (`hydr-surface-channel-numr-cpu-16`) | `SurfaceChannelBatch::import_snapshot`, `SurfaceChannelBatch::resume` | Surface solver, channel (per reach), level pool, controlled gate, controlled pump, subcatchment |
+| [SWMM drainage](drainage.md) | `SwmmDrainageSnapshotData` | `SWMM_DRAINAGE_SNAPSHOT_SCHEMA` (`hydr-swmm-drainage-checkpoint-1`) | `SWMM_DRAINAGE_CONTRACT_VERSION` (`hydr-swmm-drainage-v5.2.4-1`) | `SwmmDrainage::import_snapshot`, `SwmmDrainage::resume` | none |
+| [Surface/drainage](surface-drainage.md) | `SurfaceDrainageSnapshotData` | `SURFACE_DRAINAGE_SNAPSHOT_SCHEMA` (`hydr-surface-drainage-checkpoint-1`) | `SURFACE_DRAINAGE_CONTRACT_VERSION` (`hydr-surface-drainage-numr-cpu-1`) | `SurfaceDrainageBatch::import_snapshot` | Surface solver, SWMM drainage |
 
 Import follows these rules:
 
