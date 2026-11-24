@@ -130,6 +130,8 @@ mod culverts;
 
 #[path = "component_capabilities/drainage.rs"]
 mod drainage;
+#[path = "component_capabilities/native_pipe.rs"]
+mod native_pipe;
 
 #[path = "component_capabilities/declarations.rs"]
 mod declarations;

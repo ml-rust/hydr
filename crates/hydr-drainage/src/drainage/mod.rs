@@ -8,6 +8,7 @@ mod capabilities;
 mod definition;
 mod engine;
 mod error;
+pub mod native;
 mod protocol;
 mod state;
 
@@ -15,6 +16,13 @@ pub use capabilities::swmm_drainage_capabilities;
 pub use definition::{SwmmControlAuthority, SwmmDrainageDefinition, SwmmSurchargeMethod};
 pub use engine::{SwmmDrainage, SwmmDrainageTrial};
 pub use error::DrainageError;
+pub use native::{
+    ConduitHydraulics, NATIVE_PIPE_CONTRACT_VERSION, NATIVE_PIPE_SNAPSHOT_SCHEMA,
+    NativePipeConduitState, NativePipeConfig, NativePipeLedger, NativePipeNetwork,
+    NativePipeNetworkSpec, NativePipeNodeState, NativePipeSnapshotData, NativePipeState,
+    NativePipeTrial, PipeConduitSpec, PipeCrossSection, PipeNodeKind, PipeNodeSpec,
+    PipeOutfallBoundary, native_pipe_drainage_capabilities,
+};
 pub use state::{
     FT_TO_M, FT3_TO_M3, SWMM_DRAINAGE_CONTRACT_VERSION, SWMM_DRAINAGE_SNAPSHOT_SCHEMA,
     SwmmContinuityLedger, SwmmDrainageSnapshotData, SwmmDrainageState, SwmmInpUnitSystem,

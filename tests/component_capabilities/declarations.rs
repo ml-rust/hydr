@@ -115,6 +115,11 @@ pub fn declarations() -> Vec<Declared> {
             snapshot_schema: Some(hydr::drainage::SWMM_DRAINAGE_SNAPSHOT_SCHEMA),
         },
         Declared {
+            capabilities: hydr::drainage::native_pipe_drainage_capabilities(),
+            contract: Some(hydr::drainage::NATIVE_PIPE_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::drainage::NATIVE_PIPE_SNAPSHOT_SCHEMA),
+        },
+        Declared {
             capabilities: hydr::coupling::surface_drainage_capabilities(),
             contract: Some(hydr::coupling::SURFACE_DRAINAGE_CONTRACT_VERSION),
             snapshot_schema: Some(hydr::coupling::SURFACE_DRAINAGE_SNAPSHOT_SCHEMA),

@@ -52,6 +52,8 @@ pub enum ComponentId {
     SurfaceDrainage,
     /// 2D surface simultaneously coupled to 1D channels/pools/structures and pinned EPA SWMM v5.2.4 piped drainage.
     SurfaceChannelDrainage,
+    /// Pure-Rust 1D dynamic-wave Preissmann-slot pressurized-pipe drainage network solver.
+    NativePipeDrainage,
 }
 
 impl ComponentId {
@@ -82,6 +84,7 @@ impl ComponentId {
             Self::SwmmDrainage => "swmm-drainage",
             Self::SurfaceDrainage => "surface-drainage",
             Self::SurfaceChannelDrainage => "surface-channel-drainage",
+            Self::NativePipeDrainage => "native-pipe-drainage",
         }
     }
 }
@@ -118,6 +121,7 @@ mod tests {
             ComponentId::SwmmDrainage,
             ComponentId::SurfaceDrainage,
             ComponentId::SurfaceChannelDrainage,
+            ComponentId::NativePipeDrainage,
         ];
         assert_ids(&all.map(|c| c.id()));
     }
