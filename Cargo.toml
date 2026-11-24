@@ -9,11 +9,11 @@ edition = "2024"
 rust-version = "1.95"
 license = "Apache-2.0"
 repository = "https://github.com/ml-rust/hydr"
-publish = false
+publish = true
 
 [workspace.dependencies]
-numr = { version = "0.15.2", default-features = false }
-solvr = { version = "0.3.1", default-features = false }
+numr = { version = "0.16.0", default-features = false }
+solvr = { version = "0.4.0", default-features = false }
 sha2 = { version = "0.11.1", default-features = false }
 hydr-channel = { path = "crates/hydr-channel", version = "=0.1.0" }
 hydr-coupling = { path = "crates/hydr-coupling", version = "=0.1.0" }
