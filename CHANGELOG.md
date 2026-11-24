@@ -9,6 +9,16 @@ hydr uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-24
+
+### Added
+
+- `hydr::coupling`: Adds simultaneous 3-way coordinator `SurfaceChannelDrainageBatch` coupling 2D surface flow, 1D river channels (plus level pools, structures, controls, and runoff via `SurfaceChannelBatch`), and pinned EPA SWMM v5.2.4 piped drainage over a single common step with midpoint-head iteration, bit-identical SWMM rollback, and atomic 3-way checkpoints. Construct via `SurfaceChannelDrainageBatch::new`.
+- `hydr::drainage`: Adds pure-Rust (`#![forbid(unsafe_code)]`, zero external binary dependency) 1D dynamic-wave Preissmann-slot pressurized-pipe solver `NativePipeNetwork` supporting circular and box conduits, free-surface to pressurized surcharge transitions, link control actuation, transactional rollback, and portable checkpoints. Construct via `NativePipeNetwork::new`.
+- `hydr::solver`: Upgrades `SurfaceSolverF32` (CPU, CUDA, and WebGPU) with per-side open exterior boundaries (`SurfaceF32Boundaries`: `Wall`, `Transmissive`, `Stage`, `Discharge`), vectorized `DType::F32` Modified Green-Ampt infiltration (`SurfaceF32Soil`), opt-in 2nd-order well-balanced MUSCL reconstruction (`SurfaceF32SpatialOrder::SecondOrderMuscl`), and coastal wind/Coriolis/pressure forcing (`SurfaceF32CoastalForcing`).
+- `hydr::solver`: Adds `SubgridTerrain` and `SubgridCellCurve` for exact fine-DEM subgrid storage-elevation and wet-fraction tables on coarse 2D grids.
+- `hydr::solver`: Adds opt-in `CoastalForcing` (wind stress, atmospheric pressure gradient, and energy-preserving Crank-Nicolson Coriolis rotation) to certified `F64` `Solver<R>` via `Solver::with_coastal_forcing` and `Solver::set_coastal_forcing`.
+
 ## [0.1.0] - 2026-11-24
 
 Initial public release of `hydr` on `numr 0.16` and `solvr 0.4`.
