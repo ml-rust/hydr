@@ -29,6 +29,57 @@ where
         + BatchedBisectionAlgorithms<R>
         + BatchedNewtonAlgorithms<R>,
 {
+    pub(super) fn coastal_forcing_step(
+        &self,
+        state: TensorState<R>,
+        dt: f64,
+    ) -> Result<TensorState<R>, EngineError> {
+        if !self.coastal.is_active() {
+            return Ok(state);
+        }
+        let client = &self.context.client;
+        let zero = &self.context.zero;
+        let wet = client.gt(&state.h, zero)?;
+        let c = self.coastal;
+        let w_speed = c.wind_x_m_per_s.hypot(c.wind_y_m_per_s);
+        let drag_ratio = c.wind_drag_coeff * (c.air_density_kg_per_m3 / c.water_density_kg_per_m3);
+        let tau_x_dt = drag_ratio * w_speed * c.wind_x_m_per_s * dt;
+        let tau_y_dt = drag_ratio * w_speed * c.wind_y_m_per_s * dt;
+        let inv_rho = 1.0 / c.water_density_kg_per_m3;
+        let pg_x = -c.dp_dx_pa_per_m * inv_rho * dt;
+        let pg_y = -c.dp_dy_pa_per_m * inv_rho * dt;
+
+        let mut qx_new = client.add(
+            &client.add_scalar(&state.qx, tau_x_dt)?,
+            &client.mul_scalar(&state.h, pg_x)?,
+        )?;
+        let mut qy_new = client.add(
+            &client.add_scalar(&state.qy, tau_y_dt)?,
+            &client.mul_scalar(&state.h, pg_y)?,
+        )?;
+
+        if c.coriolis_f_per_s != 0.0 {
+            let alpha = c.coriolis_f_per_s * dt;
+            let inv_det = 1.0 / (1.0 + alpha * alpha);
+            let rx = client.mul_scalar(
+                &client.add(&qx_new, &client.mul_scalar(&qy_new, alpha)?)?,
+                inv_det,
+            )?;
+            let ry = client.mul_scalar(
+                &client.sub(&qy_new, &client.mul_scalar(&qx_new, alpha)?)?,
+                inv_det,
+            )?;
+            qx_new = rx;
+            qy_new = ry;
+        }
+
+        let qx = client.where_cond(&wet, &qx_new, zero)?;
+        let qy = client.where_cond(&wet, &qy_new, zero)?;
+        self.finite(&qx, "coastal forcing qx")?;
+        self.finite(&qy, "coastal forcing qy")?;
+        Ok(TensorState { h: state.h, qx, qy })
+    }
+
     pub(super) fn friction(
         &self,
         state: TensorState<R>,

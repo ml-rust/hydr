@@ -255,3 +255,42 @@ where
     let qy_out = client.mul(&client.where_cond(&wet, &qy_new, &zero)?, active)?;
     Ok((qx_out, qy_out))
 }
+
+/// Applies semi-implicit Manning bed friction in `DType::F32`.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn apply_manning_f32<R: Runtime<DType = DType>>(
+    client: &R::Client,
+    h: &Tensor<R>,
+    qx: &Tensor<R>,
+    qy: &Tensor<R>,
+    manning_sq: &Tensor<R>,
+    dt: f32,
+    gravity: f32,
+    dry_depth: f32,
+) -> Result<(Tensor<R>, Tensor<R>), EngineError>
+where
+    R::Client: BinaryOps<R> + CompareOps<R> + ConditionalOps<R> + ScalarOps<R> + UnaryOps<R>,
+{
+    let shape = h.shape();
+    let device = h.device();
+    let zero = Tensor::<R>::zeros(shape, DType::F32, device)?;
+    let eps = Tensor::<R>::full_scalar(shape, DType::F32, f64::from(dry_depth), device)?;
+    let wet = client.gt(h, &eps)?;
+    let safe_h = client.where_cond(&wet, h, &eps)?;
+
+    let ux = client.where_cond(&wet, &client.div(qx, &safe_h)?, &zero)?;
+    let uy = client.where_cond(&wet, &client.div(qy, &safe_h)?, &zero)?;
+    let speed = client.sqrt(&client.add(&client.mul(&ux, &ux)?, &client.mul(&uy, &uy)?)?)?;
+
+    let h_4_3 = client.pow_scalar(&safe_h, 4.0 / 3.0)?;
+    let coeff = f64::from(dt) * f64::from(gravity);
+    let drag = client.div(
+        &client.mul_scalar(&client.mul(manning_sq, &speed)?, coeff)?,
+        &h_4_3,
+    )?;
+    let denom = client.add_scalar(&drag, 1.0)?;
+
+    let new_qx = client.where_cond(&wet, &client.div(qx, &denom)?, &zero)?;
+    let new_qy = client.where_cond(&wet, &client.div(qy, &denom)?, &zero)?;
+    Ok((new_qx, new_qy))
+}

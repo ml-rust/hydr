@@ -3,6 +3,7 @@
 //! Uses only `numr` `F32` tensor ops supported on `CpuRuntime`, `CudaRuntime`, and `WgpuRuntime`.
 
 use super::boundaries::{SurfaceF32SideBoundary, build_ghost_edge};
+use super::muscl::{SurfaceF32SpatialOrder, muscl_reconstruct_faces};
 use crate::contract::EngineError;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, ShapeOps, UnaryOps};
@@ -35,6 +36,7 @@ pub(super) fn sweep_x<R: Runtime<DType = DType>>(
     dy: f32,
     gravity: f32,
     dry_depth: f32,
+    order: SurfaceF32SpatialOrder,
 ) -> Result<SweepDiv<R>, EngineError>
 where
     R::Client: BinaryOps<R>
@@ -79,22 +81,30 @@ where
     let aw = active.narrow(1, 0, 1)?.contiguous()?;
     let ae = active.narrow(1, nx - 1, 1)?.contiguous()?;
 
-    let split_x = |gl: &Tensor<R>,
-                   mid: &Tensor<R>,
-                   gr: &Tensor<R>|
-     -> Result<(Tensor<R>, Tensor<R>), EngineError> {
-        let ext = client.cat(&[gl, mid, gr], 1)?;
-        Ok((
-            ext.narrow(1, 0, nf)?.contiguous()?,
-            ext.narrow(1, 1, nf)?.contiguous()?,
-        ))
-    };
+    let h_ext = client.cat(&[&hw, h, &he], 1)?;
+    let qn_ext = client.cat(&[&qxw, qx, &qxe], 1)?;
+    let qt_ext = client.cat(&[&qyw, qy, &qye], 1)?;
+    let z_ext = client.cat(&[&zw, bed, &ze], 1)?;
+    let act_ext = client.cat(&[&aw, active, &ae], 1)?;
+    let act_l = act_ext.narrow(1, 0, nf)?.contiguous()?;
+    let act_r = act_ext.narrow(1, 1, nf)?.contiguous()?;
 
-    let (h_l, h_r) = split_x(&hw, h, &he)?;
-    let (qn_l, qn_r) = split_x(&qxw, qx, &qxe)?;
-    let (qt_l, qt_r) = split_x(&qyw, qy, &qye)?;
-    let (z_l, z_r) = split_x(&zw, bed, &ze)?;
-    let (act_l, act_r) = split_x(&aw, active, &ae)?;
+    let (h_l, h_r, qn_l, qn_r, qt_l, qt_r, z_l, z_r, s_c) = match order {
+        SurfaceF32SpatialOrder::FirstOrder => (
+            h_ext.narrow(1, 0, nf)?.contiguous()?,
+            h_ext.narrow(1, 1, nf)?.contiguous()?,
+            qn_ext.narrow(1, 0, nf)?.contiguous()?,
+            qn_ext.narrow(1, 1, nf)?.contiguous()?,
+            qt_ext.narrow(1, 0, nf)?.contiguous()?,
+            qt_ext.narrow(1, 1, nf)?.contiguous()?,
+            z_ext.narrow(1, 0, nf)?.contiguous()?,
+            z_ext.narrow(1, 1, nf)?.contiguous()?,
+            Tensor::<R>::zeros(&[ny, nx], DType::F32, h.device())?,
+        ),
+        SurfaceF32SpatialOrder::SecondOrderMuscl => muscl_reconstruct_faces(
+            client, &h_ext, &qn_ext, &qt_ext, &z_ext, 1, nx, gravity, dry_depth,
+        )?,
+    };
 
     let (fh, fqn, fqt, corr_l, corr_r, max_speed) = hll_faces(
         client, &h_l, &h_r, &qn_l, &qn_r, &qt_l, &qt_r, &z_l, &z_r, &act_l, &act_r, gravity,
@@ -143,8 +153,11 @@ where
     let dqx = client.mul(
         &client.mul_scalar(
             &client.add(
-                &client.sub(&fqn_west, &fqn_east)?,
-                &client.sub(&p_east, &p_west)?,
+                &client.add(
+                    &client.sub(&fqn_west, &fqn_east)?,
+                    &client.sub(&p_east, &p_west)?,
+                )?,
+                &s_c,
             )?,
             inv_dx,
         )?,
@@ -182,6 +195,7 @@ pub(super) fn sweep_y<R: Runtime<DType = DType>>(
     dy: f32,
     gravity: f32,
     dry_depth: f32,
+    order: SurfaceF32SpatialOrder,
 ) -> Result<SweepDiv<R>, EngineError>
 where
     R::Client: BinaryOps<R>
@@ -226,22 +240,30 @@ where
     let as_ = active.narrow(0, 0, 1)?.contiguous()?;
     let an = active.narrow(0, ny - 1, 1)?.contiguous()?;
 
-    let split_y = |gb: &Tensor<R>,
-                   mid: &Tensor<R>,
-                   gt: &Tensor<R>|
-     -> Result<(Tensor<R>, Tensor<R>), EngineError> {
-        let ext = client.cat(&[gb, mid, gt], 0)?;
-        Ok((
-            ext.narrow(0, 0, nf)?.contiguous()?,
-            ext.narrow(0, 1, nf)?.contiguous()?,
-        ))
-    };
+    let h_ext = client.cat(&[&hs, h, &hn], 0)?;
+    let qn_ext = client.cat(&[&qys, qy, &qyn], 0)?;
+    let qt_ext = client.cat(&[&qxs, qx, &qxn], 0)?;
+    let z_ext = client.cat(&[&zs, bed, &zn], 0)?;
+    let act_ext = client.cat(&[&as_, active, &an], 0)?;
+    let act_l = act_ext.narrow(0, 0, nf)?.contiguous()?;
+    let act_r = act_ext.narrow(0, 1, nf)?.contiguous()?;
 
-    let (h_l, h_r) = split_y(&hs, h, &hn)?;
-    let (qn_l, qn_r) = split_y(&qys, qy, &qyn)?;
-    let (qt_l, qt_r) = split_y(&qxs, qx, &qxn)?;
-    let (z_l, z_r) = split_y(&zs, bed, &zn)?;
-    let (act_l, act_r) = split_y(&as_, active, &an)?;
+    let (h_l, h_r, qn_l, qn_r, qt_l, qt_r, z_l, z_r, s_c) = match order {
+        SurfaceF32SpatialOrder::FirstOrder => (
+            h_ext.narrow(0, 0, nf)?.contiguous()?,
+            h_ext.narrow(0, 1, nf)?.contiguous()?,
+            qn_ext.narrow(0, 0, nf)?.contiguous()?,
+            qn_ext.narrow(0, 1, nf)?.contiguous()?,
+            qt_ext.narrow(0, 0, nf)?.contiguous()?,
+            qt_ext.narrow(0, 1, nf)?.contiguous()?,
+            z_ext.narrow(0, 0, nf)?.contiguous()?,
+            z_ext.narrow(0, 1, nf)?.contiguous()?,
+            Tensor::<R>::zeros(&[ny, nx], DType::F32, h.device())?,
+        ),
+        SurfaceF32SpatialOrder::SecondOrderMuscl => muscl_reconstruct_faces(
+            client, &h_ext, &qn_ext, &qt_ext, &z_ext, 0, ny, gravity, dry_depth,
+        )?,
+    };
 
     let (fh, fqn, fqt, corr_l, corr_r, max_speed) = hll_faces(
         client, &h_l, &h_r, &qn_l, &qn_r, &qt_l, &qt_r, &z_l, &z_r, &act_l, &act_r, gravity,
@@ -289,8 +311,11 @@ where
     let dqy = client.mul(
         &client.mul_scalar(
             &client.add(
-                &client.sub(&fqn_south, &fqn_north)?,
-                &client.sub(&p_north, &p_south)?,
+                &client.add(
+                    &client.sub(&fqn_south, &fqn_north)?,
+                    &client.sub(&p_north, &p_south)?,
+                )?,
+                &s_c,
             )?,
             inv_dy,
         )?,
@@ -435,43 +460,4 @@ where
     let max_speed = client.max(&max_face_s, &[0, 1], false)?.item::<f32>()?;
 
     Ok((fh, fqn, fqt, corr_l, corr_r, max_speed))
-}
-
-/// Applies semi-implicit Manning bed friction in `DType::F32`.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn apply_manning_f32<R: Runtime<DType = DType>>(
-    client: &R::Client,
-    h: &Tensor<R>,
-    qx: &Tensor<R>,
-    qy: &Tensor<R>,
-    manning_sq: &Tensor<R>,
-    dt: f32,
-    gravity: f32,
-    dry_depth: f32,
-) -> Result<(Tensor<R>, Tensor<R>), EngineError>
-where
-    R::Client: BinaryOps<R> + CompareOps<R> + ConditionalOps<R> + ScalarOps<R> + UnaryOps<R>,
-{
-    let shape = h.shape();
-    let device = h.device();
-    let zero = Tensor::<R>::zeros(shape, DType::F32, device)?;
-    let eps = Tensor::<R>::full_scalar(shape, DType::F32, f64::from(dry_depth), device)?;
-    let wet = client.gt(h, &eps)?;
-    let safe_h = client.where_cond(&wet, h, &eps)?;
-
-    let ux = client.where_cond(&wet, &client.div(qx, &safe_h)?, &zero)?;
-    let uy = client.where_cond(&wet, &client.div(qy, &safe_h)?, &zero)?;
-    let speed = client.sqrt(&client.add(&client.mul(&ux, &ux)?, &client.mul(&uy, &uy)?)?)?;
-
-    let h_4_3 = client.pow_scalar(&safe_h, 4.0 / 3.0)?;
-    let coeff = f64::from(dt) * f64::from(gravity);
-    let drag = client.div(
-        &client.mul_scalar(&client.mul(manning_sq, &speed)?, coeff)?,
-        &h_4_3,
-    )?;
-    let denom = client.add_scalar(&drag, 1.0)?;
-
-    let new_qx = client.where_cond(&wet, &client.div(qx, &denom)?, &zero)?;
-    let new_qy = client.where_cond(&wet, &client.div(qy, &denom)?, &zero)?;
-    Ok((new_qx, new_qy))
 }

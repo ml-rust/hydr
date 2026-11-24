@@ -307,6 +307,7 @@ where
                 definition: Arc::clone(&self.definition),
                 accepted: *accepted,
                 context: Arc::clone(&self.context),
+                coastal: self.coastal,
             }))),
             Completion::Retry(reason) => Ok(CouplingCompletion::Retry(reason)),
         }

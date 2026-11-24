@@ -7,12 +7,14 @@ mod boundaries;
 mod capabilities;
 mod engine;
 mod flux;
+mod muscl;
 mod soil;
 mod state;
 
 pub use boundaries::{SurfaceF32Boundaries, SurfaceF32CoastalForcing, SurfaceF32SideBoundary};
 pub use capabilities::surface_solver_f32_capabilities;
 pub use engine::SurfaceSolverF32;
+pub use muscl::SurfaceF32SpatialOrder;
 pub use soil::SurfaceF32Soil;
 pub use state::{
     SURFACE_SOLVER_F32_CONTRACT_VERSION, SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA,

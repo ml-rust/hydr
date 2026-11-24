@@ -1,9 +1,9 @@
 //! Opt-in `F32` 2D shallow-water solver engine for CPU, CUDA, and WGPU.
 
 use super::boundaries::{
-    SurfaceF32Boundaries, SurfaceF32CoastalForcing, apply_coastal_forcing_f32,
+    SurfaceF32Boundaries, SurfaceF32CoastalForcing, apply_coastal_forcing_f32, apply_manning_f32,
 };
-use super::flux::{apply_manning_f32, sweep_x, sweep_y};
+use super::flux::{sweep_x, sweep_y};
 use super::soil::{SoilStateF32, SurfaceF32Soil};
 use super::state::{
     SURFACE_SOLVER_F32_CONTRACT_VERSION, SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA,
@@ -340,6 +340,7 @@ where
                 self.dy,
                 self.config.gravity,
                 self.config.dry_depth_m,
+                self.config.spatial_order,
             )?;
             let sy = sweep_y(
                 &self.client,
@@ -354,6 +355,7 @@ where
                 self.dy,
                 self.config.gravity,
                 self.config.dry_depth_m,
+                self.config.spatial_order,
             )?;
 
             // 3. CFL check.

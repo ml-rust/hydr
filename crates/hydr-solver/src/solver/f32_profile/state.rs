@@ -1,5 +1,6 @@
 //! Configuration, conservation ledger, and portable checkpoint types for `SurfaceSolverF32`.
 
+use super::muscl::SurfaceF32SpatialOrder;
 use crate::contract::EngineError;
 
 /// Stable snapshot schema identifier for `SurfaceSolverF32`.
@@ -23,6 +24,8 @@ pub struct SurfaceSolverF32Config {
     pub min_step_s: f64,
     /// Maximum step-halving retries per step (default `16`).
     pub max_retries: usize,
+    /// Spatial reconstruction order (default `FirstOrder`; opt into `SecondOrderMuscl` for sharper wave fronts).
+    pub spatial_order: SurfaceF32SpatialOrder,
 }
 
 impl Default for SurfaceSolverF32Config {
@@ -34,6 +37,7 @@ impl Default for SurfaceSolverF32Config {
             max_step_s: 5.0,
             min_step_s: 1e-5,
             max_retries: 16,
+            spatial_order: SurfaceF32SpatialOrder::FirstOrder,
         }
     }
 }

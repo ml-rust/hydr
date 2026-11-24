@@ -4,6 +4,7 @@ mod accounting;
 mod admission;
 mod advance;
 mod capabilities;
+mod coastal;
 mod compatibility;
 mod continuation;
 pub(crate) mod coupling;
@@ -18,6 +19,7 @@ mod restore;
 mod setup;
 mod snapshot;
 mod stepping;
+mod subgrid;
 mod tensor;
 
 pub use crate::contract::{
@@ -31,11 +33,12 @@ pub use accounting::{
 };
 pub use advance::{AdvanceReport, AdvanceStatus};
 pub use capabilities::{CONTRACT_VERSION, surface_solver_capabilities};
+pub use coastal::CoastalForcing;
 pub use engine::Solver;
 pub use f32_profile::{
     SURFACE_SOLVER_F32_CONTRACT_VERSION, SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA, SurfaceF32Boundaries,
-    SurfaceF32CoastalForcing, SurfaceF32SideBoundary, SurfaceF32Soil, SurfaceSolverF32,
-    SurfaceSolverF32Config, SurfaceSolverF32Ledger, SurfaceSolverF32SnapshotData,
+    SurfaceF32CoastalForcing, SurfaceF32SideBoundary, SurfaceF32Soil, SurfaceF32SpatialOrder,
+    SurfaceSolverF32, SurfaceSolverF32Config, SurfaceSolverF32Ledger, SurfaceSolverF32SnapshotData,
     surface_solver_f32_capabilities,
 };
 pub use forcing_history::ForcingPrefix;
@@ -47,3 +50,4 @@ pub use geometry::{
 pub use output::{CellResult, FaceTransfer};
 pub use setup::{InitialState, SolverSetup};
 pub use snapshot::{SNAPSHOT_SCHEMA, Snapshot, SnapshotData};
+pub use subgrid::{SubgridCellCurve, SubgridTerrain};

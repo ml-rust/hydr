@@ -111,6 +111,7 @@ where
         };
         let local = client.abs(&local)?;
         let max_local_residual = client.max(&local, &[0], false)?.item::<f64>()?;
+        let exchanged = self.coastal_forcing_step(exchanged, dt)?;
         let mut next = self.friction(exchanged, dt)?;
         let reset = client.mul(
             &client.gt(&next.h, zero)?,

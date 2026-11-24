@@ -128,6 +128,7 @@ impl<R: Runtime<DType = DType>> Solver<R> {
             definition: Arc::clone(&self.definition),
             accepted: self.accepted.clone(),
             context: Arc::clone(&self.context),
+            coastal: self.coastal,
         }
     }
 

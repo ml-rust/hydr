@@ -1,3 +1,4 @@
+use super::coastal::CoastalForcing;
 use super::definition::Definition;
 use super::forcing_history::ForcingPrefix;
 use super::tensor::land::TensorLand;
@@ -33,6 +34,7 @@ pub struct Solver<R: Runtime<DType = DType>> {
     pub(super) definition: Arc<Definition>,
     pub(super) accepted: Accepted<R>,
     pub(super) context: Arc<TensorDomain<R>>,
+    pub(super) coastal: CoastalForcing,
 }
 
 /// A clone shares the immutable definition, domain and accepted tensors.
@@ -42,6 +44,7 @@ impl<R: Runtime<DType = DType>> Clone for Solver<R> {
             definition: Arc::clone(&self.definition),
             accepted: self.accepted.clone(),
             context: Arc::clone(&self.context),
+            coastal: self.coastal,
         }
     }
 }
@@ -168,7 +171,26 @@ where
                 flow: flow_state,
             },
             context: Arc::new(context),
+            coastal: CoastalForcing::default(),
         })
+    }
+
+    /// Attaches opt-in coastal wind, Coriolis, and atmospheric pressure forcing.
+    pub fn with_coastal_forcing(mut self, coastal: CoastalForcing) -> Result<Self, EngineError> {
+        self.set_coastal_forcing(coastal)?;
+        Ok(self)
+    }
+
+    /// Updates opt-in coastal wind, Coriolis, and atmospheric pressure forcing between intervals.
+    pub fn set_coastal_forcing(&mut self, coastal: CoastalForcing) -> Result<(), EngineError> {
+        coastal.validate()?;
+        self.coastal = coastal;
+        Ok(())
+    }
+
+    /// Returns the active coastal momentum forcing configuration.
+    pub fn coastal_forcing(&self) -> CoastalForcing {
+        self.coastal
     }
 
     /// Returns the immutable checked domain and reference metadata.
