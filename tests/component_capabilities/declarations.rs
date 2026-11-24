@@ -21,6 +21,11 @@ pub fn declarations() -> Vec<Declared> {
             contract: Some(hydr::solver::CONTRACT_VERSION),
             snapshot_schema: Some(hydr::solver::SNAPSHOT_SCHEMA),
         },
+        Declared {
+            capabilities: hydr::solver::surface_solver_f32_capabilities(),
+            contract: Some(hydr::solver::SURFACE_SOLVER_F32_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::solver::SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA),
+        },
         channel(hydr::channel::rectangular_reach_capabilities()),
         channel(hydr::channel::triangular_reach_capabilities()),
         channel(hydr::channel::surveyed_reach_capabilities()),

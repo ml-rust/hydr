@@ -67,9 +67,9 @@ Every component operates in canonical SI units (`m`, `m³`, `m³/s`, `s`) with `
 Requires Rust 1.95 or newer. Add `hydr` and `numr`:
 
 ```bash
-cargo add hydr numr                  # CPU F64 reference runtime
-cargo add hydr --features cuda       # NVIDIA GPUs (CUDA 12.8+ or 13.x)
-cargo add hydr --features wgpu       # WebGPU feature gate (rejects f64 without fallback)
+cargo add hydr numr                  # CPU F64 reference + F32 opt-in profile
+cargo add hydr --features cuda       # NVIDIA GPUs (F64 + F32, CUDA 12.8+ or 13.x)
+cargo add hydr --features wgpu       # WebGPU (F32 native on Vulkan, Metal, DX12)
 ```
 
 For piped urban drainage (`hydr::drainage` and `SurfaceDrainageBatch`), build the isolated pinned EPA SWMM v5.2.4 worker binary once on the host:
@@ -82,13 +82,13 @@ See [docs/drainage-reference.md](docs/drainage-reference.md) for the pinned comm
 
 ## Backends
 
-All hydraulic calculations require IEEE-754 `f64` precision. Pass a configured `numr` client when constructing any component; nested components reuse that runtime and client.
+`hydr` defaults to certified IEEE-754 `f64` (`Solver<R>`, channels, pools, structures, and coupling) and offers an explicit opt-in `f32` profile (`SurfaceSolverF32<R>`) for high-throughput CPU, CUDA, and WebGPU execution.
 
-| Runtime | Feature | Support | Notes |
-| --- | --- | --- | --- |
-| `CpuRuntime` | default | Checked `f64` reference | Single-threaded deterministic reference profile; required for `SwmmDrainage` and `SurfaceDrainageBatch` |
-| `CudaRuntime` | `cuda` | Executed `f64` parity | Verified on NVIDIA L4 (`sm_89`, CUDA 13.0) across surface, channels, pools, runoff, structures, culverts, and surface-channel coupling |
-| `WgpuRuntime` | `wgpu` | Rejected cleanly | WebGPU computes in `f32` only; `hydr` rejects `f64` profiles without silent `f32` or CPU fallback |
+| Runtime | Feature | `F64` (default) | `F32` (opt-in `SurfaceSolverF32`) | Notes |
+| --- | --- | --- | --- | --- |
+| `CpuRuntime` | default | Checked reference | Executed | Deterministic reference profile; required for `SwmmDrainage` and `SurfaceDrainageBatch` |
+| `CudaRuntime` | `cuda` | Executed parity | Executed parity | Verified on NVIDIA L4 (`sm_89`, CUDA 13.0) |
+| `WgpuRuntime` | `wgpu` | Rejected cleanly | Executed | Native WebGPU (`Vulkan`, `Metal`, `DX12`) in `F32`; `F64` rejects without silent fallback |
 
 ## Quick Start
 

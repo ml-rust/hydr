@@ -134,6 +134,9 @@ mod drainage;
 #[path = "component_capabilities/surface_drainage.rs"]
 mod surface_drainage;
 
+#[path = "component_capabilities/surface_f32.rs"]
+mod surface_f32;
+
 #[path = "component_capabilities/declarations.rs"]
 mod declarations;
 

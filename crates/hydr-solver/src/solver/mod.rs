@@ -9,6 +9,7 @@ mod continuation;
 pub(crate) mod coupling;
 mod definition;
 mod engine;
+mod f32_profile;
 mod forcing_history;
 mod geometry;
 mod output;
@@ -31,6 +32,11 @@ pub use accounting::{
 pub use advance::{AdvanceReport, AdvanceStatus};
 pub use capabilities::{CONTRACT_VERSION, surface_solver_capabilities};
 pub use engine::Solver;
+pub use f32_profile::{
+    SURFACE_SOLVER_F32_CONTRACT_VERSION, SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA, SurfaceSolverF32,
+    SurfaceSolverF32Config, SurfaceSolverF32Ledger, SurfaceSolverF32SnapshotData,
+    surface_solver_f32_capabilities,
+};
 pub use forcing_history::ForcingPrefix;
 pub use geometry::{
     SurfaceBedEpoch, SurfaceBedSchedule, SurfaceBedUpdate, active_bed_at,

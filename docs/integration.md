@@ -104,6 +104,7 @@ A test in `tests/component_capabilities` backs every claim. A named test under t
 | Component | Function | Doc |
 | --- | --- | --- |
 | Surface solver | `hydr::solver::surface_solver_capabilities` | [Integrate Hydr](#lifecycle) |
+| Surface solver (F32) | `hydr::solver::surface_solver_f32_capabilities` | [Surface F32 profile](surface-f32.md) |
 | Rectangular reach | `hydr::channel::rectangular_reach_capabilities` | [Channel flow](channels.md) |
 | Triangular reach | `hydr::channel::triangular_reach_capabilities` | [Channel flow](channels.md) |
 | Surveyed reach | `hydr::channel::surveyed_reach_capabilities` | [Channel flow](channels.md) |
@@ -267,6 +268,7 @@ Each row names a component that also declares [capabilities](#read-component-cap
 | Component | Package type | Schema constant (value) | Contract constant (value) | Import call | Nested packages |
 | --- | --- | --- | --- | --- | --- |
 | Surface solver | `SnapshotData` | `SNAPSHOT_SCHEMA` (`hydr-checkpoint-3`) | `CONTRACT_VERSION` (`hydr-swe-numr-cpu-2`) | `Solver::restore_data` | none |
+| [Surface solver (F32)](surface-f32.md) | `SurfaceSolverF32SnapshotData` | `SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA` (`hydr-f32-checkpoint-1`) | `SURFACE_SOLVER_F32_CONTRACT_VERSION` (`hydr-swe-f32-numr-1`) | `SurfaceSolverF32::restore_data` | none |
 | [Channel](channels.md) | `ChannelSnapshotData` | `CHANNEL_SNAPSHOT_SCHEMA` (`hydr-channel-checkpoint-3`) | `CHANNEL_CONTRACT_VERSION` (`hydr-channel-1d-numr-cpu-4`) | `ChannelReach::import_snapshot` | none |
 | [Level pool](level-pool.md) | `LevelPoolSnapshotData` | `LEVEL_POOL_SNAPSHOT_SCHEMA` (`hydr-level-pool-checkpoint-1`) | `LEVEL_POOL_CONTRACT_VERSION` (`hydr-level-pool-numr-cpu-1`) | `LevelPoolBatch::restore_data` | none |
 | [Subcatchment](subcatchment.md) | `SubcatchmentSnapshotData` | `SUBCATCHMENT_SNAPSHOT_SCHEMA` (`hydr-subcatchment-checkpoint-1`) | `SUBCATCHMENT_CONTRACT_VERSION` (`hydr-subcatchment-numr-cpu-2`) | `SubcatchmentBatch::restore_data` | none |

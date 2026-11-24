@@ -6,6 +6,8 @@
 pub enum Precision {
     /// IEEE 754 binary64.
     F64,
+    /// IEEE 754 binary32 (opt-in fast profile, including WebGPU).
+    F32,
 }
 
 impl Precision {
@@ -13,6 +15,7 @@ impl Precision {
     pub fn id(&self) -> &'static str {
         match self {
             Self::F64 => "f64",
+            Self::F32 => "f32",
         }
     }
 }
@@ -23,6 +26,8 @@ impl Precision {
 pub enum ArithmeticRequirement {
     /// IEEE 754 binary64 add, subtract, multiply and divide.
     F64Ieee754Basic,
+    /// IEEE 754 binary32 add, subtract, multiply and divide.
+    F32Ieee754Basic,
     /// Round-to-nearest-even with gradual underflow to subnormals.
     NearestEvenGradualUnderflow,
     /// Square root rounded to nearest.
@@ -47,6 +52,7 @@ impl ArithmeticRequirement {
     pub fn id(&self) -> &'static str {
         match self {
             Self::F64Ieee754Basic => "f64-ieee754-basic",
+            Self::F32Ieee754Basic => "f32-ieee754-basic",
             Self::NearestEvenGradualUnderflow => "nearest-even-gradual-underflow",
             Self::RoundToNearestSqrt => "round-to-nearest-sqrt",
             Self::FusedMulAdd => "fused-mul-add",
@@ -122,13 +128,14 @@ mod tests {
 
     #[test]
     fn precision_ids_are_unique_kebab_case() {
-        assert_ids(&[Precision::F64.id()]);
+        assert_ids(&[Precision::F64.id(), Precision::F32.id()]);
     }
 
     #[test]
     fn arithmetic_ids_are_unique_kebab_case() {
         let all = [
             ArithmeticRequirement::F64Ieee754Basic,
+            ArithmeticRequirement::F32Ieee754Basic,
             ArithmeticRequirement::NearestEvenGradualUnderflow,
             ArithmeticRequirement::RoundToNearestSqrt,
             ArithmeticRequirement::FusedMulAdd,

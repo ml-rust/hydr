@@ -6,6 +6,8 @@
 pub enum ComponentId {
     /// 2D shallow-water surface solver.
     SurfaceSolver,
+    /// Opt-in 2D shallow-water surface solver running in F32 (CPU, CUDA, and WGPU).
+    SurfaceSolverF32,
     /// Channel reach with a rectangular cross-section.
     ChannelReachRectangular,
     /// Channel reach with a triangular cross-section.
@@ -55,6 +57,7 @@ impl ComponentId {
     pub fn id(&self) -> &'static str {
         match self {
             Self::SurfaceSolver => "surface-solver",
+            Self::SurfaceSolverF32 => "surface-solver-f32",
             Self::ChannelReachRectangular => "channel-reach-rectangular",
             Self::ChannelReachTriangular => "channel-reach-triangular",
             Self::ChannelReachSurveyed => "channel-reach-surveyed",
@@ -89,6 +92,7 @@ mod tests {
     fn ids_are_unique_kebab_case() {
         let all = [
             ComponentId::SurfaceSolver,
+            ComponentId::SurfaceSolverF32,
             ComponentId::ChannelReachRectangular,
             ComponentId::ChannelReachTriangular,
             ComponentId::ChannelReachSurveyed,
