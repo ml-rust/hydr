@@ -98,12 +98,6 @@ impl DrainageControlAuthorityTable {
                     claim.authority.id()
                 )));
             }
-            if claim.authority != SwmmControlAuthority::NativeSwmm {
-                return Err(SurfaceDrainageError::input(format!(
-                    "native-control-authority: external mode `{}` on SWMM link `{trimmed}` is not yet attached to live worker actuation; use `NativeSwmm`",
-                    claim.authority.id()
-                )));
-            }
             link_writers.insert(key, LinkWriter::ExternalClaim(claim.authority));
         }
 
@@ -142,6 +136,15 @@ impl DrainageControlAuthorityTable {
     /// Number of links recorded in the exclusive authority table.
     pub fn link_count(&self) -> usize {
         self.link_writers.len()
+    }
+
+    /// Returns the exclusive control-authority owner of `link_id`, if registered.
+    pub fn authority_of(&self, link_id: &str) -> Option<SwmmControlAuthority> {
+        let key = link_id.trim().to_ascii_uppercase();
+        self.link_writers.get(&key).map(|writer| match writer {
+            LinkWriter::NativeSwmmControls => SwmmControlAuthority::NativeSwmm,
+            LinkWriter::ExternalClaim(auth) => *auth,
+        })
     }
 }
 

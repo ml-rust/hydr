@@ -21,7 +21,7 @@
 
 - `DrainageControlAuthorityTable` parses SWMM `.inp` `[CONTROLS]` action clauses (`PUMP`, `ORIFICE`, `WEIR`, `OUTLET`, `CONDUIT`) and registers every natively controlled link.
 - Any external claim targeting a natively controlled link, any duplicate claim, or any duplicate inlet `id` / `(surface_cell, drainage_node_id)` pair rejects with `duplicate-parameter-authority`.
-- Unattached hybrid actuation modes reject with `native-control-authority`.
+- External `hydr` claims (`HydrCommandsNativeActuation`, `HydrActuatorImposedPosition`, `PrescribedHydrTrajectory`) on uncontrolled SWMM links execute via `SurfaceDrainageBatch::trial_to_with_commands`. Attempting to command an unclaimed or native-SWMM-owned link rejects.
 
 ## Portable Checkpoints
 

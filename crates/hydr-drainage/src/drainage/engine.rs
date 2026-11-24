@@ -5,7 +5,7 @@ use super::error::DrainageError;
 use super::protocol::{SwmmWorker, sha256_hex};
 use super::state::{
     FT3_TO_M3, SWMM_DRAINAGE_CONTRACT_VERSION, SWMM_DRAINAGE_SNAPSHOT_SCHEMA,
-    SwmmDrainageSnapshotData, SwmmDrainageState, SwmmNetworkSummary,
+    SwmmDrainageSnapshotData, SwmmDrainageState, SwmmLinkCommand, SwmmNetworkSummary,
 };
 use std::collections::BTreeSet;
 
@@ -119,6 +119,16 @@ impl SwmmDrainage {
         end_s: f64,
         node_inflows_m3_per_s: &[(usize, f64)],
     ) -> Result<SwmmDrainageTrial<'a>, DrainageError> {
+        self.trial_to_with_commands(end_s, node_inflows_m3_per_s, &[])
+    }
+
+    /// Executes a transactional trial step with both nodal inflows and external link commands.
+    pub fn trial_to_with_commands<'a>(
+        &'a mut self,
+        end_s: f64,
+        node_inflows_m3_per_s: &[(usize, f64)],
+        link_commands: &[SwmmLinkCommand],
+    ) -> Result<SwmmDrainageTrial<'a>, DrainageError> {
         if !end_s.is_finite() || end_s <= self.time_s {
             return Err(DrainageError::input(format!(
                 "trial end_s ({end_s}) must be finite and greater than current time_s ({})",
@@ -144,6 +154,27 @@ impl SwmmDrainage {
                 )));
             }
         }
+        let mut seen_links = BTreeSet::new();
+        for cmd in link_commands {
+            if cmd.link_index >= self.summary.link_count {
+                return Err(DrainageError::input(format!(
+                    "link index {} out of range (link_count = {})",
+                    cmd.link_index, self.summary.link_count
+                )));
+            }
+            if !cmd.target_setting.is_finite() || !(0.0..=1.0).contains(&cmd.target_setting) {
+                return Err(DrainageError::input(format!(
+                    "link {} target_setting must be finite in [0.0, 1.0], got {}",
+                    cmd.link_index, cmd.target_setting
+                )));
+            }
+            if !seen_links.insert(cmd.link_index) {
+                return Err(DrainageError::input(format!(
+                    "duplicate link command for link index {}",
+                    cmd.link_index
+                )));
+            }
+        }
 
         let dt_s = end_s - self.time_s;
         let run_result = (|| -> Result<(SwmmDrainageState, String, Vec<usize>), DrainageError> {
@@ -157,6 +188,13 @@ impl SwmmDrainage {
                 if rate_m3_per_s != 0.0 {
                     active.push(node_idx);
                 }
+            }
+            for cmd in link_commands {
+                self.worker.set_link_setting(
+                    cmd.link_index,
+                    cmd.target_setting,
+                    cmd.impose_setting,
+                )?;
             }
             let _reported_time_s = self.worker.step(dt_s)?;
             let next_state = self.worker.state()?;

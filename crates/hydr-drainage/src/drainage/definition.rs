@@ -97,12 +97,6 @@ impl SwmmDrainageDefinition {
         let provenance = require_non_empty(provenance.into(), "provenance")?;
         let surcharge_evidence =
             require_non_empty(surcharge_evidence.into(), "surcharge_evidence")?;
-        if control_authority != SwmmControlAuthority::NativeSwmm {
-            return Err(DrainageError::input(format!(
-                "control_authority `{}` requires coupled authority attachment (`native-control-authority`); use `SwmmControlAuthority::NativeSwmm` for standalone drainage",
-                control_authority.id()
-            )));
-        }
         let worker_binary = worker_binary.into();
         if worker_binary.as_os_str().is_empty() {
             return Err(DrainageError::input(

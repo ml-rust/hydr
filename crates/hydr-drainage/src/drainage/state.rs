@@ -146,6 +146,18 @@ pub struct SwmmDrainageState {
     pub links: Vec<SwmmLinkState>,
 }
 
+/// External control setting command applied to one SWMM link before a trial step.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SwmmLinkCommand {
+    /// Zero-based SWMM link index.
+    pub link_index: usize,
+    /// Commanded dimensionless setting in `[0.0, 1.0]`.
+    pub target_setting: f64,
+    /// When `false`, sets `targetSetting` only so SWMM native actuation moves `setting`.
+    /// When `true`, imposes both `targetSetting` and `setting` directly.
+    pub impose_setting: bool,
+}
+
 /// Portable complete hidden-state checkpoint for `SwmmDrainage`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SwmmDrainageSnapshotData {

@@ -41,11 +41,7 @@ fn surface_drainage_declaration_matches_admission() -> Result<(), Box<dyn std::e
         .collect();
     assert_eq!(
         rejected_ids,
-        [
-            "duplicate-parameter-authority",
-            "datum-mismatch",
-            "native-control-authority",
-        ]
+        ["duplicate-parameter-authority", "datum-mismatch"]
     );
 
     let links = vec!["OR1".to_string(), "P1".to_string()];
@@ -77,8 +73,8 @@ fn surface_drainage_declaration_matches_admission() -> Result<(), Box<dyn std::e
         Err(SurfaceDrainageError::Input(ref msg)) if msg.contains("duplicate-parameter-authority")
     ));
 
-    // 2. native-control-authority: unattached hybrid actuation on an uncontrolled link rejects.
-    let unattached = DrainageControlAuthorityTable::build(
+    // 2. External hydr control claim on an uncontrolled link P1 is admitted and recorded.
+    let attached = DrainageControlAuthorityTable::build(
         SAMPLE_INP,
         &links,
         &[DrainageControlClaim {
@@ -86,11 +82,15 @@ fn surface_drainage_declaration_matches_admission() -> Result<(), Box<dyn std::e
             authority: SwmmControlAuthority::HydrCommandsNativeActuation,
         }],
         &[sample_inlet("IN1", 0, "J1")],
+    )?;
+    assert_eq!(
+        attached.authority_of("P1"),
+        Some(SwmmControlAuthority::HydrCommandsNativeActuation)
     );
-    assert!(matches!(
-        unattached,
-        Err(SurfaceDrainageError::Input(ref msg)) if msg.contains("native-control-authority")
-    ));
+    assert_eq!(
+        attached.authority_of("OR1"),
+        Some(SwmmControlAuthority::NativeSwmm)
+    );
 
     // Valid native confirmation passes and records OR1 as natively controlled.
     let ok = DrainageControlAuthorityTable::build(

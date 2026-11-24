@@ -18,5 +18,5 @@ pub use error::DrainageError;
 pub use state::{
     FT_TO_M, FT3_TO_M3, SWMM_DRAINAGE_CONTRACT_VERSION, SWMM_DRAINAGE_SNAPSHOT_SCHEMA,
     SwmmContinuityLedger, SwmmDrainageSnapshotData, SwmmDrainageState, SwmmInpUnitSystem,
-    SwmmLinkState, SwmmNetworkSummary, SwmmNodeState,
+    SwmmLinkCommand, SwmmLinkState, SwmmNetworkSummary, SwmmNodeState,
 };

@@ -9,7 +9,7 @@
 //! | inlet, transition | `E = 2 (HW_4 - HW_3.5) X` |
 //! | inlet, submerged | `E = 2 D c X^2` |
 //! | outlet, drowned full barrel | `Q = A sqrt(2 g dH / k)`, so the bound is `1 / (2 dH)` |
-//! | outlet, other | `max(1, |dHW/dTW|) / E` from one march, see below |
+//! | outlet, other | `max(1, \|dHW/dTW\|) / E` from one march, see below |
 //!
 //! Inlet bounds take the lower end of the discharge enclosure for `X`, and the smallest `E`
 //! over the bands a lane may lie in. The inlet ignores the tailwater.

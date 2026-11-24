@@ -115,6 +115,33 @@ impl SwmmWorker {
         }
     }
 
+    /// Applies an external control setting command to `Link[link_index]`.
+    pub(crate) fn set_link_setting(
+        &mut self,
+        link_index: usize,
+        target_setting: f64,
+        impose_setting: bool,
+    ) -> Result<(), DrainageError> {
+        if !target_setting.is_finite() || !(0.0..=1.0).contains(&target_setting) {
+            return Err(DrainageError::input(format!(
+                "link {link_index} setting must be finite in [0.0, 1.0], got {target_setting}"
+            )));
+        }
+        let impose_flag = i32::from(impose_setting);
+        let cmd = format!(
+            "SET_LINK_SETTING {link_index} {} {impose_flag}",
+            encode_f64_hex(target_setting)
+        );
+        let reply = self.send_and_read_line(&cmd)?;
+        if reply == "OK" {
+            Ok(())
+        } else {
+            Err(DrainageError::process(format!(
+                "SWMM SET_LINK_SETTING failed for link {link_index}: {reply}"
+            )))
+        }
+    }
+
     /// Advances the worker by `dt_s` seconds and returns the reported simulation time in seconds.
     pub(crate) fn step(&mut self, dt_s: f64) -> Result<f64, DrainageError> {
         if !dt_s.is_finite() || dt_s <= 0.0 {

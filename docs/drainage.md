@@ -21,8 +21,8 @@
 
 ## Control Authority
 
-- Standalone `SwmmDrainage` admits `SwmmControlAuthority::NativeSwmm` only.
-- Hybrid `hydr`/SWMM control-authority modes reject at admission (`native-control-authority`) until attached through surface-drainage coupling.
+- `SwmmControlAuthority` supports `NativeSwmm`, `HydrCommandsNativeActuation`, `HydrActuatorImposedPosition`, and `PrescribedHydrTrajectory`.
+- `SwmmDrainage::trial_to_with_commands` applies external `SwmmLinkCommand` settings (`SET_LINK_SETTING`) before stepping the worker and rolls them back on trial drop.
 
 ## Transactional Steps and Complete Snapshots
 

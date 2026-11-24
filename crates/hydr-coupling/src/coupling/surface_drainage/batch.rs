@@ -4,7 +4,8 @@ use super::authority::DrainageControlAuthorityTable;
 use super::error::SurfaceDrainageError;
 use super::exchange::{
     ResolvedInlet, SurfaceDrainageTrial, aggregate_node_inflows, build_surface_exchange,
-    build_transfer_records, max_abs_diff, propose_transfers, relaxation,
+    build_transfer_records, max_abs_diff, propose_transfers, relaxation, resolve_link_commands,
+    validate_snapshot_header,
 };
 use super::inlet::SurfaceDrainageSetup;
 use super::state::{
@@ -211,12 +212,18 @@ where
     }
 
     /// Executes one conservative coupled trial step toward `requested_end_s`.
-    ///
-    /// Both components restore to the accepted state before each Picard iteration and on any
-    /// dropped trial. Call [`SurfaceDrainageTrial::accept`] to commit the step atomically.
     pub fn trial_to<'a>(
         &'a mut self,
         requested_end_s: f64,
+    ) -> Result<SurfaceDrainageTrial<'a, R>, SurfaceDrainageError> {
+        self.trial_to_with_commands(requested_end_s, &[])
+    }
+
+    /// Executes one conservative coupled trial step with external `hydr` link commands.
+    pub fn trial_to_with_commands<'a>(
+        &'a mut self,
+        requested_end_s: f64,
+        link_commands: &[(String, f64)],
     ) -> Result<SurfaceDrainageTrial<'a, R>, SurfaceDrainageError> {
         if !requested_end_s.is_finite() || requested_end_s <= self.time_s {
             return Err(SurfaceDrainageError::input(format!(
@@ -224,6 +231,7 @@ where
                 self.time_s
             )));
         }
+        let swmm_commands = resolve_link_commands(&self.authority, &self.drainage, link_commands)?;
         let cfg = self.setup.config;
         let forcing_end = self
             .surface
@@ -294,7 +302,9 @@ where
                     &avail_vol_m3,
                 );
                 let node_inflows = aggregate_node_inflows(&self.inlets, &transfers_m3, dt_s);
-                let drainage_trial = self.drainage.trial_to(end_s, &node_inflows)?;
+                let drainage_trial =
+                    self.drainage
+                        .trial_to_with_commands(end_s, &node_inflows, &swmm_commands)?;
                 let exchange =
                     build_surface_exchange(&device, &self.links, &self.inlets, &transfers_m3)?;
                 let completed = self
@@ -397,40 +407,7 @@ where
         &mut self,
         data: &SurfaceDrainageSnapshotData,
     ) -> Result<(), SurfaceDrainageError> {
-        if data.schema != SURFACE_DRAINAGE_SNAPSHOT_SCHEMA {
-            return Err(SurfaceDrainageError::input(format!(
-                "snapshot schema `{}` does not match `{SURFACE_DRAINAGE_SNAPSHOT_SCHEMA}`",
-                data.schema
-            )));
-        }
-        if data.contract != SURFACE_DRAINAGE_CONTRACT_VERSION {
-            return Err(SurfaceDrainageError::input(format!(
-                "snapshot contract `{}` does not match `{SURFACE_DRAINAGE_CONTRACT_VERSION}`",
-                data.contract
-            )));
-        }
-        if data.vertical_datum != self.setup.vertical_datum {
-            return Err(SurfaceDrainageError::input(format!(
-                "snapshot vertical_datum `{}` does not match `{}`",
-                data.vertical_datum, self.setup.vertical_datum
-            )));
-        }
-        if data.cumulative_inlet_transfers_m3.len() != self.inlets.len()
-            || !data
-                .cumulative_inlet_transfers_m3
-                .iter()
-                .all(|v| v.is_finite())
-        {
-            return Err(SurfaceDrainageError::input(
-                "snapshot cumulative_inlet_transfers_m3 length or finiteness invalid",
-            ));
-        }
-        if (data.drainage.time_s - data.time_s).abs() > 1e-6 {
-            return Err(SurfaceDrainageError::input(format!(
-                "snapshot drainage time_s ({}) disagrees with coordinator time_s ({})",
-                data.drainage.time_s, data.time_s
-            )));
-        }
+        validate_snapshot_header(data, &self.setup.vertical_datum, self.inlets.len())?;
 
         let backup_surface = self.surface.snapshot();
         let backup_drainage = self.drainage.snapshot_data();

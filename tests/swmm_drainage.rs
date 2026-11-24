@@ -166,7 +166,7 @@ fn swmm_drainage_admission_rejects_invalid_definitions_and_missing_worker() {
     );
     assert!(matches!(empty_datum, Err(DrainageError::Input(_))));
 
-    let unattached_authority = SwmmDrainageDefinition::new(
+    let hybrid_def = SwmmDrainageDefinition::new(
         inp.clone(),
         "NAVD88",
         SwmmSurchargeMethod::Extran,
@@ -175,7 +175,7 @@ fn swmm_drainage_admission_rejects_invalid_definitions_and_missing_worker() {
         PROVENANCE,
         SURCHARGE_EVIDENCE,
     );
-    assert!(matches!(unattached_authority, Err(DrainageError::Input(_))));
+    assert!(hybrid_def.is_ok());
 
     let missing_bin_def = SwmmDrainageDefinition::new(
         inp,

@@ -150,6 +150,24 @@ int main(void)
                 printf("OK\n");
             }
             fflush(stdout);
+        } else if (strncmp(line, "SET_LINK_SETTING ", 17) == 0) {
+            int idx = -1;
+            char hex[32];
+            int impose = -1;
+            double target = 0.0;
+            if (!opened || sscanf(line + 17, "%d %31s %d", &idx, hex, &impose) != 3
+                || idx < 0 || idx >= Nobjects[LINK] || !parse_hex_dbl(hex, &target)
+                || target < 0.0 || target > 1.0 || (impose != 0 && impose != 1)) {
+                printf("ERR invalid SET_LINK_SETTING\n");
+            } else {
+                Link[idx].targetSetting = target;
+                if (impose) {
+                    Link[idx].setting = target;
+                    Link[idx].timeLastSet = ElapsedTime;
+                }
+                printf("OK\n");
+            }
+            fflush(stdout);
         } else if (strncmp(line, "STEP ", 5) == 0) {
             double dt_s = 0.0;
             if (!opened || !parse_hex_dbl(line + 5, &dt_s) || dt_s <= 0.0) {
@@ -158,14 +176,17 @@ int main(void)
                 continue;
             }
             double realRouteStep = RouteStep;
+            double realMinRouteStep = MinRouteStep;
             double targetMs = NewRoutingTime + 1000.0 * dt_s;
             if (targetMs > TotalDuration) targetMs = TotalDuration;
             RoutingDuration = targetMs;
             if (dt_s < RouteStep) RouteStep = dt_s;
+            if (dt_s < MinRouteStep) MinRouteStep = dt_s;
             while (NewRoutingTime < RoutingDuration && !ErrorCode) {
                 execRouting();
             }
             RouteStep = realRouteStep;
+            MinRouteStep = realMinRouteStep;
             RoutingDuration = TotalDuration;
             ElapsedTime = NewRoutingTime / MSECperDAY;
             if (ErrorCode) {

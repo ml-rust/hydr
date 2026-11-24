@@ -128,11 +128,13 @@ C2  J2  OUT1  200.0  0.013  0.0  0.0  0.0  0.0
 
 [ORIFICES]
 OR1  J1  J2  SIDE  0.5  0.65  NO  0.05
+OR2  J1  J2  SIDE  0.5  0.65  NO  0.05
 
 [XSECTIONS]
 C1   CIRCULAR  2.0  0  0  0  1
 C2   CIRCULAR  2.0  0  0  0  1
 OR1  CIRCULAR  1.0  0  0  0
+OR2  CIRCULAR  1.0  0  0  0
 
 [CONTROLS]
 RULE R_OR1
@@ -415,6 +417,38 @@ fn surface_drainage_capture_surcharge_rollback_and_restart_conserve_mass() -> Te
         (surcharged_surface_vol - (-surcharge_transfer)).abs() < 1e-9,
         "surcharged surface volume ({surcharged_surface_vol} m³) must equal -transfer ({} m³)",
         -surcharge_transfer
+    );
+
+    // Part C: Live hydr-actuated control on OR2 (HydrActuatorImposedPosition) + native rejection on OR1.
+    let hydr_ctrl_setup = capture_setup(
+        5.0,
+        "NAVD88",
+        vec![DrainageControlClaim {
+            link_id: "OR2".to_string(),
+            authority: SwmmControlAuthority::HydrActuatorImposedPosition,
+        }],
+    );
+    let mut controlled = SurfaceDrainageBatch::new(
+        make_surface(5.0, 0.6, 60.0)?,
+        open_drainage(capture_network_inp(), SwmmSurchargeMethod::Extran)?,
+        hydr_ctrl_setup,
+    )?;
+    // Commanding OR1 (owned by native SWMM [CONTROLS]) must reject.
+    assert!(matches!(
+        controlled.trial_to_with_commands(5.0, &[("OR1".to_string(), 0.2)]),
+        Err(SurfaceDrainageError::Input(ref msg)) if msg.contains("duplicate-parameter-authority")
+    ));
+    // Commanding OR2 (owned by HydrActuatorImposedPosition) imposes setting = 0.35.
+    let trial = controlled.trial_to_with_commands(5.0, &[("OR2".to_string(), 0.35)])?;
+    trial.accept();
+    let or2_idx = controlled
+        .drainage()
+        .link_index("OR2")
+        .ok_or("missing OR2")?;
+    let or2_setting = controlled.drainage().state().links[or2_idx].setting;
+    assert!(
+        (or2_setting - 0.35).abs() < 1e-12,
+        "imposed hydr command on OR2 must set SWMM Link.setting = 0.35, got {or2_setting}"
     );
 
     Ok(())

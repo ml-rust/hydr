@@ -68,12 +68,6 @@ static SURFACE_DRAINAGE: ComponentCapabilities = ComponentCapabilities {
             SURFACE_DRAINAGE_DOC,
         ),
         unsupported(
-            "native-control-authority",
-            UnsupportedReason::RejectedByAdmission,
-            "Unattached hybrid hydr/SWMM link actuation modes reject at admission; native SWMM [CONTROLS] own internal drainage devices.",
-            SURFACE_DRAINAGE_DOC,
-        ),
-        unsupported(
             "gpu-execution",
             UnsupportedReason::OutsideModel,
             "The nested pinned EPA SWMM v5.2.4 worker executes on host CPU only.",

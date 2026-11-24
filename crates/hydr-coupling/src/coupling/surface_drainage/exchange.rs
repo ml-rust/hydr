@@ -1,10 +1,16 @@
 //! Inlet transfer proposals, donor limiting, and surface/SWMM exchange assembly.
 
+use super::authority::DrainageControlAuthorityTable;
 use super::batch::SurfaceDrainageBatch;
 use super::error::SurfaceDrainageError;
 use super::inlet::{SurfaceDrainageInlet, inlet_discharge_m3_per_s};
-use super::state::{SurfaceDrainageInletTransfer, SurfaceDrainageStepDiagnostics};
-use crate::drainage::SwmmDrainageSnapshotData;
+use super::state::{
+    SURFACE_DRAINAGE_CONTRACT_VERSION, SURFACE_DRAINAGE_SNAPSHOT_SCHEMA,
+    SurfaceDrainageInletTransfer, SurfaceDrainageSnapshotData, SurfaceDrainageStepDiagnostics,
+};
+use crate::drainage::{
+    SwmmControlAuthority, SwmmDrainage, SwmmDrainageSnapshotData, SwmmLinkCommand,
+};
 use crate::solver::Solver;
 use hydr_solver::internal::{ExchangeSource, SurfaceLinks};
 use numr::dtype::DType;
@@ -133,6 +139,91 @@ pub(super) fn relaxation(iter: usize) -> f64 {
         4..=9 => 0.25,
         _ => 0.125,
     }
+}
+
+/// Validates and converts `(link_id, target_setting)` commands against exclusive authority.
+pub(super) fn resolve_link_commands(
+    authority: &DrainageControlAuthorityTable,
+    drainage: &SwmmDrainage,
+    link_commands: &[(String, f64)],
+) -> Result<Vec<SwmmLinkCommand>, SurfaceDrainageError> {
+    let mut out = Vec::with_capacity(link_commands.len());
+    for (link_id, setting) in link_commands {
+        if !setting.is_finite() || !(0.0..=1.0).contains(setting) {
+            return Err(SurfaceDrainageError::input(format!(
+                "link `{link_id}` command setting must be finite in [0.0, 1.0], got {setting}"
+            )));
+        }
+        let Some(owner) = authority.authority_of(link_id) else {
+            return Err(SurfaceDrainageError::input(format!(
+                "duplicate-parameter-authority: link `{link_id}` has no declared external hydr control claim"
+            )));
+        };
+        let impose_setting = match owner {
+            SwmmControlAuthority::NativeSwmm => {
+                return Err(SurfaceDrainageError::input(format!(
+                    "duplicate-parameter-authority: link `{link_id}` is owned by native SWMM [CONTROLS]; external hydr command rejected"
+                )));
+            }
+            SwmmControlAuthority::HydrCommandsNativeActuation => false,
+            SwmmControlAuthority::HydrActuatorImposedPosition
+            | SwmmControlAuthority::PrescribedHydrTrajectory => true,
+        };
+        let Some(link_index) = drainage.link_index(link_id) else {
+            return Err(SurfaceDrainageError::input(format!(
+                "link `{link_id}` not found in open SWMM drainage network"
+            )));
+        };
+        out.push(SwmmLinkCommand {
+            link_index,
+            target_setting: *setting,
+            impose_setting,
+        });
+    }
+    Ok(out)
+}
+
+/// Checks schema, contract, vertical datum, transfer vector, and drainage time consistency.
+pub(super) fn validate_snapshot_header(
+    data: &SurfaceDrainageSnapshotData,
+    expected_datum: &str,
+    inlet_count: usize,
+) -> Result<(), SurfaceDrainageError> {
+    if data.schema != SURFACE_DRAINAGE_SNAPSHOT_SCHEMA {
+        return Err(SurfaceDrainageError::input(format!(
+            "snapshot schema `{}` does not match `{SURFACE_DRAINAGE_SNAPSHOT_SCHEMA}`",
+            data.schema
+        )));
+    }
+    if data.contract != SURFACE_DRAINAGE_CONTRACT_VERSION {
+        return Err(SurfaceDrainageError::input(format!(
+            "snapshot contract `{}` does not match `{SURFACE_DRAINAGE_CONTRACT_VERSION}`",
+            data.contract
+        )));
+    }
+    if data.vertical_datum != expected_datum {
+        return Err(SurfaceDrainageError::input(format!(
+            "snapshot vertical_datum `{}` does not match `{expected_datum}`",
+            data.vertical_datum
+        )));
+    }
+    if data.cumulative_inlet_transfers_m3.len() != inlet_count
+        || !data
+            .cumulative_inlet_transfers_m3
+            .iter()
+            .all(|v| v.is_finite())
+    {
+        return Err(SurfaceDrainageError::input(
+            "snapshot cumulative_inlet_transfers_m3 length or finiteness invalid",
+        ));
+    }
+    if (data.drainage.time_s - data.time_s).abs() > 1e-3 {
+        return Err(SurfaceDrainageError::input(format!(
+            "snapshot drainage time_s ({}) disagrees with coordinator time_s ({})",
+            data.drainage.time_s, data.time_s
+        )));
+    }
+    Ok(())
 }
 
 /// Uncommitted conservative coupled step of a [`super::SurfaceDrainageBatch`].

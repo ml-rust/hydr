@@ -49,11 +49,23 @@ static SWMM_DRAINAGE: ComponentCapabilities = ComponentCapabilities {
         },
     ],
     sources: &[SourceKind::ExchangeVolume],
-    options: &[OptionSet {
-        id: "surcharge-method",
-        values: &["extran", "slot"],
-        default: None,
-    }],
+    options: &[
+        OptionSet {
+            id: "surcharge-method",
+            values: &["extran", "slot"],
+            default: None,
+        },
+        OptionSet {
+            id: "control-authority",
+            values: &[
+                "native-swmm",
+                "hydr-commands-native-actuation",
+                "hydr-actuator-imposed-position",
+                "prescribed-hydr-trajectory",
+            ],
+            default: None,
+        },
+    ],
     nested: &[],
     attachable_to: &[ComponentId::SurfaceDrainage],
     unsupported: &[
@@ -73,12 +85,6 @@ static SWMM_DRAINAGE: ComponentCapabilities = ComponentCapabilities {
             "tampered-snapshot",
             UnsupportedReason::RejectedByAdmission,
             "Snapshot import rejects mismatched schema, contract, .inp SHA-256, datum, surcharge method, or payload digest.",
-            DRAINAGE_DOC,
-        ),
-        unsupported(
-            "native-control-authority",
-            UnsupportedReason::NotAttached,
-            "Standalone drainage admits NativeSwmm control authority only; coupled hydr/SWMM authority attaches in surface-drainage coupling.",
             DRAINAGE_DOC,
         ),
         unsupported(
