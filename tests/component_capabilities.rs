@@ -131,6 +131,9 @@ mod culverts;
 #[path = "component_capabilities/drainage.rs"]
 mod drainage;
 
+#[path = "component_capabilities/surface_drainage.rs"]
+mod surface_drainage;
+
 #[path = "component_capabilities/declarations.rs"]
 mod declarations;
 
@@ -446,6 +449,8 @@ const CORRECTLY_ROUNDED_CALLERS: &[ComponentId] = &[
     ComponentId::Culvert,
     // Bank weir, host stall forecast `log`, and nested components.
     ComponentId::SurfaceChannels,
+    // Nests `SurfaceSolver`.
+    ComponentId::SurfaceDrainage,
     // Nested callers only.
     ComponentId::Subcatchment,
     ComponentId::ChannelPools,

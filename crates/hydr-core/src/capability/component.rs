@@ -46,6 +46,8 @@ pub enum ComponentId {
     Culvert,
     /// Pinned EPA SWMM v5.2.4 piped drainage network solver.
     SwmmDrainage,
+    /// 2D surface coupled to a pinned EPA SWMM v5.2.4 piped drainage network.
+    SurfaceDrainage,
 }
 
 impl ComponentId {
@@ -73,6 +75,7 @@ impl ComponentId {
             Self::CulvertOutlet => "culvert-outlet",
             Self::Culvert => "culvert",
             Self::SwmmDrainage => "swmm-drainage",
+            Self::SurfaceDrainage => "surface-drainage",
         }
     }
 }
@@ -106,6 +109,7 @@ mod tests {
             ComponentId::CulvertOutlet,
             ComponentId::Culvert,
             ComponentId::SwmmDrainage,
+            ComponentId::SurfaceDrainage,
         ];
         assert_ids(&all.map(|c| c.id()));
     }

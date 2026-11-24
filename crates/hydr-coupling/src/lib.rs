@@ -4,6 +4,7 @@
 
 use hydr_channel::channel;
 use hydr_core::{forcing, numerics};
+use hydr_drainage::drainage;
 use hydr_runoff::runoff;
 use hydr_solver::solver;
 use hydr_storage::storage;

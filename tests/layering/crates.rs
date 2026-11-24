@@ -25,6 +25,7 @@ const CRATES: &[(&str, &[&str])] = &[
             "hydr-soil",
             "hydr-runoff",
             "hydr-channel",
+            "hydr-drainage",
             "hydr-solver",
         ],
     ),

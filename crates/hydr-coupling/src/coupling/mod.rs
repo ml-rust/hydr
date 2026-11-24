@@ -66,3 +66,13 @@ pub use surface_channels::{
     SurfaceChannelStructureLedger, SurfaceChannelStructureTransfer, SurfaceChannelTrial,
     SurfaceChannelWaterBalance, SurfaceChannelWeirRegime, surface_channel_capabilities,
 };
+
+pub mod surface_drainage;
+#[doc(no_inline)]
+pub use surface_drainage::{
+    DrainageControlAuthorityTable, DrainageControlClaim, SURFACE_DRAINAGE_CONTRACT_VERSION,
+    SURFACE_DRAINAGE_SNAPSHOT_SCHEMA, SurfaceDrainageBatch, SurfaceDrainageConfig,
+    SurfaceDrainageError, SurfaceDrainageInlet, SurfaceDrainageInletTransfer, SurfaceDrainageSetup,
+    SurfaceDrainageSnapshotData, SurfaceDrainageStepDiagnostics, SurfaceDrainageTrial,
+    inlet_discharge_m3_per_s, surface_drainage_capabilities,
+};

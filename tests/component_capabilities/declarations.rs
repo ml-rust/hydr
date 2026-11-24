@@ -109,5 +109,10 @@ pub fn declarations() -> Vec<Declared> {
             contract: Some(hydr::drainage::SWMM_DRAINAGE_CONTRACT_VERSION),
             snapshot_schema: Some(hydr::drainage::SWMM_DRAINAGE_SNAPSHOT_SCHEMA),
         },
+        Declared {
+            capabilities: hydr::coupling::surface_drainage_capabilities(),
+            contract: Some(hydr::coupling::SURFACE_DRAINAGE_CONTRACT_VERSION),
+            snapshot_schema: Some(hydr::coupling::SURFACE_DRAINAGE_SNAPSHOT_SCHEMA),
+        },
     ]
 }

@@ -148,8 +148,8 @@ pub(super) const UNSUPPORTED: &[Unsupported] = &[
     unsupported(
         "native-control-authority",
         UnsupportedReason::NotAttached,
-        "Native SWMM drainage control authority is not attached; it joins the authority table with the drainage adapter.",
-        SURFACE_CHANNELS_DOC,
+        "Native SWMM drainage control authority attaches through surface-drainage coupling (`SurfaceDrainageBatch`), not surface-channels.",
+        "docs/surface-drainage.md",
     ),
     unsupported(
         "pool-capacity-exceeded",

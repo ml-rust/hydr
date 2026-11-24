@@ -116,7 +116,7 @@ static CAPABILITIES: ComponentCapabilities = ComponentCapabilities {
     ],
     options: &[],
     nested: &[ComponentId::Soil],
-    attachable_to: &[ComponentId::SurfaceChannels],
+    attachable_to: &[ComponentId::SurfaceChannels, ComponentId::SurfaceDrainage],
     unsupported: &[
         Unsupported {
             id: "stage-outside-wet-subcritical",
