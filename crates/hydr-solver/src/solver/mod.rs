@@ -33,7 +33,8 @@ pub use advance::{AdvanceReport, AdvanceStatus};
 pub use capabilities::{CONTRACT_VERSION, surface_solver_capabilities};
 pub use engine::Solver;
 pub use f32_profile::{
-    SURFACE_SOLVER_F32_CONTRACT_VERSION, SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA, SurfaceSolverF32,
+    SURFACE_SOLVER_F32_CONTRACT_VERSION, SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA, SurfaceF32Boundaries,
+    SurfaceF32CoastalForcing, SurfaceF32SideBoundary, SurfaceF32Soil, SurfaceSolverF32,
     SurfaceSolverF32Config, SurfaceSolverF32Ledger, SurfaceSolverF32SnapshotData,
     surface_solver_f32_capabilities,
 };

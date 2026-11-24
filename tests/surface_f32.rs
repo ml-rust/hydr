@@ -12,6 +12,7 @@ use hydr::grid::CartesianGrid;
 use hydr::model::{CellState, Domain, FlowState, SpatialReference};
 use hydr::solver::{
     AdvanceStatus, BoundaryConditions, ForcingInterval, ForcingSchedule, SolverConfig,
+    SurfaceF32Boundaries, SurfaceF32CoastalForcing, SurfaceF32SideBoundary, SurfaceF32Soil,
     SurfaceSolverF32, SurfaceSolverF32Config,
 };
 use impervious::impervious_solver;
@@ -235,6 +236,108 @@ fn selected_wgpu_client_executes_surface_solver_f32() -> TestResult {
     assert!(
         max_diff < 1e-5,
         "WGPU F32 diverged from CPU F32: max |dh| = {max_diff}"
+    );
+    Ok(())
+}
+
+#[test]
+fn surface_solver_f32_open_boundaries_green_ampt_and_coastal_forcing() -> TestResult {
+    // 1. Open boundaries: Stage(1.5) west + Transmissive east on a 5x3 flat basin (init h=1.0 m).
+    let (domain_b, flow_b) = make_basin(5, 3, vec![0.0; 15], vec![1.0; 15])?;
+    let mut open = SurfaceSolverF32::<Runtime>::new(
+        runtime::client(),
+        domain_b,
+        flow_b,
+        SurfaceSolverF32Config::default(),
+    )?
+    .with_boundaries(SurfaceF32Boundaries {
+        west: SurfaceF32SideBoundary::Stage(1.5),
+        east: SurfaceF32SideBoundary::Transmissive,
+        south: SurfaceF32SideBoundary::Wall,
+        north: SurfaceF32SideBoundary::Wall,
+    })?;
+    let z15 = vec![0.0_f32; 15];
+    open.advance_to(8.0, &z15, &z15, &z15, 5_000)?;
+    let ledger_b = open.ledger();
+    assert!(
+        ledger_b.boundary_inflow_m3 > 10.0,
+        "expected west Stage(1.5) boundary inflow, got {}",
+        ledger_b.boundary_inflow_m3
+    );
+    assert!(
+        ledger_b.boundary_outflow_m3 > 1.0,
+        "expected east Transmissive boundary outflow, got {}",
+        ledger_b.boundary_outflow_m3
+    );
+    assert!(
+        ledger_b.residual_m3.abs() < 5e-2,
+        "open-boundary water balance residual too large: {}",
+        ledger_b.residual_m3
+    );
+
+    // 2. Modified Green-Ampt infiltration + bit-identical snapshot/restore.
+    let (domain_s, flow_s) = make_basin(4, 4, vec![0.0; 16], vec![0.0; 16])?;
+    let soil = SurfaceF32Soil::uniform(16, 1e-4, 0.15, 0.30);
+    let mut infil = SurfaceSolverF32::<Runtime>::new(
+        runtime::client(),
+        domain_s.clone(),
+        flow_s.clone(),
+        SurfaceSolverF32Config::default(),
+    )?
+    .with_soil(&soil)?;
+    let z16 = vec![0.0_f32; 16];
+    let rain16 = vec![5e-4_f32; 16];
+    infil.advance_to(20.0, &rain16, &z16, &z16, 5_000)?;
+    let snap = infil.snapshot_data()?;
+    infil.advance_to(40.0, &rain16, &z16, &z16, 5_000)?;
+    assert!(
+        infil.ledger().infiltration_m3 > 1.0,
+        "expected positive Green-Ampt infiltration, got {}",
+        infil.ledger().infiltration_m3
+    );
+    assert!(
+        infil.ledger().residual_m3.abs() < 1e-2,
+        "Green-Ampt mass balance residual too large: {}",
+        infil.ledger().residual_m3
+    );
+
+    let mut restored = SurfaceSolverF32::<Runtime>::new(
+        runtime::client(),
+        domain_s,
+        flow_s,
+        SurfaceSolverF32Config::default(),
+    )?
+    .with_soil(&soil)?;
+    restored.restore_data(&snap)?;
+    restored.advance_to(40.0, &rain16, &z16, &z16, 5_000)?;
+    assert_eq!(restored.state()?, infil.state()?);
+    assert_eq!(
+        restored.cumulative_infiltration_m()?,
+        infil.cumulative_infiltration_m()?
+    );
+
+    // 3. Coastal forcing: eastward wind + Northern Hemisphere Coriolis (f > 0) deflects flow
+    // eastward (qx > 0) and southward (qy < 0).
+    let (domain_c, flow_c) = make_basin(4, 4, vec![0.0; 16], vec![2.0; 16])?;
+    let mut coast = SurfaceSolverF32::<Runtime>::new(
+        runtime::client(),
+        domain_c,
+        flow_c,
+        SurfaceSolverF32Config::default(),
+    )?
+    .with_coastal_forcing(SurfaceF32CoastalForcing {
+        wind_x_m_per_s: 20.0,
+        wind_y_m_per_s: 0.0,
+        coriolis_f_per_s: 1e-3,
+        ..SurfaceF32CoastalForcing::default()
+    })?;
+    coast.advance_to(10.0, &z16, &z16, &z16, 5_000)?;
+    let center = coast.state()?[5];
+    assert!(
+        center.qx > 1e-3 && center.qy < -1e-6,
+        "expected eastward wind + southward Coriolis deflection, got qx={}, qy={}",
+        center.qx,
+        center.qy
     );
     Ok(())
 }

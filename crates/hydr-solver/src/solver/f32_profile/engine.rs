@@ -1,6 +1,10 @@
 //! Opt-in `F32` 2D shallow-water solver engine for CPU, CUDA, and WGPU.
 
+use super::boundaries::{
+    SurfaceF32Boundaries, SurfaceF32CoastalForcing, apply_coastal_forcing_f32,
+};
 use super::flux::{apply_manning_f32, sweep_x, sweep_y};
+use super::soil::{SoilStateF32, SurfaceF32Soil};
 use super::state::{
     SURFACE_SOLVER_F32_CONTRACT_VERSION, SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA,
     SurfaceSolverF32Config, SurfaceSolverF32Ledger, SurfaceSolverF32SnapshotData,
@@ -14,12 +18,16 @@ use numr::tensor::Tensor;
 
 /// Opt-in 2D shallow-water surface solver executing natively in `DType::F32`.
 ///
-/// Supports `CpuRuntime`, `CudaRuntime`, and `WgpuRuntime` (Vulkan, Metal, DX12).
-/// Use [`super::super::Solver`] when certified `F64` precision is required.
+/// Supports `CpuRuntime`, `CudaRuntime`, and `WgpuRuntime` (Vulkan, Metal, DX12), with open
+/// exterior boundaries, Modified Green-Ampt soil infiltration, and coastal wind/Coriolis/pressure
+/// forcing. Use [`super::super::Solver`] when certified `F64` precision is required.
 pub struct SurfaceSolverF32<R: Runtime<DType = DType>> {
     client: R::Client,
     domain: Domain,
     config: SurfaceSolverF32Config,
+    boundaries: SurfaceF32Boundaries,
+    coastal: SurfaceF32CoastalForcing,
+    soil: Option<SoilStateF32<R>>,
     nx: usize,
     ny: usize,
     dx: f32,
@@ -27,8 +35,6 @@ pub struct SurfaceSolverF32<R: Runtime<DType = DType>> {
     bed: Tensor<R>,
     manning_sq: Tensor<R>,
     active: Tensor<R>,
-    zero_col: Tensor<R>,
-    zero_row: Tensor<R>,
     h: Tensor<R>,
     qx: Tensor<R>,
     qy: Tensor<R>,
@@ -47,9 +53,9 @@ where
         + ShapeOps<R>
         + UnaryOps<R>,
 {
-    /// Constructs an `F32` 2D shallow-water solver on `client`.
-    ///
-    /// Rejects runtimes that do not compute `DType::F32` or invalid `config` values.
+    /// Constructs an `F32` 2D shallow-water solver on `client` with impermeable walls and
+    /// impervious land. Attach open boundaries, Green-Ampt soil, or coastal forcing via
+    /// [`Self::with_boundaries`], [`Self::with_soil`], and [`Self::with_coastal_forcing`].
     pub fn new(
         client: R::Client,
         domain: Domain,
@@ -97,29 +103,64 @@ where
             bed: Tensor::<R>::from_slice(&bed_vec, &shape, device)?,
             manning_sq: Tensor::<R>::from_slice(&manning_sq_vec, &shape, device)?,
             active: Tensor::<R>::from_slice(&active_vec, &shape, device)?,
-            zero_col: Tensor::<R>::zeros(&[ny, 1], DType::F32, device)?,
-            zero_row: Tensor::<R>::zeros(&[1, nx], DType::F32, device)?,
             h: Tensor::<R>::from_slice(&h_vec, &shape, device)?,
             qx: Tensor::<R>::from_slice(&qx_vec, &shape, device)?,
             qy: Tensor::<R>::from_slice(&qy_vec, &shape, device)?,
             client,
             domain,
             config,
+            boundaries: SurfaceF32Boundaries::impermeable_walls(),
+            coastal: SurfaceF32CoastalForcing::default(),
+            soil: None,
             nx,
             ny,
             dx: dx_f64 as f32,
             dy: dy_f64 as f32,
             time_s: 0.0,
             accepted_steps: 0,
-            ledger: SurfaceSolverF32Ledger {
-                initial_storage_m3,
-                final_storage_m3: initial_storage_m3,
-                rain_m3: 0.0,
-                evaporation_m3: 0.0,
-                withdrawal_m3: 0.0,
-                residual_m3: 0.0,
-            },
+            ledger: SurfaceSolverF32Ledger::zero(initial_storage_m3),
         })
+    }
+
+    /// Configures exterior open boundaries (stage, discharge, transmissive, or wall).
+    pub fn with_boundaries(
+        mut self,
+        boundaries: SurfaceF32Boundaries,
+    ) -> Result<Self, EngineError> {
+        self.set_boundaries(boundaries)?;
+        Ok(self)
+    }
+
+    /// Updates exterior boundaries between intervals (e.g., tidal stage or hydrograph discharge).
+    pub fn set_boundaries(&mut self, boundaries: SurfaceF32Boundaries) -> Result<(), EngineError> {
+        boundaries.validate()?;
+        self.boundaries = boundaries;
+        Ok(())
+    }
+
+    /// Attaches Modified Green-Ampt soil infiltration in `DType::F32`.
+    pub fn with_soil(mut self, soil: &SurfaceF32Soil) -> Result<Self, EngineError> {
+        self.soil = Some(SoilStateF32::new(&self.client, soil, self.ny, self.nx)?);
+        Ok(self)
+    }
+
+    /// Configures opt-in coastal wind stress, Coriolis, and atmospheric pressure gradient forcing.
+    pub fn with_coastal_forcing(
+        mut self,
+        coastal: SurfaceF32CoastalForcing,
+    ) -> Result<Self, EngineError> {
+        self.set_coastal_forcing(coastal)?;
+        Ok(self)
+    }
+
+    /// Updates coastal wind/Coriolis/pressure forcing between intervals.
+    pub fn set_coastal_forcing(
+        &mut self,
+        coastal: SurfaceF32CoastalForcing,
+    ) -> Result<(), EngineError> {
+        coastal.validate()?;
+        self.coastal = coastal;
+        Ok(())
     }
 
     /// Domain geometry.
@@ -130,6 +171,16 @@ where
     /// Numerical configuration.
     pub fn config(&self) -> SurfaceSolverF32Config {
         self.config
+    }
+
+    /// Active exterior boundary configuration.
+    pub fn boundaries(&self) -> SurfaceF32Boundaries {
+        self.boundaries
+    }
+
+    /// Active coastal momentum forcing.
+    pub fn coastal_forcing(&self) -> SurfaceF32CoastalForcing {
+        self.coastal
     }
 
     /// Current accepted simulation time in seconds.
@@ -145,6 +196,14 @@ where
     /// Current cumulative SI water-balance ledger.
     pub fn ledger(&self) -> SurfaceSolverF32Ledger {
         self.ledger
+    }
+
+    /// Returns cumulative Modified Green-Ampt infiltrated depth (`m`) per cell if soil is attached.
+    pub fn cumulative_infiltration_m(&self) -> Result<Option<Vec<f32>>, EngineError> {
+        match &self.soil {
+            Some(soil) => Ok(Some(soil.cumulative_to_vec()?)),
+            None => Ok(None),
+        }
     }
 
     /// Copies the accepted depth and discharge fields back to host `CellState`s.
@@ -249,18 +308,25 @@ where
             }
             let dt_f32 = dt as f32;
 
-            // 1. Sources (rain -> capped evap -> capped withdrawal) in F32.
+            // 1. Sources (rain -> optional Green-Ampt infiltration -> capped evap -> capped withdrawal).
             let h_rain = self
                 .client
                 .add(&self.h, &self.client.mul_scalar(rain_t, f64::from(dt_f32))?)?;
+            let (h_soil, infil_act, next_soil_cum) = match &self.soil {
+                Some(soil) => {
+                    let (hs, inf, cum) = soil.step(&self.client, &h_rain, &self.active, dt_f32)?;
+                    (hs, Some(inf), Some(cum))
+                }
+                None => (h_rain, None, None),
+            };
             let evap_dem = self.client.mul_scalar(evap_t, f64::from(dt_f32))?;
-            let evap_act = self.client.minimum(&h_rain, &evap_dem)?;
-            let h_evap = self.client.sub(&h_rain, &evap_act)?;
+            let evap_act = self.client.minimum(&h_soil, &evap_dem)?;
+            let h_evap = self.client.sub(&h_soil, &evap_act)?;
             let with_dem = self.client.mul_scalar(with_t, f64::from(dt_f32))?;
             let with_act = self.client.minimum(&h_evap, &with_dem)?;
             let h_src = self.client.sub(&h_evap, &with_act)?;
 
-            // 2. X and Y HLL sweeps + hydrostatic bed corrections.
+            // 2. X and Y HLL sweeps + hydrostatic bed corrections + open boundaries.
             let sx = sweep_x(
                 &self.client,
                 &h_src,
@@ -268,8 +334,10 @@ where
                 &self.qy,
                 &self.bed,
                 &self.active,
-                &self.zero_col,
+                self.boundaries.west,
+                self.boundaries.east,
                 self.dx,
+                self.dy,
                 self.config.gravity,
                 self.config.dry_depth_m,
             )?;
@@ -280,7 +348,9 @@ where
                 &self.qy,
                 &self.bed,
                 &self.active,
-                &self.zero_row,
+                self.boundaries.south,
+                self.boundaries.north,
+                self.dx,
                 self.dy,
                 self.config.gravity,
                 self.config.dry_depth_m,
@@ -320,12 +390,22 @@ where
                 &self.client.mul_scalar(&dqy_tot, f64::from(dt_f32))?,
             )?;
 
-            // 5. Semi-implicit Manning friction.
-            let (qx_next, qy_next) = apply_manning_f32(
+            // 5. Coastal wind/pressure/Coriolis forcing + semi-implicit Manning friction.
+            let (qx_coast, qy_coast) = apply_coastal_forcing_f32(
                 &self.client,
                 &h_clean,
                 &qx_adv,
                 &qy_adv,
+                &self.active,
+                self.coastal,
+                dt_f32,
+                self.config.dry_depth_m,
+            )?;
+            let (qx_next, qy_next) = apply_manning_f32(
+                &self.client,
+                &h_clean,
+                &qx_coast,
+                &qy_coast,
                 &self.manning_sq,
                 dt_f32,
                 self.config.gravity,
@@ -340,20 +420,32 @@ where
                 f64::from(self.client.sum(&evap_act, &[0, 1], false)?.item::<f32>()?) * area;
             let step_with =
                 f64::from(self.client.sum(&with_act, &[0, 1], false)?.item::<f32>()?) * area;
+            let step_infil = match &infil_act {
+                Some(inf) => f64::from(self.client.sum(inf, &[0, 1], false)?.item::<f32>()?) * area,
+                None => 0.0,
+            };
+            let step_b_in = (sx.boundary_in_m3_per_s + sy.boundary_in_m3_per_s) * dt;
+            let step_b_out = (sx.boundary_out_m3_per_s + sy.boundary_out_m3_per_s) * dt;
             let final_storage =
                 f64::from(self.client.sum(&h_clean, &[0, 1], false)?.item::<f32>()?) * area;
 
             self.h = h_clean;
             self.qx = qx_next;
             self.qy = qy_next;
+            if let (Some(soil), Some(cum)) = (&mut self.soil, next_soil_cum) {
+                soil.set_cumulative(cum);
+            }
             self.time_s += dt;
             self.accepted_steps = self.accepted_steps.saturating_add(1);
-            self.ledger.rain_m3 += step_rain;
-            self.ledger.evaporation_m3 += step_evap;
-            self.ledger.withdrawal_m3 += step_with;
-            self.ledger.final_storage_m3 = final_storage;
-            self.ledger.residual_m3 = (final_storage - self.ledger.initial_storage_m3)
-                - (self.ledger.rain_m3 - self.ledger.evaporation_m3 - self.ledger.withdrawal_m3);
+            self.ledger.record_step(
+                step_rain,
+                step_evap,
+                step_with,
+                step_infil,
+                step_b_in,
+                step_b_out,
+                final_storage,
+            );
             return Ok(());
         }
 
@@ -373,41 +465,25 @@ where
             h_m: self.h.try_to_vec::<f32>()?,
             qx_m2_per_s: self.qx.try_to_vec::<f32>()?,
             qy_m2_per_s: self.qy.try_to_vec::<f32>()?,
+            cumulative_infiltration_m: self.cumulative_infiltration_m()?,
             ledger: self.ledger,
         })
     }
 
     /// Atomically restores a previously exported `F32` checkpoint.
     pub fn restore_data(&mut self, data: &SurfaceSolverF32SnapshotData) -> Result<(), EngineError> {
-        let reject = |msg: String| EngineError::rejected("surface solver f32 snapshot", msg);
-        if data.schema != SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA {
-            return Err(reject(format!(
-                "schema `{}` does not match `{SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA}`",
-                data.schema
-            )));
-        }
-        if data.contract != SURFACE_SOLVER_F32_CONTRACT_VERSION {
-            return Err(reject(format!(
-                "contract `{}` does not match `{SURFACE_SOLVER_F32_CONTRACT_VERSION}`",
-                data.contract
-            )));
-        }
-        let count = self.nx * self.ny;
-        if data.h_m.len() != count
-            || data.qx_m2_per_s.len() != count
-            || data.qy_m2_per_s.len() != count
-        {
-            return Err(reject(format!(
-                "snapshot cell length mismatch (expected {count})"
-            )));
-        }
-        if data.h_m.iter().any(|v| !v.is_finite() || *v < 0.0)
-            || data.qx_m2_per_s.iter().any(|v| !v.is_finite())
-            || data.qy_m2_per_s.iter().any(|v| !v.is_finite())
-        {
-            return Err(reject(
-                "snapshot contains non-finite or negative depth values".into(),
-            ));
+        data.validate(self.nx * self.ny)?;
+        match (&mut self.soil, &data.cumulative_infiltration_m) {
+            (Some(soil), Some(vals)) => {
+                soil.restore_cumulative(&self.client, vals, self.ny, self.nx)?;
+            }
+            (None, None) => {}
+            _ => {
+                return Err(EngineError::rejected(
+                    "surface solver f32 snapshot",
+                    "snapshot soil infiltration presence disagrees with solver soil attachment",
+                ));
+            }
         }
         let shape = [self.ny, self.nx];
         let device = self.client.device();

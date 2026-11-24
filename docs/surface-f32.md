@@ -1,15 +1,10 @@
-# Opt-in `F32` 2D Surface Solver (`SurfaceSolverF32`)
+# Opt-In `F32` 2D Surface Solver (`SurfaceSolverF32`)
 
-`SurfaceSolverF32<R>` provides an explicit, opt-in binary32 (`DType::F32`) 2D shallow-water surface solver for high-throughput execution on **CPU**, **CUDA**, and **WebGPU (`WgpuRuntime` — Vulkan, Metal, DX12)**.
+`hydr::solver::SurfaceSolverF32<R>` runs the 2D shallow-water finite-volume solver natively in `DType::F32` on **`CpuRuntime`**, **`CudaRuntime`**, and **`WgpuRuntime`** (Vulkan, Metal, DX12).
 
-## When to Use `F32` vs `F64`
+## Capabilities
 
-- **`Solver<R>` (`F64`, default)**: Certified reference profile on CPU and CUDA with `CorrectlyRoundedOps`, `TwoSum`, Modified Green-Ampt soil, 5 open boundary kinds, and coupled network coordinators. `WgpuRuntime` rejects `F64` without silent fallback.
-- **`SurfaceSolverF32<R>` (`F32`, opt-in)**: Native `DType::F32` 2D finite-volume shallow-water solver (hydrostatic bed reconstruction, HLL Riemann fluxes, split semi-implicit Manning friction, rain/evaporation/withdrawal, CFL and positivity step control, water-balance ledger, and `SurfaceSolverF32SnapshotData`). Runs natively on `CpuRuntime`, `CudaRuntime`, and `WgpuRuntime`.
-
-## Capabilities and Limits
-
-- `surface_solver_f32_capabilities()` declares `ComponentId::SurfaceSolverF32`, `Precision::F32`, `ArithmeticRequirement::F32Ieee754Basic`, and `Cpu` (`Reference`), `Cuda` (`Executed`), and `Wgpu` (`Executed`).
-- `f32-rounding-envelope`: Single-precision rounding (`~1e-7` relative) governs lake-at-rest and mass conservation.
-- `closed-wall-boundaries`: Admits closed impermeable wall boundaries and distributed rain, evaporation, and withdrawal sources.
-- `invalid-f32-config` and `tampered-f32-snapshot`: Rejected at admission without mutating state.
+- **Open boundaries (`SurfaceF32Boundaries`)**: per-side `Wall`, `Transmissive`, `Stage(f32)`, and `Discharge(f32)` with exact boundary inflow/outflow tracking in `SurfaceSolverF32Ledger`.
+- **Modified Green-Ampt infiltration (`SurfaceF32Soil`)**: vectorized `DType::F32` 6-iteration safeguarded Newton solve persisted in `SurfaceSolverF32SnapshotData`.
+- **Coastal & wind forcing (`SurfaceF32CoastalForcing`)**: quadratic wind stress, atmospheric pressure gradient (inverse barometer), and energy-preserving Crank-Nicolson Coriolis rotation.
+- **Precision contract**: single-precision (`F32`, ~1e-7 relative rounding). Use certified `F64` `hydr::solver::Solver<R>` when reference-grade `F64` guarantees or `TwoSum` / correctly-rounded elementary contracts are required.

@@ -88,8 +88,54 @@ pub struct SurfaceSolverF32Ledger {
     pub evaporation_m3: f64,
     /// Cumulative prescribed withdrawal volume removed (`m³`).
     pub withdrawal_m3: f64,
-    /// Conservation residual `(final - initial) - (rain - evaporation - withdrawal)` (`m³`).
+    /// Cumulative Modified Green-Ampt soil infiltration removed (`m³`).
+    pub infiltration_m3: f64,
+    /// Cumulative open-boundary inflow added (`m³`).
+    pub boundary_inflow_m3: f64,
+    /// Cumulative open-boundary outflow removed (`m³`).
+    pub boundary_outflow_m3: f64,
+    /// Conservation residual `(final - initial) - (rain - evap - withdrawal - infiltration + boundary_in - boundary_out)` (`m³`).
     pub residual_m3: f64,
+}
+
+impl SurfaceSolverF32Ledger {
+    pub(super) fn zero(initial_storage_m3: f64) -> Self {
+        Self {
+            initial_storage_m3,
+            final_storage_m3: initial_storage_m3,
+            rain_m3: 0.0,
+            evaporation_m3: 0.0,
+            withdrawal_m3: 0.0,
+            infiltration_m3: 0.0,
+            boundary_inflow_m3: 0.0,
+            boundary_outflow_m3: 0.0,
+            residual_m3: 0.0,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn record_step(
+        &mut self,
+        rain_m3: f64,
+        evap_m3: f64,
+        withdrawal_m3: f64,
+        infil_m3: f64,
+        boundary_in_m3: f64,
+        boundary_out_m3: f64,
+        final_storage_m3: f64,
+    ) {
+        self.rain_m3 += rain_m3;
+        self.evaporation_m3 += evap_m3;
+        self.withdrawal_m3 += withdrawal_m3;
+        self.infiltration_m3 += infil_m3;
+        self.boundary_inflow_m3 += boundary_in_m3;
+        self.boundary_outflow_m3 += boundary_out_m3;
+        self.final_storage_m3 = final_storage_m3;
+        let net = self.rain_m3 - self.evaporation_m3 - self.withdrawal_m3 - self.infiltration_m3
+            + self.boundary_inflow_m3
+            - self.boundary_outflow_m3;
+        self.residual_m3 = (final_storage_m3 - self.initial_storage_m3) - net;
+    }
 }
 
 /// Portable complete checkpoint for `SurfaceSolverF32`.
@@ -109,6 +155,43 @@ pub struct SurfaceSolverF32SnapshotData {
     pub qx_m2_per_s: Vec<f32>,
     /// Row-major cell y-discharges per width (`m²/s`, `f32`).
     pub qy_m2_per_s: Vec<f32>,
+    /// Cumulative Modified Green-Ampt infiltration per cell (`m`, `f32`), when soil is attached.
+    pub cumulative_infiltration_m: Option<Vec<f32>>,
     /// Cumulative water-balance ledger.
     pub ledger: SurfaceSolverF32Ledger,
+}
+
+impl SurfaceSolverF32SnapshotData {
+    pub(super) fn validate(&self, expected_count: usize) -> Result<(), EngineError> {
+        let reject = |msg: String| EngineError::rejected("surface solver f32 snapshot", msg);
+        if self.schema != SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA {
+            return Err(reject(format!(
+                "schema `{}` does not match `{SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA}`",
+                self.schema
+            )));
+        }
+        if self.contract != SURFACE_SOLVER_F32_CONTRACT_VERSION {
+            return Err(reject(format!(
+                "contract `{}` does not match `{SURFACE_SOLVER_F32_CONTRACT_VERSION}`",
+                self.contract
+            )));
+        }
+        if self.h_m.len() != expected_count
+            || self.qx_m2_per_s.len() != expected_count
+            || self.qy_m2_per_s.len() != expected_count
+        {
+            return Err(reject(format!(
+                "snapshot cell length mismatch (expected {expected_count})"
+            )));
+        }
+        if self.h_m.iter().any(|v| !v.is_finite() || *v < 0.0)
+            || self.qx_m2_per_s.iter().any(|v| !v.is_finite())
+            || self.qy_m2_per_s.iter().any(|v| !v.is_finite())
+        {
+            return Err(reject(
+                "snapshot contains non-finite or negative depth values".into(),
+            ));
+        }
+        Ok(())
+    }
 }

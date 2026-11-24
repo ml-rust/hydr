@@ -2,18 +2,23 @@
 //!
 //! Uses only `numr` `F32` tensor ops supported on `CpuRuntime`, `CudaRuntime`, and `WgpuRuntime`.
 
+use super::boundaries::{SurfaceF32SideBoundary, build_ghost_edge};
 use crate::contract::EngineError;
 use numr::dtype::DType;
 use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, ShapeOps, UnaryOps};
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
-/// Per-face HLL water/momentum fluxes and hydrostatic bed-pressure corrections.
+/// Per-face HLL water/momentum fluxes, hydrostatic bed corrections, and exterior boundary rates.
 pub(super) struct SweepDiv<R: Runtime<DType = DType>> {
     pub(super) dh: Tensor<R>,
     pub(super) dqx: Tensor<R>,
     pub(super) dqy: Tensor<R>,
     pub(super) max_speed: f32,
+    /// Inward exterior boundary volume rate (`m³/s`, `>= 0`).
+    pub(super) boundary_in_m3_per_s: f64,
+    /// Outward exterior boundary volume rate (`m³/s`, `>= 0`).
+    pub(super) boundary_out_m3_per_s: f64,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -24,8 +29,10 @@ pub(super) fn sweep_x<R: Runtime<DType = DType>>(
     qy: &Tensor<R>,
     bed: &Tensor<R>,
     active: &Tensor<R>,
-    _zero_col: &Tensor<R>,
+    west: SurfaceF32SideBoundary,
+    east: SurfaceF32SideBoundary,
     dx: f32,
+    dy: f32,
     gravity: f32,
     dry_depth: f32,
 ) -> Result<SweepDiv<R>, EngineError>
@@ -46,34 +53,80 @@ where
             dqx: z.clone(),
             dqy: z,
             max_speed: 0.0,
+            boundary_in_m3_per_s: 0.0,
+            boundary_out_m3_per_s: 0.0,
         });
     }
     let nf = nx + 1;
-    let pad = |t: &Tensor<R>, reflect_sign: f64| -> Result<(Tensor<R>, Tensor<R>), EngineError> {
-        let left_edge = t.narrow(1, 0, 1)?.contiguous()?;
-        let right_edge = t.narrow(1, nx - 1, 1)?.contiguous()?;
-        let (gl, gr) = if reflect_sign < 0.0 {
-            (client.neg(&left_edge)?, client.neg(&right_edge)?)
-        } else {
-            (left_edge, right_edge)
-        };
-        let ext = client.cat(&[&gl, t, &gr], 1)?;
+    let (hw, qxw, qyw, zw) = build_ghost_edge(
+        client,
+        west,
+        &h.narrow(1, 0, 1)?.contiguous()?,
+        &qx.narrow(1, 0, 1)?.contiguous()?,
+        &qy.narrow(1, 0, 1)?.contiguous()?,
+        &bed.narrow(1, 0, 1)?.contiguous()?,
+        1.0,
+    )?;
+    let (he, qxe, qye, ze) = build_ghost_edge(
+        client,
+        east,
+        &h.narrow(1, nx - 1, 1)?.contiguous()?,
+        &qx.narrow(1, nx - 1, 1)?.contiguous()?,
+        &qy.narrow(1, nx - 1, 1)?.contiguous()?,
+        &bed.narrow(1, nx - 1, 1)?.contiguous()?,
+        -1.0,
+    )?;
+    let aw = active.narrow(1, 0, 1)?.contiguous()?;
+    let ae = active.narrow(1, nx - 1, 1)?.contiguous()?;
+
+    let split_x = |gl: &Tensor<R>,
+                   mid: &Tensor<R>,
+                   gr: &Tensor<R>|
+     -> Result<(Tensor<R>, Tensor<R>), EngineError> {
+        let ext = client.cat(&[gl, mid, gr], 1)?;
         Ok((
             ext.narrow(1, 0, nf)?.contiguous()?,
             ext.narrow(1, 1, nf)?.contiguous()?,
         ))
     };
 
-    let (h_l, h_r) = pad(h, 1.0)?;
-    let (qn_l, qn_r) = pad(qx, -1.0)?;
-    let (qt_l, qt_r) = pad(qy, 1.0)?;
-    let (z_l, z_r) = pad(bed, 1.0)?;
-    let (act_l, act_r) = pad(active, 1.0)?;
+    let (h_l, h_r) = split_x(&hw, h, &he)?;
+    let (qn_l, qn_r) = split_x(&qxw, qx, &qxe)?;
+    let (qt_l, qt_r) = split_x(&qyw, qy, &qye)?;
+    let (z_l, z_r) = split_x(&zw, bed, &ze)?;
+    let (act_l, act_r) = split_x(&aw, active, &ae)?;
 
     let (fh, fqn, fqt, corr_l, corr_r, max_speed) = hll_faces(
         client, &h_l, &h_r, &qn_l, &qn_r, &qt_l, &qt_r, &z_l, &z_r, &act_l, &act_r, gravity,
         dry_depth,
     )?;
+
+    // Track exterior boundary mass exchange on west (face 0, + is inward) and east (face nx, - is inward).
+    let zero_edge = Tensor::<R>::zeros(&[ny, 1], DType::F32, h.device())?;
+    let fh_w_edge = fh.narrow(1, 0, 1)?.contiguous()?;
+    let fh_e_edge = fh.narrow(1, nx, 1)?.contiguous()?;
+    let w_in = client
+        .sum(&client.maximum(&fh_w_edge, &zero_edge)?, &[0, 1], false)?
+        .item::<f32>()?;
+    let w_out = client
+        .sum(
+            &client.maximum(&client.neg(&fh_w_edge)?, &zero_edge)?,
+            &[0, 1],
+            false,
+        )?
+        .item::<f32>()?;
+    let e_in = client
+        .sum(
+            &client.maximum(&client.neg(&fh_e_edge)?, &zero_edge)?,
+            &[0, 1],
+            false,
+        )?
+        .item::<f32>()?;
+    let e_out = client
+        .sum(&client.maximum(&fh_e_edge, &zero_edge)?, &[0, 1], false)?
+        .item::<f32>()?;
+    let boundary_in_m3_per_s = (f64::from(w_in) + f64::from(e_in)) * f64::from(dy);
+    let boundary_out_m3_per_s = (f64::from(w_out) + f64::from(e_out)) * f64::from(dy);
 
     let inv_dx = 1.0_f64 / f64::from(dx);
     let fh_west = fh.narrow(1, 0, nx)?.contiguous()?;
@@ -110,6 +163,8 @@ where
         dqx,
         dqy,
         max_speed,
+        boundary_in_m3_per_s,
+        boundary_out_m3_per_s,
     })
 }
 
@@ -121,7 +176,9 @@ pub(super) fn sweep_y<R: Runtime<DType = DType>>(
     qy: &Tensor<R>,
     bed: &Tensor<R>,
     active: &Tensor<R>,
-    _zero_row: &Tensor<R>,
+    south: SurfaceF32SideBoundary,
+    north: SurfaceF32SideBoundary,
+    dx: f32,
     dy: f32,
     gravity: f32,
     dry_depth: f32,
@@ -143,34 +200,79 @@ where
             dqx: z.clone(),
             dqy: z,
             max_speed: 0.0,
+            boundary_in_m3_per_s: 0.0,
+            boundary_out_m3_per_s: 0.0,
         });
     }
     let nf = ny + 1;
-    let pad = |t: &Tensor<R>, reflect_sign: f64| -> Result<(Tensor<R>, Tensor<R>), EngineError> {
-        let bot_edge = t.narrow(0, 0, 1)?.contiguous()?;
-        let top_edge = t.narrow(0, ny - 1, 1)?.contiguous()?;
-        let (gb, gt) = if reflect_sign < 0.0 {
-            (client.neg(&bot_edge)?, client.neg(&top_edge)?)
-        } else {
-            (bot_edge, top_edge)
-        };
-        let ext = client.cat(&[&gb, t, &gt], 0)?;
+    let (hs, qys, qxs, zs) = build_ghost_edge(
+        client,
+        south,
+        &h.narrow(0, 0, 1)?.contiguous()?,
+        &qy.narrow(0, 0, 1)?.contiguous()?,
+        &qx.narrow(0, 0, 1)?.contiguous()?,
+        &bed.narrow(0, 0, 1)?.contiguous()?,
+        1.0,
+    )?;
+    let (hn, qyn, qxn, zn) = build_ghost_edge(
+        client,
+        north,
+        &h.narrow(0, ny - 1, 1)?.contiguous()?,
+        &qy.narrow(0, ny - 1, 1)?.contiguous()?,
+        &qx.narrow(0, ny - 1, 1)?.contiguous()?,
+        &bed.narrow(0, ny - 1, 1)?.contiguous()?,
+        -1.0,
+    )?;
+    let as_ = active.narrow(0, 0, 1)?.contiguous()?;
+    let an = active.narrow(0, ny - 1, 1)?.contiguous()?;
+
+    let split_y = |gb: &Tensor<R>,
+                   mid: &Tensor<R>,
+                   gt: &Tensor<R>|
+     -> Result<(Tensor<R>, Tensor<R>), EngineError> {
+        let ext = client.cat(&[gb, mid, gt], 0)?;
         Ok((
             ext.narrow(0, 0, nf)?.contiguous()?,
             ext.narrow(0, 1, nf)?.contiguous()?,
         ))
     };
 
-    let (h_l, h_r) = pad(h, 1.0)?;
-    let (qn_l, qn_r) = pad(qy, -1.0)?;
-    let (qt_l, qt_r) = pad(qx, 1.0)?;
-    let (z_l, z_r) = pad(bed, 1.0)?;
-    let (act_l, act_r) = pad(active, 1.0)?;
+    let (h_l, h_r) = split_y(&hs, h, &hn)?;
+    let (qn_l, qn_r) = split_y(&qys, qy, &qyn)?;
+    let (qt_l, qt_r) = split_y(&qxs, qx, &qxn)?;
+    let (z_l, z_r) = split_y(&zs, bed, &zn)?;
+    let (act_l, act_r) = split_y(&as_, active, &an)?;
 
     let (fh, fqn, fqt, corr_l, corr_r, max_speed) = hll_faces(
         client, &h_l, &h_r, &qn_l, &qn_r, &qt_l, &qt_r, &z_l, &z_r, &act_l, &act_r, gravity,
         dry_depth,
     )?;
+
+    let zero_edge = Tensor::<R>::zeros(&[1, nx], DType::F32, h.device())?;
+    let fh_s_edge = fh.narrow(0, 0, 1)?.contiguous()?;
+    let fh_n_edge = fh.narrow(0, ny, 1)?.contiguous()?;
+    let s_in = client
+        .sum(&client.maximum(&fh_s_edge, &zero_edge)?, &[0, 1], false)?
+        .item::<f32>()?;
+    let s_out = client
+        .sum(
+            &client.maximum(&client.neg(&fh_s_edge)?, &zero_edge)?,
+            &[0, 1],
+            false,
+        )?
+        .item::<f32>()?;
+    let n_in = client
+        .sum(
+            &client.maximum(&client.neg(&fh_n_edge)?, &zero_edge)?,
+            &[0, 1],
+            false,
+        )?
+        .item::<f32>()?;
+    let n_out = client
+        .sum(&client.maximum(&fh_n_edge, &zero_edge)?, &[0, 1], false)?
+        .item::<f32>()?;
+    let boundary_in_m3_per_s = (f64::from(s_in) + f64::from(n_in)) * f64::from(dx);
+    let boundary_out_m3_per_s = (f64::from(s_out) + f64::from(n_out)) * f64::from(dx);
 
     let inv_dy = 1.0_f64 / f64::from(dy);
     let fh_south = fh.narrow(0, 0, ny)?.contiguous()?;
@@ -207,6 +309,8 @@ where
         dqx,
         dqy,
         max_speed,
+        boundary_in_m3_per_s,
+        boundary_out_m3_per_s,
     })
 }
 
