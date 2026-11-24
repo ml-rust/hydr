@@ -1,0 +1,141 @@
+# Manual distribution workflow for the hydr workspace.
+# Push a v* tag first; `Release Prepare` checks the tag and runs the full suite.
+# Then dispatch this workflow with that tag to publish crates in topological order
+# and create the GitHub Release.
+#
+# Required secret: CARGO_REGISTRY_TOKEN, readable from environment `crates-io`.
+
+name: Release
+run-name: Release ${{ inputs.tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, e.g. v0.1.0"
+        required: true
+        type: string
+      publish_crate:
+        description: "Publish hydr workspace crates to crates.io"
+        type: boolean
+        default: true
+      github_release:
+        description: "Create the GitHub Release"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate-version:
+    uses: ./.github/workflows/release-validate.yml
+    with:
+      ref: ${{ inputs.tag }}
+
+  publish-crate:
+    name: Publish workspace to crates.io
+    needs: validate-version
+    if: inputs.publish_crate
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+
+      - name: Set version from tag
+        run: bash scripts/ci/stamp_version.sh "${{ needs.validate-version.outputs.version }}"
+
+      - name: Publish hydr crates in topological order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate-version.outputs.version }}"
+
+          is_published() {
+            curl -sf \
+              -H "User-Agent: hydr-ci (github.com/ml-rust/hydr)" \
+              "https://crates.io/api/v1/crates/$1/$2" > /dev/null 2>&1
+          }
+
+          wait_indexed() {
+            local crate="$1"
+            for i in $(seq 1 30); do
+              if is_published "$crate" "$VERSION"; then
+                return 0
+              fi
+              sleep 5
+            done
+            echo "::error::Timed out waiting for $crate@$VERSION on crates.io"
+            exit 1
+          }
+
+          publish_one() {
+            local crate="$1"
+            if is_published "$crate" "$VERSION"; then
+              echo "$crate@$VERSION already published, skipping"
+            else
+              echo "Publishing $crate@$VERSION..."
+              cargo publish -p "$crate" --allow-dirty
+              wait_indexed "$crate"
+            fi
+          }
+
+          for crate in \
+            hydr-core \
+            hydr-soil \
+            hydr-storage \
+            hydr-structures \
+            hydr-channel \
+            hydr-drainage \
+            hydr-runoff \
+            hydr-solver \
+            hydr-coupling \
+            hydr
+          do
+            publish_one "$crate"
+          done
+
+  github-release:
+    name: Create GitHub Release
+    needs: validate-version
+    if: inputs.github_release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Extract changelog section
+        run: bash scripts/ci/changelog_section.sh "${{ needs.validate-version.outputs.base_version }}" /tmp/release-notes.md
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          IS_FULL: ${{ needs.validate-version.outputs.is_full_release }}
+        run: |
+          set -euo pipefail
+          FLAGS=()
+          if [[ "$IS_FULL" != "true" ]]; then
+            FLAGS+=(--prerelease)
+          fi
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file /tmp/release-notes.md "${FLAGS[@]}"
+          else
+            gh release create "$TAG" --title "hydr $TAG" --notes-file /tmp/release-notes.md "${FLAGS[@]}"
+          fi

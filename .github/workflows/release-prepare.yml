@@ -1,0 +1,52 @@
+# Tag gate for a releasable hydr workspace build. Pushing a v* tag validates
+# the tag, checks CHANGELOG.md, and runs the full test suite. Nothing is published.
+
+name: Release Prepare
+run-name: Release Prepare ${{ github.ref_name }}
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-prepare-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate-version:
+    uses: ./.github/workflows/release-validate.yml
+    with:
+      ref: ${{ github.ref_name }}
+
+  ci:
+    name: CI Gate
+    needs: validate-version
+    uses: ./.github/workflows/test.yml
+
+  summary:
+    name: Release instructions
+    needs: [validate-version, ci]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write summary
+        env:
+          VERSION: ${{ needs.validate-version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            echo "## Prepared v${VERSION}"
+            echo
+            echo "The tag check, the changelog check, and the full suite pass."
+            echo "Publish with:"
+            echo
+            echo '```sh'
+            echo "gh workflow run release.yml -R ${REPO} -f tag=v${VERSION}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

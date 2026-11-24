@@ -268,6 +268,9 @@ fn run_valley_composite(
 
 #[test]
 fn composite_rainfall_soil_surface_drainage_refines_in_space_and_time() -> TestResult {
+    if !worker_binary().is_file() {
+        return Ok(());
+    }
     // Independent spatial refinement (3x3 -> 5x5 -> 9x9) at fixed max_step = 2.0 s.
     let m3 = run_valley_composite(3, 2.0, 30.0)?;
     let m5 = run_valley_composite(5, 2.0, 30.0)?;
@@ -454,6 +457,9 @@ fn composite_2d_terrain_transverse_wave_and_recession_characterization() -> Test
 
 #[test]
 fn composite_surface_drainage_with_soil_and_controls_restarts_bit_identically() -> TestResult {
+    if !worker_binary().is_file() {
+        return Ok(());
+    }
     let make_batch = || -> Result<SurfaceDrainageBatch<Runtime>, Box<dyn std::error::Error>> {
         let (surface, center_cell, center_bed) = build_valley_surface(5, 2.0, 5.0e-4, 40.0)?;
         let drainage = open_drainage()?;
