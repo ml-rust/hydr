@@ -9,6 +9,17 @@ hydr uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-25
+
+### Breaking
+
+- `numr`, `solvr`: Requires `numr 0.17.0` and `solvr 0.5.0`. Update callers to the same tensor and solver crate versions.
+
+### Added
+
+- `hydr::solver`: Adds native-async `WgpuRuntime` methods (`advance_to_async`, `advance_controlled_async`, `depth_m_async`, `state_async`, `cumulative_infiltration_m_async`, `snapshot_data_async`) on `SurfaceSolverF32<WgpuRuntime>` for browser `wasm32` WebGPU execution without synchronous readback deadlocks. Use them on `wasm32` after initializing `WgpuClient::new_async`.
+- `hydr::solver`: Adds per-face exterior open boundary masks (`SurfaceF32OpenMasks`, `SurfaceSolverF32::with_open_masks`, `set_open_masks`) across CPU, CUDA, and WebGPU. Attach masks to keep closed exterior faces reflecting while opening selected outflow faces.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added

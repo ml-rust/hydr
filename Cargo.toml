@@ -4,7 +4,7 @@ default-members = [".", "crates/*"]
 resolver = "3"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.95"
 license = "Apache-2.0"
@@ -12,18 +12,18 @@ repository = "https://github.com/ml-rust/hydr"
 publish = true
 
 [workspace.dependencies]
-numr = { version = "0.16.0", default-features = false }
-solvr = { version = "0.4.0", default-features = false }
+numr = { version = "0.17.0", default-features = false }
+solvr = { version = "0.5.0", default-features = false }
 sha2 = { version = "0.11.1", default-features = false }
-hydr-channel = { path = "crates/hydr-channel", version = "=0.2.0" }
-hydr-coupling = { path = "crates/hydr-coupling", version = "=0.2.0" }
-hydr-core = { path = "crates/hydr-core", version = "=0.2.0" }
-hydr-drainage = { path = "crates/hydr-drainage", version = "=0.2.0" }
-hydr-runoff = { path = "crates/hydr-runoff", version = "=0.2.0" }
-hydr-soil = { path = "crates/hydr-soil", version = "=0.2.0" }
-hydr-solver = { path = "crates/hydr-solver", version = "=0.2.0" }
-hydr-storage = { path = "crates/hydr-storage", version = "=0.2.0" }
-hydr-structures = { path = "crates/hydr-structures", version = "=0.2.0" }
+hydr-channel = { path = "crates/hydr-channel", version = "=0.3.0" }
+hydr-coupling = { path = "crates/hydr-coupling", version = "=0.3.0" }
+hydr-core = { path = "crates/hydr-core", version = "=0.3.0" }
+hydr-drainage = { path = "crates/hydr-drainage", version = "=0.3.0" }
+hydr-runoff = { path = "crates/hydr-runoff", version = "=0.3.0" }
+hydr-soil = { path = "crates/hydr-soil", version = "=0.3.0" }
+hydr-solver = { path = "crates/hydr-solver", version = "=0.3.0" }
+hydr-storage = { path = "crates/hydr-storage", version = "=0.3.0" }
+hydr-structures = { path = "crates/hydr-structures", version = "=0.3.0" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
