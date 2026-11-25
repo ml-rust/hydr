@@ -341,3 +341,140 @@ fn surface_solver_f32_open_boundaries_green_ampt_and_coastal_forcing() -> TestRe
     );
     Ok(())
 }
+
+#[test]
+fn surface_solver_f32_per_face_open_masks_block_masked_faces_and_conserve_mass() -> TestResult {
+    use hydr::solver::SurfaceF32OpenMasks;
+
+    // 4x4 flat basin with initial depth 1.0 m and east side Stage(0.2) to drive outflow.
+    // Mask only rows 0..2 open on east; rows 2..4 remain closed walls.
+    let (domain, flow) = make_basin(4, 4, vec![0.0; 16], vec![1.0; 16])?;
+    let z = vec![0.0_f32; 16];
+    let boundaries = SurfaceF32Boundaries {
+        east: SurfaceF32SideBoundary::Stage(0.2),
+        ..SurfaceF32Boundaries::impermeable_walls()
+    };
+
+    let mut full_open = SurfaceSolverF32::<Runtime>::new(
+        runtime::client(),
+        domain.clone(),
+        flow.clone(),
+        SurfaceSolverF32Config::default(),
+    )?
+    .with_boundaries(boundaries)?;
+    full_open.advance_to(3.0, &z, &z, &z, 5_000)?;
+
+    let mut masked = SurfaceSolverF32::<Runtime>::new(
+        runtime::client(),
+        domain.clone(),
+        flow.clone(),
+        SurfaceSolverF32Config::default(),
+    )?
+    .with_boundaries(boundaries)?
+    .with_open_masks(&SurfaceF32OpenMasks {
+        east: Some(vec![true, true, false, false]),
+        ..SurfaceF32OpenMasks::default()
+    })?;
+    masked.advance_to(3.0, &z, &z, &z, 5_000)?;
+
+    let mut all_closed = SurfaceSolverF32::<Runtime>::new(
+        runtime::client(),
+        domain,
+        flow,
+        SurfaceSolverF32Config::default(),
+    )?
+    .with_boundaries(boundaries)?
+    .with_open_masks(&SurfaceF32OpenMasks {
+        east: Some(vec![false, false, false, false]),
+        ..SurfaceF32OpenMasks::default()
+    })?;
+    all_closed.advance_to(3.0, &z, &z, &z, 5_000)?;
+
+    assert!(
+        masked.ledger().boundary_outflow_m3 > 0.0
+            && masked.ledger().boundary_outflow_m3 < full_open.ledger().boundary_outflow_m3,
+        "partial east mask should drain less than full east open: masked={}, full={}",
+        masked.ledger().boundary_outflow_m3,
+        full_open.ledger().boundary_outflow_m3
+    );
+    assert!(
+        masked.ledger().residual_m3.abs() < 1e-3,
+        "masked open boundary mass error too large: {}",
+        masked.ledger().residual_m3
+    );
+    assert!(
+        all_closed.ledger().boundary_outflow_m3.abs() < 1e-6
+            && all_closed.ledger().residual_m3.abs() < 1e-3,
+        "all-false mask must behave as closed wall: outflow={}, err={}",
+        all_closed.ledger().boundary_outflow_m3,
+        all_closed.ledger().residual_m3
+    );
+    Ok(())
+}
+
+#[cfg(feature = "wgpu")]
+#[test]
+fn selected_wgpu_client_async_closed_basin_conserves_mass() -> TestResult {
+    use numr::runtime::wgpu::{WgpuClient, WgpuDevice, WgpuRuntime};
+    use std::future::Future;
+    use std::pin::pin;
+    use std::task::{Context, Poll, Wake, Waker};
+
+    struct NoopWake;
+    impl Wake for NoopWake {
+        fn wake(self: std::sync::Arc<Self>) {}
+    }
+
+    fn spin_block_on<F: Future>(fut: F) -> F::Output {
+        let waker = Waker::from(std::sync::Arc::new(NoopWake));
+        let mut cx = Context::from_waker(&waker);
+        let mut fut = pin!(fut);
+        loop {
+            if let Poll::Ready(out) = fut.as_mut().poll(&mut cx) {
+                return out;
+            }
+            std::thread::yield_now();
+        }
+    }
+
+    let Ok(wgpu_client) = spin_block_on(WgpuClient::new_async(WgpuDevice::new(0))) else {
+        eprintln!("skipping WGPU async F32 test: no WebGPU adapter available on host");
+        return Ok(());
+    };
+
+    let mut init_h = vec![0.2; 25];
+    for row in 0..5 {
+        for col in 0..2 {
+            init_h[row * 5 + col] = 1.0;
+        }
+    }
+    let (domain, flow) = make_basin(5, 5, vec![0.0; 25], init_h)?;
+    let cfg = SurfaceSolverF32Config {
+        max_step_s: 0.5,
+        ..SurfaceSolverF32Config::default()
+    };
+    let z = vec![0.0_f32; 25];
+
+    let mut solver = SurfaceSolverF32::<WgpuRuntime>::new(wgpu_client, domain, flow, cfg)?;
+    let mut observed = 0usize;
+    let steps = spin_block_on(solver.advance_controlled_async(
+        3.0,
+        &z,
+        &z,
+        &z,
+        10_000,
+        || false,
+        |_t, _n, _ledger| {
+            observed += 1;
+        },
+    ))?;
+    assert!(steps > 0 && steps == observed);
+    let depths = spin_block_on(solver.depth_m_async())?;
+    assert_eq!(depths.len(), 25);
+    assert!(
+        solver.ledger().residual_m3.abs() < 1e-3,
+        "WGPU async closed-basin mass error too large: {}",
+        solver.ledger().residual_m3
+    );
+    Ok(())
+}

@@ -10,6 +10,20 @@ use numr::ops::{BinaryOps, CompareOps, ConditionalOps, ReduceOps, ScalarOps, Sha
 use numr::runtime::Runtime;
 use numr::tensor::Tensor;
 
+/// Per-face HLL water/momentum fluxes, hydrostatic bed corrections, and exterior boundary rates
+/// kept entirely in device tensors (no synchronous host readbacks).
+pub(super) struct SweepTensors<R: Runtime<DType = DType>> {
+    pub(super) dh: Tensor<R>,
+    pub(super) dqx: Tensor<R>,
+    pub(super) dqy: Tensor<R>,
+    /// Maximum wave speed across all faces (shape `[1]`, `F32`).
+    pub(super) max_speed: Tensor<R>,
+    /// Total inward exterior boundary flux sum before multiplying by transverse cell width (shape `[1]`, `F32`).
+    pub(super) boundary_in_flux: Tensor<R>,
+    /// Total outward exterior boundary flux sum before multiplying by transverse cell width (shape `[1]`, `F32`).
+    pub(super) boundary_out_flux: Tensor<R>,
+}
+
 /// Per-face HLL water/momentum fluxes, hydrostatic bed corrections, and exterior boundary rates.
 pub(super) struct SweepDiv<R: Runtime<DType = DType>> {
     pub(super) dh: Tensor<R>,
@@ -32,6 +46,8 @@ pub(super) fn sweep_x<R: Runtime<DType = DType>>(
     active: &Tensor<R>,
     west: SurfaceF32SideBoundary,
     east: SurfaceF32SideBoundary,
+    west_mask: Option<&Tensor<R>>,
+    east_mask: Option<&Tensor<R>>,
     dx: f32,
     dy: f32,
     gravity: f32,
@@ -47,22 +63,67 @@ where
         + ShapeOps<R>
         + UnaryOps<R>,
 {
+    let t = sweep_x_tensors(
+        client, h, qx, qy, bed, active, west, east, west_mask, east_mask, dx, gravity, dry_depth,
+        order,
+    )?;
+    let max_speed = t.max_speed.item::<f32>()?;
+    let b_in = f64::from(t.boundary_in_flux.item::<f32>()?) * f64::from(dy);
+    let b_out = f64::from(t.boundary_out_flux.item::<f32>()?) * f64::from(dy);
+    Ok(SweepDiv {
+        dh: t.dh,
+        dqx: t.dqx,
+        dqy: t.dqy,
+        max_speed,
+        boundary_in_m3_per_s: b_in,
+        boundary_out_m3_per_s: b_out,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn sweep_x_tensors<R: Runtime<DType = DType>>(
+    client: &R::Client,
+    h: &Tensor<R>,
+    qx: &Tensor<R>,
+    qy: &Tensor<R>,
+    bed: &Tensor<R>,
+    active: &Tensor<R>,
+    west: SurfaceF32SideBoundary,
+    east: SurfaceF32SideBoundary,
+    west_mask: Option<&Tensor<R>>,
+    east_mask: Option<&Tensor<R>>,
+    dx: f32,
+    gravity: f32,
+    dry_depth: f32,
+    order: SurfaceF32SpatialOrder,
+) -> Result<SweepTensors<R>, EngineError>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + ShapeOps<R>
+        + UnaryOps<R>,
+{
     let [ny, nx] = [h.shape()[0], h.shape()[1]];
     if nx == 0 || ny == 0 {
         let z = Tensor::<R>::zeros(&[ny, nx], DType::F32, h.device())?;
-        return Ok(SweepDiv {
+        let z1 = Tensor::<R>::zeros(&[1], DType::F32, h.device())?;
+        return Ok(SweepTensors {
             dh: z.clone(),
             dqx: z.clone(),
             dqy: z,
-            max_speed: 0.0,
-            boundary_in_m3_per_s: 0.0,
-            boundary_out_m3_per_s: 0.0,
+            max_speed: z1.clone(),
+            boundary_in_flux: z1.clone(),
+            boundary_out_flux: z1,
         });
     }
     let nf = nx + 1;
     let (hw, qxw, qyw, zw) = build_ghost_edge(
         client,
         west,
+        west_mask,
         &h.narrow(1, 0, 1)?.contiguous()?,
         &qx.narrow(1, 0, 1)?.contiguous()?,
         &qy.narrow(1, 0, 1)?.contiguous()?,
@@ -72,6 +133,7 @@ where
     let (he, qxe, qye, ze) = build_ghost_edge(
         client,
         east,
+        east_mask,
         &h.narrow(1, nx - 1, 1)?.contiguous()?,
         &qx.narrow(1, nx - 1, 1)?.contiguous()?,
         &qy.narrow(1, nx - 1, 1)?.contiguous()?,
@@ -106,7 +168,7 @@ where
         )?,
     };
 
-    let (fh, fqn, fqt, corr_l, corr_r, max_speed) = hll_faces(
+    let (fh, fqn, fqt, corr_l, corr_r, max_speed) = hll_faces_tensors(
         client, &h_l, &h_r, &qn_l, &qn_r, &qt_l, &qt_r, &z_l, &z_r, &act_l, &act_r, gravity,
         dry_depth,
     )?;
@@ -115,28 +177,20 @@ where
     let zero_edge = Tensor::<R>::zeros(&[ny, 1], DType::F32, h.device())?;
     let fh_w_edge = fh.narrow(1, 0, 1)?.contiguous()?;
     let fh_e_edge = fh.narrow(1, nx, 1)?.contiguous()?;
-    let w_in = client
-        .sum(&client.maximum(&fh_w_edge, &zero_edge)?, &[0, 1], false)?
-        .item::<f32>()?;
-    let w_out = client
-        .sum(
-            &client.maximum(&client.neg(&fh_w_edge)?, &zero_edge)?,
-            &[0, 1],
-            false,
-        )?
-        .item::<f32>()?;
-    let e_in = client
-        .sum(
-            &client.maximum(&client.neg(&fh_e_edge)?, &zero_edge)?,
-            &[0, 1],
-            false,
-        )?
-        .item::<f32>()?;
-    let e_out = client
-        .sum(&client.maximum(&fh_e_edge, &zero_edge)?, &[0, 1], false)?
-        .item::<f32>()?;
-    let boundary_in_m3_per_s = (f64::from(w_in) + f64::from(e_in)) * f64::from(dy);
-    let boundary_out_m3_per_s = (f64::from(w_out) + f64::from(e_out)) * f64::from(dy);
+    let w_in = client.sum(&client.maximum(&fh_w_edge, &zero_edge)?, &[0, 1], false)?;
+    let w_out = client.sum(
+        &client.maximum(&client.neg(&fh_w_edge)?, &zero_edge)?,
+        &[0, 1],
+        false,
+    )?;
+    let e_in = client.sum(
+        &client.maximum(&client.neg(&fh_e_edge)?, &zero_edge)?,
+        &[0, 1],
+        false,
+    )?;
+    let e_out = client.sum(&client.maximum(&fh_e_edge, &zero_edge)?, &[0, 1], false)?;
+    let boundary_in_flux = client.add(&w_in, &e_in)?.reshape(&[1])?;
+    let boundary_out_flux = client.add(&w_out, &e_out)?.reshape(&[1])?;
 
     let inv_dx = 1.0_f64 / f64::from(dx);
     let fh_west = fh.narrow(1, 0, nx)?.contiguous()?;
@@ -171,13 +225,13 @@ where
         active,
     )?;
 
-    Ok(SweepDiv {
+    Ok(SweepTensors {
         dh,
         dqx,
         dqy,
         max_speed,
-        boundary_in_m3_per_s,
-        boundary_out_m3_per_s,
+        boundary_in_flux,
+        boundary_out_flux,
     })
 }
 
@@ -191,6 +245,8 @@ pub(super) fn sweep_y<R: Runtime<DType = DType>>(
     active: &Tensor<R>,
     south: SurfaceF32SideBoundary,
     north: SurfaceF32SideBoundary,
+    south_mask: Option<&Tensor<R>>,
+    north_mask: Option<&Tensor<R>>,
     dx: f32,
     dy: f32,
     gravity: f32,
@@ -206,22 +262,67 @@ where
         + ShapeOps<R>
         + UnaryOps<R>,
 {
+    let t = sweep_y_tensors(
+        client, h, qx, qy, bed, active, south, north, south_mask, north_mask, dy, gravity,
+        dry_depth, order,
+    )?;
+    let max_speed = t.max_speed.item::<f32>()?;
+    let b_in = f64::from(t.boundary_in_flux.item::<f32>()?) * f64::from(dx);
+    let b_out = f64::from(t.boundary_out_flux.item::<f32>()?) * f64::from(dx);
+    Ok(SweepDiv {
+        dh: t.dh,
+        dqx: t.dqx,
+        dqy: t.dqy,
+        max_speed,
+        boundary_in_m3_per_s: b_in,
+        boundary_out_m3_per_s: b_out,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn sweep_y_tensors<R: Runtime<DType = DType>>(
+    client: &R::Client,
+    h: &Tensor<R>,
+    qx: &Tensor<R>,
+    qy: &Tensor<R>,
+    bed: &Tensor<R>,
+    active: &Tensor<R>,
+    south: SurfaceF32SideBoundary,
+    north: SurfaceF32SideBoundary,
+    south_mask: Option<&Tensor<R>>,
+    north_mask: Option<&Tensor<R>>,
+    dy: f32,
+    gravity: f32,
+    dry_depth: f32,
+    order: SurfaceF32SpatialOrder,
+) -> Result<SweepTensors<R>, EngineError>
+where
+    R::Client: BinaryOps<R>
+        + CompareOps<R>
+        + ConditionalOps<R>
+        + ReduceOps<R>
+        + ScalarOps<R>
+        + ShapeOps<R>
+        + UnaryOps<R>,
+{
     let [ny, nx] = [h.shape()[0], h.shape()[1]];
     if nx == 0 || ny == 0 {
         let z = Tensor::<R>::zeros(&[ny, nx], DType::F32, h.device())?;
-        return Ok(SweepDiv {
+        let z1 = Tensor::<R>::zeros(&[1], DType::F32, h.device())?;
+        return Ok(SweepTensors {
             dh: z.clone(),
             dqx: z.clone(),
             dqy: z,
-            max_speed: 0.0,
-            boundary_in_m3_per_s: 0.0,
-            boundary_out_m3_per_s: 0.0,
+            max_speed: z1.clone(),
+            boundary_in_flux: z1.clone(),
+            boundary_out_flux: z1,
         });
     }
     let nf = ny + 1;
     let (hs, qys, qxs, zs) = build_ghost_edge(
         client,
         south,
+        south_mask,
         &h.narrow(0, 0, 1)?.contiguous()?,
         &qy.narrow(0, 0, 1)?.contiguous()?,
         &qx.narrow(0, 0, 1)?.contiguous()?,
@@ -231,6 +332,7 @@ where
     let (hn, qyn, qxn, zn) = build_ghost_edge(
         client,
         north,
+        north_mask,
         &h.narrow(0, ny - 1, 1)?.contiguous()?,
         &qy.narrow(0, ny - 1, 1)?.contiguous()?,
         &qx.narrow(0, ny - 1, 1)?.contiguous()?,
@@ -265,7 +367,7 @@ where
         )?,
     };
 
-    let (fh, fqn, fqt, corr_l, corr_r, max_speed) = hll_faces(
+    let (fh, fqn, fqt, corr_l, corr_r, max_speed) = hll_faces_tensors(
         client, &h_l, &h_r, &qn_l, &qn_r, &qt_l, &qt_r, &z_l, &z_r, &act_l, &act_r, gravity,
         dry_depth,
     )?;
@@ -273,28 +375,20 @@ where
     let zero_edge = Tensor::<R>::zeros(&[1, nx], DType::F32, h.device())?;
     let fh_s_edge = fh.narrow(0, 0, 1)?.contiguous()?;
     let fh_n_edge = fh.narrow(0, ny, 1)?.contiguous()?;
-    let s_in = client
-        .sum(&client.maximum(&fh_s_edge, &zero_edge)?, &[0, 1], false)?
-        .item::<f32>()?;
-    let s_out = client
-        .sum(
-            &client.maximum(&client.neg(&fh_s_edge)?, &zero_edge)?,
-            &[0, 1],
-            false,
-        )?
-        .item::<f32>()?;
-    let n_in = client
-        .sum(
-            &client.maximum(&client.neg(&fh_n_edge)?, &zero_edge)?,
-            &[0, 1],
-            false,
-        )?
-        .item::<f32>()?;
-    let n_out = client
-        .sum(&client.maximum(&fh_n_edge, &zero_edge)?, &[0, 1], false)?
-        .item::<f32>()?;
-    let boundary_in_m3_per_s = (f64::from(s_in) + f64::from(n_in)) * f64::from(dx);
-    let boundary_out_m3_per_s = (f64::from(s_out) + f64::from(n_out)) * f64::from(dx);
+    let s_in = client.sum(&client.maximum(&fh_s_edge, &zero_edge)?, &[0, 1], false)?;
+    let s_out = client.sum(
+        &client.maximum(&client.neg(&fh_s_edge)?, &zero_edge)?,
+        &[0, 1],
+        false,
+    )?;
+    let n_in = client.sum(
+        &client.maximum(&client.neg(&fh_n_edge)?, &zero_edge)?,
+        &[0, 1],
+        false,
+    )?;
+    let n_out = client.sum(&client.maximum(&fh_n_edge, &zero_edge)?, &[0, 1], false)?;
+    let boundary_in_flux = client.add(&s_in, &n_in)?.reshape(&[1])?;
+    let boundary_out_flux = client.add(&s_out, &n_out)?.reshape(&[1])?;
 
     let inv_dy = 1.0_f64 / f64::from(dy);
     let fh_south = fh.narrow(0, 0, ny)?.contiguous()?;
@@ -329,13 +423,13 @@ where
         active,
     )?;
 
-    Ok(SweepDiv {
+    Ok(SweepTensors {
         dh,
         dqx,
         dqy,
         max_speed,
-        boundary_in_m3_per_s,
-        boundary_out_m3_per_s,
+        boundary_in_flux,
+        boundary_out_flux,
     })
 }
 
@@ -343,7 +437,7 @@ where
 ///
 /// Inactive neighbors adjacent to an active cell act as reflecting impermeable walls.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-fn hll_faces<R: Runtime<DType = DType>>(
+fn hll_faces_tensors<R: Runtime<DType = DType>>(
     client: &R::Client,
     h_l: &Tensor<R>,
     h_r: &Tensor<R>,
@@ -357,7 +451,17 @@ fn hll_faces<R: Runtime<DType = DType>>(
     act_r: &Tensor<R>,
     gravity: f32,
     dry_depth: f32,
-) -> Result<(Tensor<R>, Tensor<R>, Tensor<R>, Tensor<R>, Tensor<R>, f32), EngineError>
+) -> Result<
+    (
+        Tensor<R>,
+        Tensor<R>,
+        Tensor<R>,
+        Tensor<R>,
+        Tensor<R>,
+        Tensor<R>,
+    ),
+    EngineError,
+>
 where
     R::Client: BinaryOps<R>
         + CompareOps<R>
@@ -457,7 +561,7 @@ where
     let abs_sl = client.abs(&s_l_neg)?;
     let abs_sr = client.abs(&s_r_pos)?;
     let max_face_s = client.mul(&client.maximum(&abs_sl, &abs_sr)?, &face_active)?;
-    let max_speed = client.max(&max_face_s, &[0, 1], false)?.item::<f32>()?;
+    let max_speed = client.max(&max_face_s, &[0, 1], false)?.reshape(&[1])?;
 
     Ok((fh, fqn, fqt, corr_l, corr_r, max_speed))
 }

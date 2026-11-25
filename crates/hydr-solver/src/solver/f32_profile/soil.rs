@@ -94,6 +94,11 @@ where
         Ok(self.cum_f.try_to_vec::<f32>()?)
     }
 
+    #[cfg(feature = "wgpu")]
+    pub(super) fn cumulative_tensor(&self) -> &Tensor<R> {
+        &self.cum_f
+    }
+
     pub(super) fn set_cumulative(&mut self, cum_f: Tensor<R>) {
         self.cum_f = cum_f;
     }

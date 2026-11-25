@@ -10,8 +10,12 @@ mod flux;
 mod muscl;
 mod soil;
 mod state;
+#[cfg(feature = "wgpu")]
+mod wgpu_async;
 
-pub use boundaries::{SurfaceF32Boundaries, SurfaceF32CoastalForcing, SurfaceF32SideBoundary};
+pub use boundaries::{
+    SurfaceF32Boundaries, SurfaceF32CoastalForcing, SurfaceF32OpenMasks, SurfaceF32SideBoundary,
+};
 pub use capabilities::surface_solver_f32_capabilities;
 pub use engine::SurfaceSolverF32;
 pub use muscl::SurfaceF32SpatialOrder;

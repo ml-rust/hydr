@@ -67,6 +67,93 @@ impl SurfaceF32Boundaries {
     }
 }
 
+/// Optional per-face open masks for the four exterior sides of the 2D `F32` grid.
+///
+/// When a side's mask is `Some(mask)`, faces with `true` use the configured
+/// [`SurfaceF32SideBoundary`] while faces with `false` act as impermeable reflecting walls.
+/// `west` and `east` masks have length `ny`; `south` and `north` masks have length `nx`.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct SurfaceF32OpenMasks {
+    /// West edge mask (`col = 0`, length `ny`). `true` = open, `false` = wall.
+    pub west: Option<Vec<bool>>,
+    /// East edge mask (`col = nx - 1`, length `ny`). `true` = open, `false` = wall.
+    pub east: Option<Vec<bool>>,
+    /// South edge mask (`row = 0`, length `nx`). `true` = open, `false` = wall.
+    pub south: Option<Vec<bool>>,
+    /// North edge mask (`row = ny - 1`, length `nx`). `true` = open, `false` = wall.
+    pub north: Option<Vec<bool>>,
+}
+
+impl SurfaceF32OpenMasks {
+    pub(crate) fn validate(&self, nx: usize, ny: usize) -> Result<(), EngineError> {
+        for (name, mask, expected) in [
+            ("west", &self.west, ny),
+            ("east", &self.east, ny),
+            ("south", &self.south, nx),
+            ("north", &self.north, nx),
+        ] {
+            if let Some(m) = mask
+                && m.len() != expected
+            {
+                return Err(EngineError::rejected(
+                    "surface solver f32 open masks",
+                    format!("{name} mask length ({}) != expected ({expected})", m.len()),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Device-resident per-face open masks (`1.0` = open, `0.0` = wall).
+pub(super) struct OpenMaskTensors<R: Runtime<DType = DType>> {
+    pub(super) west: Option<Tensor<R>>,
+    pub(super) east: Option<Tensor<R>>,
+    pub(super) south: Option<Tensor<R>>,
+    pub(super) north: Option<Tensor<R>>,
+}
+
+impl<R: Runtime<DType = DType>> Default for OpenMaskTensors<R> {
+    fn default() -> Self {
+        Self {
+            west: None,
+            east: None,
+            south: None,
+            north: None,
+        }
+    }
+}
+
+impl<R: Runtime<DType = DType>> OpenMaskTensors<R> {
+    pub(super) fn from_host(
+        masks: &SurfaceF32OpenMasks,
+        nx: usize,
+        ny: usize,
+        device: &R::Device,
+    ) -> Result<Self, EngineError> {
+        masks.validate(nx, ny)?;
+        let upload =
+            |opt: &Option<Vec<bool>>, shape: &[usize]| -> Result<Option<Tensor<R>>, EngineError> {
+                match opt {
+                    Some(m) => {
+                        let vals: Vec<f32> = m
+                            .iter()
+                            .map(|&b| if b { 1.0_f32 } else { 0.0_f32 })
+                            .collect();
+                        Ok(Some(Tensor::<R>::from_slice(&vals, shape, device)?))
+                    }
+                    None => Ok(None),
+                }
+            };
+        Ok(Self {
+            west: upload(&masks.west, &[ny, 1])?,
+            east: upload(&masks.east, &[ny, 1])?,
+            south: upload(&masks.south, &[1, nx])?,
+            north: upload(&masks.north, &[1, nx])?,
+        })
+    }
+}
+
 /// Opt-in coastal & meteorological momentum forcing for `SurfaceSolverF32`.
 ///
 /// Default has all forcing terms zero (no overhead).
@@ -158,6 +245,7 @@ impl SurfaceF32CoastalForcing {
 pub(super) fn build_ghost_edge<R: Runtime<DType = DType>>(
     client: &R::Client,
     side: SurfaceF32SideBoundary,
+    open_mask: Option<&Tensor<R>>,
     h_in: &Tensor<R>,
     qn_in: &Tensor<R>,
     qt_in: &Tensor<R>,
@@ -170,27 +258,40 @@ where
     let shape = h_in.shape();
     let device = h_in.device();
     let zero = Tensor::<R>::zeros(shape, DType::F32, device)?;
-    match side {
-        SurfaceF32SideBoundary::Wall => Ok((
-            h_in.clone(),
-            client.neg(qn_in)?,
-            qt_in.clone(),
-            z_in.clone(),
-        )),
+    let (h_open, qn_open, qt_open, z_open) = match side {
+        SurfaceF32SideBoundary::Wall => {
+            return Ok((
+                h_in.clone(),
+                client.neg(qn_in)?,
+                qt_in.clone(),
+                z_in.clone(),
+            ));
+        }
         SurfaceF32SideBoundary::Transmissive => {
-            Ok((h_in.clone(), qn_in.clone(), qt_in.clone(), z_in.clone()))
+            (h_in.clone(), qn_in.clone(), qt_in.clone(), z_in.clone())
         }
         SurfaceF32SideBoundary::Stage(eta) => {
             let eta_t = Tensor::<R>::full_scalar(shape, DType::F32, f64::from(eta), device)?;
             let h_g = client.maximum(&client.sub(&eta_t, z_in)?, &zero)?;
-            Ok((h_g, qn_in.clone(), zero, z_in.clone()))
+            (h_g, qn_in.clone(), zero, z_in.clone())
         }
         SurfaceF32SideBoundary::Discharge(q_inward) => {
             let q_signed = f64::from(q_inward) * inward_sign;
             let qn_g = Tensor::<R>::full_scalar(shape, DType::F32, q_signed, device)?;
-            Ok((h_in.clone(), qn_g, zero, z_in.clone()))
+            (h_in.clone(), qn_g, zero, z_in.clone())
         }
+    };
+    if let Some(mask) = open_mask {
+        let half = Tensor::<R>::full_scalar(shape, DType::F32, 0.5, device)?;
+        let is_open = client.gt(mask, &half)?;
+        let qn_wall = client.neg(qn_in)?;
+        let h_g = client.where_cond(&is_open, &h_open, h_in)?;
+        let qn_g = client.where_cond(&is_open, &qn_open, &qn_wall)?;
+        let qt_g = client.where_cond(&is_open, &qt_open, qt_in)?;
+        let z_g = client.where_cond(&is_open, &z_open, z_in)?;
+        return Ok((h_g, qn_g, qt_g, z_g));
     }
+    Ok((h_open, qn_open, qt_open, z_open))
 }
 
 /// Applies wind stress, atmospheric pressure gradient, and Crank-Nicolson Coriolis rotation in `F32`.

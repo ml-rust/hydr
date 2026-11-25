@@ -37,9 +37,9 @@ pub use coastal::CoastalForcing;
 pub use engine::Solver;
 pub use f32_profile::{
     SURFACE_SOLVER_F32_CONTRACT_VERSION, SURFACE_SOLVER_F32_SNAPSHOT_SCHEMA, SurfaceF32Boundaries,
-    SurfaceF32CoastalForcing, SurfaceF32SideBoundary, SurfaceF32Soil, SurfaceF32SpatialOrder,
-    SurfaceSolverF32, SurfaceSolverF32Config, SurfaceSolverF32Ledger, SurfaceSolverF32SnapshotData,
-    surface_solver_f32_capabilities,
+    SurfaceF32CoastalForcing, SurfaceF32OpenMasks, SurfaceF32SideBoundary, SurfaceF32Soil,
+    SurfaceF32SpatialOrder, SurfaceSolverF32, SurfaceSolverF32Config, SurfaceSolverF32Ledger,
+    SurfaceSolverF32SnapshotData, surface_solver_f32_capabilities,
 };
 pub use forcing_history::ForcingPrefix;
 pub use geometry::{

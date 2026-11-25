@@ -1,7 +1,8 @@
 //! Opt-in `F32` 2D shallow-water solver engine for CPU, CUDA, and WGPU.
 
 use super::boundaries::{
-    SurfaceF32Boundaries, SurfaceF32CoastalForcing, apply_coastal_forcing_f32, apply_manning_f32,
+    OpenMaskTensors, SurfaceF32Boundaries, SurfaceF32CoastalForcing, SurfaceF32OpenMasks,
+    apply_coastal_forcing_f32, apply_manning_f32,
 };
 use super::flux::{sweep_x, sweep_y};
 use super::soil::{SoilStateF32, SurfaceF32Soil};
@@ -22,25 +23,26 @@ use numr::tensor::Tensor;
 /// exterior boundaries, Modified Green-Ampt soil infiltration, and coastal wind/Coriolis/pressure
 /// forcing. Use [`super::super::Solver`] when certified `F64` precision is required.
 pub struct SurfaceSolverF32<R: Runtime<DType = DType>> {
-    client: R::Client,
-    domain: Domain,
-    config: SurfaceSolverF32Config,
-    boundaries: SurfaceF32Boundaries,
-    coastal: SurfaceF32CoastalForcing,
-    soil: Option<SoilStateF32<R>>,
-    nx: usize,
-    ny: usize,
-    dx: f32,
-    dy: f32,
-    bed: Tensor<R>,
-    manning_sq: Tensor<R>,
-    active: Tensor<R>,
-    h: Tensor<R>,
-    qx: Tensor<R>,
-    qy: Tensor<R>,
-    time_s: f64,
-    accepted_steps: u64,
-    ledger: SurfaceSolverF32Ledger,
+    pub(super) client: R::Client,
+    pub(super) domain: Domain,
+    pub(super) config: SurfaceSolverF32Config,
+    pub(super) boundaries: SurfaceF32Boundaries,
+    pub(super) open_masks: OpenMaskTensors<R>,
+    pub(super) coastal: SurfaceF32CoastalForcing,
+    pub(super) soil: Option<SoilStateF32<R>>,
+    pub(super) nx: usize,
+    pub(super) ny: usize,
+    pub(super) dx: f32,
+    pub(super) dy: f32,
+    pub(super) bed: Tensor<R>,
+    pub(super) manning_sq: Tensor<R>,
+    pub(super) active: Tensor<R>,
+    pub(super) h: Tensor<R>,
+    pub(super) qx: Tensor<R>,
+    pub(super) qy: Tensor<R>,
+    pub(super) time_s: f64,
+    pub(super) accepted_steps: u64,
+    pub(super) ledger: SurfaceSolverF32Ledger,
 }
 
 impl<R: Runtime<DType = DType>> SurfaceSolverF32<R>
@@ -110,6 +112,7 @@ where
             domain,
             config,
             boundaries: SurfaceF32Boundaries::impermeable_walls(),
+            open_masks: OpenMaskTensors::default(),
             coastal: SurfaceF32CoastalForcing::default(),
             soil: None,
             nx,
@@ -135,6 +138,22 @@ where
     pub fn set_boundaries(&mut self, boundaries: SurfaceF32Boundaries) -> Result<(), EngineError> {
         boundaries.validate()?;
         self.boundaries = boundaries;
+        Ok(())
+    }
+
+    /// Attaches per-face exterior open boundary masks.
+    ///
+    /// Faces marked `false` act as impermeable reflecting walls even when the side's
+    /// [`SurfaceF32SideBoundary`](super::SurfaceF32SideBoundary) is open.
+    pub fn with_open_masks(mut self, masks: &SurfaceF32OpenMasks) -> Result<Self, EngineError> {
+        self.set_open_masks(masks)?;
+        Ok(self)
+    }
+
+    /// Updates per-face exterior open boundary masks between intervals.
+    pub fn set_open_masks(&mut self, masks: &SurfaceF32OpenMasks) -> Result<(), EngineError> {
+        self.open_masks =
+            OpenMaskTensors::from_host(masks, self.nx, self.ny, self.client.device())?;
         Ok(())
     }
 
@@ -336,6 +355,8 @@ where
                 &self.active,
                 self.boundaries.west,
                 self.boundaries.east,
+                self.open_masks.west.as_ref(),
+                self.open_masks.east.as_ref(),
                 self.dx,
                 self.dy,
                 self.config.gravity,
@@ -351,6 +372,8 @@ where
                 &self.active,
                 self.boundaries.south,
                 self.boundaries.north,
+                self.open_masks.south.as_ref(),
+                self.open_masks.north.as_ref(),
                 self.dx,
                 self.dy,
                 self.config.gravity,
