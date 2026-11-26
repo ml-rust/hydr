@@ -9,6 +9,12 @@ hydr uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-26
+
+### Fixed
+
+- `hydr::solver`: Handles the exact analytical infinite-friction limit (`qx = qy = 0`) when vanishing depth (`h -> 0`) causes `h^(7/3)` underflow or Manning drag overflow on steep draining slopes, instead of aborting with a nonfinite denominator error.
+
 ## [0.3.0] - 2026-11-25
 
 ### Breaking

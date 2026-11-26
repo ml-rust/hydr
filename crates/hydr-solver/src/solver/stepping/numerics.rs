@@ -87,8 +87,9 @@ where
     ) -> Result<TensorState<R>, EngineError> {
         let client = &self.context.client;
         let zero = &self.context.zero;
+        let one = client.add_scalar(zero, 1.0)?;
         let wet = client.gt(&state.h, zero)?;
-        let depth = client.where_cond(&wet, &state.h, &client.add_scalar(zero, 1.0)?)?;
+        let depth = client.where_cond(&wet, &state.h, &one)?;
         let speed = client.hypot(&state.qx, &state.qy)?;
         self.finite(&speed, "Manning discharge magnitude")?;
         let active_drag = client.mul(
@@ -96,18 +97,24 @@ where
             &client.gt(&self.context.manning, zero)?,
         )?;
         let power = client.cr_pow_scalar(&depth, 7.0 / 3.0)?;
-        let safe_power = client.where_cond(&active_drag, &power, &client.add_scalar(zero, 1.0)?)?;
-        let drag = client.mul(&self.context.manning, &self.context.manning)?;
-        let drag = client.mul(&drag, &speed)?;
-        let drag = client.mul_scalar(&drag, self.config().gravity * dt)?;
-        let drag = client.div(&drag, &safe_power)?;
+        let power_pos = client.gt(&power, zero)?;
+        let finite_drag = client.mul(&active_drag, &power_pos)?;
+        let safe_power = client.where_cond(&finite_drag, &power, &one)?;
+        let drag_num = client.mul(&self.context.manning, &self.context.manning)?;
+        let drag_num = client.mul(&drag_num, &speed)?;
+        let drag_num = client.mul_scalar(&drag_num, self.config().gravity * dt)?;
+        let drag = client.div(&drag_num, &safe_power)?;
         let denominator = client.add_scalar(&drag, 1.0)?;
-        self.finite(&denominator, "Manning denominator")?;
-        Ok(TensorState {
-            h: state.h,
-            qx: client.div(&state.qx, &denominator)?,
-            qy: client.div(&state.qy, &denominator)?,
-        })
+        // When h -> 0 with active Manning drag, h^(7/3) underflows to 0 or drag
+        // overflows to +inf; the exact analytical limit lim_{d -> +inf} q / d is 0.
+        let power_underflow = client.mul(&active_drag, &client.eq(&power, zero)?)?;
+        let denom_inf = client.cast(&client.isinf(&denominator)?, DType::F64)?;
+        let inf_drag = client.maximum(&power_underflow, &denom_inf)?;
+        let safe_denom = client.where_cond(&inf_drag, &one, &denominator)?;
+        self.finite(&safe_denom, "Manning denominator")?;
+        let qx = client.where_cond(&inf_drag, zero, &client.div(&state.qx, &safe_denom)?)?;
+        let qy = client.where_cond(&inf_drag, zero, &client.div(&state.qy, &safe_denom)?)?;
+        Ok(TensorState { h: state.h, qx, qy })
     }
 
     pub(super) fn total(&self, values: &Tensor<R>) -> Result<f64, EngineError> {
@@ -219,6 +226,68 @@ mod tests {
         assert!((result.cells()[0].qx - 2.0 / denominator).abs() <= 1e-12);
         assert!((result.cells()[0].qy - 1.0 / denominator).abs() <= 1e-12);
         assert_eq!(result.cells()[0].h, 1.0);
+        Ok(())
+    }
+
+    #[test]
+    fn numr_friction_vanishing_depth_zeroes_discharge_cleanly()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let domain = Domain::new(
+            CartesianGrid::new(1, 1, 1.0, 1.0)?,
+            vec![0.0],
+            vec![0.035],
+            vec![true],
+            SpatialReference::new(
+                "synthetic metric plane".into(),
+                "synthetic datum".into(),
+                [0.0; 2],
+            )?,
+        )?;
+        let walls = BoundaryConditions::impermeable_walls();
+        let state = FlowState::new(
+            &domain,
+            vec![CellState {
+                h: 1e-180,
+                qx: 1e-20,
+                qy: -1e-20,
+            }],
+        )?;
+        let forcing = ForcingSchedule::new(
+            &domain,
+            &walls,
+            vec![ForcingInterval {
+                start: 0.0,
+                end: 1.0,
+                rain: vec![0.0],
+                potential_evaporation: vec![0.0],
+                withdrawal: vec![0.0],
+                boundaries: vec![],
+            }],
+        )?;
+        let land = crate::soil::LandModel::impervious(&domain);
+        let soil = crate::soil::SoilState::initialized(&land)?;
+        let solver = Solver::<CpuRuntime>::new(
+            CpuClient::new(CpuDevice::new())
+                .with_parallelism(ParallelismConfig::new(Some(1), None)),
+            crate::solver::SolverSetup {
+                domain,
+                land,
+                boundaries: walls,
+                forcing,
+                config: SolverConfig::default(),
+            },
+            crate::solver::InitialState {
+                time: 0.0,
+                flow: state,
+                soil,
+            },
+        )?;
+        let result = solver
+            .friction(solver.accepted.flow.clone(), 1.0)?
+            .to_flow(solver.domain())?;
+        assert_eq!(result.cells()[0].h, 1e-180);
+        assert_eq!(result.cells()[0].qx, 0.0);
+        assert_eq!(result.cells()[0].qy, 0.0);
         Ok(())
     }
 }
