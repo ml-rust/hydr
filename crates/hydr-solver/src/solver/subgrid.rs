@@ -333,14 +333,27 @@ impl SubgridTerrain {
         (stages, eff_bed)
     }
 
-    /// Computes per-face wetted width fraction in `[0.0, 1.0]` for every solver topology face.
+    /// Computes per-face subgrid area-conveyance fraction in `[0.0, 1.0]` for every solver topology face.
     ///
-    /// Exterior boundary faces keep `1.0`. Interior faces evaluate `wet_width_fraction(max(eta_L, eta_R))`.
-    pub(crate) fn face_width_fractions(&self, faces: &[FaceSupport], stages_m: &[f64]) -> Vec<f64> {
+    /// Exterior boundary faces keep `1.0`. Interior faces evaluate
+    /// `clamp(effective_depth_at_stage(max(eta_L, eta_R)) / max(h_L, h_R), 0.0, 1.0)`, which:
+    /// - blocks flow identically (`0.0`) when `eta_f <= min_sill`,
+    /// - ramps smoothly from `0.0` as levees/sills overtop (no step discontinuities), and
+    /// - avoids double-counting narrow-channel width already encoded in `h_coarse = f_wet * h_wet`.
+    pub(crate) fn face_conveyance_fractions(
+        &self,
+        faces: &[FaceSupport],
+        stages_m: &[f64],
+        depths_m: &[f64],
+    ) -> Vec<f64> {
         faces
             .iter()
             .map(|support| match (support.left, support.right) {
                 (Some(left), Some(right)) => {
+                    let h_face = depths_m[left].max(depths_m[right]);
+                    if h_face <= 0.0 {
+                        return 0.0;
+                    }
                     let eta_f = stages_m[left].max(stages_m[right]);
                     let curve = match support.face.axis {
                         Axis::X => support
@@ -354,7 +367,9 @@ impl SubgridTerrain {
                             .checked_sub(1)
                             .and_then(|r| self.y_face(support.face.column, r)),
                     };
-                    curve.map_or(1.0, |c| c.wet_width_fraction(eta_f))
+                    curve.map_or(1.0, |c| {
+                        (c.effective_depth_at_stage(eta_f) / h_face).clamp(0.0, 1.0)
+                    })
                 }
                 _ => 1.0,
             })
@@ -619,5 +634,51 @@ mod tests {
                 "cell {i} mismatch: full={a:?} split={b:?}"
             );
         }
+    }
+
+    #[test]
+    fn subgrid_face_conveyance_ramps_smoothly_and_preserves_narrow_channel_flux() {
+        // 2x1 coarse cells, 4x4 fine subcells (8x4 fine DEM):
+        // Row 1 is a 1-subcell-wide channel (z=0m) inside z=5m banks.
+        let mut fine = vec![5.0; 8 * 4];
+        for c in 0..8 {
+            fine[1 * 8 + c] = 0.0;
+        }
+        let grid = CartesianGrid::new(2, 1, 100.0, 100.0).expect("grid");
+        let sg = SubgridTerrain::from_fine_dem(grid, 8, 4, &fine).expect("sg");
+        let face = vec![FaceSupport {
+            face: BoundaryFace {
+                axis: Axis::X,
+                column: 1,
+                row: 0,
+            },
+            left: Some(0),
+            right: Some(1),
+        }];
+
+        // Narrow channel at WSE = 1.0m -> h_coarse = 0.25m, face effective_depth = 0.25m -> phi = 1.0
+        // (avoids 4x double-counting narrow width already encoded in h_coarse).
+        let h_ch = sg.effective_depth_field(&[1.0, 0.0]);
+        let phi_ch = sg.face_conveyance_fractions(&face, &[1.0, 0.0], &h_ch);
+        assert!(
+            (phi_ch[0] - 1.0).abs() < 1e-12,
+            "narrow channel phi must be 1.0, got {}",
+            phi_ch[0]
+        );
+
+        // Levee at z=5.0m blocking full face: below crest -> 0.0; 0.05m overtop -> smooth tiny ramp.
+        let mut levee = vec![0.0; 8 * 4];
+        for r in 0..4 {
+            levee[r * 8 + 3] = 5.0;
+        }
+        let sg_levee = SubgridTerrain::from_fine_dem(grid, 8, 4, &levee).expect("levee");
+        let phi_below = sg_levee.face_conveyance_fractions(&face, &[4.5, 0.0], &[4.5, 0.0]);
+        assert_eq!(phi_below[0], 0.0);
+        let phi_tiny = sg_levee.face_conveyance_fractions(&face, &[5.05, 0.0], &[5.05, 0.0]);
+        assert!(
+            phi_tiny[0] > 0.0 && phi_tiny[0] < 0.02,
+            "slight levee overtopping must ramp smoothly from 0, got {}",
+            phi_tiny[0]
+        );
     }
 }

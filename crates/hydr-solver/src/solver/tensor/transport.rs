@@ -54,7 +54,7 @@ where
     let (bed_tensor, widths_tensor, phi_tensor) = if let Some(sg) = subgrid {
         let h_vec = state.h.try_to_vec::<f64>()?;
         let (stages, eff_bed) = sg.effective_bed_field(&h_vec);
-        let phi = sg.face_width_fractions(&topology.faces, &stages);
+        let phi = sg.face_conveyance_fractions(&topology.faces, &stages, &h_vec);
         let device = client.device();
         let eff_bed_t = Tensor::<R>::from_slice(&eff_bed, &[eff_bed.len()], device)?;
         let phi_t = Tensor::<R>::from_slice(&phi, &[phi.len()], device)?;
