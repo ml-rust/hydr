@@ -50,4 +50,4 @@ pub use geometry::{
 pub use output::{CellResult, FaceTransfer};
 pub use setup::{InitialState, SolverSetup};
 pub use snapshot::{SNAPSHOT_SCHEMA, Snapshot, SnapshotData};
-pub use subgrid::{SubgridCellCurve, SubgridTerrain};
+pub use subgrid::{SubgridCellCurve, SubgridFaceCurve, SubgridTerrain};

@@ -126,7 +126,15 @@ where
         let state = &sources.state;
         self.finite(&state.qx, "post-source qx")?;
         self.finite(&state.qy, "post-source qy")?;
-        let flux = match transport::calculate(&self.context, state, source, config, area, ports) {
+        let flux = match transport::calculate(
+            &self.context,
+            state,
+            source,
+            config,
+            area,
+            ports,
+            self.subgrid.as_deref(),
+        ) {
             Ok(flux) => flux,
             Err(error @ EngineError::Boundary { .. }) => {
                 return Ok(Preparation::BoundaryRetry(error));

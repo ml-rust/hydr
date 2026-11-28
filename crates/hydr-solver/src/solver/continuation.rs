@@ -91,7 +91,21 @@ where
         data: &SnapshotData,
         forcing: ForcingSchedule,
     ) -> Result<Self, EngineError> {
-        Self::resume_with(client, data, forcing, Exchange::Reject, None)
+        Self::resume_with(client, data, forcing, Exchange::Reject, None, None)
+    }
+
+    /// Resumes an engine from an owned package with opt-in subgrid terrain attached prior to
+    /// receipt verification, preserving bitwise checkpoint equivalence for subgrid runs.
+    ///
+    /// # Errors
+    /// Returns construction, subgrid validation, import, and continuation errors.
+    pub fn resume_with_subgrid(
+        client: R::Client,
+        data: &SnapshotData,
+        forcing: ForcingSchedule,
+        subgrid: super::subgrid::SubgridTerrain,
+    ) -> Result<Self, EngineError> {
+        Self::resume_with(client, data, forcing, Exchange::Reject, None, Some(subgrid))
     }
 
     /// Resumes a package that can carry coordinator exchange water.
@@ -108,7 +122,7 @@ where
         forcing: ForcingSchedule,
         ports: Option<&SurfacePorts<R>>,
     ) -> Result<Self, EngineError> {
-        Self::resume_with(client, data, forcing, Exchange::Admit, ports)
+        Self::resume_with(client, data, forcing, Exchange::Admit, ports, None)
     }
 
     /// Builds an engine of a package's definition and forcing window at its accepted state.
@@ -134,6 +148,7 @@ where
         forcing: ForcingSchedule,
         exchange: Exchange,
         ports: Option<&SurfacePorts<R>>,
+        subgrid: Option<super::subgrid::SubgridTerrain>,
     ) -> Result<Self, EngineError> {
         if exchange == Exchange::Reject {
             reject_exchange(&data.ledger, data.last_step.as_ref())?;
@@ -144,6 +159,9 @@ where
             Some(data.forcing_prefix.clone()),
             data.accepted.clone(),
         )?;
+        if let Some(sg) = subgrid {
+            engine = engine.with_subgrid_terrain(sg)?;
+        }
         engine.import_data(data, exchange, ports)?;
         engine.continue_with_forcing(forcing)?;
         Ok(engine)

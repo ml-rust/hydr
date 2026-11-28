@@ -308,6 +308,7 @@ where
                 accepted: *accepted,
                 context: Arc::clone(&self.context),
                 coastal: self.coastal,
+                subgrid: self.subgrid.clone(),
             }))),
             Completion::Retry(reason) => Ok(CouplingCompletion::Retry(reason)),
         }

@@ -1,6 +1,7 @@
 use super::coastal::CoastalForcing;
 use super::definition::Definition;
 use super::forcing_history::ForcingPrefix;
+use super::subgrid::SubgridTerrain;
 use super::tensor::land::TensorLand;
 use super::tensor::land_sources::checked_volume;
 use super::tensor::{TensorDomain, TensorState};
@@ -35,6 +36,7 @@ pub struct Solver<R: Runtime<DType = DType>> {
     pub(super) accepted: Accepted<R>,
     pub(super) context: Arc<TensorDomain<R>>,
     pub(super) coastal: CoastalForcing,
+    pub(super) subgrid: Option<Arc<SubgridTerrain>>,
 }
 
 /// A clone shares the immutable definition, domain and accepted tensors.
@@ -45,6 +47,7 @@ impl<R: Runtime<DType = DType>> Clone for Solver<R> {
             accepted: self.accepted.clone(),
             context: Arc::clone(&self.context),
             coastal: self.coastal,
+            subgrid: self.subgrid.clone(),
         }
     }
 }
@@ -172,7 +175,61 @@ where
             },
             context: Arc::new(context),
             coastal: CoastalForcing::default(),
+            subgrid: None,
         })
+    }
+
+    /// Attaches opt-in subgrid terrain storage-elevation and face-conveyance tables.
+    ///
+    /// Preserves exact finite-volume mass conservation and lake-at-rest well-balancing while
+    /// resolving sub-cell river channels, levees, and partial-cell inundation on coarse grids.
+    ///
+    /// # Errors
+    /// Rejects a subgrid terrain whose coarse grid does not match this solver's domain grid.
+    pub fn with_subgrid_terrain(mut self, subgrid: SubgridTerrain) -> Result<Self, EngineError> {
+        if subgrid.grid() != self.domain().grid() {
+            return Err(EngineError::rejected(
+                "subgrid terrain",
+                format!(
+                    "subgrid grid {:?} != domain grid {:?}",
+                    subgrid.grid().dimensions(),
+                    self.domain().grid().dimensions()
+                ),
+            ));
+        }
+        self.subgrid = Some(Arc::new(subgrid));
+        Ok(self)
+    }
+
+    /// Returns the attached subgrid terrain tables, if any.
+    pub fn subgrid_terrain(&self) -> Option<&SubgridTerrain> {
+        self.subgrid.as_deref()
+    }
+
+    /// Computes per-cell water-surface elevation (`m`) using exact subgrid stage inversion when attached.
+    pub fn water_surface_elevation(&self) -> Result<Vec<f64>, EngineError> {
+        let h = self.accepted.flow.h.try_to_vec::<f64>()?;
+        if let Some(sg) = &self.subgrid {
+            Ok(sg.stage_field(&h))
+        } else {
+            Ok(self
+                .domain()
+                .bed()
+                .iter()
+                .zip(h)
+                .map(|(&z, depth)| z + depth)
+                .collect())
+        }
+    }
+
+    /// Computes per-cell inundated area fraction in `[0.0, 1.0]` using subgrid curves when attached.
+    pub fn wet_fraction(&self) -> Result<Vec<f64>, EngineError> {
+        let h = self.accepted.flow.h.try_to_vec::<f64>()?;
+        if let Some(sg) = &self.subgrid {
+            Ok(sg.wet_fraction_field(&h))
+        } else {
+            Ok(h.into_iter().map(|v| if v > 0.0 { 1.0 } else { 0.0 }).collect())
+        }
     }
 
     /// Attaches opt-in coastal wind, Coriolis, and atmospheric pressure forcing.

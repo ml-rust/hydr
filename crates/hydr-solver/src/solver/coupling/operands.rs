@@ -129,6 +129,7 @@ impl<R: Runtime<DType = DType>> Solver<R> {
             accepted: self.accepted.clone(),
             context: Arc::clone(&self.context),
             coastal: self.coastal,
+            subgrid: self.subgrid.clone(),
         }
     }
 

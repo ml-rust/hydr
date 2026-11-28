@@ -68,6 +68,7 @@ where
             accepted: self.accepted.clone(),
             context,
             coastal: self.coastal,
+            subgrid: self.subgrid.clone(),
         })
     }
 

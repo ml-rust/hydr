@@ -11,4 +11,4 @@ mod topology;
 pub(crate) mod transport;
 
 pub(crate) use storage::{TensorDomain, TensorSources, TensorState};
-pub(crate) use topology::TensorTopology;
+pub(crate) use topology::{FaceSupport, TensorTopology};

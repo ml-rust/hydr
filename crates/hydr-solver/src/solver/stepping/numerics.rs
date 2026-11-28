@@ -8,7 +8,7 @@ use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, CorrectlyRoundedOps, HypotOps, IndexingOps, ReduceOps,
     ScalarOps, TypeConversionOps, UnaryOps,
 };
-use numr::runtime::Runtime;
+use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 use solvr::optimize::roots::{BatchedBisectionAlgorithms, BatchedNewtonAlgorithms};
 
@@ -89,7 +89,20 @@ where
         let zero = &self.context.zero;
         let one = client.add_scalar(zero, 1.0)?;
         let wet = client.gt(&state.h, zero)?;
-        let depth = client.where_cond(&wet, &state.h, &one)?;
+        let depth = if let Some(sg) = &self.subgrid {
+            // Subgrid hydraulic depth in the wetted sub-cells: h_wet = h / wet_fraction.
+            // Prevents artificial (1/f)^(7/3) Manning over-damping on partially-wet cells.
+            let h_vec = state.h.try_to_vec::<f64>()?;
+            let wf = sg.wet_fraction_field(&h_vec);
+            let h_wet: Vec<f64> = h_vec
+                .iter()
+                .zip(wf)
+                .map(|(&h, f)| if h > 0.0 && f > 0.0 { h / f } else { 1.0 })
+                .collect();
+            Tensor::<R>::from_slice(&h_wet, &[h_wet.len()], client.device())?
+        } else {
+            client.where_cond(&wet, &state.h, &one)?
+        };
         let speed = client.hypot(&state.qx, &state.qy)?;
         self.finite(&speed, "Manning discharge magnitude")?;
         let active_drag = client.mul(

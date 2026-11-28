@@ -2,13 +2,13 @@ use super::port_faces::{PortFaces, PortFluxes, TransportFaces};
 use super::{TensorDomain, TensorSources, TensorState};
 use crate::contract::{EngineError, SolverConfig};
 use crate::numerics::{TensorFaceState, hydrostatic_hll_tensor};
-use crate::solver::FaceTransfer;
+use crate::solver::{FaceTransfer, SubgridTerrain};
 use numr::dtype::DType;
 use numr::ops::{
     BinaryOps, CompareOps, ConditionalOps, IndexingOps, ReduceOps, ScalarOps, ScatterReduceOp,
     UnaryOps,
 };
-use numr::runtime::Runtime;
+use numr::runtime::{Runtime, RuntimeClient};
 use numr::tensor::Tensor;
 
 #[derive(Clone)]
@@ -37,6 +37,7 @@ pub(crate) fn calculate<R: Runtime<DType = DType>>(
     config: &SolverConfig,
     area: f64,
     ports: Option<PortGhostFaces<'_, R>>,
+    subgrid: Option<&SubgridTerrain>,
 ) -> Result<TensorTransport<R>, EngineError>
 where
     R::Client: BinaryOps<R>
@@ -50,6 +51,18 @@ where
 {
     let client = &context.client;
     let topology = &context.topology;
+    let (bed_tensor, widths_tensor, phi_tensor) = if let Some(sg) = subgrid {
+        let h_vec = state.h.try_to_vec::<f64>()?;
+        let (stages, eff_bed) = sg.effective_bed_field(&h_vec);
+        let phi = sg.face_width_fractions(&topology.faces, &stages);
+        let device = client.device();
+        let eff_bed_t = Tensor::<R>::from_slice(&eff_bed, &[eff_bed.len()], device)?;
+        let phi_t = Tensor::<R>::from_slice(&phi, &[phi.len()], device)?;
+        let eff_widths_t = client.mul(&topology.widths, &phi_t)?;
+        (eff_bed_t, eff_widths_t, Some(phi_t))
+    } else {
+        (context.bed.clone(), topology.widths.clone(), None)
+    };
     let gather = |field: &Tensor<R>, ids: &Tensor<R>| client.index_select(field, 0, ids);
     let side = |ids: &Tensor<R>, sign: &Tensor<R>| -> Result<TensorFaceState<R>, EngineError> {
         let qx = gather(&state.qx, ids)?;
@@ -65,7 +78,7 @@ where
             h: gather(&state.h, ids)?,
             q_normal: client.mul(&normal, &sign)?,
             q_tangent: tangent,
-            bed: gather(&context.bed, ids)?,
+            bed: gather(&bed_tensor, ids)?,
         })
     };
     let left = side(&topology.left_ids, &topology.left_normal_sign)?;
@@ -171,7 +184,7 @@ where
     let scatter = |ids: &Tensor<R>, values: &Tensor<R>| {
         client.scatter_reduce(&context.zero, 0, ids, values, ScatterReduceOp::Sum, true)
     };
-    let rate = client.mul(&flux[0], &topology.widths)?;
+    let rate = client.mul(&flux[0], &widths_tensor)?;
     let exterior_rate = client.mul(&rate, &source.outward_sign)?;
     let boundary_out_rate = client
         .sum(&client.maximum(&exterior_rate, &zero_face)?, &[0], false)?
@@ -195,6 +208,20 @@ where
         &scatter(&topology.left_ids, &outgoing_left)?,
         &scatter(&topology.right_ids, &outgoing_right)?,
     )?;
+    let blocked_pressures = if let Some(phi) = &phi_tensor {
+        // Blocked fraction (1 - phi) of a subgrid face acts as a reflective bank wall exerting
+        // exact hydrostatic pressure 0.5 * g * h^2 so lake-at-rest remains well-balanced.
+        let blocked = client.rsub_scalar(phi, 1.0)?;
+        let blocked_w = client.mul(&blocked, &topology.widths)?;
+        let wall_l = client.mul_scalar(&client.mul(&left.h, &left.h)?, 0.5 * config.gravity)?;
+        let wall_r = client.mul_scalar(&client.mul(&right.h, &right.h)?, 0.5 * config.gravity)?;
+        Some((
+            client.mul(&wall_l, &blocked_w)?,
+            client.mul(&wall_r, &blocked_w)?,
+        ))
+    } else {
+        None
+    };
     let mut derivatives = Vec::with_capacity(3);
     for (component, shared) in flux.iter().enumerate() {
         let direction = match component {
@@ -202,16 +229,22 @@ where
             2 => &y_mask,
             _ => &zero_face,
         };
-        let left = client.mul(
+        let mut left_term = client.mul(
             &client.add(shared, &client.mul(&pressure_left, direction)?)?,
-            &topology.widths,
+            &widths_tensor,
         )?;
-        let left = client.mul(&client.div_scalar(&left, area)?, &topology.left_sign)?;
-        let right = client.mul(
+        let mut right_term = client.mul(
             &client.add(shared, &client.mul(&pressure_right, direction)?)?,
-            &topology.widths,
+            &widths_tensor,
         )?;
-        let right = client.mul(&client.div_scalar(&right, area)?, &topology.right_sign)?;
+        if component > 0
+            && let Some((wall_l, wall_r)) = &blocked_pressures
+        {
+            left_term = client.add(&left_term, &client.mul(wall_l, direction)?)?;
+            right_term = client.add(&right_term, &client.mul(wall_r, direction)?)?;
+        }
+        let left = client.mul(&client.div_scalar(&left_term, area)?, &topology.left_sign)?;
+        let right = client.mul(&client.div_scalar(&right_term, area)?, &topology.right_sign)?;
         derivatives.push(client.add(
             &scatter(&topology.left_ids, &left)?,
             &scatter(&topology.right_ids, &right)?,
@@ -236,6 +269,11 @@ where
             "missing y derivative: inspect component assembly",
         )
     })?;
+    if let Some(phi) = &phi_tensor {
+        // Store face-averaged mass flux (flux[0] * phi) in the step receipt so
+        // receipt water-balance checks (flux[0] * topology.widths) match `rate` identically.
+        flux[0] = client.mul(&flux[0], phi)?;
+    }
     Ok(TensorTransport {
         derivative: TensorState { h, qx, qy },
         outgoing,
