@@ -8,15 +8,18 @@ use crate::contract::{Axis, EngineError};
 use super::tensor::FaceSupport;
 use hydr_core::grid::CartesianGrid;
 
-/// Per-cell monotone subgrid storage-elevation curve built from sorted fine DEM sub-cell beds.
+/// Per-cell monotone subgrid storage-elevation curve built from sorted fine DEM sub-cell beds,
+/// with an optional sub-pixel incised river channel `(channel_bed_m, channel_area_m2)`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SubgridCellCurve {
     /// Sorted fine sub-cell bed elevations (`m`, non-decreasing).
     elevations_m: Vec<f64>,
-    /// Cumulative storage volume (`m³`) at each sorted elevation knot.
+    /// Cumulative storage volume (`m³`) at each sorted elevation knot (above `elevations_m[0]`).
     volumes_m3: Vec<f64>,
     /// Coarse cell plan area (`m²`).
     cell_area_m2: f64,
+    /// Optional sub-pixel channel `(channel_bed_m, channel_area_m2)` below `elevations_m[0]`.
+    channel: Option<(f64, f64)>,
 }
 
 impl SubgridCellCurve {
@@ -55,12 +58,43 @@ impl SubgridCellCurve {
             elevations_m,
             volumes_m3,
             cell_area_m2,
+            channel: None,
         })
+    }
+
+    /// Incises a sub-pixel river channel of `depth_m` below `elevations_m[0]` with plan area `channel_area_m2`.
+    pub fn with_channel(
+        mut self,
+        depth_m: f64,
+        channel_area_m2: f64,
+    ) -> Result<Self, EngineError> {
+        if !depth_m.is_finite() || depth_m <= 0.0 {
+            return Err(EngineError::rejected(
+                "subgrid channel",
+                format!("channel depth_m must be finite and > 0, got {depth_m}"),
+            ));
+        }
+        if !channel_area_m2.is_finite()
+            || channel_area_m2 <= 0.0
+            || channel_area_m2 >= self.cell_area_m2
+        {
+            return Err(EngineError::rejected(
+                "subgrid channel",
+                format!(
+                    "channel_area_m2 ({channel_area_m2}) must be in (0, cell_area_m2={})",
+                    self.cell_area_m2
+                ),
+            ));
+        }
+        let ch_bed = self.elevations_m[0] - depth_m;
+        self.channel = Some((ch_bed, channel_area_m2));
+        Ok(self)
     }
 
     /// Minimum (thalweg) bed elevation inside the coarse cell (`m`).
     pub fn min_bed_m(&self) -> f64 {
-        self.elevations_m[0]
+        self.channel
+            .map_or(self.elevations_m[0], |(ch_bed, _)| ch_bed)
     }
 
     /// Maximum (bank/ridge) bed elevation inside the coarse cell (`m`).
@@ -75,44 +109,82 @@ impl SubgridCellCurve {
 
     /// Exact stored volume (`m³`) at water-surface elevation `stage_m`.
     pub fn volume_at_stage(&self, stage_m: f64) -> f64 {
+        let z0 = self.elevations_m[0];
+        let v_ch = match self.channel {
+            Some((ch_bed, ch_area)) => {
+                if stage_m <= ch_bed {
+                    return 0.0;
+                }
+                if stage_m <= z0 {
+                    return ch_area * (stage_m - ch_bed);
+                }
+                ch_area * (z0 - ch_bed)
+            }
+            None => {
+                if stage_m <= z0 {
+                    return 0.0;
+                }
+                0.0
+            }
+        };
         let n = self.elevations_m.len();
-        if stage_m <= self.elevations_m[0] {
-            return 0.0;
-        }
         let idx = self.elevations_m.partition_point(|&z| z <= stage_m);
         let sub_area = self.cell_area_m2 / (n as f64);
-        if idx >= n {
+        let v_dem = if idx >= n {
             self.volumes_m3[n - 1] + self.cell_area_m2 * (stage_m - self.elevations_m[n - 1])
         } else {
             self.volumes_m3[idx - 1]
                 + (idx as f64) * sub_area * (stage_m - self.elevations_m[idx - 1])
-        }
+        };
+        v_ch + v_dem
     }
 
     /// Exact water-surface elevation (`m`) for stored volume `volume_m3` (`>= 0`).
     pub fn stage_at_volume(&self, volume_m3: f64) -> f64 {
+        let z0 = self.elevations_m[0];
+        let rem_vol = match self.channel {
+            Some((ch_bed, ch_area)) => {
+                if volume_m3 <= 0.0 {
+                    return ch_bed;
+                }
+                let v_bankfull = ch_area * (z0 - ch_bed);
+                if volume_m3 <= v_bankfull {
+                    return ch_bed + volume_m3 / ch_area;
+                }
+                volume_m3 - v_bankfull
+            }
+            None => {
+                if volume_m3 <= 0.0 {
+                    return z0;
+                }
+                volume_m3
+            }
+        };
         let n = self.elevations_m.len();
-        if volume_m3 <= 0.0 {
-            return self.elevations_m[0];
-        }
         let v_top = self.volumes_m3[n - 1];
-        if volume_m3 >= v_top {
-            return self.elevations_m[n - 1] + (volume_m3 - v_top) / self.cell_area_m2;
+        if rem_vol >= v_top {
+            return self.elevations_m[n - 1] + (rem_vol - v_top) / self.cell_area_m2;
         }
-        let idx = self.volumes_m3.partition_point(|&v| v <= volume_m3);
+        let idx = self.volumes_m3.partition_point(|&v| v <= rem_vol);
         let k = idx.saturating_sub(1);
         let sub_area = self.cell_area_m2 / (n as f64);
         let wetted_area = ((k + 1) as f64) * sub_area;
-        self.elevations_m[k] + (volume_m3 - self.volumes_m3[k]) / wetted_area
+        self.elevations_m[k] + (rem_vol - self.volumes_m3[k]) / wetted_area
     }
 
-    /// Fraction of sub-cells submerged at `stage_m`, in `[0.0, 1.0]`.
+    /// Fraction of cell area submerged at `stage_m`, in `[0.0, 1.0]`.
     pub fn wet_fraction_at_stage(&self, stage_m: f64) -> f64 {
-        if stage_m <= self.elevations_m[0] {
-            return 0.0;
-        }
-        let wet = self.elevations_m.partition_point(|&z| z < stage_m);
-        (wet as f64) / (self.elevations_m.len() as f64)
+        let ch_frac = match self.channel {
+            Some((ch_bed, ch_area)) if stage_m > ch_bed => ch_area / self.cell_area_m2,
+            _ => 0.0,
+        };
+        let dem_frac = if stage_m <= self.elevations_m[0] {
+            0.0
+        } else {
+            let wet = self.elevations_m.partition_point(|&z| z < stage_m);
+            (wet as f64) / (self.elevations_m.len() as f64)
+        };
+        ch_frac.max(dem_frac)
     }
 
     /// Effective coarse depth `volume_m3 / cell_area_m2` (`m`) at `stage_m`.
@@ -121,11 +193,14 @@ impl SubgridCellCurve {
     }
 }
 
-/// Per-face subgrid sill elevation profile along an interior coarse cell boundary.
+/// Per-face subgrid sill elevation profile along an interior coarse cell boundary,
+/// with an optional sub-pixel river channel sill `(sill_m, width_fraction)`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SubgridFaceCurve {
     /// Sorted fine sub-face sill elevations (`m`, non-decreasing).
     sills_m: Vec<f64>,
+    /// Optional sub-pixel river channel `(sill_m, width_fraction)` in `(0.0, 1.0)`.
+    channel_sill: Option<(f64, f64)>,
 }
 
 impl SubgridFaceCurve {
@@ -145,12 +220,25 @@ impl SubgridFaceCurve {
         }
         let mut sorted = sills_m.to_vec();
         sorted.sort_by(f64::total_cmp);
-        Ok(Self { sills_m: sorted })
+        Ok(Self {
+            sills_m: sorted,
+            channel_sill: None,
+        })
+    }
+
+    /// Attaches a sub-pixel channel sill `(sill_m, width_fraction)` across this face.
+    pub fn with_channel_sill(mut self, sill_m: f64, width_fraction: f64) -> Self {
+        if sill_m.is_finite() && width_fraction.is_finite() && width_fraction > 0.0 {
+            self.channel_sill = Some((sill_m, width_fraction.clamp(0.0, 0.99)));
+        }
+        self
     }
 
     /// Lowest sill (thalweg/culvert) elevation crossing the face (`m`).
     pub fn min_sill_m(&self) -> f64 {
-        self.sills_m[0]
+        let base = self.sills_m[0];
+        self.channel_sill
+            .map_or(base, |(sill, _)| base.min(sill))
     }
 
     /// Highest barrier (bank/levee) elevation along the face (`m`).
@@ -160,25 +248,39 @@ impl SubgridFaceCurve {
 
     /// Fraction of face width submerged at water-surface elevation `stage_m`, in `[0.0, 1.0]`.
     pub fn wet_width_fraction(&self, stage_m: f64) -> f64 {
-        if stage_m <= self.sills_m[0] {
-            return 0.0;
-        }
-        let wet = self.sills_m.partition_point(|&z| z < stage_m);
-        (wet as f64) / (self.sills_m.len() as f64)
+        let ch_w = match self.channel_sill {
+            Some((sill, wf)) if stage_m > sill => wf,
+            _ => 0.0,
+        };
+        let dem_w = if stage_m <= self.sills_m[0] {
+            0.0
+        } else {
+            let wet = self.sills_m.partition_point(|&z| z < stage_m);
+            (wet as f64) / (self.sills_m.len() as f64)
+        };
+        ch_w.max(dem_w)
     }
 
     /// Mean subgrid flow depth across the face at `stage_m` (`m`).
     pub fn effective_depth_at_stage(&self, stage_m: f64) -> f64 {
-        if stage_m <= self.sills_m[0] {
-            return 0.0;
+        let dem_d = if stage_m <= self.sills_m[0] {
+            0.0
+        } else {
+            let sum: f64 = self
+                .sills_m
+                .iter()
+                .take_while(|&&z| z < stage_m)
+                .map(|&z| stage_m - z)
+                .sum();
+            sum / (self.sills_m.len() as f64)
+        };
+        match self.channel_sill {
+            Some((sill, wf)) => {
+                let ch_d = (stage_m - sill).max(0.0);
+                wf * ch_d + (1.0 - wf) * dem_d
+            }
+            None => dem_d,
         }
-        let sum: f64 = self
-            .sills_m
-            .iter()
-            .take_while(|&&z| z < stage_m)
-            .map(|&z| stage_m - z)
-            .sum();
-        sum / (self.sills_m.len() as f64)
     }
 }
 
@@ -280,6 +382,90 @@ impl SubgridTerrain {
             x_faces,
             y_faces,
         })
+    }
+
+    /// Incises opt-in sub-pixel river channels `(width_m, depth_m)` into matching cells and
+    /// their shared interior faces so narrow (`10–100 m`) rivers route continuously below coarse DEM banks.
+    pub fn with_channels(
+        mut self,
+        cell_channels: &[Option<(f64, f64)>],
+    ) -> Result<Self, EngineError> {
+        let (cx, cy) = self.grid.dimensions();
+        let n = cx * cy;
+        if cell_channels.len() != n {
+            return Err(EngineError::rejected(
+                "subgrid channels",
+                format!(
+                    "cell_channels length ({}) != coarse cells ({n})",
+                    cell_channels.len()
+                ),
+            ));
+        }
+        let (dx, dy) = self.grid.spacing();
+        let cell_len = (dx * dy).sqrt();
+        let cell_area = self.grid.cell_area();
+        for (i, ch) in cell_channels.iter().enumerate() {
+            if let Some((width_m, depth_m)) = *ch {
+                if !width_m.is_finite() || width_m <= 0.0 || !depth_m.is_finite() || depth_m <= 0.0 {
+                    return Err(EngineError::rejected(
+                        "subgrid channels",
+                        format!("cell {i}: width_m={width_m} and depth_m={depth_m} must be finite > 0"),
+                    ));
+                }
+                let ch_area = (width_m * cell_len).min(0.5 * cell_area);
+                let curve = std::mem::replace(
+                    &mut self.curves[i],
+                    SubgridCellCurve {
+                        elevations_m: Vec::new(),
+                        volumes_m3: Vec::new(),
+                        cell_area_m2: cell_area,
+                        channel: None,
+                    },
+                );
+                self.curves[i] = curve.with_channel(depth_m, ch_area)?;
+            }
+        }
+        // Wire shared interior X-faces where both neighbors carry a sub-pixel channel.
+        for row in 0..cy {
+            for col in 0..cx.saturating_sub(1) {
+                let l = row * cx + col;
+                let r = l + 1;
+                if let (Some((wl, _)), Some((wr, _))) = (cell_channels[l], cell_channels[r]) {
+                    let sill = self.curves[l].min_bed_m().max(self.curves[r].min_bed_m());
+                    let wf = (wl.min(wr) / dy).clamp(0.0, 0.5);
+                    let fidx = row * (cx - 1) + col;
+                    let face = std::mem::replace(
+                        &mut self.x_faces[fidx],
+                        SubgridFaceCurve {
+                            sills_m: Vec::new(),
+                            channel_sill: None,
+                        },
+                    );
+                    self.x_faces[fidx] = face.with_channel_sill(sill, wf);
+                }
+            }
+        }
+        // Wire shared interior Y-faces where both neighbors carry a sub-pixel channel.
+        for row in 0..cy.saturating_sub(1) {
+            for col in 0..cx {
+                let b = row * cx + col;
+                let t = b + cx;
+                if let (Some((wb, _)), Some((wt, _))) = (cell_channels[b], cell_channels[t]) {
+                    let sill = self.curves[b].min_bed_m().max(self.curves[t].min_bed_m());
+                    let wf = (wb.min(wt) / dx).clamp(0.0, 0.5);
+                    let fidx = row * cx + col;
+                    let face = std::mem::replace(
+                        &mut self.y_faces[fidx],
+                        SubgridFaceCurve {
+                            sills_m: Vec::new(),
+                            channel_sill: None,
+                        },
+                    );
+                    self.y_faces[fidx] = face.with_channel_sill(sill, wf);
+                }
+            }
+        }
+        Ok(self)
     }
 
     /// Coarse grid geometry.
@@ -679,6 +865,129 @@ mod tests {
             phi_tiny[0] > 0.0 && phi_tiny[0] < 0.02,
             "slight levee overtopping must ramp smoothly from 0, got {}",
             phi_tiny[0]
+        );
+    }
+
+    #[test]
+    fn subgrid_subpixel_channel_lake_at_rest_and_inbank_routing() {
+        // 3x1 coarse cells (dx = 1000m), flat fine DEM at z = 10.0m,
+        // with a 30m-wide, 3.0m-deep sub-pixel river channel incised to z_ch = 7.0m.
+        let fine = vec![10.0; 12 * 4];
+        let grid = CartesianGrid::new(3, 1, 1000.0, 1000.0).expect("grid");
+        let channels = vec![Some((30.0, 3.0)), Some((30.0, 3.0)), Some((30.0, 3.0))];
+        let sg = SubgridTerrain::from_fine_dem(grid, 12, 4, &fine)
+            .expect("sg")
+            .with_channels(&channels)
+            .expect("channels");
+
+        // 1) Exact stage-volume inversion both in-bank (8.5m) and overbank (10.5m).
+        for &stage in &[7.0, 8.5, 10.0, 10.5] {
+            let v = sg.curves()[0].volume_at_stage(stage);
+            let inv = sg.curves()[0].stage_at_volume(v);
+            assert!(
+                (inv - stage).abs() < 1e-11,
+                "stage={stage} v={v} inv={inv}"
+            );
+        }
+
+        // 2) Lake-at-rest in-bank (WSE = 8.5m, completely below the 10m DEM!).
+        let init_rest = sg.effective_depth_field(&[8.5, 8.5, 8.5]);
+        let coarse_bed: Vec<f64> = sg.curves().iter().map(|c| c.min_bed_m()).collect();
+        let domain = Domain::new(
+            grid,
+            coarse_bed.clone(),
+            vec![0.03; 3],
+            vec![true; 3],
+            SpatialReference::new("LOCAL".to_owned(), "MSL".to_owned(), [0.0, 0.0]).expect("crs"),
+        )
+        .expect("domain");
+        let land = LandModel::new(&domain, vec![LandCell::Impervious; 3]).expect("land");
+        let soil = SoilState::initialized(&land).expect("soil");
+        let boundaries = BoundaryConditions::with_open_faces(&domain, vec![]).expect("bc");
+        let forcing = ForcingSchedule::new(
+            &domain,
+            &boundaries,
+            vec![ForcingInterval {
+                start: 0.0,
+                end: 60.0,
+                rain: vec![0.0; 3],
+                potential_evaporation: vec![0.0; 3],
+                withdrawal: vec![0.0; 3],
+                boundaries: vec![],
+            }],
+        )
+        .expect("forcing");
+        let flow = FlowState::new(
+            &domain,
+            init_rest
+                .iter()
+                .map(|&h| CellState { h, qx: 0.0, qy: 0.0 })
+                .collect(),
+        )
+        .expect("flow");
+        let mut solver = Solver::<CpuRuntime>::new(
+            CpuClient::new(CpuDevice::new()),
+            SolverSetup {
+                domain: domain.clone(),
+                land: land.clone(),
+                boundaries: boundaries.clone(),
+                forcing: forcing.clone(),
+                config: SolverConfig::default(),
+            },
+            InitialState {
+                time: 0.0,
+                flow,
+                soil: soil.clone(),
+            },
+        )
+        .expect("solver")
+        .with_subgrid_terrain(sg.clone())
+        .expect("attach");
+        while solver.time() < 60.0 {
+            solver.advance_to(60.0, 10_000).expect("step");
+        }
+        let wse = solver.water_surface_elevation().expect("wse");
+        for (i, cell) in solver.state().expect("st").cells().iter().enumerate() {
+            assert!(cell.qx.abs() < 1e-12, "cell {i} qx={}", cell.qx);
+            assert!((wse[i] - 8.5).abs() < 1e-11, "cell {i} wse={}", wse[i]);
+        }
+
+        // 3) In-bank flood wave (WSE = 9.5m in cell 0, dry in cells 1 & 2) routes downstream below 10m DEM!
+        let init_wave = sg.effective_depth_field(&[9.5, 7.0, 7.0]);
+        let flow_w = FlowState::new(
+            &domain,
+            init_wave
+                .iter()
+                .map(|&h| CellState { h, qx: 0.0, qy: 0.0 })
+                .collect(),
+        )
+        .expect("flow_w");
+        let mut solver_w = Solver::<CpuRuntime>::new(
+            CpuClient::new(CpuDevice::new()),
+            SolverSetup {
+                domain,
+                land,
+                boundaries,
+                forcing,
+                config: SolverConfig::default(),
+            },
+            InitialState {
+                time: 0.0,
+                flow: flow_w,
+                soil,
+            },
+        )
+        .expect("solver_w")
+        .with_subgrid_terrain(sg)
+        .expect("attach_w");
+        while solver_w.time() < 60.0 {
+            solver_w.advance_to(60.0, 10_000).expect("step_w");
+        }
+        let wse_w = solver_w.water_surface_elevation().expect("wse_w");
+        assert!(
+            wse_w[1] > 7.05 && wse_w[1] < 10.0,
+            "in-bank 30m channel must route water below 10m DEM, got cell 1 wse={}",
+            wse_w[1]
         );
     }
 }
